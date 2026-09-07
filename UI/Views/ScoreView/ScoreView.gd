@@ -55,6 +55,9 @@ var _entry_animation_done: bool = false
 var _manual_pending: bool = false
 # 上传代次：每次 set_display 递增，用于丢弃上一次未完成上传的回调结果
 var _upload_generation: int = 0
+var _entry_generation: int = 0
+var _entry_animation_running: bool = false
+var _portrait: DynamicPortrait
 
 class ScoreData:
 	## 由 ScoreCalculator 填充的最终数据（纯数据容器，不含计算逻辑）
@@ -96,6 +99,12 @@ class ScoreData:
 		return "%0.2fpp" % performance_point
 
 func _ready() -> void:
+	_portrait = DynamicPortrait.new()
+	_portrait.message_top_ratio = 0.43
+	chara.add_child(_portrait)
+	_portrait.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	chara.self_modulate.a = 0.0
+	chara.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UiStatMGR.state_changed.connect(_on_state_changed)
 	animate(false)
 
@@ -121,6 +130,8 @@ func apply_theme() -> void:
 			sb.bg_color = Color(pd.r, pd.g, pd.b, a)
 
 func _exit_tree() -> void:
+	_cleanup()
+	AniMGR.stop_tween("sv_exit")
 	if ThemeMGR:
 		ThemeMGR.unregister_theme_applier(self)
 	_disconnect_stats_refreshed()
@@ -155,6 +166,14 @@ func _on_state_changed(old_state: UIStateManager.UIState, new_state: UIStateMana
 
 ## 释放视图内部资源（循环动画 Tween），保留节点壳
 func _cleanup() -> void:
+	_entry_generation += 1
+	_upload_generation += 1
+	_entry_animation_running = false
+	_entry_animation_done = false
+	for tween_id in ["sv_bg", "sv_score", "sv_bottom", "sv_rank", "sv_acc", "sv_chara", "sv_upload_state"]:
+		AniMGR.stop_tween(tween_id)
+	if is_instance_valid(_portrait):
+		_portrait.set_active(false)
 	_kill_loop_ani()
 	_kill_pp_tween()
 	if _upload_tween:
@@ -162,6 +181,10 @@ func _cleanup() -> void:
 		_upload_tween = null
 
 func set_display(result: ScoreData, midi: MidiData = null, is_auto: bool = false):
+	var restart_entry := _entry_animation_running or _entry_animation_done
+	_cleanup()
+	AniMGR.stop_tween("sv_exit")
+	var final_rank := result.get_rank()
 	# 判定数据
 	data_box.get_node("Hbox/PerfectCtn").text = str(result.count.Perfect)
 	data_box.get_node("Hbox/GreatCtn").text = str(result.count.Great)
@@ -173,13 +196,13 @@ func set_display(result: ScoreData, midi: MidiData = null, is_auto: bool = false
 	data_box.get_node("HBox1/LateCtn").text = str(result.late_count)
 	data_box.get_node("HBox1/MaxCombo").text = "%d/%d" % [result.max_combo, result.total_notes]
 
-	rank.text = result.get_rank()
+	rank.text = final_rank
 	accuracy.text = result.get_accuracy()
 	score.text = result.get_formated_score()
 	pp.text = result.get_pp()
 
 	# 立绘：按评级切换人物表情
-	_update_chara_art(result.get_rank())
+	_update_chara_art(final_rank)
 
 	# 歌曲信息（专辑/歌名/Midi名/Midi作者/难度）
 	_update_song_info(midi)
@@ -199,14 +222,14 @@ func set_display(result: ScoreData, midi: MidiData = null, is_auto: bool = false
 	_entry_animation_done = false
 	# 新一局：递增上传代次，使上一次未完成上传的回调结果失效
 	_upload_generation += 1
+	if restart_entry and UiStatMGR.current_state == UIStateManager.UIState.SCORE_VIEW:
+		animate()
 
 ## 按评级合成并切换人物立绘（人物未就绪或合成失败时静默跳过，保留原立绘）
-func _update_chara_art(rank: String) -> void:
-	if CharaMGR.charas_index.is_empty():
-		return
-	var tex := CharaMGR.get_current_portrait_by_rank(rank)
-	if tex:
-		chara.texture = tex
+func _update_chara_art(final_rank: String) -> void:
+	var chara_key := CharaMGR.get_current_chara_key()
+	chara.texture = CharaMGR.get_portrait(chara_key, CharaMGR.get_rating_emotion(chara_key, final_rank))
+	_portrait.show_result(chara_key, final_rank)
 
 ## 填充歌曲信息（来自本次游玩的 MidiData，与 PlayView 信息面板保持一致）
 func _update_song_info(midi: MidiData) -> void:
@@ -254,7 +277,6 @@ func _on_love_btn_pressed():
 
 ############################# 动画 ###############################
 @onready var ani: AnimationManager = AniMGR
-var _loop_ani_chara: Tween = null
 var _loop_ani_rank: Tween = null
 
 # PP 上涨动画状态
@@ -272,15 +294,14 @@ func _is_logged_in() -> bool:
 	return true
 
 func _kill_loop_ani():
-	if _loop_ani_chara:
-		_loop_ani_chara.kill()
-		_loop_ani_chara = null
+	AniMGR.stop_tween("score_loop_rank")
 	if _loop_ani_rank:
 		_loop_ani_rank.kill()
 		_loop_ani_rank = null
 
 ## 终止 PP 上涨动画
 func _kill_pp_tween() -> void:
+	AniMGR.stop_tween("sv_pp_%d" % get_instance_id())
 	if _pp_tween:
 		_pp_tween.kill()
 		_pp_tween = null
@@ -296,7 +317,7 @@ func _animate_pp_to(target_pp: float) -> void:
 		_set_pp_display(target_pp)
 		return
 	# 延迟并入 tween，立即赋值，重入时可取消掉未完成的延迟并从中断处续播
-	_pp_tween = create_tween()
+	_pp_tween = AniMGR.create_managed_tween(self, "sv_pp_%d" % get_instance_id())
 	_pp_tween.set_trans(Tween.TRANS_CUBIC)
 	_pp_tween.set_ease(Tween.EASE_OUT)
 	_pp_tween.tween_interval(1.0)
@@ -316,27 +337,28 @@ func _set_pp_display(current_pp: float) -> void:
 
 func _play_loop_ani():
 	_kill_loop_ani()
-	_loop_ani_chara = AniMGR.create_managed_tween(self, "score_loop_chara")
 	_loop_ani_rank = AniMGR.create_managed_tween(self, "score_loop_rank")
 
-	_loop_ani_chara.set_loops()
 	_loop_ani_rank.set_loops()
 
 	_loop_ani_rank.tween_property(rank, "offset_transform_scale", Vector2.ONE*0.99, 1)
 	_loop_ani_rank.tween_property(rank, "offset_transform_scale", Vector2.ONE*1.01, 1)
 
-	_loop_ani_chara.tween_property(chara, "position:y", chara.position.y + 10, 1.5)
-	_loop_ani_chara.tween_property(chara, "position:y", chara.position.y - 10, 1.5)
+	_portrait.set_active(true)
 
 func animate(ani_in: bool = true):
 	if not ani_in:
 		# 整页缩放淡出
-		_kill_loop_ani()
+		_cleanup()
 		return ani.animate_fade_scale_out(self, Vector2.ONE * 0.8, 0.2, "sv_exit")
 
-	if _entry_animation_done:
+	if _entry_animation_done or _entry_animation_running:
 		return
 
+	AniMGR.stop_tween("sv_exit")
+	_entry_generation += 1
+	var generation := _entry_generation
+	_entry_animation_running = true
 	_entry_animation_done = false
 	# 复位整页状态（上次退出可能已缩放淡出隐藏）
 	visible = true
@@ -359,20 +381,31 @@ func animate(ani_in: bool = true):
 	# 第 1 阶段：背景从 0.8 原地缩放淡入（外围按钮入场沿用原有逻辑）
 	ani.animate_fade_scale_in(bg, Vector2.ONE * 0.8, 0.35, "sv_bg")
 	await get_tree().create_timer(0.35).timeout
+	if not _is_current_entry(generation):
+		return
 
 	# 第 2 阶段：Score 左滑、Bottom 上滑淡入
 	ani.animate_fade_slide_in(score_panel, Vector2(-100, 0), 0.4, "sv_score")
 	ani.animate_fade_slide_in(bottom, Vector2(0, 150), 0.4, "sv_bottom")
 	await get_tree().create_timer(0.4).timeout
+	if not _is_current_entry(generation):
+		return
 
 	# 第 3 阶段：Rank / Accuracy / Chara 上滑淡入（Accuracy 时长略短）
 	ani.animate_fade_slide_in(rank, Vector2(0, 150), 0.55, "sv_rank")
 	ani.animate_fade_slide_in(chara, Vector2(0, 150), 0.4, "sv_chara")
 	ani.animate_fade_slide_in(accuracy, Vector2(0, 100), 0.3, "sv_acc")
 	await get_tree().create_timer(0.4).timeout
+	if not _is_current_entry(generation):
+		return
 
+	_entry_animation_running = false
 	_entry_animation_done = true
 	_play_loop_ani()
+
+func _is_current_entry(generation: int) -> bool:
+	return is_inside_tree() and generation == _entry_generation and _entry_animation_running \
+		and UiStatMGR.current_state == UIStateManager.UIState.SCORE_VIEW
 
 ## 前置放置动画起始状态（隐藏 + 缩放 + 偏移），供分阶段入场前各组件归位
 func _place_staged_node(node: Control, from_offset: Vector2, from_scale: Vector2) -> void:

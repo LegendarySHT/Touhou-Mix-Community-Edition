@@ -32,6 +32,7 @@ var charas_index: Dictionary = {}
 
 ## 合成立绘缓存 {chara_key + "|" + emotion: Texture2D}
 var _composite_cache: Dictionary = {}
+var _texture_cache: Dictionary = {}
 
 func _ready() -> void:
 	add_to_group("singleton")
@@ -40,15 +41,14 @@ func _ready() -> void:
 ## 清空人物索引与合成缓存（由 FileSystemManager._scan_all_resources 统一扫描前调用）
 func clear_index() -> void:
 	charas_index.clear()
-	_composite_cache.clear()
+	clear_composite_cache()
 
 ## ========== 扫描 ==========
 
 ## 公共扫描接口（worker 线程扫描，主线程合并）
 ## 供需要动态重扫人物列表的地方调用；启动时由 _scan_all_resources 的 worker 路径驱动
 func scan_charas() -> void:
-	charas_index.clear()
-	_composite_cache.clear()
+	clear_index()
 	var rw: Dictionary = {}
 	var task_id := WorkerThreadPool.add_task(
 		func(): _build_charas_index_worker(rw),
@@ -107,8 +107,8 @@ func _load_chara_worker(chara_path: String, chara_key: String, is_builtin: bool,
 		local_logs.append({"msg": "Chara config invalid JSON: %s" % config_path, "is_warning": true})
 		return {}
 
-	var general: Dictionary = parsed.get("general", {})
-	var info: Dictionary = parsed.get("info", {})
+	var general := _config_dictionary(parsed.get("general"))
+	var info := _config_dictionary(parsed.get("info"))
 
 	var character_image: String = str(general.get("character_image", "")).strip_edges()
 	if character_image.is_empty() or not _image_exists(chara_path, character_image):
@@ -129,9 +129,103 @@ func _load_chara_worker(chara_path: String, chara_key: String, is_builtin: bool,
 		"character_image": character_image,
 		"emotion_image": str(general.get("emotion_image", "")).strip_edges(),
 		"background_image": str(general.get("background_image", "")).strip_edges(),
-		"rating": parsed.get("rating", {}),
-		"dialog": parsed.get("dialog", {}),
+		"rating": _config_dictionary(parsed.get("rating")),
+		"dialog": _config_dictionary(parsed.get("dialog")),
+		"motion": _normalize_motion(parsed.get("motion"), chara_path),
+		"score_reactions": _normalize_score_reactions(parsed.get("score_reactions")),
 	}
+
+func _config_dictionary(value: Variant) -> Dictionary:
+	return value if value is Dictionary else {}
+
+func _config_number(config: Dictionary, key: String, fallback: float, minimum: float, maximum: float) -> float:
+	var value: Variant = config.get(key, fallback)
+	if not (value is int or value is float) or not is_finite(float(value)):
+		return fallback
+	return clampf(float(value), minimum, maximum)
+
+func _relative_image_name(value: Variant) -> String:
+	if not value is String:
+		return ""
+	var image_name: String = value.strip_edges().replace("\\", "/")
+	if image_name.is_empty() or image_name.is_absolute_path() or image_name.contains(":") or ".." in image_name.split("/"):
+		return ""
+	return image_name
+
+func _normalize_motion(value: Variant, chara_path: String) -> Dictionary:
+	var config := _config_dictionary(value)
+	if _config_number(config, "version", 0.0, 0.0, 100.0) != 1.0:
+		return {}
+	var weight_image := _relative_image_name(config.get("weight_image"))
+	if weight_image.is_empty() or not _image_exists(chara_path, weight_image):
+		return {}
+	var motion := {
+		"version": 1,
+		"weight_image": weight_image,
+		"breath": _config_number(config, "breath", 2.0, 0.0, 12.0),
+		"sway": _config_number(config, "sway", 2.0, 0.0, 15.0),
+		"wing": _config_number(config, "wing", 10.0, 0.0, 30.0),
+		"hair": _config_number(config, "hair", 4.0, 0.0, 20.0),
+		"skirt": _config_number(config, "skirt", 4.0, 0.0, 20.0),
+		"speed": _config_number(config, "speed", 1.0, 0.2, 3.0),
+		"float": _config_number(config, "float", 5.0, 0.0, 20.0),
+		"head_pivot": Vector2(0.28, 0.4),
+		"blink": {},
+	}
+	var pivot: Variant = config.get("head_pivot")
+	if pivot is Array and pivot.size() == 2:
+		var coordinates := {"x": pivot[0], "y": pivot[1]}
+		motion.head_pivot = Vector2(_config_number(coordinates, "x", 0.28, 0.0, 1.0), _config_number(coordinates, "y", 0.4, 0.05, 0.95))
+	var blink := _config_dictionary(config.get("blink"))
+	var blink_image := _relative_image_name(blink.get("image"))
+	if not blink_image.is_empty() and _image_exists(chara_path, blink_image):
+		var emotions: Array[int] = []
+		var configured_emotions: Variant = blink.get("emotions", [])
+		if configured_emotions is Array:
+			for emotion in configured_emotions:
+				if (emotion is int or emotion is float) and is_finite(float(emotion)) and float(emotion) >= 0.0 and float(emotion) <= 255.0:
+					emotions.append(int(emotion))
+		var interval := Vector2(3.0, 6.0)
+		var configured_interval: Variant = blink.get("interval")
+		if configured_interval is Array and configured_interval.size() == 2:
+			var bounds := {"min": configured_interval[0], "max": configured_interval[1]}
+			interval.x = _config_number(bounds, "min", 3.0, 1.0, 30.0)
+			interval.y = maxf(interval.x, _config_number(bounds, "max", 6.0, 1.0, 30.0))
+		motion.blink = {
+			"image": blink_image,
+			"emotions": emotions,
+			"interval": interval,
+			"duration": _config_number(blink, "duration", 0.18, 0.08, 0.6),
+		}
+	return motion
+
+func _normalize_score_reactions(value: Variant) -> Dictionary:
+	var config := _config_dictionary(value)
+	var presets := _config_dictionary(config.get("presets"))
+	var normalized: Dictionary = {}
+	for preset_name in presets:
+		if not preset_name is String or not presets[preset_name] is Dictionary:
+			continue
+		var preset: Dictionary = presets[preset_name]
+		var effect := str(preset.get("effect", "none"))
+		if effect not in ["petals", "sparkles", "none"]:
+			effect = "none"
+		normalized[preset_name] = {
+			"motion_scale": _config_number(preset, "motion_scale", 1.0, 0.0, 2.0),
+			"bounce": _config_number(preset, "bounce", 0.0, 0.0, 40.0),
+			"tilt": _config_number(preset, "tilt", 0.0, -8.0, 8.0),
+			"effect": effect,
+			"count": int(_config_number(preset, "count", 0.0, 0.0, 32.0)),
+			"message": str(preset.get("message", "")).left(160),
+		}
+	if normalized.is_empty():
+		return {}
+	var ratings := _config_dictionary(config.get("ratings"))
+	var valid_ratings: Dictionary = {}
+	for rank in ratings:
+		if rank is String and ratings[rank] is String and normalized.has(ratings[rank]):
+			valid_ratings[rank] = ratings[rank]
+	return {"default": str(config.get("default", "")), "ratings": valid_ratings, "presets": normalized}
 
 ## 解析表情放置坐标 [x, y]（左上角原点）
 func _parse_offset(value: Variant) -> Vector2i:
@@ -187,7 +281,7 @@ func resolve_chara_key(chara_key: String) -> String:
 		if charas_index.has(pure):
 			return pure
 		return ""
-	return chara_key if charas_index.has(chara_key + BUILTIN_SUFFIX) else ""
+	return chara_key + BUILTIN_SUFFIX if charas_index.has(chara_key + BUILTIN_SUFFIX) else ""
 
 ## 获取当前选中的内置/用户人物键（由 ScoreView 等消费）
 ## 读取 [Chara] chara_id 配置；配置无值/被删时回退到第一个内置人物
@@ -224,11 +318,13 @@ func get_portrait(chara_key: String, emotion: int) -> Texture2D:
 	chara_key = resolve_chara_key(chara_key)
 	if chara_key.is_empty():
 		return null
+	var meta: Dictionary = charas_index[chara_key]
+	if emotion < 0 or emotion > int(meta.get("emotion_cols", 1)) * int(meta.get("emotion_rows", 1)):
+		emotion = 0
 	var cache_key := "%s|%d" % [chara_key, emotion]
 	if _composite_cache.has(cache_key):
 		return _composite_cache[cache_key]
 
-	var meta: Dictionary = charas_index[chara_key]
 	var chara_img := _load_image(meta.get("path", "").path_join(meta.get("character_image", "")))
 	if chara_img == null:
 		GLogger.warning("Failed to load chara image: %s" % meta.get("path", ""), "CharaMGR")
@@ -343,3 +439,34 @@ func get_dialog(chara_key: String, emotion: int = -1) -> Dictionary:
 ## 清空合成缓存（人物重扫时调用）
 func clear_composite_cache() -> void:
 	_composite_cache.clear()
+	_texture_cache.clear()
+
+func get_motion_config(chara_key: String) -> Dictionary:
+	chara_key = resolve_chara_key(chara_key)
+	return get_chara_data(chara_key).get("motion", {}).duplicate(true)
+
+func get_score_reaction(chara_key: String, rank: String) -> Dictionary:
+	chara_key = resolve_chara_key(chara_key)
+	var config: Dictionary = get_chara_data(chara_key).get("score_reactions", {})
+	var preset_name: String = config.get("ratings", {}).get(rank, config.get("default", ""))
+	return config.get("presets", {}).get(preset_name, {}).duplicate(true)
+
+func get_chara_texture(chara_key: String, image_name: String) -> Texture2D:
+	chara_key = resolve_chara_key(chara_key)
+	image_name = _relative_image_name(image_name)
+	if chara_key.is_empty() or image_name.is_empty():
+		return null
+	var file_path: String = str(charas_index[chara_key].get("path", "")).path_join(image_name)
+	if _texture_cache.has(file_path):
+		return _texture_cache[file_path]
+	var texture: Texture2D = null
+	if file_path.begins_with("res://"):
+		if ResourceLoader.exists(file_path):
+			texture = load(file_path) as Texture2D
+	else:
+		var image := ImageUtil.load_image_file(file_path)
+		if image != null:
+			texture = ImageTexture.create_from_image(image)
+	if texture != null:
+		_texture_cache[file_path] = texture
+	return texture

@@ -1,0 +1,82 @@
+{
+	"general": {
+		"character_image": "lily-white-stand.png",
+		"emotion_image": "emos.png",
+		"emotion_cols": 5,
+		"emotion_rows": 5,
+		"emotion_offset": [80, 200]
+	},
+	"info": {
+		"author": "dairi",
+		"unlock_condition": "内置人物无需解锁",
+		"name": "莉莉白",
+		"description": "春天来了！\n报春的妖精莉莉白，带着轻盈的翅膀与春风一起前来。\n跟随旋律轻轻摇摆，也会为你的演奏送上不同的祝福。"
+	},
+	"rating": {
+		"Ω": 19, "SSS": 17, "SS": 9, "S": 7,
+		"A+": 15, "A": 5, "A-": 0,
+		"B+": 0, "B": 0, "B-": 21,
+		"C+": 1, "C": 1, "C-": 3,
+		"D+": 3, "D": 3, "D-": 3, "F": 1
+	},
+	"dialog": {
+		"0": ["春天来了！一起听一首轻快的曲子吧。", "翅膀也跟着旋律轻轻摇摆呢。"],
+		"7": ["听见了吗？是春天的声音！", "再来一曲吧，我会为你加油的！"],
+		"15": ["谢谢你带来的音乐，连花儿都想跳舞了。"],
+		"21": ["休息一下也没关系，春风会一直陪着你。"]
+	},
+	"motion": {
+		"version": 1,
+		"weight_image": "motion.png",
+		"breath": 2.2,
+		"sway": 2.5,
+		"wing": 14.0,
+		"hair": 4.0,
+		"skirt": 5.0,
+		"speed": 1.0,
+		"float": 5.0,
+		"blink": {
+			"image": "blink.png",
+			"emotions": [0, 1, 7],
+			"interval": [3.0, 5.8],
+			"duration": 0.18
+		}
+	},
+	"score_reactions": {
+		"default": "encourage",
+		"ratings": {
+			"Ω": "radiant", "SSS": "radiant", "SS": "bloom", "S": "bloom",
+			"A+": "cheerful", "A": "cheerful", "A-": "gentle",
+			"B+": "gentle", "B": "gentle", "B-": "gentle",
+			"C+": "encourage", "C": "encourage", "C-": "encourage",
+			"D+": "encourage", "D": "encourage", "D-": "encourage", "F": "encourage"
+		},
+		"presets": {
+			"radiant": {
+				"motion_scale": 1.4, "bounce": 18.0, "tilt": -3.0,
+				"effect": "petals", "count": 20,
+				"message": "太棒了！让春天开满整个舞台吧！"
+			},
+			"bloom": {
+				"motion_scale": 1.2, "bounce": 12.0, "tilt": -2.0,
+				"effect": "petals", "count": 12,
+				"message": "好轻快的旋律！花儿都为你绽放啦！"
+			},
+			"cheerful": {
+				"motion_scale": 1.05, "bounce": 8.0, "tilt": -1.0,
+				"effect": "sparkles", "count": 8,
+				"message": "真好听！你的节奏把春风也带来了。"
+			},
+			"gentle": {
+				"motion_scale": 0.8, "bounce": 4.0, "tilt": 1.0,
+				"effect": "sparkles", "count": 4,
+				"message": "又前进了一步呢，继续跟着春风走吧。"
+			},
+			"encourage": {
+				"motion_scale": 0.55, "bounce": 2.0, "tilt": 2.0,
+				"effect": "none", "count": 0,
+				"message": "别着急，休息一下，我们再一起试试吧。"
+			}
+		}
+	}
+}

@@ -7,9 +7,6 @@ extends TextureButton
 
 ## 命中测试：像素 alpha 低于该值视为透明空隙（不响应点击）
 const ALPHA_THRESHOLD := 0.1
-## 立绘浮动振幅（px）与周期（s）
-const FLOAT_AMPLITUDE := 10.0
-const FLOAT_DURATION := 1.5
 ## 对话气泡停留时长（秒）
 const DIALOG_HOLD_TIME := 2.6
 
@@ -20,15 +17,25 @@ var _chara_key: String = ""
 ## 对话气泡节点（Chara 下的兄弟 Label）
 var _dialog: Label = null
 var _press_tween: Tween = null
-var _float_tween: Tween = null
 var _dialog_tween: Tween = null
+var _portrait: DynamicPortrait
+var _host_horizontal_offsets := Vector2.ZERO
 
 func _ready() -> void:
+	var host := get_parent() as Control
+	_host_horizontal_offsets = Vector2(host.offset_left, host.offset_right)
 	# 装饰性交互元素，不参与键盘焦点导航
 	focus_mode = Control.FOCUS_NONE
 	pressed.connect(_on_pressed)
 	button_down.connect(_on_button_down)
 	button_up.connect(_on_button_up)
+	_portrait = DynamicPortrait.new()
+	add_child(_portrait)
+	_portrait.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	self_modulate.a = 0.0
+	stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	EvtBus.config_changed.connect(_on_config_changed)
+	UiStatMGR.state_changed.connect(_on_state_changed)
 
 	_dialog = get_node_or_null("../Dialog")
 	if _dialog != null:
@@ -53,12 +60,52 @@ func _init_chara() -> void:
 
 ## 应用当前选中的人物立绘（默认表情 0）
 func _apply_chara() -> void:
+	_cancel_interaction()
 	var key := CharaMGR.get_current_chara_key()
-	if key.is_empty():
-		return
 	_chara_key = key
+	_portrait.show_character(key)
+	texture_normal = null
+	_hit_img = null
 	set_chara_emotion(0)
-	_start_floating()
+	_sync_state()
+
+func _on_config_changed(key: String, section: String, _value: Variant) -> void:
+	if section == "Chara" and key == "chara_id":
+		_apply_chara()
+
+func _on_state_changed(_old_state: UIStateManager.UIState, _new_state: UIStateManager.UIState) -> void:
+	_sync_state()
+
+func _sync_state() -> void:
+	var state := UiStatMGR.current_state
+	var active := state in [UIStateManager.UIState.ALBUM_VIEW, UIStateManager.UIState.SONG_VIEW, UIStateManager.UIState.SORTED_VIEW, UIStateManager.UIState.STORE_VIEW]
+	_portrait.set_active(active)
+	disabled = not active or _chara_key.is_empty()
+	if not active:
+		_cancel_interaction()
+		_revert_emotion()
+	else:
+		var host := get_parent() as Control
+		var in_store := state == UIStateManager.UIState.STORE_VIEW
+		host.z_index = 11 if in_store else 0
+		host.offset_transform_scale = Vector2.ONE * (0.42 if in_store else 1.0)
+		var horizontal_margin := 300.0 if in_store else 0.0
+		host.offset_left = _host_horizontal_offsets.x - horizontal_margin
+		host.offset_right = _host_horizontal_offsets.y - horizontal_margin
+
+func _cancel_interaction() -> void:
+	AniMGR.stop_tween(_tween_id("press"))
+	AniMGR.stop_tween(_tween_id("dialog"))
+	offset_transform_scale = Vector2.ONE
+	if _dialog != null:
+		_dialog.hide()
+
+func _exit_tree() -> void:
+	_cancel_interaction()
+	_portrait.set_active(false)
+
+func _tween_id(suffix: String) -> String:
+	return "chara_interact_%d_%s" % [get_instance_id(), suffix]
 
 ## 切换人物表情（合成对应表情立绘并缓存原始图像用于命中测试）
 func set_chara_emotion(emotion: int) -> void:
@@ -69,6 +116,7 @@ func set_chara_emotion(emotion: int) -> void:
 		return
 	texture_normal = tex
 	_hit_img = tex.get_image()
+	_portrait.set_emotion(emotion)
 
 ## 命中测试：把点映射回纹理实际绘制区域（居中等比缩放），按 alpha 判断是否点中人物本身
 func has_point(point: Vector2) -> bool:
@@ -106,29 +154,14 @@ func _on_pressed() -> void:
 
 ## 按下：y 轴缩放为 0.99
 func _on_button_down() -> void:
-	if _press_tween != null:
-		_press_tween.kill()
-	_press_tween = create_tween()
+	_press_tween = AniMGR.create_managed_tween(self, _tween_id("press"))
 	_press_tween.tween_property(self, "offset_transform_scale:y", 0.99, 0.08).set_ease(Tween.EASE_OUT)
 
 ## 松手：弹回 1.02 再恢复 1
 func _on_button_up() -> void:
-	if _press_tween != null:
-		_press_tween.kill()
-	_press_tween = create_tween()
+	_press_tween = AniMGR.create_managed_tween(self, _tween_id("press"))
 	_press_tween.tween_property(self, "offset_transform_scale:y", 1.02, 0.12).set_ease(Tween.EASE_OUT)
 	_press_tween.tween_property(self, "offset_transform_scale:y", 1.0, 0.2).set_ease(Tween.EASE_OUT)
-
-## 立绘上下浮动无限循环动画
-func _start_floating() -> void:
-	_stop_floating()
-	_float_tween = AniMGR.animate_floating(self, FLOAT_AMPLITUDE, FLOAT_DURATION, "main_chara_float")
-
-func _stop_floating() -> void:
-	if _float_tween and _float_tween.is_valid():
-		_float_tween.kill()
-		_float_tween = null
-	offset_transform_position = Vector2.ZERO
 
 ## 显示对话气泡，停留后淡出
 func _show_dialog(text: String, on_done: Callable) -> void:
@@ -136,10 +169,8 @@ func _show_dialog(text: String, on_done: Callable) -> void:
 		return
 	_dialog.text = text
 	_dialog.visible = true
-	if _dialog_tween != null:
-		_dialog_tween.kill()
 	_dialog.modulate.a = 0.0
-	_dialog_tween = create_tween()
+	_dialog_tween = AniMGR.create_managed_tween(self, _tween_id("dialog"))
 	_dialog_tween.tween_property(_dialog, "modulate:a", 1.0, 0.15).set_ease(Tween.EASE_OUT)
 	_dialog_tween.tween_interval(DIALOG_HOLD_TIME)
 	_dialog_tween.tween_property(_dialog, "modulate:a", 0.0, 0.2).set_ease(Tween.EASE_IN)

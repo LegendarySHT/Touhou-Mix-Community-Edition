@@ -1,6 +1,6 @@
 # THMIX Community Edition 文档中心
 
-> 更新时间：2026-03-23
+> 更新时间：2026-09-07
 
 本目录用于维护项目**当前有效**的技术文档，重点覆盖架构、关键功能和开发速查。
 
@@ -15,6 +15,7 @@
 - `midi_playback_implementation.md`：MIDI 播放后端与音源管理
 - `soundfont_selection_feature.md`：SoundFont 扫描、选择与应用
 - `note_visualizer_integration.md`：打歌可视化与 `KeySequenceManager` 集成要点
+- `dynamic_portraits.md`：动态立绘素材协议、成绩反应与新角色接入
 
 ### 3) 快速参考（`quickref/`）
 - `quick_start.md`：新开发者上手路径

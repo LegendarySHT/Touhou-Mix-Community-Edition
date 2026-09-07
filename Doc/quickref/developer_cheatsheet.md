@@ -49,6 +49,19 @@ var acc = ScoreCalculator.instance.get_accuracy()
 var snapshot = ScoreCalculator.instance.get_snapshot()
 ```
 
+## 动态立绘
+
+```gdscript
+ConfigManager.instance.set_value_and_notify("Chara", "chara_id", chara_key)
+CharaMGR.get_portrait(chara_key, 0)
+CharaMGR.get_motion_config(chara_key)
+CharaMGR.get_score_reaction(chara_key, final_rank)
+```
+
+- 使用 `DynamicPortrait.show_character()` 或 `show_result()`，宿主入场完成后 `set_active(true)`，离开时 `set_active(false)`。
+- `motion` / `score_reactions` 均为可选字段；不要改变原有 `rating` 的整数表情协议，也不要在 ScoreView 硬编码人物 ID。
+- 素材规格、完整示例与生命周期约束见 `Doc/features/dynamic_portraits.md`。
+
 ## 禁止事项
 
 - 不要使用 `get_node("/root/..." )` 查找管理器
@@ -63,3 +76,5 @@ var snapshot = ScoreCalculator.instance.get_snapshot()
 - 数据：`Core/DataManager.gd`
 - 文件系统：`Core/FileSystemManager.gd`
 - 播放：`Game/MidiPlaybackManager.gd`
+- 人物资源：`Core/CharaManager.gd`
+- 动态立绘：`UI/Components/DynamicPortrait.gd`

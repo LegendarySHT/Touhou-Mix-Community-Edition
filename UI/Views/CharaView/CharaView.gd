@@ -3,10 +3,6 @@ extends Control
 ## CharaListItem 场景（用于动态构建角色列表）
 const CHARA_ITEM_SCENE := preload("res://UI/Views/CharaView/CharaListItem.tscn")
 
-## 详情里立绘的浮动振幅（px）与周期（s）
-const FLOAT_AMPLITUDE := 10.0
-const FLOAT_DURATION := 1.5
-
 @onready var _hbox: HBoxContainer = $CharaList/HBox
 @onready var _chara_list: ScrollContainer = $CharaList
 @onready var _title: Label = $Title
@@ -22,13 +18,26 @@ const FLOAT_DURATION := 1.5
 
 ## 当前详情展示的角色 key（空表示未展示）
 var _detail_key: String = ""
-var _floating_tween: Tween = null
-var _bg_pan_tween: Tween = null
+var _portrait: DynamicPortrait
+var _default_background: Texture2D
 ## 背景可视窗口高度（与 Panel 高度一致，用于计算移动范围）
 const PAN_HINT_HEIGHT := 400.0
 
 func _ready() -> void:
+	_default_background = _detail_bg.texture
+	_portrait = DynamicPortrait.new()
+	_detail_chara.add_child(_portrait)
+	_portrait.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_detail_chara.self_modulate.a = 0.0
 	_build_chara_list()
+
+func _exit_tree() -> void:
+	_stop_detail_tweens()
+	_stop_bg_pan()
+	_stop_portrait()
+	AniMGR.stop_tween("Chara_View_out")
+	AniMGR.stop_tween("CharaListIn")
+	AniMGR.stop_tween("TitleIn")
 
 ## 构建角色列表（清空占位项，按 CharaMGR 扫描结果重新生成）
 func _build_chara_list() -> void:
@@ -52,6 +61,7 @@ func _build_chara_list() -> void:
 
 ## 入场：CharaList 左滑淡入，Title 下滑淡入
 func play_enter() -> void:
+	AniMGR.stop_tween("Chara_View_out")
 	_teardown_detail()
 	visible = true
 	modulate.a = 1.0
@@ -61,7 +71,6 @@ func play_enter() -> void:
 
 ## 向右滑出
 func play_exit() -> void:
-	_stop_floating()
 	_teardown_detail()
 	var tween := AniMGR.animate_offset_to(self, Vector2(get_viewport().get_visible_rect().size.x, 0), 0.3, "Chara_View_out")
 	tween.finished.connect(func() -> void:
@@ -81,16 +90,17 @@ func _on_chara_select() -> void:
 
 ## 弹出 CharaDetail（并行入场动画）
 func _open_chara_detail(chara_key: String) -> void:
+	_teardown_detail()
 	_detail_key = chara_key
 	var data := CharaMGR.get_chara_data(chara_key)
 	_detail_chara.texture = CharaMGR.get_portrait(chara_key, 0)
+	_portrait.show_character(chara_key)
 	_detail_name.text = str(data.get("name", chara_key))
 	_detail_illustrator.text = "插图 %s" % str(data.get("author", ""))
 	_detail_desc.text = str(data.get("description", ""))
 	# 加载角色背景（未配置时保留原默认图）
 	var bg := CharaMGR.get_background(chara_key)
-	if bg:
-		_detail_bg.texture = bg
+	_detail_bg.texture = bg if bg != null else _default_background
 
 	# 已选中的角色将 SelectBtn 置灰
 	var is_current := chara_key == CharaMGR.get_current_chara_key()
@@ -98,7 +108,6 @@ func _open_chara_detail(chara_key: String) -> void:
 	_detail_select_btn.text = "已选中" if is_current else "选择"
 
 	# 复位各元素状态（保证重复打开时从正确起点播放）
-	_stop_floating()
 	_detail.visible = true
 	_detail.modulate.a = 1.0
 	_set_back_btn_visible(false)
@@ -122,14 +131,14 @@ func _open_chara_detail(chara_key: String) -> void:
 	AniMGR.animate_fade_slide_in(_detail_illustrator, Vector2(_detail_illustrator.size.x, 0), 0.3, "detail_illu_in")
 	AniMGR.animate_fade_slide_in(_detail_select_btn, Vector2(_detail_select_btn.size.x, 0), 0.3, "detail_btn_in")
 	var chara_in := AniMGR.animate_fade_slide_scale_in(_detail_chara, Vector2(0, _detail_chara.size.y), Vector2.ONE * 1.01, 0.35, "detail_chara_in")
-	# 立绘入场完成后开始上下浮动
-	chara_in.finished.connect(_start_floating, CONNECT_ONE_SHOT)
+	chara_in.finished.connect(_start_portrait, CONNECT_ONE_SHOT)
 
 ## 关闭 CharaDetail（并行退场动画，结束后隐藏整个详情）
 func _close_chara_detail() -> void:
 	if not _detail.visible:
 		return
-	_stop_floating()
+	_stop_detail_tweens()
+	_stop_portrait()
 	_stop_bg_pan()
 	# Chara 与 Panel 轻微缩小淡出；其余做入场反向（滑回原位反方向）
 	AniMGR.animate_fade_scale_out(_detail_panel, Vector2.ONE * 0.96, 0.25, "detail_panel_out")
@@ -142,6 +151,7 @@ func _close_chara_detail() -> void:
 	AniMGR.delay_call(_hide_detail, 0.3, "detail_hide")
 
 func _hide_detail() -> void:
+	_stop_portrait()
 	_detail.visible = false
 	_set_back_btn_visible(true)
 
@@ -154,19 +164,18 @@ func _select_chara(chara_key: String) -> void:
 	_detail_select_btn.text = "已选中"
 	GLogger.info("Chara selected: %s" % chara_key, "CharaView")
 
-## 立绘上下浮动循环动画
-func _start_floating() -> void:
-	if not _detail.visible or _detail_chara.texture == null:
-		return
-	_stop_floating()
-	_detail_chara.offset_transform_position = Vector2.ZERO
-	_floating_tween = AniMGR.animate_floating(_detail_chara, FLOAT_AMPLITUDE, FLOAT_DURATION, "detail_chara_float")
+func _start_portrait() -> void:
+	_portrait.set_active(_detail.visible and UiStatMGR.current_state == UIStateManager.UIState.CHARA_VIEW)
 
-func _stop_floating() -> void:
-	if _floating_tween and _floating_tween.is_valid():
-		_floating_tween.kill()
-		_floating_tween = null
-	_detail_chara.offset_transform_position = Vector2.ZERO
+func _stop_portrait() -> void:
+	if is_instance_valid(_portrait):
+		_portrait.set_active(false)
+
+func _stop_detail_tweens() -> void:
+	AniMGR.stop_tween("detail_hide")
+	for part in ["panel", "chara", "name", "desc", "rshader", "illu", "btn"]:
+		AniMGR.stop_tween("detail_%s_in" % part)
+		AniMGR.stop_tween("detail_%s_out" % part)
 
 ## 背景上下来回缓慢移动（ratio 0..1-400/高，一个来回约 20s）
 func _start_bg_pan() -> void:
@@ -176,7 +185,7 @@ func _start_bg_pan() -> void:
 	var max_ratio := PAN_HINT_HEIGHT / _detail_bg.size.y - 1.0
 	_detail_bg.offset_transform_enabled = true
 	_detail_bg.offset_transform_position_ratio = Vector2.ZERO
-	_bg_pan_tween = create_tween()
+	var _bg_pan_tween := AniMGR.create_managed_tween(self, "chara_view_%s_bg" % get_instance_id())
 	_bg_pan_tween.set_loops()
 	_bg_pan_tween.set_trans(Tween.TRANS_SINE)
 	_bg_pan_tween.set_ease(Tween.EASE_IN_OUT)
@@ -184,14 +193,13 @@ func _start_bg_pan() -> void:
 	_bg_pan_tween.tween_property(_detail_bg, "offset_transform_position_ratio:y", 0.0, 25.0)
 
 func _stop_bg_pan() -> void:
-	if _bg_pan_tween and _bg_pan_tween.is_valid():
-		_bg_pan_tween.kill()
-		_bg_pan_tween = null
+	AniMGR.stop_tween("chara_view_%s_bg" % get_instance_id())
 	_detail_bg.offset_transform_position_ratio = Vector2.ZERO
 
 ## 立即撤下详情并复位（进入/退出视图时调用，避免残留动画）
 func _teardown_detail() -> void:
-	_stop_floating()
+	_stop_detail_tweens()
+	_stop_portrait()
 	_stop_bg_pan()
 	_detail.visible = false
 	_set_back_btn_visible(true)
