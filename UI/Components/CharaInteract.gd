@@ -19,11 +19,8 @@ var _dialog: Label = null
 var _press_tween: Tween = null
 var _dialog_tween: Tween = null
 var _portrait: DynamicPortrait
-var _host_horizontal_offsets := Vector2.ZERO
 
 func _ready() -> void:
-	var host := get_parent() as Control
-	_host_horizontal_offsets = Vector2(host.offset_left, host.offset_right)
 	# 装饰性交互元素，不参与键盘焦点导航
 	focus_mode = Control.FOCUS_NONE
 	pressed.connect(_on_pressed)
@@ -78,20 +75,12 @@ func _on_state_changed(_old_state: UIStateManager.UIState, _new_state: UIStateMa
 
 func _sync_state() -> void:
 	var state := UiStatMGR.current_state
-	var active := state in [UIStateManager.UIState.ALBUM_VIEW, UIStateManager.UIState.SONG_VIEW, UIStateManager.UIState.SORTED_VIEW, UIStateManager.UIState.STORE_VIEW]
+	var active := state in [UIStateManager.UIState.ALBUM_VIEW, UIStateManager.UIState.SONG_VIEW, UIStateManager.UIState.SORTED_VIEW]
 	_portrait.set_active(active)
 	disabled = not active or _chara_key.is_empty()
 	if not active:
 		_cancel_interaction()
 		_revert_emotion()
-	else:
-		var host := get_parent() as Control
-		var in_store := state == UIStateManager.UIState.STORE_VIEW
-		host.z_index = 11 if in_store else 0
-		host.offset_transform_scale = Vector2.ONE * (0.42 if in_store else 1.0)
-		var horizontal_margin := 300.0 if in_store else 0.0
-		host.offset_left = _host_horizontal_offsets.x - horizontal_margin
-		host.offset_right = _host_horizontal_offsets.y - horizontal_margin
 
 func _cancel_interaction() -> void:
 	AniMGR.stop_tween(_tween_id("press"))

@@ -65,11 +65,6 @@ def build_assets(source_directory, output_directory):
          (280, 746), (231, 710), (210, 701), (167, 711), (145, 663),
          (143, 620), (173, 591), (147, 562), (133, 540)],
     ], blur=16)
-    for vertical in range(CANVAS_SIZE[1]):
-        for horizontal in range(CANVAS_SIZE[0]):
-            distance = ((horizontal - 316) ** 2 + (vertical - 353) ** 2) ** 0.5
-            strength = min(1.0, max(0.0, (distance - 30) / 310))
-            wings.putpixel((horizontal, vertical), round(wings.getpixel((horizontal, vertical)) * strength))
     motion = Image.merge("RGB", (wings, hair, skirt))
 
     eyes = region_mask([

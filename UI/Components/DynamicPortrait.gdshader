@@ -8,7 +8,6 @@ uniform vec2 head_pivot = vec2(0.28, 0.4);
 uniform float phase = 0.0;
 uniform float breath = 2.2;
 uniform float sway = 2.5;
-uniform float wing = 14.0;
 uniform float hair = 4.0;
 uniform float skirt = 5.0;
 uniform float motion_scale = 1.0;
@@ -24,8 +23,7 @@ void vertex() {
 	vec2 relative_position = VERTEX - pivot;
 	VERTEX = pivot + mat2(vec2(cos(angle), sin(angle)), vec2(-sin(angle), cos(angle))) * relative_position;
 	VERTEX.y -= sin(phase) * breath * (1.0 - UV.y) * motion_scale;
-	VERTEX.x += (sin(phase * 2.0 + 0.7) * wing * weights.r + sin(phase + 0.8) * hair * weights.g + sin(phase - 0.7) * skirt * weights.b) * motion_scale;
-	VERTEX.y += cos(phase * 2.0) * wing * 0.35 * weights.r * motion_scale;
+	VERTEX.x += (sin(phase + 0.8) * hair * weights.g + sin(phase - 0.7) * skirt * weights.b) * motion_scale;
 }
 
 void fragment() {

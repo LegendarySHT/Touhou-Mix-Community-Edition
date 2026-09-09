@@ -739,7 +739,6 @@ grow_horizontal = 0
 grow_vertical = 0
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, 1000)
-offset_transform_pivot_ratio = Vector2(1, 1)
 offset_transform_visual_only = false
 mouse_filter = 2
 

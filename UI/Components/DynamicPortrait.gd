@@ -91,7 +91,7 @@ func show_character(chara_key: String, emotion: int = 0) -> void:
 			_material.shader = MOTION_SHADER
 			_material.set_shader_parameter("weight_texture", weights)
 			_material.set_shader_parameter("portrait_size", _texture_size)
-			for parameter in ["breath", "sway", "wing", "hair", "skirt", "head_pivot"]:
+			for parameter in ["breath", "sway", "hair", "skirt", "head_pivot"]:
 				_material.set_shader_parameter(parameter, _motion[parameter])
 			var blink: Dictionary = _motion.get("blink", {})
 			if not blink.is_empty():
@@ -120,8 +120,7 @@ func show_result(chara_key: String, rank: String) -> void:
 	_stop_motion()
 	_reaction = CharaMGR.get_score_reaction(_chara_key, rank)
 	_message.text = str(_reaction.get("message", ""))
-	if _material != null:
-		_material.set_shader_parameter("motion_scale", float(_reaction.get("motion_scale", 1.0)))
+	_set_shader_parameter("motion_scale", float(_reaction.get("motion_scale", 1.0)))
 	_effects.clear()
 	for effect_index in range(int(_reaction.get("count", 0))):
 		_effects.append({
@@ -164,14 +163,16 @@ func _tween_id(suffix: String) -> String:
 	return "portrait_%d_%s" % [get_instance_id(), suffix]
 
 func _set_phase(value: float) -> void:
-	if _material != null:
-		_material.set_shader_parameter("phase", value)
+	_set_shader_parameter("phase", value)
 	var float_amount: float = _motion.get("float", 8.0)
 	_idle_pose.position.y = sin(value) * float_amount * float(_reaction.get("motion_scale", 1.0))
 
 func _set_blink(value: float) -> void:
+	_set_shader_parameter("blink_amount", value)
+
+func _set_shader_parameter(parameter: StringName, value: Variant) -> void:
 	if _material != null:
-		_material.set_shader_parameter("blink_amount", value)
+		_material.set_shader_parameter(parameter, value)
 
 func _schedule_blink() -> void:
 	var blink: Dictionary = _motion.get("blink", {})

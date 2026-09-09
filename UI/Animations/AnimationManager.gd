@@ -417,7 +417,7 @@ var ui_part = {
 	UIStateManager.UIState.SONG_VIEW: ["Song_List", "Player_Info", "Shortcut_Menu", "Character"],
 	UIStateManager.UIState.SORTED_VIEW: ["Sorted_List", "Player_Info", "Shortcut_Menu", "Character"],
 	UIStateManager.UIState.MIDI_VIEW: ["Midi_Info_View"],
-	UIStateManager.UIState.STORE_VIEW: ["Store_View", "Character"],
+	UIStateManager.UIState.STORE_VIEW: ["Store_View"],
 	UIStateManager.UIState.TRACK_VIEW: ["Track_List"],
 	UIStateManager.UIState.SETTINGS_VIEW: ["Setting_View"],
 	UIStateManager.UIState.PLAY_VIEW: ["Play_View"],

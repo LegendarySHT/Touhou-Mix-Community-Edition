@@ -165,6 +165,7 @@ func _normalize_motion(value: Variant, chara_path: String) -> Dictionary:
 		"breath": _config_number(config, "breath", 2.0, 0.0, 12.0),
 		"sway": _config_number(config, "sway", 2.0, 0.0, 15.0),
 		"wing": _config_number(config, "wing", 10.0, 0.0, 30.0),
+		"wing_rotation": _config_number(config, "wing_rotation", 4.0, 0.0, 12.0),
 		"hair": _config_number(config, "hair", 4.0, 0.0, 20.0),
 		"skirt": _config_number(config, "skirt", 4.0, 0.0, 20.0),
 		"speed": _config_number(config, "speed", 1.0, 0.2, 3.0),
@@ -176,6 +177,18 @@ func _normalize_motion(value: Variant, chara_path: String) -> Dictionary:
 	if pivot is Array and pivot.size() == 2:
 		var coordinates := {"x": pivot[0], "y": pivot[1]}
 		motion.head_pivot = Vector2(_config_number(coordinates, "x", 0.28, 0.0, 1.0), _config_number(coordinates, "y", 0.4, 0.05, 0.95))
+	var wing_pivots: Variant = config.get("wing_pivots")
+	if wing_pivots is Array and wing_pivots.size() == 2:
+		var normalized_wing_pivots: Array[Vector2] = []
+		for wing_pivot in wing_pivots:
+			if not wing_pivot is Array or wing_pivot.size() != 2:
+				continue
+			var wing_coordinates := {"x": wing_pivot[0], "y": wing_pivot[1]}
+			normalized_wing_pivots.append(Vector2(
+				_config_number(wing_coordinates, "x", 0.5, 0.0, 1.0),
+				_config_number(wing_coordinates, "y", 0.25, 0.0, 1.0)))
+		if normalized_wing_pivots.size() == 2:
+			motion.wing_pivots = normalized_wing_pivots
 	var blink := _config_dictionary(config.get("blink"))
 	var blink_image := _relative_image_name(blink.get("image"))
 	if not blink_image.is_empty() and _image_exists(chara_path, blink_image):

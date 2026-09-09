@@ -31,6 +31,8 @@
 		"breath": 2.2,
 		"sway": 2.5,
 		"wing": 14.0,
+		"wing_rotation": 4.5,
+		"wing_pivots": [[0.47, 0.23], [0.36, 0.16]],
 		"hair": 4.0,
 		"skirt": 5.0,
 		"speed": 1.0,
