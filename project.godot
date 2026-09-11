@@ -33,6 +33,7 @@ CoverLoader="*res://UI/Components/CoverLoader.gd"
 ResMGR="*res://Core/ResourceManager.gd"
 AudioRouteDetector="*res://CSharp/AudioRouteDetector.cs"
 AudioBtDetector="*res://Utilities/AudioBtDetector.gd"
+VkGuard="*res://UI/Components/VirtualKeyboardGuard.gd"
 
 [display]
 
