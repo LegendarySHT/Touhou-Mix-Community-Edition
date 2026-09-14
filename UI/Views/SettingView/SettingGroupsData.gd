@@ -118,6 +118,15 @@ static func get_setting_groups() -> Array:
 			"type": "TYPE_BUTTON",
 			"default_value": null,
 			"on_click": "_reload_builtin_resources"
+		},
+		{
+			"id": "storage_location",
+			"name_en": "Storage Location",
+			"name_zh": "资源存储位置",
+			"description": "设置曲包/音源/皮肤/背景图等资源文件以及设置、收藏、日志的保存路径。点击打开路径设置窗口，可手动输入或浏览选择；更改后游戏会迁移现有资源，并在下次启动时生效",
+			"type": "TYPE_BUTTON",
+			"default_value": null,
+			"on_click": "_popup_storage_location_adjust"
 		}
 		]
 	},

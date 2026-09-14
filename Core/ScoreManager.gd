@@ -6,8 +6,9 @@ class_name ScoreManager
 
 static var instance: ScoreManager = null
 
-## 设备标识文件路径：user://files/device_id.txt
-const DEVICE_ID_FILE: String = "user://files/device_id.txt"
+## 设备标识文件路径（随存储根迁移）
+static func get_device_id_file() -> String:
+	return PathHelper.get_files_dir() + "device_id.txt"
 const CHART_NOT_FOUND_ERROR: String = "chart_not_found"
 
 ## 当前设备标识（首次启动时生成，持久化存储）
@@ -27,19 +28,19 @@ func _ready() -> void:
 ## 加载或生成设备标识
 ## 首次启动生成 UUIDv4，存入 user://files/device_id.txt
 func _load_or_create_device_id() -> void:
-	if FileAccess.file_exists(DEVICE_ID_FILE):
-		var file := FileAccess.open(DEVICE_ID_FILE, FileAccess.READ)
+	if FileAccess.file_exists(get_device_id_file()):
+		var file := FileAccess.open(get_device_id_file(), FileAccess.READ)
 		if file:
 			_device_id = file.get_as_text().strip_edges()
 			if not _device_id.is_empty():
 				return
 	# 生成新设备标识
 	_device_id = _generate_uuid_v4()
-	# 确保目录存在
-	var dir := DirAccess.open("user://files")
+	# 确保目录存在（随存储根迁移）
+	var dir := DirAccess.open(PathHelper.get_files_dir())
 	if dir == null:
-		DirAccess.make_dir_recursive_absolute("user://files")
-	var f := FileAccess.open(DEVICE_ID_FILE, FileAccess.WRITE)
+		DirAccess.make_dir_recursive_absolute(PathHelper.get_files_dir())
+	var f := FileAccess.open(get_device_id_file(), FileAccess.WRITE)
 	if f:
 		f.store_string(_device_id)
 		GLogger.info("Generated new device_id: %s" % _device_id, "ScoreMGR")

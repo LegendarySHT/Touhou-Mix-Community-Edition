@@ -16,6 +16,7 @@ var key_sequence_manager: KeySequenceManager
 var config_loader: ConfigManager
 var logger: GameLogger
 var filesystem_manager: FileSystemManager
+var storage_manager: StorageManager
 var net_manager: NetManager
 var auth_manager: AuthManager
 var score_manager: ScoreManager
@@ -103,18 +104,42 @@ func _initialize_core_systems() -> void:
 	logger = GLogger
 	if logger:
 		logger.info("Logger initialized", "Main")
-	
+
+	# 1.5. 存储管理器：恢复/解析自定义存储根（必须先于配置加载，因为 settings.ini 随存储根迁移）
+	# 读取迁移日志 / 引导指针处理崩溃恢复，并把最终存储根注入 PathHelper
+	storage_manager = StorageManager.new()
+	storage_manager.name = "StorageManager"
+	add_child(storage_manager)
+	var storage_resolve: Dictionary = storage_manager.recover_and_resolve()
+	if logger:
+		logger.info("Storage root resolved: %s (note=%s, full_rescan=%s, restored=%s)" % [
+			PathHelper.get_storage_root(),
+			str(storage_resolve.get("note", "")),
+			str(storage_resolve.get("needs_full_rescan", false)),
+			str(storage_resolve.get("restored", false))], "Main")
+	# 自定义存储根生效后刷新日志路径（日志目录 Logs/ 随存储根迁移）
+	if PathHelper.get_storage_root() != PathHelper.get_boot_dir():
+		GLogger.refresh_log_path()
+
 	# 2. 初始化配置管理器（单例，已自动管理）
 	config_loader = ConfigManager.instance
 	if logger:
 		logger.info("ConfigManager initialized", "Main")
-	
+
 	# 2.5. **关键**：立即加载并设置当前配置，以便后续 Manager 初始化时能读取配置
-	# 必须在其他 Manager 初始化之前调用
+	# 必须在其他 Manager 初始化之前调用；settings.ini 位于存储根下（override 已生效）
 	config_loader.clear_cache()
 	config_loader.load_and_set_current()
 	if logger:
 		logger.info("Configuration pre-loaded before Manager initialization", "Main")
+
+	# 2.6. 刚完成迁移提交时，把 custom_storage_path 幂等补写进 settings.ini
+	# （committed 与配置落盘之间可能崩溃，需保证无日志引导时也能定位新根）
+	if bool(storage_resolve.get("needs_config_commit", false)):
+		config_loader.set_value("Storage", "custom_storage_path", str(storage_resolve.get("pending_root", "")))
+		config_loader.save_config(ConfigManager.USER_CONFIG_PATH, config_loader.get_current_config())
+		if logger:
+			logger.info("Storage config committed to settings.ini", "Main")
 
 	# 2.75. ThemeManager 已通过 autoload 自动实例化
 	if ThemeMGR and ThemeMGR.is_loaded():
@@ -124,6 +149,8 @@ func _initialize_core_systems() -> void:
 	filesystem_manager = FileSystemManager.new()
 	filesystem_manager.name = "FileSystemManager"
 	add_child(filesystem_manager)
+	# 存储根刚迁移时强制全量扫描（重建 DB 缓存投影中的绝对路径）
+	filesystem_manager.force_full_rescan = bool(storage_resolve.get("needs_full_rescan", false))
 	if logger:
 		logger.info("FileSystemManager initialized", "Main")
 	
@@ -132,7 +159,8 @@ func _initialize_core_systems() -> void:
 	# 因此必须先把 ChartDB 打开，确保扫描读缓存时 DB 已就绪（避免每次启动误走全量扫描）
 	# 3.25. 确保 DB 目录存在后再打开 ChartDB（LiteDB 数据层），必须在 FileSystemManager 扫描前就绪
 	# 路径经 globalize_path 转为真实 OS 路径供 C# System.IO 使用
-	var files_dir := ProjectSettings.globalize_path(PathHelper.get_files_dir())
+	# DB 随可移动存储根迁移（charts.ldb 位于 get_storage_root() 下）
+	var files_dir := ProjectSettings.globalize_path(PathHelper.get_storage_root())
 	DirAccess.make_dir_recursive_absolute(files_dir)
 	if ChartDB:
 		var db_path := files_dir.path_join("charts.ldb")

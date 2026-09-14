@@ -17,6 +17,9 @@ static var mappings: Dictionary = {
 	"language": {"section": "General", "key": "language", "value_type": "int"},
 	"server_address": {"section": "General", "key": "server_address", "value_type": "string"},
 
+	# ========== 存储设置 ==========
+	"storage_location": {"section": "Storage", "key": "custom_storage_path", "value_type": "string"},
+
 	# ========== 播放设置 ==========
 	"performing_mode": {"section": "Playback", "key": "performing_mode", "value_type": "int"},
 	"play_ready_animation": {"section": "Playback", "key": "play_ready_animation", "value_type": "int"},

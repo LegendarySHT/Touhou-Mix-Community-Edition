@@ -91,6 +91,9 @@ var audio_files_index: Array[Dictionary] = []
 var is_initialized: bool = false
 var is_scanning: bool = false
 var resources_scanned: bool = false  ## 标记资源扫描是否已完成
+## 存储根迁移后强制全量扫描（跳过 DB 缓存恢复，重建投影中的绝对路径）
+## 由 StorageManager.recover_and_resolve() 在检测到刚迁移时置位，扫描结束后复位
+var force_full_rescan: bool = false
 ## 后台缓存校验进行中标志（fire-and-forget 协程 _await_cache_validation 运行期间为 true）
 ## 此期间 charts_index 可能被协程 clear + 重建，外部若要安全读取/删除需 await await_busy_done()
 var _is_validating: bool = false
@@ -243,7 +246,7 @@ func _copy_default_resources_async() -> void:
 
 	var bar: ProgressBar = null
 	if total_steps > 0:
-		bar = _show_progress_ui(COPY_TIP_TEXT, total_steps)["bar"]
+		bar = show_progress_ui(COPY_TIP_TEXT, total_steps)["bar"]
 
 	var done := 0
 	# 复制谱面（若目录为空）
@@ -274,7 +277,7 @@ func _copy_default_resources_async() -> void:
 			bar.value = minf(done, bar.max_value)
 
 	if total_steps > 0:
-		_hide_progress_ui()
+		hide_progress_ui()
 
 ## 异步导入外部游戏（THMIX）数据
 ## 主线程先快速检查导入任务（check_import_task，含诊断日志），决定是否显示导入 UI 并启动后台 worker
@@ -292,7 +295,7 @@ func _import_external_charts_async() -> void:
 	var ui := {}
 	var bar: ProgressBar = null
 	if show_ui:
-		ui = _show_progress_ui(IMPORT_TIP_TEXT, pending)
+		ui = show_progress_ui(IMPORT_TIP_TEXT, pending)
 		bar = ui["bar"]
 
 	# 进度回调：worker 内 call_deferred 调用 → 主线程执行，更新进度条（与 Logger 的 worker 转主线程同模式）
@@ -310,7 +313,7 @@ func _import_external_charts_async() -> void:
 	if task_id < 0:
 		GLogger.error("启动 THMIX 导入 worker 失败（task_id=%d）" % task_id, "FileSystemMGR")
 		if show_ui:
-			_hide_progress_ui()
+			hide_progress_ui()
 		return
 
 	while not WorkerThreadPool.is_task_completed(task_id):
@@ -332,11 +335,11 @@ func _import_external_charts_async() -> void:
 		await _sync_imported_charts_to_db(imported_folders)
 
 	if show_ui:
-		_hide_progress_ui()
+		hide_progress_ui()
 
 ## 显示统一进度 UI（遮罩 + 提示 + 进度条），供启动期复制/导入/扫描复用
 ## 返回值：{overlay, tip, bar} 字典，调用方在循环中推进 "bar".value 即可
-func _show_progress_ui(text: String, max_value: int) -> Dictionary:
+func show_progress_ui(text: String, max_value: int) -> Dictionary:
 	var ui := {
 		"overlay": get_node_or_null(PathRegistry.POPUP_WINDOW_SHADER) as Control,
 		"tip": get_node_or_null(PathRegistry.PROCESS_TIP) as Label,
@@ -360,7 +363,7 @@ func _show_progress_ui(text: String, max_value: int) -> Dictionary:
 	return ui
 
 ## 隐藏统一进度 UI 并复位提示文案
-func _hide_progress_ui() -> void:
+func hide_progress_ui() -> void:
 	var overlay: Control = get_node_or_null(PathRegistry.POPUP_WINDOW_SHADER)
 	var tip: Label = get_node_or_null(PathRegistry.PROCESS_TIP)
 	var bar: ProgressBar = get_node_or_null(PathRegistry.PROCESS_PROGRESS)
@@ -798,8 +801,10 @@ func _scan_all_resources() -> void:
 	# 缓存策略决策：
 	# - 缓存命中率 > 0（有缓存数据）：走快速路径，后台校验增量
 	# - 缓存命中率为 0（首次启动或缓存失效）：走全量扫描路径，前台等待完成
+	# - force_full_rescan（存储根刚迁移）：即使缓存命中也走全量扫描，
+	#   因为缓存投影中的 path/json_path/cover_path/audio_path 等绝对路径仍指向旧根
 	# 避免首次启动时用户看到空列表等 18 秒
-	var use_fast_path := cache_hit_count > 0
+	var use_fast_path := cache_hit_count > 0 and not force_full_rescan
 	if use_fast_path:
 		GLogger.info("Charts cache: %d/%d hit, %d new (will scan in background)" % [
 			cache_hit_count, all_chart_folders.size(),
@@ -852,7 +857,7 @@ func _scan_all_resources() -> void:
 		var ui := {}
 		var bar: ProgressBar = null
 		if total_folders > 0:
-			ui = _show_progress_ui(SCAN_TIP_TEXT, total_folders)
+			ui = show_progress_ui(SCAN_TIP_TEXT, total_folders)
 			bar = ui["bar"]
 		var scan_progress := func(done: int, total: int) -> void:
 			if bar:
@@ -860,7 +865,7 @@ func _scan_all_resources() -> void:
 				bar.value = minf(done, total)
 		await _scan_charts_full_sync(scan_progress)
 		if total_folders > 0:
-			_hide_progress_ui()
+			hide_progress_ui()
 
 	# === 阶段 A.6：等待 skins/sf/bg 完成 ===
 	# 快速路径：只等 skins/sf/bg（charts 已从缓存恢复）
@@ -913,6 +918,10 @@ func _scan_all_resources() -> void:
 	resources_scanned = true
 	resources_ready.emit()
 	is_initialized = true
+	# 存储根迁移后的强制全量扫描已完成，复位标志（下次启动走常规缓存路径）
+	if force_full_rescan:
+		force_full_rescan = false
+		GLogger.info("Full rescan completed after storage migration", "FileSystemMGR")
 
 	var t_end := Time.get_ticks_usec()
 	if use_fast_path:

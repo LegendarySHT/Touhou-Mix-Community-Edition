@@ -34,45 +34,81 @@ static func get_base_dir() -> String:
 	else:
 		return "user://"
 
-## 获取 files 子目录（所有用户数据的根）
+## 获取固定引导目录（永不随玩家自定义存储根迁移）
 ## Android: /storage/emulated/0/Android/data/com.touhoumix.ce/files/
 ## 其他平台: user://files/
-static func get_files_dir() -> String:
+## 仅存放迁移日志 / 引导指针文件；settings.ini / favorites.json / Logs / Settings 等
+## 用户数据一律位于可移动存储根（get_files_dir() / get_storage_root()）下。
+static func get_boot_dir() -> String:
 	if is_android():
 		return get_base_dir()
 	else:
 		return get_base_dir().path_join("files") + "/"
 
+# ============ 存储根（可移动） ============
+
+## 玩家自定义存储根 override（绝对路径，含尾斜杠；空 = 使用固定引导目录）
+## 由 StorageManager 在启动恢复/迁移后通过 set_storage_root() 注入，
+## 保持本类"纯静态、不依赖任何 Manager"的设计约束
+static var _storage_root_override: String = ""
+
+## 获取可移动存储根（用户数据根）
+## 已配置自定义路径时返回 override，否则回退固定引导目录（默认行为与旧版本一致）
+static func get_storage_root() -> String:
+	if not _storage_root_override.is_empty():
+		return _storage_root_override
+	return get_boot_dir()
+
+## 设置存储根 override（空值/空串清除，回退固定引导目录）
+static func set_storage_root(path: String) -> void:
+	_storage_root_override = normalize_storage_path(path) if not path.is_empty() else ""
+
+## 获取用户数据根（settings.ini / favorites.json / Logs / Settings / 各资源目录的父目录）
+## 语义为"可移动存储根"，默认与固定引导目录相同（与旧版本行为一致）
+static func get_files_dir() -> String:
+	return get_storage_root()
+
+## 规范化存储路径：去首尾空白、反斜杠→正斜杠、统一结尾 "/"
+## 空输入返回 ""；user:// 协议根（剥尾斜杠后为 "user:"）原样保留
+static func normalize_storage_path(path: String) -> String:
+	var p := str(path).strip_edges().replace("\\", "/")
+	while p.ends_with("/"):
+		p = p.substr(0, p.length() - 1)
+	if p == "user:":
+		# 保护 user:// 协议根不被剥成非法的 user:/
+		return "user://"
+	return "" if p.is_empty() else p + "/"
+
 # ============ 各资源目录 ============
 
 ## 谱面目录
 static func get_charts_dir() -> String:
-	return get_files_dir() + "Charts/"
+	return get_storage_root() + "Charts/"
 
 ## 皮肤目录
 static func get_skins_dir() -> String:
-	return get_files_dir() + "Skins/"
+	return get_storage_root() + "Skins/"
 
 ## 粒子目录（用户粒子包，外部导入放这里）
 static func get_particles_dir() -> String:
-	return get_files_dir() + "Particles/"
+	return get_storage_root() + "Particles/"
 
 ## 人物目录（用户自定义人物，外部导入放这里）
 static func get_charas_dir() -> String:
-	return get_files_dir() + "Charas/"
+	return get_storage_root() + "Charas/"
 
 ## 内置皮肤配置覆盖目录
 ## res:// 在导出后为只读，内置皮肤的修改持久化到此目录
 static func get_builtin_skin_config_dir() -> String:
-	return get_files_dir() + "Skins/builtin_skin_config/"
+	return get_skins_dir() + "builtin_skin_config/"
 
 ## 音源目录
 static func get_soundfont_dir() -> String:
-	return get_files_dir() + "Soundfont/"
+	return get_storage_root() + "Soundfont/"
 
 ## 背景图目录
 static func get_background_dir() -> String:
-	return get_files_dir() + "BackgroundImage/"
+	return get_storage_root() + "BackgroundImage/"
 
 ## 日志目录
 static func get_logs_dir() -> String:

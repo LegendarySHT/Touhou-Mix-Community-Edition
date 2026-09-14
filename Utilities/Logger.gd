@@ -44,14 +44,25 @@ var level_colors = {
 
 func _ready() -> void:
 	add_to_group("singleton")
+	_init_log_path()
 
-	# 初始化日志文件路径（包含日期）
+## 初始化日志文件路径（含日期）并确保目录存在
+func _init_log_path() -> void:
 	var date = Time.get_date_string_from_system()
 	var logs_dir = PathHelper.get_logs_dir()  # 通过 PathHelper 获取平台自适应路径
 
 	log_file_path = logs_dir.path_join("game_%s.log" % date)
-	
+
 	_ensure_log_directory()
+
+## 自定义存储根生效后刷新日志路径（Logs/ 随存储根迁移）
+## 关闭旧句柄，重新解析到当前存储根下的 Logs/ 目录并重建文件
+func refresh_log_path() -> void:
+	if _log_file:
+		_log_file.close()
+		_log_file = null
+	log_file_path = ""
+	_init_log_path()
 
 ## 确保日志目录存在
 func _ensure_log_directory() -> void:

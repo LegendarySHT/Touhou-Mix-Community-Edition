@@ -21,6 +21,7 @@
 [ext_resource type="Script" uid="uid://drs7ctrsh2gjs" path="res://UI/Components/PopupWindow/FallingAdjust.gd" id="13_tewhg"]
 [ext_resource type="Texture2D" uid="uid://d1wixwjbj4pcj" path="res://Resources/Skins/旧版2/long-b-core.png" id="14_mv616"]
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="20_4gkd0"]
+[ext_resource type="Script" path="res://UI/Components/PopupWindow/StorageLocationAdjust.gd" id="21_storage"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_qxcsx"]
 content_margin_left = 50.0
@@ -1744,6 +1745,78 @@ popup/item_1/text = "Out"
 popup/item_1/id = 1
 popup/item_2/text = "InOut"
 popup/item_2/id = 2
+
+[node name="StorageLocationAdjust" type="VBoxContainer" parent="." unique_id=1705612901]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 24
+alignment = 1
+script = ExtResource("21_storage")
+metadata/_tab_index = 7
+
+[node name="Title" type="Label" parent="StorageLocationAdjust" unique_id=1705612902]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "资源存储位置"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="CurrentLabel" type="Label" parent="StorageLocationAdjust" unique_id=1705612903]
+custom_minimum_size = Vector2(700, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "当前存储位置："
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="HintLabel" type="Label" parent="StorageLocationAdjust" unique_id=1705612904]
+custom_minimum_size = Vector2(700, 80)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "存储位置用于存放曲包、音源、皮肤、背景图、粒子与人物资源（含数据库缓存 charts.ldb）。桌面端可点击“浏览...”选择目录，或直接输入路径。更改后游戏会迁移现有资源，并在重启后生效。"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="PathHBox" type="HBoxContainer" parent="StorageLocationAdjust" unique_id=1705612905]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 20
+
+[node name="LineEdit" type="LineEdit" parent="StorageLocationAdjust/PathHBox" unique_id=1705612906]
+custom_minimum_size = Vector2(520, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 28
+placeholder_text = "输入存储路径，或点击浏览选择"
+alignment = 1
+max_length = 512
+caret_blink = true
+
+[node name="BrowseBtn" type="Button" parent="StorageLocationAdjust/PathHBox" unique_id=1705612907]
+custom_minimum_size = Vector2(160, 60)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "浏览..."
+
+[node name="Btns" type="HBoxContainer" parent="StorageLocationAdjust" unique_id=1705612908]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 60
+
+[node name="Cancel" type="Button" parent="StorageLocationAdjust/Btns" unique_id=1705612909]
+custom_minimum_size = Vector2(220, 70)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "取消"
+
+[node name="Confirm" type="Button" parent="StorageLocationAdjust/Btns" unique_id=1705612910]
+custom_minimum_size = Vector2(220, 70)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "确定"
 
 [connection signal="focus_exited" from="DelayAdjust/HBoxC/Value" to="DelayAdjust" method="_on_delay_focus_exited"]
 [connection signal="text_changed" from="DelayAdjust/HBoxC/Value" to="DelayAdjust" method="_on_delay_text_changed"]

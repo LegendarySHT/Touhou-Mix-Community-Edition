@@ -6,8 +6,9 @@ class_name AuthManager
 
 static var instance: AuthManager = null
 
-## Token 文件路径：user://files/auth.json
-const TOKEN_FILE: String = "user://files/auth.json"
+## Token 文件路径（随存储根迁移）
+static func get_token_file() -> String:
+	return PathHelper.get_files_dir() + "auth.json"
 
 ## 当前用户数据（null 表示未登录）
 ## 结构：{ "username": "...", "access_token": "...", "refresh_token": "...",
@@ -38,7 +39,7 @@ func _ready() -> void:
 
 ## 从本地加载已保存的会话
 func _load_session() -> void:
-	var data = ConfigManager.instance.load_json_file(TOKEN_FILE)
+	var data = ConfigManager.instance.load_json_file(get_token_file())
 	if data.is_empty():
 		return
 	var expires_at = data.get("expires_at", 0)
@@ -63,14 +64,14 @@ func _load_session() -> void:
 func _save_session(data: Dictionary) -> void:
 	current_user = data
 	ever_authenticated = true
-	ConfigManager.instance.save_json_file(TOKEN_FILE, data, true)
+	ConfigManager.instance.save_json_file(get_token_file(), data, true)
 	EvtBus.auth_changed.emit(current_user)
 
 ## 清除本地会话
 func _clear_session() -> void:
 	current_user = null
-	if FileAccess.file_exists(TOKEN_FILE):
-		DirAccess.remove_absolute(TOKEN_FILE)
+	if FileAccess.file_exists(get_token_file()):
+		DirAccess.remove_absolute(get_token_file())
 	EvtBus.auth_changed.emit(null)
 
 ## 尝试用 refresh token 续期 access token

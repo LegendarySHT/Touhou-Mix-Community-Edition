@@ -542,6 +542,125 @@ func _reload_builtin_resources() -> void:
 	else:
 		push_warning("[SettingList] FileSystemManager not available")
 
+# ===== 存储位置设置弹窗入口 =====
+# 流程：弹窗输入/浏览目标路径 → Android 权限检查 → 路径校验 → 非空警告 → 迁移 → 提示重启
+# 浏览采用协程贯穿：弹窗关闭 → FileDialog 打开 → 选择后自动重开弹窗填入，不依赖弹窗记忆
+func _popup_storage_location_adjust() -> void:
+	if StorageManager.instance == null:
+		push_warning("[SettingList] StorageManager not available")
+		return
+
+	var target := String(_pending_config.get("storage_location", ""))
+	# 循环：browsing（弹窗为浏览让路关闭）→ 打开目录选择器 → 重开弹窗填入所选目录
+	while true:
+		var result := await PopupWindow.instance.show_storage_location_adjust(target)
+		if String(result.get("action", "")) == "browsing":
+			var picked := await _pick_storage_dir(String(result.get("path", "")))
+			if picked.is_empty():
+				return  # 用户取消了浏览，不重开弹窗
+			target = picked
+			continue
+		if String(result.get("action", "")) != "confirmed":
+			return  # cancelled
+		break
+	var new_path := target.strip_edges()
+	if new_path.is_empty():
+		return
+
+	# Android：共享存储公共目录需要"所有文件访问"权限，未授权先引导
+	if StorageManager.needs_android_permission(new_path) \
+			and not StorageManager.instance.is_android_storage_permission_granted():
+		var go := await PopupWindow.instance.show_message(
+			"目标目录位于共享存储中，需要“所有文件访问”权限。\n点击“确定”前往系统设置开启，返回后请再次点击本设置项。", true)
+		if go:
+			StorageManager.instance.open_android_permission_settings()
+		return
+
+	# 路径校验
+	var v := StorageManager.validate_target_path(new_path)
+	if not bool(v.get("ok", false)):
+		await PopupWindow.instance.show_message(str(v.get("reason", "路径无效")))
+		return
+
+	# 目标目录非空警告（迁移只创建游戏资源目录，不删除目标内任何内容）
+	if bool(v.get("target_not_empty", false)):
+		var proceed := await PopupWindow.instance.show_message(
+			"目标目录中已存在其他文件/文件夹。\n迁移只会在其中创建游戏资源目录"
+			+ "（Charts/Soundfont/Skins/BackgroundImage/Particles/Charas），不会删除其中任何内容。\n是否继续？", true)
+		if not proceed:
+			return
+
+	# 迁移（弹窗已关闭，进度条遮罩可复用）
+	var fs := FileSystemManager.instance
+	var ui := {}
+	if fs and fs.has_method("show_progress_ui"):
+		ui = fs.show_progress_ui("正在迁移资源，请勿关闭游戏", 1)
+	var mig: Dictionary = await StorageManager.instance.migrate(PathHelper.get_storage_root(), new_path, ui)
+	if fs and fs.has_method("hide_progress_ui"):
+		fs.hide_progress_ui()
+
+	if not bool(mig.get("ok", false)):
+		await PopupWindow.instance.show_message("迁移失败：%s" % str(mig.get("reason", "未知错误")))
+		return
+
+	# 迁移提交成功：缓存 pending（退出设置页时幂等写回配置），提示重启生效
+	# 使用规范化路径，与 migrate 提交到 settings.ini 的值保持一致
+	_pending_config["storage_location"] = PathHelper.normalize_storage_path(new_path)
+	await PopupWindow.instance.show_message("资源迁移完成，游戏将在重启后使用新存储位置。", true)
+	StorageManager.instance.request_restart()
+
+## 打开系统原生目录选择器并等待选择结果（协程）
+## 原生对话框（use_native_dialog=true，OS 级窗口）：dir_selected/canceled 信号由引擎保证
+## （Godot 源码 _native_dialog_cb_with_options：取消 emit canceled，OPEN_DIR 选择 emit dir_selected）。
+## 注意：原生模式下 FileDialog 节点不置位 visible（走 _native_popup 的 OS 窗口），
+## 因此 visible 兜底仅适用于内置对话框，否则会在对话框刚打开时误判为取消。
+## 等待采用 信号 + 超时 双重兜底，杜绝挂起。
+var _storage_file_dialog: FileDialog = null
+
+func _pick_storage_dir(current: String) -> String:
+	if _storage_file_dialog == null or not is_instance_valid(_storage_file_dialog):
+		_storage_file_dialog = FileDialog.new()
+		_storage_file_dialog.name = "StoragePickDialog"
+		_storage_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_DIR
+		_storage_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+		_storage_file_dialog.use_native_dialog = true
+		_storage_file_dialog.title = "选择资源存储目录"
+		get_tree().root.add_child(_storage_file_dialog)
+	var fd: FileDialog = _storage_file_dialog
+	if not current.is_empty() and DirAccess.dir_exists_absolute(current):
+		fd.current_dir = current
+
+	# 用 Dictionary 作为跨 lambda 的状态（GDScript lambda 按值捕获局部变量，修改不对外可见）
+	var state := {"picked": "", "done": false}
+	var on_dir := func(path: String) -> void:
+		state["picked"] = path
+		state["done"] = true
+		GLogger.info("StoragePickDialog dir_selected: %s" % path, "SettingList")
+	var on_canceled := func() -> void:
+		state["done"] = true
+		GLogger.info("StoragePickDialog canceled", "SettingList")
+	fd.dir_selected.connect(on_dir)
+	if fd.has_signal("canceled"):
+		fd.canceled.connect(on_canceled)
+	fd.popup_centered_clamped(Vector2(1024, 768), 0.7)
+	GLogger.info("StoragePickDialog opened (native=%s, current=%s)" % [str(fd.use_native_dialog), current], "SettingList")
+	var elapsed := 0
+	while not bool(state["done"]):
+		await get_tree().process_frame
+		elapsed += 1
+		if elapsed > 7200:
+			GLogger.warning("StoragePickDialog wait timeout", "SettingList")
+			break
+		# visible 兜底仅对内置对话框有效：原生对话框为 OS 级窗口，FileDialog 节点 visible 恒为 false
+		if not fd.use_native_dialog and not fd.visible and str(state["picked"]).is_empty():
+			GLogger.info("StoragePickDialog closed without selection", "SettingList")
+			break
+	fd.dir_selected.disconnect(on_dir)
+	if fd.has_signal("canceled"):
+		fd.canceled.disconnect(on_canceled)
+	GLogger.info("StoragePickDialog result: %s" % str(state["picked"]), "SettingList")
+	return str(state["picked"])
+
 ## ========== options_provider 方法（供 SettingListItem 通过 Callable 调用） ==========
 
 # 提供 theme_preset 选项

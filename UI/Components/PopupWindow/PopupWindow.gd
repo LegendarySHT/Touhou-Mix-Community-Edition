@@ -21,6 +21,7 @@ static var instance: PopupWindow
 @onready var _image_adjust: ImageAdjust = $TabC/ImageAdjust
 @onready var _kb_mode_adjust: KBModeAdjust = $TabC/KBModeAdjust
 @onready var _falling_adjust: FallingAdjust = $TabC/FallingAdjust
+@onready var _storage_location_adjust: StorageLocationAdjust = $TabC/StorageLocationAdjust
 
 signal window_close
 
@@ -45,6 +46,8 @@ func _pop_up_window(page: int) -> void:
 			size = Vector2(1500, 800)
 		6:
 			size = Vector2(1300, 950)
+		7:
+			size = Vector2(900, 600)
 		_:
 			size = Vector2(850, 600)
 	await get_tree().create_timer(0.1).timeout
@@ -57,6 +60,8 @@ func _ready() -> void:
 	_confirm_btn.pressed.connect(_on_confirm_pressed)
 	# DelayAdjust 校准完成 → 隐藏窗口（→ popup_hide → 退出动画 → window_close）
 	_delay_adjust.finish_requested.connect(hide)
+	# StorageLocationAdjust 确认/取消 → 隐藏窗口（必须关闭整个弹窗，不能只隐藏 tab 页）
+	_storage_location_adjust.finish_requested.connect(hide)
 
 	# 监听内置 popup 生命周期信号
 	about_to_popup.connect(func() -> void: _window_popup_animate(true))
@@ -227,3 +232,14 @@ func show_falling_adjust() -> Dictionary:
 	# 关闭时持久化下落参数并触发 FlowArea 热重载
 	_falling_adjust.save_config()
 	return _falling_adjust.get_result()
+
+# 弹出存储位置设置窗口
+## current_path：当前存储路径（为空时弹窗显示 PathHelper.get_storage_root()）
+## 返回 Dictionary: {"action": "confirmed"|"cancelled", "path": String}
+## 确认后由调用方（SettingList）执行路径校验与迁移
+func show_storage_location_adjust(current_path: String = "") -> Dictionary:
+	_storage_location_adjust.init_adjust(current_path)
+
+	_pop_up_window(7)
+	await window_close
+	return _storage_location_adjust.get_result()
