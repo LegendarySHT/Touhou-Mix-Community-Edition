@@ -388,6 +388,34 @@ func request_restart() -> void:
 # Android 外部存储权限
 # ============================================================
 
+## 将 Android SAF content:// URI 转换为真实文件路径（外部存储提供者）
+## 例：content://com.android.externalstorage.documents/tree/primary%3AthmixData
+##   → /storage/emulated/0/thmixData/
+## 支持 tree/document 两种形式；仅解析主存储卷（primary → /storage/emulated/0/），
+## SD 卡等其他卷无法稳定映射真实挂载点，返回空由调用方提示手动输入
+static func saf_uri_to_path(uri: String) -> String:
+	if not uri.begins_with("content://com.android.externalstorage.documents/"):
+		return ""
+	var id := ""
+	if "/tree/" in uri:
+		id = uri.get_slice("/tree/", 1)
+	elif "/document/" in uri:
+		id = uri.get_slice("/document/", 1)
+	else:
+		return ""
+	# 去掉 document 子路径的后续段（只取 tree/document id）
+	if "/" in id:
+		id = id.get_slice("/", 0)
+	# URL 解码（%3A → :，%2F → /）
+	id = id.uri_decode().strip_edges()
+	if not id.begins_with("primary:"):
+		return ""  # 非主存储卷（SD 卡等），无法安全映射
+	var rel := id.substr("primary:".length())
+	var path := "/storage/emulated/0/"
+	if not rel.is_empty():
+		path += rel
+	return normalize(path)
+
 ## 目标路径是否需要 Android "所有文件访问"权限（API 30+）
 ## 应用私有目录（Android/data/<包名>/ 下）零权限
 static func needs_android_permission(target: String) -> bool:
@@ -398,7 +426,9 @@ static func needs_android_permission(target: String) -> bool:
 		return false
 	return not t.begins_with("/storage/emulated/0/Android/data/" + PathHelper.PACKAGE_NAME + "/")
 
-## 是否已授予"所有文件访问"权限（JavaClassWrapper，Android 专属）
+## 是否已授予外部存储访问权限（按需调用，不随启动固定请求）
+## API 30+：MANAGE_EXTERNAL_STORAGE（所有文件访问，特殊权限，经系统设置页授予）
+## API <30：WRITE_EXTERNAL_STORAGE（运行时权限，可弹窗请求）
 ## 注意：JavaClassWrapper 必须用 Engine.get_singleton 动态获取（Windows 无此模块），
 ## Java 方法必须用直接方法调用语法，不能用 .call()/has_method()（见 AudioBtDetector 踩坑笔记）
 func is_android_storage_permission_granted() -> bool:
@@ -407,17 +437,33 @@ func is_android_storage_permission_granted() -> bool:
 	var jcw = Engine.get_singleton("JavaClassWrapper")
 	if jcw == null:
 		return false
+	# API 30+：Environment.isExternalStorageManager()
 	var env: Variant = jcw.call("wrap", "android.os.Environment")
-	if env == null:
-		return false
-	return bool(env.isExternalStorageManager())
+	if env != null:
+		var granted: bool = bool(env.isExternalStorageManager())
+		if granted:
+			return true
+	# API <30 兜底：PackageManager.checkPermission(WRITE_EXTERNAL_STORAGE)
+	var ctx: Variant = _get_android_context()
+	if ctx != null:
+		var pm: Variant = ctx.getPackageManager()
+		var result: int = int(pm.checkPermission("android.permission.WRITE_EXTERNAL_STORAGE", ctx.getPackageName()))
+		if result == 0:  # PackageManager.PERMISSION_GRANTED
+			return true
+	return false
 
-## 打开系统"所有文件访问"权限设置页
-## 方式 A：JavaClassWrapper 构造 Intent（MANAGE_APP_ALL_FILES_ACCESS_PERMISSION，API 30+）
-## 方式 B 兜底：OS.shell_open 打开应用详情页，引导玩家手动开启
+## 按需请求外部存储权限：
+## 1) 先尝试 OS.request_permissions（API <30 的 WRITE_EXTERNAL_STORAGE 运行时权限可弹窗授予，
+##    API 30+ 的 MANAGE_EXTERNAL_STORAGE 是特殊权限，request_permissions 无效但无害）
+## 2) 再打开系统"所有文件访问"设置页（API 30+ 特殊权限必须经设置页手动开启）
+##    方式 A：JavaClassWrapper 构造 Intent（MANAGE_APP_ALL_FILES_ACCESS_PERMISSION）
+##    方式 B 兜底：OS.shell_open 打开应用详情页，引导玩家手动开启
 func open_android_permission_settings() -> void:
 	if not PathHelper.is_android():
 		return
+	# 低版本运行时权限：可弹窗请求（无参 = 请求 manifest 声明的全部运行时权限；
+	# API 30+ 的 MANAGE_EXTERNAL_STORAGE 是特殊权限，此调用无效但无害）
+	OS.request_permissions()
 	var jcw = Engine.get_singleton("JavaClassWrapper")
 	var ctx: Variant = _get_android_context()
 	if jcw != null and ctx != null:

@@ -555,9 +555,29 @@ func _popup_storage_location_adjust() -> void:
 	while true:
 		var result := await PopupWindow.instance.show_storage_location_adjust(target)
 		if String(result.get("action", "")) == "browsing":
+			# Android：浏览公共存储目录前按需引导授权（SAF 选择后写入该路径同样需要权限；
+			# 应用私有目录/默认路径无需权限，已授权则直接跳过）
+			if PathHelper.is_android() \
+					and not StorageManager.instance.is_android_storage_permission_granted():
+				var go := await PopupWindow.instance.show_message(
+					"浏览公共存储目录需要外部存储权限。\n点击“确定”前往系统设置开启，返回后请再次点击浏览。", true)
+				if go:
+					StorageManager.instance.open_android_permission_settings()
+				return
 			var picked := await _pick_storage_dir(String(result.get("path", "")))
 			if picked.is_empty():
 				return  # 用户取消了浏览，不重开弹窗
+			# Android：SAF 原生选择器返回 content:// URI（如 tree/primary%3AthmixData），
+			# 转换为真实文件路径（/storage/emulated/0/thmixData/）；SD 卡等无法转换时提示手动输入
+			if PathHelper.is_android() and not picked.begins_with("/"):
+				var real := StorageManager.saf_uri_to_path(picked)
+				if real.is_empty():
+					GLogger.warning("Android SAF picker returned unusable path: %s" % picked, "SettingList")
+					await PopupWindow.instance.show_message(
+						"所选位置（SD 卡等外部卷）无法转换为可直接写入的存储路径，请在输入框中手动填写路径。")
+					return
+				GLogger.info("Android SAF path converted: %s -> %s" % [picked, real], "SettingList")
+				picked = real
 			target = picked
 			continue
 		if String(result.get("action", "")) != "confirmed":

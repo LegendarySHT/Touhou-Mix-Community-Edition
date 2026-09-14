@@ -34,10 +34,6 @@ func _ready() -> void:
 	_cancel_btn.pressed.connect(_on_cancel_pressed)
 	_confirm_btn.pressed.connect(_on_confirm_pressed)
 
-	# Android 导出后 FileDialog 无法可靠浏览共享存储根目录，隐藏浏览按钮
-	if PathHelper.is_android():
-		_browse_btn.visible = false
-
 ## 打开弹窗前初始化（每次调用重置结果，避免残留上一次的结果）
 func init_adjust(current_path: String) -> void:
 	_result = {"action": "cancelled", "path": ""}
@@ -52,10 +48,9 @@ func init_adjust(current_path: String) -> void:
 func get_result() -> Dictionary:
 	return _result
 
-## 浏览按钮：关闭弹窗并把当前输入值带回给调用方（SettingList 打开原生目录选择器）
+## 浏览按钮：关闭弹窗并把当前输入值带回给调用方（SettingList 打开系统原生目录选择器）
+## 桌面与 Android 均可用（Android 走 SAF 系统文件选择器，SettingList 侧负责权限前置）
 func _on_browse_pressed() -> void:
-	if PathHelper.is_android():
-		return
 	_result = {"action": "browsing", "path": _path_line_edit.text.strip_edges()}
 	finish_requested.emit()
 

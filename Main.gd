@@ -32,11 +32,12 @@ var _is_reloading_settings: bool = false
 @export var setting_view_path: String
 
 func _ready():
-	# Android 平台：请求存储权限（fire-and-forget，外部私有目录实际不需要运行时权限）
+	# Android 平台：仅在日志中记录（不再启动时固定请求存储权限——
+	# 默认路径位于应用私有目录，无需任何权限；权限改为玩家把存储路径改到
+	# 公共目录时才按需请求，见 SettingList 迁移/浏览流程）
 	if PathHelper.is_android():
 		GLogger.info("Android platform detected", "Main")
 		GLogger.info("Base dir: %s" % PathHelper.get_base_dir(), "Main")
-		OS.request_permissions()
 
 	_initialize_core_systems()
 
