@@ -8,8 +8,8 @@
 #    ./build_unix.sh android   # Android arm64 (需设置 $NDK 与 $ANDROID_API)
 #
 #  使用前:
-#    1. 下载 miniaudio.h:
-#         curl -L -o miniaudio.h https://raw.githubusercontent.com/mackron/miniaudio/master/miniaudio.h
+#    1. 确保 miniaudio 子模块已拉取 (miniaudio/miniaudio.h, 勿手动下载覆盖):
+#         git submodule update --init --recursive
 #    2. Linux: 安装 gcc 和 libasound2-dev (ALSA) / libpulse-dev (PulseAudio)
 #    3. macOS: 安装 Xcode Command Line Tools
 #    4. Android: 设置 NDK 路径, 例如:
@@ -20,9 +20,9 @@
 set -e
 cd "$(dirname "$0")"
 
-if [ ! -f miniaudio.h ]; then
-    echo "[ERROR] miniaudio.h not found. Download it first:"
-    echo "  curl -L -o miniaudio.h https://raw.githubusercontent.com/mackron/miniaudio/master/miniaudio.h"
+if [ ! -f miniaudio/miniaudio.h ]; then
+    echo "[ERROR] miniaudio/miniaudio.h not found. The miniaudio submodule is missing."
+    echo "Run: git submodule update --init --recursive"
     exit 1
 fi
 

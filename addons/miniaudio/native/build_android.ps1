@@ -97,15 +97,15 @@ if (-not (Test-Path (Join-Path $NdkPath "source.properties"))) {
 
 Write-Host "[INFO] Using NDK: $NdkPath"
 
-# ---- 2. Check miniaudio.h ----
-if (-not (Test-Path "miniaudio.h")) {
+# ---- 2. Check miniaudio.h (git 子模块) ----
+if (-not (Test-Path "miniaudio\miniaudio.h")) {
     Write-Host ""
-    Write-Host "[ERROR] miniaudio.h not found!"
-    Write-Host "Download miniaudio.h to current directory:"
-    Write-Host "  curl -L -o miniaudio.h https://raw.githubusercontent.com/mackron/miniaudio/master/miniaudio.h"
+    Write-Host "[ERROR] miniaudio\miniaudio.h not found!"
+    Write-Host "The miniaudio submodule is missing. Run:"
+    Write-Host "  git submodule update --init --recursive"
     exit 1
 }
-Write-Host "[INFO] miniaudio.h: OK"
+Write-Host "[INFO] miniaudio\miniaudio.h: OK"
 
 # ---- 3. Locate NDK toolchain (Windows host: windows-x86_64) ----
 $toolchain = Join-Path $NdkPath "toolchains\llvm\prebuilt\windows-x86_64"

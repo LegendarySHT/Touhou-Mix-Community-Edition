@@ -1,8 +1,9 @@
 // miniaudio_bridge.c
 // 实现 miniaudio_bridge.h 中定义的 C API
 //
-// 编译方式: 需要下载 miniaudio.h (https://github.com/mackron/miniaudio/blob/master/miniaudio.h)
-// 放到同目录, 然后与本文件一起编译. miniaudio 是单头文件库, 会自动检测平台后端.
+// 编译方式: miniaudio.h 通过 git 子模块 vendored (miniaudio/ 目录, 见 .gitmodules),
+// clone 时用 `git clone --recurse-submodules` 或 `git submodule update --init` 拉取.
+// miniaudio 是单头文件库, 会自动检测平台后端.
 //
 // 编译示例 (Windows MSVC, x64):
 //   cl /O2 /LD miniaudio_bridge.c /Fe:miniaudio_bridge.dll
@@ -30,7 +31,7 @@
 #undef PLAYBACK_RIGHT
 
 #define MINIAUDIO_IMPLEMENTATION
-#include "miniaudio.h"
+#include "miniaudio/miniaudio.h"
 
 #include "miniaudio_bridge.h"
 #include <stdlib.h>

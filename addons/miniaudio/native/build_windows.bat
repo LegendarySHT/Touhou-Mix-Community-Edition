@@ -4,9 +4,9 @@ REM  miniaudio_bridge 编译脚本 (Windows MSVC, x64)
 REM
 REM  使用前:
 REM    1. 安装 Visual Studio Build Tools 或 Visual Studio (含 C++ 工具集)
-REM    2. 下载 miniaudio.h:
-REM       curl -L -o miniaudio.h https://raw.githubusercontent.com/mackron/miniaudio/master/miniaudio.h
-REM       或浏览器访问: https://github.com/mackron/miniaudio/blob/master/miniaudio.h
+REM    2. 确保 miniaudio 子模块已拉取:
+REM       git submodule update --init --recursive
+REM       (miniaudio.h 位于 miniaudio\miniaudio.h, 由 git 子模块提供, 勿手动下载覆盖)
 REM    3. 在 "x64 Native Tools Command Prompt for VS" 中运行此脚本
 REM
 REM  产物: miniaudio_bridge.dll (放到 addons\miniaudio\libs\windows\)
@@ -15,12 +15,10 @@ REM ============================================================================
 setlocal
 cd /d "%~dp0"
 
-if not exist miniaudio.h (
-    echo [ERROR] miniaudio.h not found in current directory.
-    echo Please download it from:
-    echo   https://raw.githubusercontent.com/mackron/miniaudio/master/miniaudio.h
-    echo Or run:
-    echo   curl -L -o miniaudio.h https://raw.githubusercontent.com/mackron/miniaudio/master/miniaudio.h
+if not exist miniaudio\miniaudio.h (
+    echo [ERROR] miniaudio\miniaudio.h not found.
+    echo The miniaudio submodule is missing. Run:
+    echo   git submodule update --init --recursive
     exit /b 1
 )
 
