@@ -138,13 +138,19 @@ func get_selected() -> String:
 	return _option_btn.get_item_text(_option_btn.get_selected_id())
 
 # 用默认窗口显示消息，要获取确认状态需await
-func show_message(message: String, cancel_visible: bool = false, options: Array = []) -> bool:
+## force=true 时弹窗为强制模态（exclusive）：无法点击外部关闭，只能通过按钮/返回键处理，
+## 用于"迁移后必须重启"等不可跳过的提示
+func show_message(message: String, cancel_visible: bool = false, options: Array = [], force: bool = false) -> bool:
 	_message.text = message
 	_cancel_btn.modulate.a = 0 if not cancel_visible else 1
 	_set_option(options)
-	
+
 	_pop_up_window(0)
+	if force:
+		exclusive = true  # 模态：点击弹窗外区域不会关闭（popup 失去焦点不隐藏）
 	await window_close
+	if force:
+		exclusive = false
 	return _confirm
 
 # 弹出延迟校准窗口

@@ -626,8 +626,23 @@ func _popup_storage_location_adjust() -> void:
 	# 迁移提交成功：缓存 pending（退出设置页时幂等写回配置），提示重启生效
 	# 使用规范化路径，与 migrate 提交到 settings.ini 的值保持一致
 	_pending_config["storage_location"] = PathHelper.normalize_storage_path(new_path)
-	await PopupWindow.instance.show_message("资源迁移完成，游戏将在重启后使用新存储位置。", true)
-	StorageManager.instance.request_restart()
+	# 自动重启（桌面：拉起新进程后退出）；不支持（Android）或失败时强制重启提示
+	if not StorageManager.instance.request_restart():
+		await _force_restart_prompt()
+
+## 强制重启提示：迁移必须重启才能生效。自动重启不可用（Android / 桌面失败）时，
+## 弹窗以强制模态模式循环显示（exclusive：无法点外部关闭），玩家只能点"确定"退出游戏，
+## 从而无法继续游玩（若经 Android 返回键等其他途径关闭，会立即重新弹出）
+func _force_restart_prompt() -> void:
+	var msg := "资源迁移已完成，游戏必须重启后才能使用新的存储位置。\n请点击“确定”退出游戏，然后重新打开。"
+	while true:
+		var confirmed := await PopupWindow.instance.show_message(msg, false, [], true)
+		if get_tree() == null:
+			return
+		if confirmed:
+			get_tree().quit()
+			return
+		# 其他途径关闭（Android 返回键等）→ 循环重开，直到玩家退出游戏
 
 ## 打开系统原生目录选择器并等待选择结果（协程）
 ## 原生对话框（use_native_dialog=true，OS 级窗口）：dir_selected/canceled 信号由引擎保证

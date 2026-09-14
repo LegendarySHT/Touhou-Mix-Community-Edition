@@ -202,7 +202,7 @@ func recover_and_resolve() -> Dictionary:
 		return _resolve_without_journal()
 
 	var decision: Dictionary = _journal_state_machine(
-		journal, Callable(self, "_validate_for_recovery").bind(str(journal.get("old_root", ""))))
+		journal, Callable(self, "_validate_for_recovery"))
 	match str(decision.get("action", "none")):
 		"rollback":
 			var prev := str(decision.get("path", ""))
@@ -270,17 +270,16 @@ func _result(needs_full_rescan: bool, restored: bool, note: String) -> Dictionar
 	}
 
 ## 恢复期校验回调（不创建、不写测试文件）
-## old_root 经 bind 注入（状态机 validate_fn 只传 path）
-## 双重校验：新根可用 + 已包含迁移数据；旧根仍完好时再做完整对账，
-## 防止"新根被删空/损坏 + 旧根已清理"的双重丢失
-func _validate_for_recovery(path: String, old_root: String = "") -> Dictionary:
+## 校验：新根可用 + 已包含迁移数据。
+## 注意：不做旧根逐文件大小对账——迁移后到重启间旧根仍可能有正常写入
+## （日志追加、DB 重开后的 charts-log.ldb 增长等），size 不一致不代表迁移失败，
+## 否则会误判 rollback 导致旧数据永不清理。防误删由 _has_migration_data 兜底
+## （新根无任何数据 → 回退旧根，旧备份不清理）。
+func _validate_for_recovery(path: String) -> Dictionary:
 	if not check_configured_path(path):
 		return {"ok": false, "reason": "path unusable"}
 	if not _has_migration_data(path):
 		return {"ok": false, "reason": "new root missing migrated data"}
-	if not old_root.is_empty() and DirAccess.dir_exists_absolute(old_root):
-		if not _verify_migration(old_root, path):
-			return {"ok": false, "reason": "migrated data incomplete"}
 	return {"ok": true, "reason": ""}
 
 ## 新根是否包含迁移数据（任一可迁移目录非空，或 DB 存在）
@@ -338,10 +337,11 @@ func migrate(old_root: String, new_root: String, ui: Dictionary = {}) -> Diction
 		await get_tree().process_frame
 	var copied := await _copy_storage(old_root, new_root, ui)
 
-	# 4. 校验
+	# 4. 校验：新根已包含迁移数据即可（复制过程已逐文件保证；不做旧根逐文件大小对账，
+	#    迁移期间旧根仍在运行（日志/DB 持续写入），size 不一致不代表复制失败）
 	var verified := false
 	if copied:
-		verified = _verify_migration(old_root, new_root)
+		verified = _has_migration_data(new_root)
 
 	# 5. 恢复会话：重开旧根 DB（重启前游戏继续用旧根运行，功能需保持正常）
 	if db_closed and ChartDB != null:
@@ -367,22 +367,27 @@ func migrate(old_root: String, new_root: String, ui: Dictionary = {}) -> Diction
 	GLogger.info("Storage migration committed: %s -> %s (restart required)" % [old_root, new_root], "StorageMGR")
 	return {"ok": true, "reason": ""}
 
-## 请求重启（桌面尝试自动重启；Android 仅提示，由调用方展示）
-func request_restart() -> void:
-	if PathHelper.is_android():
-		return
+## 请求重启（桌面导出环境尝试自动重启后退出）
+## 返回 true 表示已触发重启（游戏即将退出），false 表示需要强制提示玩家手动重启
+## 注意：Android 不支持自动重启；Godot 编辑器环境（F5 运行）下 OS.create_process 拉起的是
+## 编辑器进程而非游戏运行实例，且旧运行实例不会退出，会导致双进程冲突（新实例空白），
+## 因此编辑器环境一律走强制提示，由玩家手动重新运行
+func request_restart() -> bool:
+	if PathHelper.is_android() or OS.has_feature("editor"):
+		return false
 	var executable := OS.get_executable_path()
 	var args: PackedStringArray = PackedStringArray()
 	if OS.is_debug_build():
-		# 编辑器/调试构建的 executable 是 Godot 可执行文件，需带 --path
+		# 调试构建的 executable 是 Godot 可执行文件，需带 --path
 		args.append("--path")
 		args.append(ProjectSettings.globalize_path("res://"))
 	var err := OS.create_process(executable, args)
 	if err == OK:
 		if get_tree() != null:
 			get_tree().quit()
-	else:
-		GLogger.warning("Auto restart failed (err %d), user should restart manually" % err, "StorageMGR")
+		return true
+	GLogger.warning("Auto restart failed (err %d), forcing restart prompt" % err, "StorageMGR")
+	return false
 
 # ============================================================
 # Android 外部存储权限
@@ -671,56 +676,6 @@ static func _count_files(dir_path: String) -> int:
 		entry = dir.get_next()
 	dir.list_dir_end()
 	return count
-
-## 校验迁移结果：源侧每个可迁移目录/顶层文件在目标侧存在且大小一致
-static func _verify_migration(src_root: String, dst_root: String) -> bool:
-	for d in MIGRATABLE_DIRS:
-		var src := src_root + d
-		if DirAccess.dir_exists_absolute(src):
-			if not _verify_dir(src, dst_root + d):
-				return false
-	for f in MIGRATABLE_FILES:
-		if f.ends_with(".lock"):
-			continue
-		var src := src_root + f
-		if FileAccess.file_exists(src):
-			if not _verify_file(src, dst_root + f):
-				return false
-	return true
-
-static func _verify_dir(src_dir: String, dst_dir: String) -> bool:
-	if not DirAccess.dir_exists_absolute(dst_dir):
-		return false
-	var dir := DirAccess.open(src_dir)
-	if dir == null:
-		return false
-	dir.list_dir_begin()
-	var entry := dir.get_next()
-	while entry != "":
-		if not entry.begins_with("."):
-			var src := src_dir.path_join(entry)
-			var dst := dst_dir.path_join(entry)
-			if dir.current_is_dir():
-				if not _verify_dir(src, dst):
-					return false
-			else:
-				if not _verify_file(src, dst):
-					return false
-		entry = dir.get_next()
-	dir.list_dir_end()
-	return true
-
-static func _verify_file(src: String, dst: String) -> bool:
-	if not FileAccess.file_exists(dst):
-		return false
-	var sf := FileAccess.open(src, FileAccess.READ)
-	var df := FileAccess.open(dst, FileAccess.READ)
-	if sf == null or df == null:
-		return false
-	var ok := sf.get_length() == df.get_length()
-	sf.close()
-	df.close()
-	return ok
 
 ## 清理旧根备份（幂等）：删全部可迁移目录 + 顶层文件（含 charts-log.ldb / lock），绝不删根自身
 ## 注意：引导目录（get_boot_dir()）中的迁移日志 / 引导指针不在此列，永不被清理
