@@ -1,6 +1,6 @@
-﻿Microsoft Visual Studio Solution File, Format Version 12.00
+Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Touhou Mix Comunitity Edition", "Touhou Mix Comunitity Edition.csproj", "{CA216870-C0AD-4A12-B7E0-0BF57BBC9C48}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Touhou Mix Community Edition", "Touhou Mix Community Edition.csproj", "{CA216870-C0AD-4A12-B7E0-0BF57BBC9C48}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

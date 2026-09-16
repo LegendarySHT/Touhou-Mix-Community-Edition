@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="Touhou Mix Comunitity Edition"
+config/name="Touhou Mix Community Edition"
 run/main_scene="uid://jvmwtrulpf5g"
 config/quit_on_go_back=false
 config/features=PackedStringArray("4.7", "C#", "Mobile")
@@ -45,7 +45,7 @@ window/handheld/orientation=4
 
 [dotnet]
 
-project/assembly_name="Touhou Mix Comunitity Edition"
+project/assembly_name="Touhou Mix Community Edition"
 
 [editor_plugins]
 
