@@ -9,8 +9,17 @@ class_name ParticleAdjust
 @onready var _total_scale_edit: LineEdit = $VBoxC/Options/TotalScale/LineEdit
 @onready var _total_alpha_edit: LineEdit = $VBoxC/Options/TotalAlpha/LineEdit
 @onready var _emitter_scale_edit: LineEdit = $VBoxC/Options/EmitterScale/LineEdit
+## 四种判定类型的切换按钮（与 _judge_type 一一对应）
+@onready var _judge_btns: Array[Button] = [
+	$VBoxC/JudgeSwitch/Perfect,
+	$VBoxC/JudgeSwitch/Great,
+	$VBoxC/JudgeSwitch/Good,
+	$VBoxC/JudgeSwitch/Bad,
+]
 
 # ===== 粒子设置页 =====
+## 支持的判定类型（与配置键 {j}_spark_* 及 FlowArea spark 判定名一一对应）
+const JUDGE_TYPES: Array[String] = ["Perfect", "Great", "Good", "Bad"]
 ## 粒子 preset 选项（索引 0=None，之后动态从 ParticleMGR 读取粒子包）
 ## 下拉项即粒子包完整名字（如 "BoxBurst [内置]"）；配置按名字读写而非索引，避免新增包时索引错位
 ## 每个下拉只列出声明了对应角色精灵图的粒子包：有 [base] 才进基础下拉，有 [emitter] 才进散射下拉
@@ -38,6 +47,9 @@ func _ready() -> void:
 	_total_scale_edit.text_changed.connect(_on_value_changed)
 	_total_alpha_edit.text_changed.connect(_on_value_changed)
 	_emitter_scale_edit.text_changed.connect(_on_value_changed)
+	# 判定类型切换按钮（同一 ButtonGroup，点击后切到对应判定类型）
+	for i in JUDGE_TYPES.size():
+		_judge_btns[i].pressed.connect(_on_judge_pressed.bind(JUDGE_TYPES[i]))
 	# 常驻单个批绘节点，预览粒子由它统一绘制
 	_particle_drawer = _particle_scene.instantiate()
 	_particle_preview.add_child(_particle_drawer)
@@ -60,14 +72,34 @@ func _init_particle_preview() -> void:
 	add_child(_particle_preview_timer)
 
 ## 由 PopupWindow.show_particle_adjust 调用：填充选项 + 选中当前配置值
-## judge_type: Perfect / Great / Good / Bad，决定读写哪个 spark 配置字段
+## judge_type: 初始选中的判定类型（Perfect / Great / Good / Bad），弹窗内可随时切换
 func init_adjust(judge_type: String = "Perfect") -> void:
 	_judge_type = judge_type
-	# 更新窗口标题
 	_title_label.text = "%s 特效设定" % judge_type
 	# 刷新粒子样式选项（动态从 ParticleMGR 读取，支持外部导入的粒子包）
 	_refresh_presets()
-	var jl := judge_type.to_lower()
+	_update_switch_buttons()
+	_load_current_values()
+
+## 切换判定类型：先保存当前判定类型的设置，再载入目标判定类型并预览一次
+func _on_judge_pressed(judge_type: String) -> void:
+	if _judge_type == judge_type:
+		return
+	_save_current()
+	_judge_type = judge_type
+	_update_switch_buttons()
+	_load_current_values()
+	_play_preview_particle()
+
+## 更新切换按钮的选中态与窗口标题（与 _judge_type 一致）
+func _update_switch_buttons() -> void:
+	for i in JUDGE_TYPES.size():
+		_judge_btns[i].button_pressed = (JUDGE_TYPES[i] == _judge_type)
+	_title_label.text = "%s 特效设定" % _judge_type
+
+## 从配置读取当前判定类型的数值填充到控件（临时断开信号避免回环）
+func _load_current_values() -> void:
+	var jl := _judge_type.to_lower()
 	# 基础粒子 preset（配置存粒子包名字，找不到回退 None=索引0）
 	var preset_name: String = ConfigManager.instance.get_string("Lane", jl + "_spark_preset", "")
 	_basic_particle_btn.selected = _preset_index_of(preset_name, _base_presets)
@@ -177,13 +209,20 @@ func _apply_values_debounced() -> void:
 	if is_visible_in_tree():
 		_play_preview_particle()
 
-## 返回当前粒子设置（供 PopupWindow.show_particle_adjust 返回）
+## 返回当前全部四种判定类型的粒子设置（供 PopupWindow.show_particle_adjust 返回）
+## 结构：{"by_judge": {"Perfect": {...}, "Great": {...}, ...}}
+## 读取前先强制保存当前判定类型（其控件值可能仍处于防抖计时中未落库）；
+## 其它判定类型在切换离开时已通过 _on_judge_pressed → _save_current 落库
 func get_result() -> Dictionary:
-	return {
-		"judge_type": _judge_type,
-		"preset": _base_presets[_basic_particle_btn.selected],
-		"emitter": _emitter_presets[_emitter_btn.selected],
-		"scaling": _read_pct(_total_scale_edit, 100),
-		"alpha": _read_pct(_total_alpha_edit, 100),
-		"emitter_scaling": _read_pct(_emitter_scale_edit, 150),
-	}
+	_save_current()
+	var by_judge: Dictionary = {}
+	for judge in JUDGE_TYPES:
+		var jl := judge.to_lower()
+		by_judge[judge] = {
+			"preset": ConfigManager.instance.get_string("Lane", jl + "_spark_preset", ""),
+			"emitter": ConfigManager.instance.get_string("Lane", jl + "_spark_emitter", ""),
+			"scaling": ConfigManager.instance.get_int("Lane", jl + "_spark_scaling", 100),
+			"alpha": ConfigManager.instance.get_int("Lane", jl + "_spark_alpha", 100),
+			"emitter_scaling": ConfigManager.instance.get_int("Lane", jl + "_spark_emitter_scaling", 150),
+		}
+	return {"by_judge": by_judge}

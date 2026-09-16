@@ -137,6 +137,9 @@ corner_radius_bottom_left = 12
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ff7qk"]
 
+[sub_resource type="ButtonGroup" id="ButtonGroup_judges"]
+allow_unpress = false
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2xvos"]
 bg_color = Color(1, 1, 1, 1)
 
@@ -760,6 +763,45 @@ theme_override_font_sizes/font_size = 36
 text = "Perfect 特效设定"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="JudgeSwitch" type="HBoxContainer" parent="ParticleAdjust/VBoxC"]
+custom_minimum_size = Vector2(600, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="Perfect" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch"]
+custom_minimum_size = Vector2(135, 50)
+layout_mode = 2
+toggle_mode = true
+button_group = SubResource("ButtonGroup_judges")
+theme_override_font_sizes/font_size = 24
+text = "Perfect"
+
+[node name="Great" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch"]
+custom_minimum_size = Vector2(135, 50)
+layout_mode = 2
+toggle_mode = true
+button_group = SubResource("ButtonGroup_judges")
+theme_override_font_sizes/font_size = 24
+text = "Great"
+
+[node name="Good" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch"]
+custom_minimum_size = Vector2(135, 50)
+layout_mode = 2
+toggle_mode = true
+button_group = SubResource("ButtonGroup_judges")
+theme_override_font_sizes/font_size = 24
+text = "Good"
+
+[node name="Bad" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch"]
+custom_minimum_size = Vector2(135, 50)
+layout_mode = 2
+toggle_mode = true
+button_group = SubResource("ButtonGroup_judges")
+theme_override_font_sizes/font_size = 24
+text = "Bad"
 
 [node name="Options" type="GridContainer" parent="ParticleAdjust/VBoxC" unique_id=1648522083]
 custom_minimum_size = Vector2(0, 320)

@@ -438,38 +438,24 @@ func _popup_delay_adjust() -> void:
 	_pending_config["bt_auto_disable_performing_mode"] = int(result.get("bt_auto_off_performing", 1))
 	GLogger.info("%s calibrated: %d ms (pending save)" % [id, _pending_config[id]], "SettingList")
 
-# ===== 各判定类型特效设置弹窗入口 =====
-# 4 个按钮分别对应 Perfect/Great/Good/Bad，调用统一的 _popup_spark_adjust(judge_type)
+# ===== 判定特效设置弹窗入口 =====
+# 单个按钮入口：弹窗内部可在 Perfect/Great/Good/Bad 之间切换，一次性编辑全部判定类型
 # ParticleAdjust 内部已通过 ConfigManager.set_value_and_notify 即时保存到对应字段
-# _pending_config 同步缓存，确保退出 SettingView 时 diff 保存到 settings.ini
-
-func _popup_perfect_spark_adjust() -> void:
-	await _popup_spark_adjust("Perfect")
-
-func _popup_great_spark_adjust() -> void:
-	await _popup_spark_adjust("Great")
-
-func _popup_good_spark_adjust() -> void:
-	await _popup_spark_adjust("Good")
-
-func _popup_bad_spark_adjust() -> void:
-	await _popup_spark_adjust("Bad")
-
-## 统一的特效设置弹窗入口
-## judge_type: Perfect / Great / Good / Bad
-## 关闭后将 preset 和 scaling 缓存到 _pending_config，由 save_config_to_file diff 保存
-func _popup_spark_adjust(judge_type: String) -> void:
-	var result := await PopupWindow.instance.show_particle_adjust(judge_type)
+# 关闭后统一把四种判定的配置缓存进 _pending_config，确保退出 SettingView 时 diff 保存到 settings.ini
+func _popup_spark_adjust() -> void:
+	var result := await PopupWindow.instance.show_particle_adjust()
 	if result.is_empty():
 		return
-	var judge_lower := judge_type.to_lower()
-	_pending_config[judge_lower + "_spark_preset"] = result.get("preset", "")
-	_pending_config[judge_lower + "_spark_emitter"] = result.get("emitter", "")
-	_pending_config[judge_lower + "_spark_scaling"] = result.get("scaling", 100)
-	_pending_config[judge_lower + "_spark_alpha"] = result.get("alpha", 100)
-	_pending_config[judge_lower + "_spark_emitter_scaling"] = result.get("emitter_scaling", 150)
-	GLogger.info("%s spark updated: base=%s emitter=%s scale=%s alpha=%s emitter_scale=%s (pending save)"
-		% [judge_type, result.get("preset"), result.get("emitter"), result.get("scaling"), result.get("alpha"), result.get("emitter_scaling")], "SettingList")
+	GLogger.info("Spark settings updated (pending save)", "SettingList")
+	var all: Dictionary = result.get("by_judge", {})
+	for judge_type in ["Perfect", "Great", "Good", "Bad"]:
+		var r: Dictionary = all.get(judge_type, {})
+		var judge_lower: String = judge_type.to_lower()
+		_pending_config[judge_lower + "_spark_preset"] = r.get("preset", "")
+		_pending_config[judge_lower + "_spark_emitter"] = r.get("emitter", "")
+		_pending_config[judge_lower + "_spark_scaling"] = r.get("scaling", 100)
+		_pending_config[judge_lower + "_spark_alpha"] = r.get("alpha", 100)
+		_pending_config[judge_lower + "_spark_emitter_scaling"] = r.get("emitter_scaling", 150)
 
 # ===== 各视图背景设置弹窗入口 =====
 # 每个视图一个 TYPE_BUTTON 入口，调用统一的 _popup_view_background_adjust(view_name)
