@@ -602,20 +602,36 @@ func _popup_storage_location_adjust() -> void:
 		await PopupWindow.instance.show_message(str(v.get("reason", "路径无效")))
 		return
 
-	# 目标目录非空警告（迁移只创建游戏资源目录，不删除目标内任何内容）
-	if bool(v.get("target_not_empty", false)):
+	# 目标目录冲突处理（迁移只创建/合并游戏资源目录，不删除目标内任何内容）
+	var merge_dirs: Array = v.get("merge_dirs", [])
+	var conflict_files: Array = v.get("conflict_files", [])
+	var keep_target_files := false
+	if not merge_dirs.is_empty():
+		# 目标已存在同名游戏资源目录 → 合并确认
+		var proceed := await PopupWindow.instance.show_message(
+			"目标目录已检测到游戏资源：%s。\n迁移将合并两侧内容（同名文件保留目标已有版本），不删除任何内容。\n是否继续？" % "、".join(merge_dirs), true)
+		if not proceed:
+			return
+	elif bool(v.get("target_not_empty", false)):
+		# 目标有其它文件（非游戏资源）→ 现有非空警告
 		var proceed := await PopupWindow.instance.show_message(
 			"目标目录中已存在其他文件/文件夹。\n迁移只会在其中创建游戏资源目录"
 			+ "（Charts/Soundfont/Skins/BackgroundImage/Particles/Charas），不会删除其中任何内容。\n是否继续？", true)
 		if not proceed:
 			return
 
+	if not conflict_files.is_empty():
+		# 不可合并文件（settings.ini/favorites.json/charts.ldb 等）：统一询问保留哪一侧
+		keep_target_files = await PopupWindow.instance.show_storage_conflict_adjust(conflict_files)
+		# true=保留目标已有版本（跳过）；false=保留当前版本（覆盖目标）
+
 	# 迁移（弹窗已关闭，进度条遮罩可复用）
 	var fs := FileSystemManager.instance
 	var ui := {}
 	if fs and fs.has_method("show_progress_ui"):
 		ui = fs.show_progress_ui("正在迁移资源，请勿关闭游戏", 1)
-	var mig: Dictionary = await StorageManager.instance.migrate(PathHelper.get_storage_root(), new_path, ui)
+	var mig: Dictionary = await StorageManager.instance.migrate(
+		PathHelper.get_storage_root(), new_path, ui, keep_target_files)
 	if fs and fs.has_method("hide_progress_ui"):
 		fs.hide_progress_ui()
 

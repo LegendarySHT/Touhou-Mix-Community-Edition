@@ -22,6 +22,7 @@ static var instance: PopupWindow
 @onready var _kb_mode_adjust: KBModeAdjust = $TabC/KBModeAdjust
 @onready var _falling_adjust: FallingAdjust = $TabC/FallingAdjust
 @onready var _storage_location_adjust: StorageLocationAdjust = $TabC/StorageLocationAdjust
+@onready var _storage_conflict_adjust: StorageConflictAdjust = $TabC/StorageConflictAdjust
 
 signal window_close
 
@@ -48,6 +49,8 @@ func _pop_up_window(page: int) -> void:
 			size = Vector2(1300, 950)
 		7:
 			size = Vector2(900, 600)
+		8:
+			size = Vector2(900, 600)
 		_:
 			size = Vector2(850, 600)
 	await get_tree().create_timer(0.1).timeout
@@ -62,6 +65,8 @@ func _ready() -> void:
 	_delay_adjust.finish_requested.connect(hide)
 	# StorageLocationAdjust 确认/取消 → 隐藏窗口（必须关闭整个弹窗，不能只隐藏 tab 页）
 	_storage_location_adjust.finish_requested.connect(hide)
+	# StorageConflictAdjust 选择 → 隐藏窗口
+	_storage_conflict_adjust.finish_requested.connect(hide)
 
 	# 监听内置 popup 生命周期信号
 	about_to_popup.connect(func() -> void: _window_popup_animate(true))
@@ -249,3 +254,13 @@ func show_storage_location_adjust(current_path: String = "") -> Dictionary:
 	_pop_up_window(7)
 	await window_close
 	return _storage_location_adjust.get_result()
+
+# 弹出存储迁移冲突询问窗口（目标目录已存在不可合并文件时）
+## files: 冲突文件名列表（settings.ini / favorites.json / charts.ldb / charts-log.ldb）
+## 返回 true=保留目标已有版本（跳过，不覆盖）；false=保留当前版本（覆盖目标）
+func show_storage_conflict_adjust(files: Array) -> bool:
+	_storage_conflict_adjust.init_adjust(files)
+
+	_pop_up_window(8)
+	await window_close
+	return _storage_conflict_adjust.get_result()

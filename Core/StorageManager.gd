@@ -7,7 +7,9 @@
 ##   - 可移动存储根（PathHelper.get_storage_root() / get_files_dir()）：
 ##     全部用户数据 —— Charts / Soundfont / Skins / BackgroundImage / Particles /
 ##     Charas / Logs / Settings / THMIX_Import + settings.ini / favorites.json /
-##     auth.json / device_id.txt / charts.ldb / charts-log.ldb —— 玩家可自定义
+##     charts.ldb / charts-log.ldb —— 玩家可自定义
+##   - 固定引导目录文件（PathHelper.get_auth_file() / get_device_id_file()）：
+##     auth.json（登录态）/ device_id.txt（设备标识）—— 设备/账号级数据，不随存储根迁移
 ##
 ## 引导机制：settings.ini 随存储根迁移后，启动时不能靠读 settings.ini 定位根。
 ## 因此在引导目录维护 storage_pointer.ini（记录当前存储根），迁移提交时更新，
@@ -38,8 +40,9 @@ const MIGRATABLE_DIRS: Array[String] = [
 	"Logs", "Settings", "THMIX_Import",
 ]
 ## 随存储根迁移的顶层文件（用户数据 / 数据库）
+## 注意：auth.json / device_id.txt 为设备/账号级固定文件（存引导目录），永不随根迁移
 const MIGRATABLE_FILES: Array[String] = [
-	"settings.ini", "favorites.json", "auth.json", "device_id.txt",
+	"settings.ini", "favorites.json",
 	"charts.ldb", "charts-log.ldb", "charts.ldb.lock", "charts-log.ldb.lock",
 ]
 ## 可写性测试文件名（验证后立即删除）
@@ -101,7 +104,7 @@ static func validate_target_path(path: String) -> Dictionary:
 	if remove_err != OK:
 		return _fail("not_writable", "目标目录不可写（无法删除测试文件）")
 
-	# 非空检测（忽略隐藏条目）
+	# 非空检测（忽略隐藏条目）+ 冲突分类（可合并目录 / 不可合并文件）
 	var target_not_empty := false
 	var dir := DirAccess.open(normalized)
 	if dir:
@@ -114,7 +117,32 @@ static func validate_target_path(path: String) -> Dictionary:
 			entry = dir.get_next()
 		dir.list_dir_end()
 
-	return {"ok": true, "code": "ok", "reason": "", "target_not_empty": target_not_empty}
+	var collisions := _detect_collisions(normalized)
+	return {
+		"ok": true,
+		"code": "ok",
+		"reason": "",
+		"target_not_empty": target_not_empty,
+		"merge_dirs": collisions["merge_dirs"],
+		"conflict_files": collisions["conflict_files"],
+	}
+
+## 检测目标目录中已存在的游戏数据（迁移冲突分类）：
+##   merge_dirs    —— 目标已存在且非空的 MIGRATABLE_DIRS（可合并：两侧内容合并，同名保留目标）
+##   conflict_files—— 目标已存在的 MIGRATABLE_FILES（不可合并，需询问玩家保留哪一侧；.lock 跟随其主体不单列）
+static func _detect_collisions(normalized: String) -> Dictionary:
+	var merge_dirs: Array[String] = []
+	for d in MIGRATABLE_DIRS:
+		if DirAccess.dir_exists_absolute(normalized + d) \
+				and _count_files(normalized + d) > 0:
+			merge_dirs.append(d)
+	var conflict_files: Array[String] = []
+	for f in MIGRATABLE_FILES:
+		if f.ends_with(".lock"):
+			continue  # 锁文件跟随其主体文件（charts.ldb / charts-log.ldb）的保留决策
+		if FileAccess.file_exists(normalized + f):
+			conflict_files.append(f)
+	return {"merge_dirs": merge_dirs, "conflict_files": conflict_files}
 
 ## 启动期轻量校验（恢复/读取配置路径时使用，不创建、不写测试文件）
 ## 目录存在且可打开，或可被创建 → 视为有效
@@ -300,8 +328,11 @@ static func _has_migration_data(root: String) -> bool:
 # ============================================================
 
 ## 完整迁移：复制 → 校验 → 提交。协程，需要 UI 进度时传入 ui（show_progress_ui 返回值）
+## keep_target_files=true 时：目标已存在的顶层文件（settings.ini/favorites.json/charts.ldb 等）
+## 保留目标已有版本、不覆盖（用于玩家在冲突询问中选择"保留目标已有版本"）；
+## 目录类资源不受影响（始终跳过已存在文件 = 两侧合并，同名保留目标）
 ## 返回 {ok, reason}；ok=true 表示已提交（重启生效），ok=false 表示失败（数据层可能已关闭，建议重启）
-func migrate(old_root: String, new_root: String, ui: Dictionary = {}) -> Dictionary:
+func migrate(old_root: String, new_root: String, ui: Dictionary = {}, keep_target_files: bool = false) -> Dictionary:
 	var v := validate_target_path(new_root)
 	if not bool(v.get("ok", false)):
 		return {"ok": false, "reason": str(v.get("reason", "路径无效"))}
@@ -317,6 +348,7 @@ func migrate(old_root: String, new_root: String, ui: Dictionary = {}) -> Diction
 		"prev_override": PathHelper._storage_root_override,
 		"old_root": old_root,
 		"new_root": new_root,
+		"keep_target_files": keep_target_files,
 		"migration_id": str(Time.get_unix_time_from_system()) + "_" + str(randi()),
 		"started_at": Time.get_unix_time_from_system(),
 		"updated_at": Time.get_unix_time_from_system(),
@@ -335,7 +367,7 @@ func migrate(old_root: String, new_root: String, ui: Dictionary = {}) -> Diction
 	# 3. 复制（让出一帧避免进度 UI 与弹窗遮罩动画冲突）
 	if get_tree() != null:
 		await get_tree().process_frame
-	var copied := await _copy_storage(old_root, new_root, ui)
+	var copied := await _copy_storage(old_root, new_root, ui, keep_target_files)
 
 	# 4. 校验：新根已包含迁移数据即可（复制过程已逐文件保证；不做旧根逐文件大小对账，
 	#    迁移期间旧根仍在运行（日志/DB 持续写入），size 不一致不代表复制失败）
@@ -577,9 +609,10 @@ func _read_pointer_or_legacy_config() -> String:
 # 内部：复制 / 校验 / 清理
 # ============================================================
 
-## 复制可迁移内容（全部用户数据目录 + 顶层文件），跳过目标已存在文件（覆盖复制幂等）
+## 复制可迁移内容（全部用户数据目录 + 顶层文件）
+## keep_target_files=true 时顶层文件跳过目标已存在者（保留目标版本）；目录始终跳过已存在文件（合并）
 ## ui: FileSystemManager.show_progress_ui 返回值 {overlay, tip, bar}，可为空
-func _copy_storage(old_root: String, new_root: String, ui: Dictionary) -> bool:
+func _copy_storage(old_root: String, new_root: String, ui: Dictionary, keep_target_files: bool) -> bool:
 	# 统计总文件数用于进度条
 	var total := 0
 	for d in MIGRATABLE_DIRS:
@@ -612,6 +645,10 @@ func _copy_storage(old_root: String, new_root: String, ui: Dictionary) -> bool:
 			continue
 		var src := old_root + f
 		if FileAccess.file_exists(src):
+			if keep_target_files and FileAccess.file_exists(new_root + f):
+				# 玩家选择"保留目标已有版本"：目标已存在则不覆盖（仍计入进度）
+				progress_cb.call()
+				continue
 			if not _copy_file(src, new_root + f):
 				return false
 			progress_cb.call()

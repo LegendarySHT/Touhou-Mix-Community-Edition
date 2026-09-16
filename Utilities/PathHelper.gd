@@ -124,6 +124,36 @@ static func get_settings_dir() -> String:
 static func get_user_config_path() -> String:
 	return get_files_dir() + "settings.ini"
 
+## 认证文件路径（固定引导目录，设备/账号级数据，永不随存储根迁移）
+static func get_auth_file() -> String:
+	return get_boot_dir() + "auth.json"
+
+## 设备标识文件路径（固定引导目录，设备级数据，永不随存储根迁移）
+static func get_device_id_file() -> String:
+	return get_boot_dir() + "device_id.txt"
+
+## 固定文件惰性兼容迁移：确保 file_name（auth.json / device_id.txt）位于引导目录。
+## 历史版本曾随存储根存放，读取时若引导目录不存在而旧位置（存储根）存在，则一次性复制过来。
+## 返回实际文件路径（恒为引导目录下）。
+static func ensure_pinned_file(file_name: String) -> String:
+	var target := get_boot_dir() + file_name
+	if FileAccess.file_exists(target):
+		return target
+	var legacy := get_files_dir() + file_name
+	if not FileAccess.file_exists(legacy):
+		return target
+	var f := FileAccess.open(legacy, FileAccess.READ)
+	if f == null:
+		return target
+	var data := f.get_buffer(f.get_length())
+	f.close()
+	ensure_dir_exists(get_boot_dir())
+	var g := FileAccess.open(target, FileAccess.WRITE)
+	if g != null:
+		g.store_buffer(data)
+		g.close()
+	return target
+
 # ============ 目录操作工具 ============
 
 ## 确保目录存在（不存在则递归创建）

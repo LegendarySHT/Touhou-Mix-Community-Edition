@@ -6,9 +6,9 @@ class_name AuthManager
 
 static var instance: AuthManager = null
 
-## Token 文件路径（随存储根迁移）
+## Token 文件路径（固定引导目录，账号级数据，不随存储根迁移）
 static func get_token_file() -> String:
-	return PathHelper.get_files_dir() + "auth.json"
+	return PathHelper.ensure_pinned_file("auth.json")
 
 ## 当前用户数据（null 表示未登录）
 ## 结构：{ "username": "...", "access_token": "...", "refresh_token": "...",

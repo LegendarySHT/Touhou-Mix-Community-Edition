@@ -6,9 +6,9 @@ class_name ScoreManager
 
 static var instance: ScoreManager = null
 
-## 设备标识文件路径（随存储根迁移）
+## 设备标识文件路径（固定引导目录，设备级数据，不随存储根迁移）
 static func get_device_id_file() -> String:
-	return PathHelper.get_files_dir() + "device_id.txt"
+	return PathHelper.ensure_pinned_file("device_id.txt")
 const CHART_NOT_FOUND_ERROR: String = "chart_not_found"
 
 ## 当前设备标识（首次启动时生成，持久化存储）
