@@ -44,7 +44,7 @@ static func get_setting_groups() -> Array:
 				"id": "show_advanced_settings",
 				"name_en": "Show Advanced Settings",
 				"name_zh": "显示高级设置项",
-				"description": "控制是否显示部分玩家通常不需要调整的设置项（如显示调试信息、使用系统时钟、最大复音数、轨道光效质量）",
+				"description": "控制是否显示通常不需要调整的高级设置项",
 				"type": "TYPE_OPTION",
 				"default_value": "0",
 				"options": [
@@ -69,7 +69,7 @@ static func get_setting_groups() -> Array:
 			"id": "online_mode",
 			"name_en": "Online Mode",
 			"name_zh": "线上模式",
-			"description": "开启后启用所有网络功能（自动连接服务器、登录、上传成绩等）；关闭后所有网络功能停止",
+			"description": "是否启用登录，谱面下载等联网功能",
 			"type": "TYPE_OPTION",
 			"default_value": "0",
 			"options": [
@@ -123,7 +123,7 @@ static func get_setting_groups() -> Array:
 			"id": "storage_location",
 			"name_en": "Storage Location",
 			"name_zh": "资源存储位置",
-			"description": "设置曲包/音源/皮肤/背景图等资源文件以及设置、收藏、日志的保存路径。点击打开路径设置窗口，可手动输入或浏览选择；更改后游戏会迁移现有资源，并在下次启动时生效",
+			"description": "设置曲包/音源/皮肤/背景图等资源文件以及设置、收藏、日志的保存路径。更改后游戏会迁移现有资源，并在下次启动时生效",
 			"type": "TYPE_BUTTON",
 			"default_value": null,
 			"on_click": "_popup_storage_location_adjust"
@@ -137,7 +137,7 @@ static func get_setting_groups() -> Array:
 				"id": "performing_mode",
 				"name_en": "Performing Mode",
 				"name_zh": "弹奏模式",
-				"description": "选择no后，即使不去点击下落的音符，选择了的音轨也会正常发声",
+				"description": "关闭后，即使不去点击下落的音符，选择了的音轨也会正常发声",
 				"type": "TYPE_OPTION",
 				"default_value": "1",
 				"options": [
@@ -215,7 +215,7 @@ static func get_setting_groups() -> Array:
 				"id": "max_polyphony",
 				"name_en": "Max Polyphony",
 				"name_zh": "最大复音数",
-				"description": "设置同时发声的最大音符数，较高的值音质更好但占用更多CPU资源，建议值：32/64/96/128",
+				"description": "设置同时发声的最大音符数，较高的值音质更好但占用更多CPU资源",
 				"type": "TYPE_LINE_EDIT",
 				"default_value": "96",
 				"advanced": true,
@@ -316,7 +316,7 @@ static func get_setting_groups() -> Array:
 				"id": "spark_adjust",
 				"name_en": "Judgment Spark Effects",
 				"name_zh": "判定特效设定",
-				"description": "点击按钮打开窗口，窗口内可切换判定类型，分别调整 Perfect/Great/Good/Bad 四种判定的按键特效：基础粒子、散射粒子、整体缩放/不透明度、散射粒子缩放",
+				"description": "调整四种判定的按键特效：基础粒子、散射粒子、整体缩放/不透明度、散射粒子缩放",
 				"type": "TYPE_BUTTON",
 				"default_value": null,
 				"on_click": "_popup_spark_adjust"
@@ -583,7 +583,7 @@ static func get_setting_groups() -> Array:
 				"id": "randomize_block_color",
 				"name_en": "Randomize Block Color",
 				"name_zh": "随机音符顏色",
-				"description": "非键盘模式下，每局随机生成一次音符调色板；点块、滑块、长条三种颜色的色相至少相差 30°",
+				"description": "开启后，每次进行游戏时音符颜色将会随机设置，仅对非键盘模式有效",
 				"type": "TYPE_OPTION",
 				"default_value": "0",
 				"options": [
