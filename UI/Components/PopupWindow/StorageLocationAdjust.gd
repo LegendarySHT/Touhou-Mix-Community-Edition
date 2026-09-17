@@ -43,7 +43,6 @@ func init_adjust(current_path: String) -> void:
 	_path_line_edit.text = display
 	if _current_label:
 		_current_label.text = "当前存储位置：%s" % display
-	_path_line_edit.call_deferred("grab_focus")
 
 func get_result() -> Dictionary:
 	return _result
