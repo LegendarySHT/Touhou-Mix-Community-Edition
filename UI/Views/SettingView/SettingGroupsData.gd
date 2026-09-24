@@ -192,11 +192,10 @@ static func get_setting_groups() -> Array:
 				"id": "use_system_stopwatch",
 				"name_en": "Use System Stopwatch",
 				"name_zh": "使用系统时钟",
-				"description": "已废弃：判定时钟统一使用音频渲染时钟（单一音频主时钟），不再依赖系统墙钟推算位置",
+				"description": "开启后 MIDI 事件派发与判定均以系统墙钟为真源，低性能设备上可缓解判定滞后/漏判；关闭则回退为按音频渲染帧派发。切换立即生效（切换瞬间音乐可能有轻微跳变）",
 				"type": "TYPE_OPTION",
-				"default_value": "0",
+				"default_value": "1",
 				"advanced": true,
-				"not_implemented": true,
 				"options": [
 					{"text_en": "Off", "text_zh": "关闭"},
 					{"text_en": "On", "text_zh": "开启"}

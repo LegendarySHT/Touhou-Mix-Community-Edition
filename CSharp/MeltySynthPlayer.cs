@@ -123,6 +123,10 @@ public partial class MeltySynthPlayer : Node
 	private bool _useSeparateSynthForManual = true;  // 启用独立合成器
 	private bool _preferNativeSequencerSeek = true;
 
+	// 系统时钟模式请求状态（配置来源 Playback/use_system_stopwatch）。
+	// sequencer 在 soundfont / 采样率重建时会重新创建，创建点按本字段恢复模式，避免被静默重置为关闭。
+	private bool _systemClockRequested = false;
+
 	// 用户配置的音频缓冲区大小（帧），对齐到2的幂
 	private int _desiredBufferFrames = 1024;  // 默认1024帧，与稳定工作的旧版本一致
 
@@ -1084,19 +1088,41 @@ public partial class MeltySynthPlayer : Node
 		return _virtualChannelVolumes.TryGetValue(virtualId, out var volume) ? volume : 1.0f;
 	}
 
-	// 【已废弃】单一音频主时钟下不再使用系统秒表。保留签名以兼容接口/包装层调用链，
-	// 内部不再启用 sequencer 系统时钟模式（墙钟与音频渲染在设备欠载时严重漂移）。
+	// 【系统时钟模式】事件派发时机改由系统墙钟驱动：sequencer 在每个 block 边界取一次
+	// 墙钟位置，并 flush 该位置之前的全部事件。启用后事件派发钟与判定钟（同为墙钟锚点）
+	// 同源，低性能设备上音频回调被延迟调度时，二者不再沿不同时间轴分离。
+	// 关闭时回退为按音频渲染帧派发（旧行为）。
+	// 线程模型：SetSystemClockMode 会重写 clockBasePosition/clockBaseTimestamp，而音频线程
+	// 在 Render→GetSystemClockPosition 中读取这两个字段，故必须在 _synthLock 内调用，
+	// 与其它 sequencer 状态变更保持同一互斥域。
 	public void set_use_system_stopwatch(bool enabled)
 	{
-		if (enabled)
+		_systemClockRequested = enabled;
+
+		if (_sequencer == null)
 		{
-			GD.Print("[MeltySynthPlayer] use_system_stopwatch is deprecated: judge clock always uses the audio render clock (ignored)");
+			return;  // sequencer 尚未创建，创建时按 _systemClockRequested 应用
 		}
+
+		if (_sequencer.UseSystemClock == enabled)
+		{
+			return;  // 状态未变化，避免重复作废判定钟锚点
+		}
+
+		WithSynthLock(() =>
+		{
+			_sequencer.SetSystemClockMode(enabled);
+		});
+
+		// 模式切换会把 RenderedPosition 基准重置到当前位置，判定钟锚点与渲染时间戳须一并作废
+		ResetRenderTimestamp();
+		InvalidateJudgeClock();
+		GD.Print($"[MeltySynthPlayer] System clock mode: {(enabled ? "ON" : "OFF")}");
 	}
 
 	public bool get_use_system_stopwatch()
 	{
-		return false;
+		return _sequencer != null && _sequencer.UseSystemClock;
 	}
 
 	public void set_track_channel_instrument(int trackIndex, int channel, int bank, int program)
@@ -1651,7 +1677,9 @@ public partial class MeltySynthPlayer : Node
 		playing = false;
 		if (_sequencer != null)
 		{
-			_sequencer.Pause();
+			// 线程模型：系统时钟模式下音频线程在 GetSystemClockPosition 中读取
+			// isPaused/clockBasePosition/clockBaseTimestamp，Pause 写这些字段必须与回调渲染互斥。
+			WithSynthLock(() => _sequencer.Pause());
 		}
 		// GD.Print($"[MeltySynthPlayer] pause() called - _currentOffsetMs={_currentOffsetMs}, _sequencerStarted={_sequencerStarted}");
 		// 保持 sequencer 状态，不重置位置
@@ -1663,7 +1691,8 @@ public partial class MeltySynthPlayer : Node
 		InvalidateJudgeClock();  // 按 resume 后的音频参考重建锚点
 		if (_midiFile != null && _sequencer != null)
 		{
-			_sequencer.Resume();
+			// 线程模型：同 pause()，Resume 重设墙钟锚点，必须与回调渲染互斥
+			WithSynthLock(() => _sequencer.Resume());
 
 			// 【处理 pre-roll 模式】如果在 pre-roll 中，继续等待跨越零点
 			if (_currentOffsetMs < 0.0)
@@ -1785,11 +1814,10 @@ public partial class MeltySynthPlayer : Node
 		{
 			OnSendMessage = OnSendMessage
 		};
-		// 【单一音频主时钟】显式关闭系统时钟模式：事件按音频渲染帧触发，
-		// 判定钟由 get_position_ms 基于 RenderedPosition 推导。
-		_sequencer.SetSystemClockMode(false);
+		// 创建时按请求状态恢复系统时钟模式（音源 / 采样率重建后不能静默回落到关闭）
+		_sequencer.SetSystemClockMode(_systemClockRequested);
 		_sequencer.SetDiagnosticsEnabled(false);
-		GD.Print("[MeltySynthPlayer] Created sequencer with autoSynth");
+		GD.Print($"[MeltySynthPlayer] Created sequencer with autoSynth (system clock: {(_systemClockRequested ? "ON" : "OFF")})");
 
 		// 手动音符合成器（独立，用于低延迟响应）
 		if (_useSeparateSynthForManual)
