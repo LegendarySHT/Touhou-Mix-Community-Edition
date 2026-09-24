@@ -159,7 +159,7 @@ var track_channel_instruments: Dictionary = {}
 
 ## ========== 用户配置字段（运行时可修改，需持久化）==========
 
-## MIDI播放音量（线性 0.0-1.0，0.5=原始音量 0dB；-1=未配置，使用全局 default_midi_volume）
+## MIDI播放音量（线性 0.0-1.0；UI→增益映射系数见 MidiPlaybackManager.MIDI_VOLUME_GAIN，0.5=+6dB；-1=未配置，使用全局 default_midi_volume）
 ## 注意：0.5 是合法显式值（用户设 50%），不再兼任"未配置"哨兵
 var midi_volume: float = -1.0
 

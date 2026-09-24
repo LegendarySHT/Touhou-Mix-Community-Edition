@@ -68,8 +68,10 @@ func _ready() -> void:
 		push_error("MidiPlaybackManager not initialized in Main! MIDI features will not work.")
 		return
 
-	# 反推MIDI音量slider值: 新UI值 = linear * 50 (因为实际效果是UI值的2倍)
-	midi_vol_slider.value = db_to_linear(midi_playback_manager.midi_player_config["volume_db"]) * 50
+	# 反推MIDI音量slider值（映射的逆：UI值 = 后端线性增益 / MIDI_VOLUME_GAIN）
+	midi_vol_slider.value = clampf(
+		db_to_linear(midi_playback_manager.midi_player_config["volume_db"]) / MidiPlaybackManager.MIDI_VOLUME_GAIN,
+		0.0, 1.0)
 	_set_display_midi_volume(midi_vol_slider.value)
 
 	# 连接信号（检查防止重复连接）
@@ -368,10 +370,8 @@ func _on_midi_volume_changed(value: float) -> void:
 		_prev_midi_vol = value
 		midi_vol_btn.set_pressed_no_signal(false)
 
-	# MIDI音量实际效果为UI值的2倍: 0.5=0dB, 1.0=+6dB
-	var volume_db = linear_to_db(value * 2.0)
-	volume_db = maxf(volume_db, -80.0)  # value=0 → -inf，钳到 -80 静音
-	midi_playback_manager.set_volume_db(volume_db)
+	# MIDI音量实际效果为UI值的 MIDI_VOLUME_GAIN 倍（0.5=+6dB, 1.0=+12dB）
+	midi_playback_manager.apply_ui_midi_volume(value)
 
 	# 更新标签
 	_set_display_midi_volume(value)

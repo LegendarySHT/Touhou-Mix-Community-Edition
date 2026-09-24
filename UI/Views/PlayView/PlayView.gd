@@ -908,9 +908,9 @@ func _apply_midi_runtime_config(midi_data: MidiData) -> void:
 	if playback_mgr == null:
 		return
 	
-	# 应用全局音量 (MIDI音量实际效果为UI值的2倍: 0.5=0dB, 1.0=+6dB)
+	# 应用全局音量（映射系数见 MidiPlaybackManager.MIDI_VOLUME_GAIN: 0.5=+6dB, 1.0=+12dB）
 	# 默认值(0.5)回退全局 default_midi_volume，与 TrackView 保持一致
-	playback_mgr.set_volume_db(linear_to_db(playback_mgr.get_effective_midi_volume(midi_data.midi_volume) * 2.0))
+	playback_mgr.apply_ui_midi_volume(playback_mgr.get_effective_midi_volume(midi_data.midi_volume))
 	
 	# 应用轨道-通道的静音状态
 	# track_channel_mute_state: {track_idx: {channel: bool}}

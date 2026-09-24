@@ -1092,6 +1092,17 @@ func set_volume_db(volume: float) -> void:
 
 	midi_player_config["volume_db"] = volume
 
+## MIDI 主音量映射系数：UI 线性值(0~1) × 本系数 = 后端线性增益。
+## 4.0 ⇒ 50% = +6dB、100% = +12dB（合成器输出响度天然低于成品人声母带，需放大上限才能与人声拉平）
+const MIDI_VOLUME_GAIN: float = 8.0
+## 音量下限(dB)：linear_to_db(0) 为 -inf，统一钳到此值表示静音
+const MIN_VOLUME_DB: float = -80.0
+
+## 统一把 UI 线性音量应用到后端（TrackView / MidiConfigPersistence / PlayView 共用），
+## 避免多处各自硬编码系数导致视图间音量不一致
+func apply_ui_midi_volume(ui_linear: float) -> void:
+	set_volume_db(maxf(linear_to_db(ui_linear * MIDI_VOLUME_GAIN), MIN_VOLUME_DB))
+
 ## 统一解析 MIDI 主音量：per-midi 显式值优先，未配置（midi_volume < 0，约定 -1）回退全局
 ## default_midi_volume，并 clamp 到 [0,1]。0.5 现在是合法显式值（用户设为 50% 不再被当作哨兵）。
 ## 供 TrackView/PlayView 共用，保证同一 MIDI 在各视图音量一致
