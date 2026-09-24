@@ -7,12 +7,13 @@ extends Node
 
 # 背景配置走 ThemeManager（theme.ini [backgrounds] 段），不再从 config.ini 读取
 const BG_BLUR_SHADER_PATH := "res://UI/Views/PlayView/Shaders/BackgroundBlur.gdshader"
-const BG_FLASH_SHADER_PATH := "res://UI/Views/PlayView/Shaders/BackgroundFlash.gdshader"
+const BG_COMPOSITE_SHADER_PATH := "res://UI/Views/PlayView/Shaders/BackgroundComposite.gdshader"
 
 @onready var background: TextureRect = $"../Background"
-@onready var dim_overlay: ColorRect = $"../DimOverlay"
 
 var flash_color: Color = Color.WHITE
+## 背景合成材质（暗化 + 判定闪光），替代原 DimOverlay 全屏层
+var _bg_material: ShaderMaterial = null
 var _flash_tween: Tween = null
 var _blur_bake_viewport: SubViewport = null
 var _blur_bake_texture_rect: TextureRect = null
@@ -100,13 +101,17 @@ func has_cover_for_current_midi(midi: MidiData) -> bool:
 
 
 func _apply_background_solid(color_html: String) -> void:
-	background.texture = null
-	background.modulate = Color(color_html) if color_html.is_valid_html_color() else Color("#10121AFF")
+	# 暗化/闪光已合并进本层 shader，而 TextureRect 无纹理时不产生绘制，
+	# 故这里必须给出纯色纹理（原先置 null 会让整层连同暗化一起消失）
+	var color := Color(color_html) if color_html.is_valid_html_color() else Color("#10121AFF")
+	var img := Image.create_empty(1, 1, false, Image.FORMAT_RGBA8)
+	img.fill(color)
+	background.texture = ImageTexture.create_from_image(img)
+	background.modulate = Color.WHITE
 	_clear_cover_blur_material()
 
 
 func _set_cover_blur_material(blur_strength: float, midi_key: String) -> void:
-	background.material = null
 	var tex = background.texture
 	if tex == null:
 		return
@@ -114,7 +119,6 @@ func _set_cover_blur_material(blur_strength: float, midi_key: String) -> void:
 
 
 func _clear_cover_blur_material() -> void:
-	background.material = null
 	_teardown_blur_bake_viewport()
 
 
@@ -128,7 +132,6 @@ func _bake_blurred_background(cover_texture: Texture2D, blur_strength: float, mi
 		_blur_bake_texture_rect = null
 
 	if blur_strength <= 0.001:
-		background.material = null
 		return
 
 	var window_size = DisplayServer.window_get_size()
@@ -165,7 +168,6 @@ func _bake_blurred_background(cover_texture: Texture2D, blur_strength: float, mi
 
 	background.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	background.texture = _blur_bake_viewport.get_texture()
-	background.material = null
 	# 记录本次烘焙结果，供后续同谱面复用
 	_baked_midi_key = midi_key
 	_baked_blur_strength = blur_strength
@@ -198,35 +200,34 @@ func _can_reuse_bake(midi: MidiData, blur_strength: float) -> bool:
 
 
 func _apply_background_dim() -> void:
-	if dim_overlay == null:
+	var mat := _ensure_bg_material()
+	if mat == null:
 		return
 	var dim_color_html = ConfigManager.instance.get_string("Appearance", "background_dim_color", "#0000007F")
-	if dim_color_html.is_valid_html_color():
-		dim_overlay.color = Color(dim_color_html)
-	else:
-		dim_overlay.color = Color(0, 0, 0, 0.5)
-	_setup_dim_overlay_shader()
+	var dim_color := Color(dim_color_html) if dim_color_html.is_valid_html_color() else Color(0, 0, 0, 0.5)
+	mat.set_shader_parameter("dim_color", dim_color)
 	var flash_color_html = ConfigManager.instance.get_string("Appearance", "background_image_flash_color", "#FFFFFF00")
 	if flash_color_html.is_valid_html_color():
 		flash_color = Color(flash_color_html)
 	else:
 		flash_color = Color(1, 1, 1, 0)
-	var mat := dim_overlay.material as ShaderMaterial
-	if mat:
-		mat.set_shader_parameter("flash_color", flash_color)
-
-
-func _setup_dim_overlay_shader() -> void:
-	if dim_overlay.material and dim_overlay.material is ShaderMaterial:
-		return
-	var shader := load(BG_FLASH_SHADER_PATH)
-	if shader == null:
-		return
-	var mat := ShaderMaterial.new()
-	mat.shader = shader
 	mat.set_shader_parameter("flash_color", flash_color)
-	mat.set_shader_parameter("flash_progress", 0.0)
-	dim_overlay.material = mat
+
+
+## 确保背景合成材质存在：暗化与判定闪光由它承担，
+## 取代原先独立的 DimOverlay 全屏 ColorRect（少一层全屏 alpha 混合）
+func _ensure_bg_material() -> ShaderMaterial:
+	if background == null:
+		return null
+	if _bg_material == null:
+		var shader := load(BG_COMPOSITE_SHADER_PATH)
+		if shader == null:
+			return null
+		_bg_material = ShaderMaterial.new()
+		_bg_material.shader = shader
+		_bg_material.set_shader_parameter("flash_progress", 0.0)
+		background.material = _bg_material
+	return _bg_material
 
 
 func _set_flash_progress(value: float, mat: ShaderMaterial) -> void:
@@ -234,9 +235,9 @@ func _set_flash_progress(value: float, mat: ShaderMaterial) -> void:
 
 
 func _flash_background() -> void:
-	if dim_overlay == null or flash_color.a <= 0:
+	if flash_color.a <= 0:
 		return
-	var mat := dim_overlay.material as ShaderMaterial
+	var mat := _ensure_bg_material()
 	if mat == null:
 		return
 	if _flash_tween and _flash_tween.is_valid():
