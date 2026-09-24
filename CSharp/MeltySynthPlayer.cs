@@ -3,6 +3,7 @@ using MeltySynth;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -77,7 +78,8 @@ public partial class MeltySynthPlayer : Node
 	private int _sampleRate;
 	// 线程模型说明（TMX-005）：
 	// - 下列标量字段（_volumeLinear/_sequencerStarted/_pendingSeekMs/_currentOffsetMs/_lastPositionMs/
-	//   _hasSkippedPreroolEvents 等）均仅由主线程读写；音频线程在 MiniaudioBridge 内有自己的
+	//   _hasSkippedPreroolEvents/_judgeAnchorMs/_judgeAnchorTicks/_judgeAnchorValid/_lastRenderedRefMs 等）
+	//   均仅由主线程读写；音频线程在 MiniaudioBridge 内有自己的
 	//   _volumeLinear/_playing 副本并通过 _synthLock 保护合成器引用交换，不直接访问本类标量字段，
 	//   因此无需 volatile（double 也无法标记 volatile）。
 	// - 真正跨线程共享的是下方字典：音频回调 handler 链（OnSendMessage）读写 vs 主线程
@@ -90,8 +92,18 @@ public partial class MeltySynthPlayer : Node
 	private double _lastPositionMs = 0.0;  // 最后已知播放位置（暂停/seek 后保持，供 get_position_ms 读取）
 	private bool _hasSkippedPreroolEvents = false;  // 标志：已跳过 pre-roll 事件
 
-	// 【废弃】系统秒表时钟模式已移除（单一音频主时钟）。判定位置一律基于音频回调
-	// 已渲染帧（RenderedPosition）推导，墙钟与音频渲染在设备欠载时严重漂移。
+	// ============ 判定钟：墙钟锚点推进 + 音频参考慢速校准 ============
+	// 判定位置 = 锚点位置 + 墙钟流逝 × Speed − 设备延迟；锚点在 play/seek/pause/resume/
+	// stop/loop 回绕等边界重设。与音频回调解耦后，回调被延迟调度时判定位置仍连续推进，
+	// 消除"点了没判定 / 判定滞后"（旧实现的外推上限一旦封顶就会冻结判定）。
+	// 注意：人声同步走 get_raw_position_ms()（音频回调钟），不使用本钟。
+	private double _judgeAnchorMs = 0.0;      // 锚点位置（毫秒，未扣设备延迟）
+	private long _judgeAnchorTicks = 0;       // 锚点对应的墙钟时间戳
+	private bool _judgeAnchorValid = false;   // 锚点是否有效（play/seek/暂停/停止后失效，下次读取重建）
+	private double _lastRenderedRefMs = 0.0;  // 上次读到的音频渲染钟，用于识别 loop 回绕
+	private const double JudgeCalibrationDeadbandMs = 25.0;  // 音频参考误差超过此值视为真实欠载，不做校准
+	private const double JudgeSlewGain = 0.02;               // 每次读取吸收的误差比例（慢速校准，避免跳变）
+	private const double JudgeWrapBackwardEpsilonMs = 1.0;   // 渲染钟回跳超过此值视为 loop 回绕
 	private readonly ConcurrentDictionary<int, float> _virtualChannelVolumes = new ConcurrentDictionary<int, float>();
 	private readonly ConcurrentDictionary<int, (int bank, int program)> _virtualChannelInstruments = new ConcurrentDictionary<int, (int bank, int program)>();
 	private readonly ConcurrentDictionary<int, int> _virtualChannelCurrentBank = new ConcurrentDictionary<int, int>();
@@ -522,6 +534,7 @@ public partial class MeltySynthPlayer : Node
 				_currentOffsetMs = _pendingSeekMs;
 				_sequencerStarted = false;  // 标记 sequencer 需要重启
 				_hasSkippedPreroolEvents = false;  // 重置标志，准备首次 crossing zero
+				InvalidateJudgeClock();
 		
 				// 停止所有播放（AudioStreamPlayer 和 Sequencer）
 				// 注意：ma_bridge_stop 会等待回调完成，必须在锁外调用（回调可能阻塞在锁上）
@@ -588,6 +601,7 @@ public partial class MeltySynthPlayer : Node
 			_currentOffsetMs = 0.0;  // 清除任何 pre-roll offset
 			_hasSkippedPreroolEvents = true;  // 正数seek时无需跳过事件
 			ResetRenderTimestamp();
+			InvalidateJudgeClock();  // 按 seek 后的音频参考重建锚点
 			_lastPositionMs = _pendingSeekMs;  // 记录 seek 目标，供非播放状态读取
 
 			// 3. 如果之前在播放，重新启动 AudioStreamPlayer（锁外，ma_bridge_start 不等待回调）
@@ -631,6 +645,7 @@ public partial class MeltySynthPlayer : Node
 				_hasSkippedPreroolEvents = true;
 				_currentOffsetMs = 0.0;  // 重置 offset，准备正常播放阶段
 				ResetRenderTimestamp();
+				InvalidateJudgeClock();  // 跨零点后按音频参考重建锚点（位置归 0）
 				
 				// 【不要返回】继续执行到正常播放流程，让 sequencer 自然渲染第一批帧
 			}
@@ -686,6 +701,9 @@ public partial class MeltySynthPlayer : Node
 			return;
 		}
 
+		// 判定钟锚点作废：下次读取按当前音频参考重建
+		InvalidateJudgeClock();
+
 		// GD.Print($"[MeltySynthPlayer] play() called - _midiFile: {_midiFile != null}, _sequencerStarted: {_sequencerStarted}, _currentOffsetMs: {_currentOffsetMs}, _audioOutput.IsPlaying: {_audioOutput?.IsPlaying}");
 
 		// 【处理 pre-roll 模式】如果当前有负数 offset，不启动 sequencer，让 _Process 处理跨越零点
@@ -734,6 +752,7 @@ public partial class MeltySynthPlayer : Node
 		_sequencerStarted = false;  // 重置标志，下次 play() 会重新启动
 		_currentOffsetMs = 0.0;  // 重置 offset
 		_lastPositionMs = 0.0;  // 重置最后已知位置（stop 语义为回到开头）
+		InvalidateJudgeClock();
 	}
 
 	private void FinishPlayback()
@@ -755,6 +774,7 @@ public partial class MeltySynthPlayer : Node
 		_hasSkippedPreroolEvents = false;
 		_currentOffsetMs = 0.0;
 		_lastPositionMs = _midiFile != null ? _midiFile.Length.TotalMilliseconds : 0.0;
+		InvalidateJudgeClock();
 
 		// 通知 GDScript 侧（MidiPlaybackManager._on_midi_finished → midi_finished）
 		EmitSignal(SignalName.finished);
@@ -928,6 +948,33 @@ public partial class MeltySynthPlayer : Node
 		}
 	}
 
+	/// <summary>
+	/// 音频侧原始参考位置（已渲染帧 + 短外推，未扣设备延迟），仅用于校准判定钟。
+	/// 人声同步请使用 get_raw_position_ms()。
+	/// </summary>
+	private double GetAudioRawReferenceMs(double renderedMs)
+	{
+		if (_audioOutput != null && _audioOutput.IsPlaying && _audioOutput is MiniaudioAudioOutputBridge maBridge)
+		{
+			return renderedMs + maBridge.GetExtrapolationMs();
+		}
+		return renderedMs;
+	}
+
+	/// <summary>作废判定钟锚点：下次 get_position_ms() 按当前音频参考重建锚点。</summary>
+	private void InvalidateJudgeClock()
+	{
+		_judgeAnchorValid = false;
+	}
+
+	/// <summary>以给定位置建立判定钟墙钟锚点（位置未扣设备延迟，读取时统一扣除）。</summary>
+	private void ReanchorJudgeClock(double positionMs)
+	{
+		_judgeAnchorMs = positionMs;
+		_judgeAnchorTicks = Stopwatch.GetTimestamp();
+		_judgeAnchorValid = true;
+	}
+
 	public double get_position_ms()
 	{
 		// 【修复】seek 待处理期间返回目标位置，避免 NoteDisplayer 看到不连贯的位置跳跃
@@ -957,29 +1004,47 @@ public partial class MeltySynthPlayer : Node
 			return _lastPositionMs;
 		}
 
-		// 【单一音频主时钟】判定钟 = 音频回调已渲染帧 + 短外推 - 固定设备延迟。
-		// 不再使用系统秒表墙钟：墙钟推算与音频实际渲染无关，设备欠载时严重漂移
-		// （Android 上回调超时导致音频落后墙钟可达数秒）。
-		// 基准改用 RenderedPosition（精确渲染帧），替代 Position（块量化，可超前最多 512 帧）。
-		// renderedTime 只在回调边界推进，读取时陈旧 0~1 周期，用外推消除锯齿
-		// （上限 2 周期，真实卡顿时停止外推）。
+		// 【判定钟 = 墙钟锚点推进 + 音频参考慢速校准】
+		// 旧实现为"已渲染帧 + 上限 2 周期的外推"：音频回调被延迟调度时外推封顶、
+		// 判定位置冻结，玩家看到音符到线却判定不到（漏判 / 滞后）。
+		// 改为墙钟锚点后判定位置与回调调度无关，始终连续推进。
 		double renderedMs = _sequencer.RenderedPosition.TotalMilliseconds;
 
-		if (_audioOutput != null && _audioOutput.IsPlaying)
+		// 音频渲染钟大幅回跳只可能是 loop 回绕（或未显式处理的 seek）：
+		// 判定钟必须跟随回绕，否则会停滞在回绕点。
+		if (_judgeAnchorValid && renderedMs < _lastRenderedRefMs - JudgeWrapBackwardEpsilonMs)
 		{
-			double extrapolationMs = 0.0;
-			if (_audioOutput is MiniaudioAudioOutputBridge maBridge)
-			{
-				extrapolationMs = maBridge.GetExtrapolationMs();
-			}
-			float latencyMs = _audioOutput.GetLatencyMs();
-			double resultMs = Math.Max(0.0, renderedMs + extrapolationMs - latencyMs);
-			_lastPositionMs = resultMs;
-			return resultMs;
+			InvalidateJudgeClock();
+		}
+		_lastRenderedRefMs = renderedMs;
+
+		double audioRefMs = GetAudioRawReferenceMs(renderedMs);
+
+		// 音频尚未产出任何渲染帧（play() 后设备启动 / 跨零点重启窗口）：锚点必须持续钉在
+		// 音频参考上。否则墙钟会在设备真正出声前抢先推进，造成开局判定超前（音符到线早于发声）。
+		// 设备一旦开始渲染 renderedMs 立即大于 0，此后恢复正常锚点推进。
+		if (!_judgeAnchorValid || renderedMs <= 0.0)
+		{
+			ReanchorJudgeClock(audioRefMs);
 		}
 
-		_lastPositionMs = renderedMs;
-		return renderedMs;
+		double latencyMs = (_audioOutput != null && _audioOutput.IsPlaying) ? _audioOutput.GetLatencyMs() : 0.0;
+		double elapsedMs = (Stopwatch.GetTimestamp() - _judgeAnchorTicks) / (double)Stopwatch.Frequency * 1000.0;
+		double wallRawMs = _judgeAnchorMs + elapsedMs * _sequencer.Speed;
+
+		// 慢速校准：健康区间内把墙钟稳稳拉向音频参考（只吸收一小部分，不产生位置跳变）；
+		// 误差超出去噪带说明音频确实被卡住/落后，此时保持墙钟推进（判定不冻结），
+		// 音频侧的补偿交由上层重同步策略处理。
+		double errorMs = audioRefMs - wallRawMs;
+		if (Math.Abs(errorMs) <= JudgeCalibrationDeadbandMs)
+		{
+			_judgeAnchorMs += errorMs * JudgeSlewGain;
+			wallRawMs += errorMs * JudgeSlewGain;
+		}
+
+		double resultMs = Math.Max(0.0, wallRawMs - latencyMs);
+		_lastPositionMs = resultMs;
+		return resultMs;
 	}
 
 	/// <summary>
@@ -1582,6 +1647,7 @@ public partial class MeltySynthPlayer : Node
 	/// <summary>暂停播放 (接口方法)</summary>
 	public void pause()
 	{
+		InvalidateJudgeClock();  // 恢复时按暂停后的音频参考重建锚点
 		playing = false;
 		if (_sequencer != null)
 		{
@@ -1594,6 +1660,7 @@ public partial class MeltySynthPlayer : Node
 	/// <summary>恢复播放 (接口方法)</summary>
 	public void resume()
 	{
+		InvalidateJudgeClock();  // 按 resume 后的音频参考重建锚点
 		if (_midiFile != null && _sequencer != null)
 		{
 			_sequencer.Resume();

@@ -187,12 +187,15 @@ func _process(delta: float) -> void:
 				_visual_time_ms += delta * 1000.0
 				var drift: float = current_time - _visual_time_ms
 				_visual_time_ms += clampf(drift * _VISUAL_ANCHOR_RATE, -_VISUAL_ANCHOR_MAX_MS, _VISUAL_ANCHOR_MAX_MS)
-			# 【方案C】同步双时钟到FlowArea：判定用音频钟，渲染用平滑视觉钟
+			# 【方案C】同步到FlowArea：判定与渲染均为墙钟锚点钟（current_time），
+			# _visual_time_ms 仅做帧间平滑
 			flow_area.set_current_time(current_time, _visual_time_ms)
 
-			# 检测MIDI播放结束：position连续多帧不增长说明已被clamp到midiFile.Length
+			# 检测音频停滞：判定钟（current_time）已改为墙钟锚点推导，音频卡顿时不再停滞，
+			# 故停滞检测必须改用音频回调钟（get_raw_position_ms）——音频中断/曲终时停止增长的是它。
 			# 当 duration_ms 与 midiFile.Length 不一致时，进度条可能永远无法达到 max_value
-			if current_time > 0 and abs(current_time - _last_playback_position) < 0.5:
+			var stall_clock_ms: float = playback_mgr.get_raw_position_ms() if playback_mgr else current_time
+			if stall_clock_ms > 0.0 and abs(stall_clock_ms - _last_playback_position) < 0.5:
 				_position_stall_frames += 1
 				if _position_stall_frames >= _PLAYBACK_STALL_THRESHOLD:
 					_position_stall_frames = 0
@@ -215,7 +218,7 @@ func _process(delta: float) -> void:
 						_on_game_finished()
 			else:
 				_position_stall_frames = 0
-			_last_playback_position = current_time
+			_last_playback_position = stall_clock_ms
 	
 ## 演奏视图专用：关闭/恢复 Input 事件累积（低延迟输入路径）
 func _apply_input_low_latency(enable: bool) -> void:
