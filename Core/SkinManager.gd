@@ -507,6 +507,44 @@ func clear_skin_cache(skin_name: String = "") -> void:
 	else:
 		_skin_textures_cache.erase(skin_name)
 
+## ========== 音符显示颜色解析（运行时与皮肤预览共用的唯一规则来源） ==========
+## 规则（按优先级）：
+##   皮肤 custom_color ON → 皮肤规则（enable_color + random_color，取 skin_random_colors 或 color）
+##   custom_color OFF + 非键盘模式 + 全局随机 ON  → global_random_colors[key]
+##   custom_color OFF + 非键盘模式 + 全局随机 OFF → 全局手动色（Appearance/{key}_block_color）
+##   custom_color OFF + 键盘模式                  → Color.WHITE
+static func resolve_note_colors(skin_config: Dictionary, keyboard_mode: bool,
+		skin_random_colors: Dictionary = {}, global_random_colors: Dictionary = {}) -> Dictionary:
+	var custom_color_on: bool = bool(skin_config.get("general", {}).get("custom_color", false))
+	var global_random_on: bool = ConfigManager.instance.get_int("Appearance", "randomize_block_color", 0) == 1
+	var out: Dictionary = {}
+	for key in ["short", "instant", "long"]:
+		var color := Color.WHITE
+		if custom_color_on and skin_config.has(key):
+			var sec: Dictionary = skin_config[key]
+			if bool(sec.get("enable_color", false)):
+				if bool(sec.get("random_color", false)) and skin_random_colors.has(key):
+					color = skin_random_colors[key]
+				else:
+					color = sec.get("color", Color.WHITE)
+		elif not keyboard_mode:
+			if global_random_on and global_random_colors.has(key):
+				color = global_random_colors[key]
+			else:
+				color = get_global_note_color(key)
+		out[key] = color
+	return out
+
+## 读取全局手动音符颜色（默认值与 Resources/Config/config.ini [Appearance] 一致）
+static func get_global_note_color(key: String) -> Color:
+	var default_hex := "#4ECDC4"  # short=点块
+	if key == "instant":
+		default_hex = "#FF6B6B"   # instant=滑块
+	elif key == "long":
+		default_hex = "#45B7D1"   # long=长条
+	var raw: String = ConfigManager.instance.get_string("Appearance", "%s_block_color" % key, default_hex)
+	return Color.from_string(raw, Color.WHITE)
+
 ## 获取默认皮肤的贴图
 func get_default_skin_textures() -> Dictionary:
 	var default_name: String = ConfigManager.instance.get_string("Appearance", "block_skin_preset", "旧版2 [内置]")

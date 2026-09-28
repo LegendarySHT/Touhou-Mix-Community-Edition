@@ -567,13 +567,10 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	# resume() 触发 start_vocal_playback 的同步加载/解码卡顿
 	# 同时预热演奏模式手动音符触发路径（首次点击的一次性 JIT/通道分配成本移到开局前）
 	playback_mgr.warmup_manual_path()
-	# 【预热】音符预合成贴图：覆盖本局全部 (类型,颜色) 组合（含随机色/键盘交替色），
-	# 使逐像素合成 + GPU 上传发生在面板遮罩期，避免游戏开始后前几个音符 spawn 帧尖峰
-	var _prewarm_t0 := Time.get_ticks_usec()
-	flow_area.prewarm_all_composites()
 	# 【预热】粒子精灵图：首次判定 spawn 粒子时的同步 load() + GPU 上传前移到面板遮罩期
+	var _prewarm_t0 := Time.get_ticks_usec()
 	flow_area.prewarm_spark_packs()
-	GLogger.info("Prewarm done: composites+sparks in %.2fms" % [(Time.get_ticks_usec() - _prewarm_t0) / 1000.0], "PlayView")
+	GLogger.info("Prewarm done: sparks in %.2fms" % [(Time.get_ticks_usec() - _prewarm_t0) / 1000.0], "PlayView")
 	playback_mgr.prepare_vocal_playback()
 
 	if play_ready_animation:

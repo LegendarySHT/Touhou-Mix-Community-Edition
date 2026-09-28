@@ -540,46 +540,12 @@ func load_note_skin(skin_name: String = "旧版2 [内置]") -> void:
 
 	GLogger.info("Loaded note skin: %s, glow=%s, connect_mode=%s" % [skin_name, _is_glow_enabled, _long_connect_mode], "FlowArea")
 
-## 根据 _skin_config + _random_colors + _global_random_colors 解析出最终音符颜色
-## 规则（按优先级）：
-##   皮肤 custom_color ON → 沿用皮肤规则（含皮肤内 random_color）
-##   非键盘模式 + 全局随机 ON → _global_random_colors[key]
-##   非键盘模式 + 全局随机 OFF → 全局手动颜色（short/instant/long_block_color）
-##   键盘模式 + custom_color OFF → Color.WHITE（现状不变）
+## 根据 _skin_config + _random_colors + _global_random_colors 解析出最终音符颜色。
+## 规则实现集中在 SkinMGR.resolve_note_colors（与 NoteSkinAdjust 皮肤预览共用，避免两份逻辑漂移）
 func _resolve_note_colors() -> void:
-	_resolved_colors.clear()
-	var custom_color_on: bool = false
-	if _skin_config.has("general"):
-		custom_color_on = bool(_skin_config["general"].get("custom_color", false))
 	var keyboard_mode: bool = parent_node != null and bool(parent_node.get("keyboard_mode"))
-	var global_random_on := ConfigManager.instance.get_int("Appearance", "randomize_block_color", 0) == 1
-
-	for key in ["short", "instant", "long"]:
-		var color := Color.WHITE
-		if custom_color_on and _skin_config.has(key):
-			var sec: Dictionary = _skin_config[key]
-			if bool(sec.get("enable_color", false)):
-				if bool(sec.get("random_color", false)) and _random_colors.has(key):
-					color = _random_colors[key]
-				else:
-					color = sec.get("color", Color.WHITE)
-		elif not keyboard_mode:
-			if global_random_on and _global_random_colors.has(key):
-				color = _global_random_colors[key]
-			else:
-				color = _get_global_color(key)
-		_resolved_colors[key] = color
-
-## 读取全局手动音符颜色（非键盘模式 + 皮肤 custom_color OFF + 全局随机 OFF 时使用）
-## 默认值与 config.ini [Appearance] 保持一致
-func _get_global_color(key: String) -> Color:
-	var default_hex := "#4ECDC4"  # short=点块
-	if key == "instant":
-		default_hex = "#FF6B6B"   # instant=滑块
-	elif key == "long":
-		default_hex = "#45B7D1"   # long=长条
-	var raw := ConfigManager.instance.get_string("Appearance", "%s_block_color" % key, default_hex)
-	return Color.from_string(raw, Color.WHITE)
+	_resolved_colors = SkinMGR.resolve_note_colors(_skin_config, keyboard_mode,
+		_random_colors, _global_random_colors)
 
 ## 重新解析颜色并同步到所有活跃音符（用于随机颜色刷新等场景）
 ## 每音符颜色在 _spawn_note 时由 _get_note_color 应用，此处只刷新已生成仍绘制的音符
@@ -707,8 +673,6 @@ func _spawn_note(note_index: int) -> void:
 	else:
 		_rt_half[note_index] = _note_drawer.get_half_height(tp)
 		_rt_claimed[note_index] = -1
-
-	_prewarm_composite(tp, _rt_color[note_index])
 	_add_to_bucket(note_index)
 	_add_note_to_lane_index(note_index)
 	_update_block_note_fall(note_index, _synced_current_time, _render_time_ms)
@@ -908,43 +872,6 @@ func _add_to_bucket(note_index: int) -> void:
 	type_bucket[color_key].append(note_index)
 	_active_note_count += 1
 
-## 预构建该音符（type, color）组合的合成贴图（spawn/换色时调用；成本落在主线程生成阶段而非 _draw）
-func _prewarm_composite(type_key: int, color: Color) -> void:
-	_prewarm_composite_color(type_key, color)
-
-## 预构建 (type, color) 组合的合成贴图（Long 含 head/tail/body 三部分）
-func _prewarm_composite_color(type_key: int, color: Color) -> void:
-	if _note_drawer == null:
-		return
-	if type_key == FlowNote.NoteType.Long:
-		_note_drawer.get_composite(FlowNote.NoteType.Long, color, "head")
-		_note_drawer.get_composite(FlowNote.NoteType.Long, color, "tail")
-		_note_drawer.get_composite(FlowNote.NoteType.Long, color, "body")
-	else:
-		_note_drawer.get_composite(type_key, color)
-
-## 全量预热：把本局可能出现的全部 (类型, 颜色) 组合的合成贴图在开局前构建好，
-## 避免游戏开始后前几个音符 spawn 时现合成 + GPU 上传造成帧尖峰（脚本耗时低但渲染侧卡帧）。
-## 颜色来源：
-##   非键盘模式 = _resolved_colors（short/instant/long 三色，含随机色，每局不同需重预热）；
-##   键盘模式 + 交替轨道色 = 全部交替色 × 全部类型（任意轨道色都可能出现在任意音符上）。
-## 必须在 init_flow_area()（颜色已 resolve）之后、音符 spawn（is_pause=false）之前调用。
-func prewarm_all_composites() -> void:
-	if _note_drawer == null or parent_node == null:
-		return
-	var alt_colors: Array = []
-	if parent_node.keyboard_mode and parent_node.keyboard_alt_color \
-			and not parent_node.keyboard_alt_colors.is_empty():
-		alt_colors = parent_node.keyboard_alt_colors
-	if not alt_colors.is_empty():
-		for type_key in _TYPE_ORDER:
-			for cl in alt_colors:
-				_prewarm_composite_color(type_key, cl)
-	else:
-		_prewarm_composite_color(FlowNote.NoteType.Block, _get_resolved_color_for_type(FlowNote.NoteType.Block))
-		_prewarm_composite_color(FlowNote.NoteType.Slide, _get_resolved_color_for_type(FlowNote.NoteType.Slide))
-		_prewarm_composite_color(FlowNote.NoteType.Long, _get_resolved_color_for_type(FlowNote.NoteType.Long))
-
 ## 全量预热：把本局判定特效引用的粒子包精灵图在开局前加载（ParticleMGR 模板/纹理缓存），
 ## 首次判定 spawn 粒子时的同步 load() + GPU 上传前移到面板遮罩期。
 ## spark_presets/spark_emitters 已由 init_flow_area → _reload_spark_config 解析，本方法直接取用。
@@ -965,7 +892,6 @@ func _move_note_to_bucket(note_index: int, new_color: Color) -> void:
 	old_bucket.erase(note_index)
 	_active_note_count -= 1  # 平衡 _add_to_bucket 的 +1（换色净计数不变）
 	_rt_color[note_index] = new_color
-	_prewarm_composite(type_key, new_color)
 	_add_to_bucket(note_index)
 
 func set_glow_params(intensity: float, size_val: float) -> void:

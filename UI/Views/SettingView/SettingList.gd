@@ -358,11 +358,30 @@ func _find_setting_data(id: String) -> Dictionary:
 # PopupWindow 内部已通过 ConfigManager.set_value_and_notify 即时应用到 PlayView
 # _pending_config 仅确保退出 SettingView 时保存到配置文件
 func _popup_note_skin_adjust() -> void:
+	# 打开弹窗前先把待保存的全局音符颜色等配置刷入 ConfigManager._current_config，
+	# 否则预览读 get_global_note_color() 拿到的还是进入 SettingView 时的旧值
+	# （_pending_config 只在退出 SettingView 时才写盘 + 合并进 _current_config）
+	_flush_pending_to_runtime()
 	var skin_name := await PopupWindow.instance.show_note_skin_adjust()
 	if skin_name.is_empty():
 		return
 	_pending_config["block_skin_preset"] = skin_name
 	GLogger.info("block_skin_preset selected: '%s' (pending save)" % skin_name, "SettingList")
+
+## 将 _pending_config 中所有项写入 ConfigManager._current_config 并 emit config_changed，
+## 使弹出窗口（如皮肤预览）能立即读到本次会话内尚未保存的修改。
+## 不更新 _initial_config，退出时的 diff/写盘逻辑不受影响。
+func _flush_pending_to_runtime() -> void:
+	var cm := ConfigManager.instance
+	for setting_id in _pending_config:
+		if not SettingsMapper.mappings.has(setting_id):
+			continue
+		var mapping = SettingsMapper.mappings[setting_id]
+		var section = mapping.get("section", "")
+		var key = mapping.get("key", "")
+		if section.is_empty() or key.is_empty():
+			continue
+		cm.set_value_and_notify(section, key, _pending_config[setting_id])
 
 # ===== 键位设置弹窗入口 =====
 # 弹出键位设置窗口，关闭后即时应用（set_value_and_notify）+ 缓存 _pending_config
@@ -798,13 +817,11 @@ func _get_soundfont_path(soundfont_name: String) -> String:
 
 ## ========== 配置保存与应用 ==========
 
-## 退出 SettingView 时调用：emit config_changed 信号应用变更
-## 仅 emit 与 _initial_config 不同的项
+## 退出 SettingView 时调用：将变更写入 ConfigManager._current_config 并 emit config_changed
+## 仅处理与 _initial_config 不同的项
 func apply_pending_config_updates() -> int:
 	var emitted_count = 0
-	if EvtBus == null:
-		push_warning("[SettingList] EventBus is null, skip applying pending config updates")
-		return emitted_count
+	var cm = ConfigManager.instance
 
 	for setting_id in _pending_config:
 		if not SettingsMapper.mappings.has(setting_id):
@@ -816,10 +833,12 @@ func apply_pending_config_updates() -> int:
 			continue
 		var value = _pending_config[setting_id]
 		var old_value = _initial_config.get(setting_id, null)
-		# 仅 emit 变更项
+		# 仅处理变更项
 		if str(old_value) == str(value):
 			continue
-		EvtBus.config_changed.emit(key, section, value)
+		# 用 set_value_and_notify 同时更新 _current_config 并 emit 信号，
+		# 避免直接 emit 导致运行时读到的仍是旧 _current_config
+		cm.set_value_and_notify(section, key, value)
 		emitted_count += 1
 
 	# 同步已应用状态到进入快照：后续 diff 基于"上次已应用值"而非"进入设置时快照"，

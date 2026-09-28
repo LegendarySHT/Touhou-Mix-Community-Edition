@@ -187,7 +187,10 @@ func _apply_preview_from_config() -> void:
 	var custom_color_on: bool = bool(gen.get("custom_color", false))
 	var enable_glow: bool = bool(gen.get("enable_glow", false))
 
-	# 1. 颜色：custom_color OFF → 白色；ON + enable_color ON → 配置色；ON + enable_color OFF → 白色
+	# 1. 颜色：
+	#    custom_color ON  → 用界面上的工作值（含皮肤内 random_color），便于边改边看
+	#    custom_color OFF → 与运行时同规则解析（全局手动色 / 全局随机色 / 键盘模式白色），
+	#                       不再一律白色，观感与实战一致
 	var block_color := Color.WHITE
 	var slide_color := Color.WHITE
 	var long_color := Color.WHITE
@@ -195,18 +198,33 @@ func _apply_preview_from_config() -> void:
 		block_color = _resolve_preview_color("short", _block_color_cb, _block_color_picker, _random_block_cb)
 		slide_color = _resolve_preview_color("instant", _slide_color_cb, _slide_color_picker, _random_slide_cb)
 		long_color = _resolve_preview_color("long", _long_color_cb, _long_color_picker, _random_long_cb)
+	else:
+		# 预览无键盘模式语境，按非键盘模式解析（实战常见情形）
+		var resolved: Dictionary = SkinMGR.resolve_note_colors(
+			_working_config, false, {}, _preview_global_random_colors())
+		block_color = resolved.get("short", Color.WHITE)
+		slide_color = resolved.get("instant", Color.WHITE)
+		long_color = resolved.get("long", Color.WHITE)
 	_note_block_node.get_node("core").modulate = block_color
 	_note_slide_node.get_node("core").modulate = slide_color
 	for child in _note_long_node.get_node("VBoxC").get_children():
 		child.get_node("core").modulate = long_color
 
 	# 2. 光效：enable_glow=true 时挂 shader 并设颜色；false 时清除 material
-	_apply_preview_glow(_note_block_node, block_color, enable_glow)
-	_apply_preview_glow(_note_slide_node, slide_color, enable_glow)
+	# 强度/范围取自全局外观设置，与运行时光效同源（PlayView 读同两项，NoteBatchDrawer 同样钳制）
+	var glow_intensity: float = clampf(
+		ConfigManager.instance.get_float("Appearance", "note_glow_intensity", 0.5), 0.0, 2.0)
+	var glow_size: float = clampf(
+		ConfigManager.instance.get_float("Appearance", "note_glow_size", 5.0), 1.0, 30.0)
+	_apply_preview_glow(_note_block_node, block_color, enable_glow, glow_intensity, glow_size)
+	_apply_preview_glow(_note_slide_node, slide_color, enable_glow, glow_intensity, glow_size)
 	if _note_long_node.has_node("VBoxC"):
-		for child in _note_long_node.get_node("VBoxC").get_children():
-			if child is TextureRect:
-				_apply_preview_glow(child, long_color, enable_glow)
+		# 只给 head/tail 挂光效：与运行时 GlowLayer 一致（长条 body 不画光效）。
+		# 显式列出节点而非遍历全部子节点，避免后续给 body 加 _glow 时与运行时行为分叉
+		for part in ["tail", "head"]:
+			var part_node := _note_long_node.get_node_or_null("VBoxC/" + part)
+			if part_node is TextureRect:
+				_apply_preview_glow(part_node, long_color, enable_glow, glow_intensity, glow_size)
 
 	# 3. 长条连接模式：center → head/tail 各向 body 偏移半高；edge → 重置
 	var long_sec: Dictionary = _working_config.get("long", {})
@@ -238,26 +256,71 @@ func _resolve_preview_color(key: String, enable_cb: CheckBox, picker: ColorPicke
 		return Color.from_hsv(seed_val / 360.0, 0.8, 1.0)
 	return picker.color
 
+## 预览用的全局随机调色板代表值。
+## 预览无法得知本局实际生成的随机色（NoteColorPalette 每局 randf），且每次刷新都变会闪烁，
+## 故用与 NoteColorPalette 同风格的确定性代表值：饱和度/亮度取该区间中值、色相两两 >= 30°；
+## sync_color_across_block_type=1 时三类型同色（与运行时一致）。
+func _preview_global_random_colors() -> Dictionary:
+	var unified := ConfigManager.instance.get_int("Appearance", "sync_color_across_block_type", 0) == 1
+	var saturation := 0.9
+	var value := 0.95
+	if unified:
+		var same := Color.from_hsv(0.55, saturation, value)
+		return {"short": same, "instant": same, "long": same}
+	return {
+		"short": Color.from_hsv(0.10, saturation, value),
+		"instant": Color.from_hsv(0.55, saturation, value),
+		"long": Color.from_hsv(0.85, saturation, value),
+	}
+
 ## 给预览节点的 _glow 子节点应用或清除 NoteGlow shader
-func _apply_preview_glow(note_root: Node, glow_color: Color, enable_glow: bool) -> void:
+## glow_intensity / glow_size 取自全局外观设置（与运行时光效同一来源），使预览与实战观感一致
+func _apply_preview_glow(note_root: Node, glow_color: Color, enable_glow: bool,
+		glow_intensity: float, glow_size: float) -> void:
 	var glow = note_root.get_node_or_null("_glow")
 	if glow == null:
 		return
 	if not enable_glow:
 		glow.material = null
 		return
-	note_root.z_index = 1
 	if glow.material == null or not (glow.material is ShaderMaterial) or (glow.material as ShaderMaterial).shader != NOTE_GLOW_SHADER:
 		var mat := ShaderMaterial.new()
 		mat.shader = NOTE_GLOW_SHADER
 		glow.material = mat
 	var mat2 := glow.material as ShaderMaterial
 	mat2.set_shader_parameter("glow_color", glow_color)
-	mat2.set_shader_parameter("glow_intensity", 1.0)
-	mat2.set_shader_parameter("glow_size", 8.0)
+	mat2.set_shader_parameter("glow_intensity", glow_intensity)
+	mat2.set_shader_parameter("glow_size", glow_size)
 	mat2.set_shader_parameter("glow_stretch", 1.0)
+	# 与运行时 GlowLayer 完全一致的方形 quad + UV 标定：
+	# 运行时光效是边长 max(宽,高)*GLOW_QUAD_SCALE 的方形 quad 贴 1/6 半径单位的光晕纹理，
+	# 故预览也用同尺寸方形 quad，note_uv_half 固定 1/6（1 单位 = quad 边长 / 6）。
+	_fit_glow_quad(glow, note_root)
 	mat2.set_shader_parameter("note_uv_center", Vector2(0.5, 0.5))
-	mat2.set_shader_parameter("note_uv_half", Vector2(0.1667, 0.1667))
+	mat2.set_shader_parameter("note_uv_half", Vector2(1.0 / 6.0, 1.0 / 6.0))
+
+## 把 _glow 摆成与运行时 GlowLayer 相同的方形 quad：边长 = max(节点宽, 高) * GLOW_QUAD_SCALE，
+## 中心与节点重合。必须用正方形，不能用「固定 3 倍节点尺寸」：
+## 细长 cap（BarSolid / BarFade 的头尾）在短边方向只有几十像素，3 倍仍远小于光晕
+## 半径，光晕会在矩形上下边被硬切；正方形且边长与运行时一致时，光晕到矩形边缘已
+## 衰减到约 2%，与运行时的截断程度相同。
+func _fit_glow_quad(glow: Node, note_root: Node) -> void:
+	var glow_ctrl := glow as Control
+	var root_ctrl := note_root as Control
+	if glow_ctrl == null or root_ctrl == null:
+		return
+	var sz: Vector2 = root_ctrl.size
+	if sz.x <= 0.0 or sz.y <= 0.0:
+		return
+	var side: float = maxf(sz.x, sz.y) * GlowLayer.GLOW_QUAD_SCALE
+	glow_ctrl.anchor_left = 0.5 - side * 0.5 / sz.x
+	glow_ctrl.anchor_right = 0.5 + side * 0.5 / sz.x
+	glow_ctrl.anchor_top = 0.5 - side * 0.5 / sz.y
+	glow_ctrl.anchor_bottom = 0.5 + side * 0.5 / sz.y
+	glow_ctrl.offset_left = 0.0
+	glow_ctrl.offset_top = 0.0
+	glow_ctrl.offset_right = 0.0
+	glow_ctrl.offset_bottom = 0.0
 
 ## 给预览 body 节点应用或清除 LongBodyRepeat shader
 func _apply_preview_long_f_mode(body_node: Node, f_mode: String) -> void:

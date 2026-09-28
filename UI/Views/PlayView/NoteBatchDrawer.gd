@@ -59,10 +59,11 @@ var flow_area: Object = null
 # 透明纹理回退（贴图缺失时）
 var _transparent_tex: Texture2D = null
 
-# 预合成贴图缓存：type_key -> { color -> { part -> Texture2D } }，part ""=Block/Slide
-# core 纯白 + alpha 蒙版，预合成 = base + 着色 core 逐像素合并，绘制时单贴图即可上色
-# 颜色来自共享数组（有界 2~8 种），Color 值本身可作键；换肤（set_textures/set_long_textures）时整体清空
-var _composite_cache: Dictionary = {}
+# 上色方式：先画 base（固定色结构层），再画 core（纯白 + alpha 蒙版）并 modulate 音符色。
+# 与 NoteSkinAdjust 预览（core 子节点 + modulate）一致，也与
+# draw_texture_rect(core, rect, false, color) 的 alpha 加权混合等价。
+# 注意：不要用 Image.blend_rect_mask 预合成 —— 该 API 只判 mask.a != 0 做二值门整体覆盖，
+# 会把 core 的软边与亮度渐变全部涂成纯色（整片色块、轮廓丢失）。
 
 # _draw 遍历用：复用常量，避免每帧分配 [Block, Slide] 数组字面量
 const _BLOCK_SLIDE_TYPES: Array = [FlowNote.NoteType.Block, FlowNote.NoteType.Slide]
@@ -99,7 +100,6 @@ func set_textures(block_tex: Texture2D, block_core_tex: Texture2D,
 	_slide_tex = slide_tex if slide_tex else _transparent_tex
 	_slide_core_tex = slide_core_tex if slide_core_tex else _transparent_tex
 	_recompute_heights()
-	_clear_composite_cache()
 
 ## 同步 Long 长条贴图（head=long_b 头部 / body=long_f 中部 / tail=long_t 尾部）
 func set_long_textures(head_tex: Texture2D, head_core_tex: Texture2D,
@@ -112,23 +112,10 @@ func set_long_textures(head_tex: Texture2D, head_core_tex: Texture2D,
 	_long_tail_tex = tail_tex if tail_tex else _transparent_tex
 	_long_tail_core_tex = tail_core_tex if tail_core_tex else _transparent_tex
 	_recompute_heights()
-	_clear_composite_cache()
 
 ## 设置 body 中部贴图应用方式（"repeat" / "stretch"）
 func set_long_body_mode(mode: String) -> void:
 	_long_body_mode = mode
-
-## 获取 (type, color, part) 的预合成贴图（不存在则构建并缓存；part ""=Block/Slide）
-func get_composite(type_key: int, color: Color, part: String = "") -> Texture2D:
-	if not _composite_cache.has(type_key):
-		_composite_cache[type_key] = {}
-	var by_color: Dictionary = _composite_cache[type_key]
-	if not by_color.has(color):
-		by_color[color] = {}
-	var by_part: Dictionary = by_color[color]
-	if not by_part.has(part):
-		by_part[part] = _build_composite(type_key, color, part)
-	return by_part[part]
 
 ## Long 头/尾半高（spawn 时由 FlowArea 读取）
 func get_long_head_half_height() -> float:
@@ -174,63 +161,12 @@ func get_max_half_height() -> float:
 
 # ========== 内部实现 ==========
 
-func _clear_composite_cache() -> void:
-	_composite_cache.clear()
-
-func _base_tex_for(type_key: int, part: String) -> Texture2D:
-	match type_key:
-		FlowNote.NoteType.Long:
-			match part:
-				"head": return _long_head_tex
-				"tail": return _long_tail_tex
-				_: return _long_body_tex
-		FlowNote.NoteType.Slide: return _slide_tex
-		_: return _block_tex
-
-func _core_tex_for(type_key: int, part: String) -> Texture2D:
-	match type_key:
-		FlowNote.NoteType.Long:
-			match part:
-				"head": return _long_head_core_tex
-				"tail": return _long_tail_core_tex
-				_: return _long_body_core_tex
-		FlowNote.NoteType.Slide: return _slide_core_tex
-		_: return _block_core_tex
-
-## 构建 (type, color, part) 的预合成贴图：core 纯白 + alpha 蒙版 ⇒
-## 用纯色 tint 按 core 蒙版 blend 进 base，与 draw_texture_rect(core, rect, false, color) 逐像素等价
-func _build_composite(type_key: int, color: Color, part: String) -> Texture2D:
-	if _transparent_tex == null:
-		_transparent_tex = _create_transparent_texture()
-	var base_tex: Texture2D = _base_tex_for(type_key, part)
-	var core_tex: Texture2D = _core_tex_for(type_key, part)
-	if base_tex == null or core_tex == null:
-		return _transparent_tex  # 防御：贴图未设置时回退透明
-
-	var base_img := base_tex.get_image()
-	if base_img == null:
-		return base_tex  # 防御：贴图不可读时回退原贴图
-	if base_img.is_compressed():
-		base_img.decompress()
-	base_img.convert(Image.FORMAT_RGBA8)
-
-	var core_img := core_tex.get_image()
-	if core_img == null:
-		core_img = Image.create_empty(1, 1, false, Image.FORMAT_RGBA8)
-		core_img.fill(Color(0, 0, 0, 0))
-	if core_img.is_compressed():
-		core_img.decompress()
-	core_img.convert(Image.FORMAT_RGBA8)
-
-	var w: int = base_img.get_width()
-	var h: int = base_img.get_height()
-	if core_img.get_width() != w or core_img.get_height() != h:
-		core_img.resize(w, h, Image.INTERPOLATE_BILINEAR)  # 与 draw_texture_rect 拉伸一致
-
-	var tint := Image.create_empty(w, h, false, Image.FORMAT_RGBA8)
-	tint.fill(Color(color.r, color.g, color.b, color.a))
-	base_img.blend_rect_mask(tint, core_img, Rect2i(0, 0, w, h), Vector2i.ZERO)
-	return ImageTexture.create_from_image(base_img)
+## 绘制一个音符部件的两层：base（固定色结构层，原样绘制）→ core（纯白蒙版，modulate 音符色）。
+## 必须分两次绘制、不能用 Image.blend_rect_mask 预合成：该 API 只按 mask.a != 0 做二值门整体覆盖，
+## 会丢掉 core 的软边与亮度渐变（整片纯色），与 NoteSkinAdjust 预览的 core 子节点 + modulate 不一致。
+func _draw_note_layers(base_tex: Texture2D, core_tex: Texture2D, rect: Rect2, color: Color) -> void:
+	draw_texture_rect(base_tex, rect, false)
+	draw_texture_rect(core_tex, rect, false, color)
 
 func _recompute_heights() -> void:
 	_block_half_height = _compute_half_height(_block_tex)
@@ -300,13 +236,14 @@ func _draw() -> void:
 
 	# 绘制音符贴图（short / instant / long）
 	# 只跳过已移除音符：Long 被按住时 is_judged=true 但仍需显示，不能按 is_judged 跳过
-	# 分桶遍历：类型桶 → 颜色桶，同色连续绘制同一预合成贴图（利于 CanvasItem 批处理）
-	# 预合成 = base + 着色 core 像素级合并（_build_composite），每音符从 2 次绘制降到 1 次
+	# 分桶遍历：类型桶 → 颜色桶，同色连续绘制同一 core（利于 CanvasItem 批处理）
+	# 每个音符 2 次绘制：base（固定色结构层）+ core（modulate 音符色）
 	for type_key in _BLOCK_SLIDE_TYPES:
 		var type_bucket: Dictionary = _note_buckets[type_key]  # set_notes_source 后三级键必存在，免 .get 每次构造空字典
+		var base_tex: Texture2D = _block_tex if type_key == FlowNote.NoteType.Block else _slide_tex
+		var core_tex: Texture2D = _block_core_tex if type_key == FlowNote.NoteType.Block else _slide_core_tex
 		for color_key in type_bucket:
 			var bucket: Array = type_bucket[color_key]
-			var comp: Texture2D = get_composite(type_key, color_key)
 			for note_index in bucket:
 				if flags[note_index] & REMOVED:
 					continue
@@ -314,76 +251,75 @@ func _draw() -> void:
 				var half_h: float = rt_half[note_index]
 				if cy + half_h < top_limit or cy - half_h > bottom_limit:
 					continue
-				draw_texture_rect(comp, Rect2(rt_x[note_index], cy - half_h, _note_width, half_h * 2.0), false)
+				_draw_note_layers(base_tex, core_tex,
+					Rect2(rt_x[note_index], cy - half_h, _note_width, half_h * 2.0), color_key)
 
 	# Long：同色桶内 body→tail→head 三遍绘制，最大化同贴图批处理（每音符自身层序仍 body<tail<head）
 	var long_bucket: Dictionary = _note_buckets[FlowNote.NoteType.Long]
 	for color_key in long_bucket:
 		var bucket: Array = long_bucket[color_key]
-		var comp_body: Texture2D = get_composite(FlowNote.NoteType.Long, color_key, "body")
-		var comp_tail: Texture2D = get_composite(FlowNote.NoteType.Long, color_key, "tail")
-		var comp_head: Texture2D = get_composite(FlowNote.NoteType.Long, color_key, "head")
 		for note_index in bucket:
 			if not flags[note_index] & REMOVED:
-				_draw_long_body(note_index, fa, top_limit, bottom_limit, comp_body)
+				_draw_long_body(note_index, fa, top_limit, bottom_limit, color_key)
 		for note_index in bucket:
 			if not flags[note_index] & REMOVED:
-				_draw_long_tail(note_index, fa, top_limit, bottom_limit, comp_tail)
+				_draw_long_tail(note_index, fa, top_limit, bottom_limit, color_key)
 		for note_index in bucket:
 			if not flags[note_index] & REMOVED:
-				_draw_long_head(note_index, fa, top_limit, bottom_limit, comp_head)
+				_draw_long_head(note_index, fa, top_limit, bottom_limit, color_key)
 
 ## 绘制 Long body（长条连接部分）：
 ## repeat → 按贴图原始高度分条重复；stretch → 整体竖直拉伸。
-## comp 为 (Long, color, "body") 预合成贴图（合成即 base 尺寸，core 高光随 base 周期重复）
+## 每部分都按 base（固定色）→ core（modulate 音符色）两层绘制。
 ## note_index 为平行数组 seq 索引，运行态经 fa（FlowArea）读取
-func _draw_long_body(note_index: int, fa: Object, top_limit: float, bottom_limit: float, comp: Texture2D) -> void:
+func _draw_long_body(note_index: int, fa: Object, top_limit: float, bottom_limit: float, color: Color) -> void:
 	var body_top: float = fa._rt_body_top[note_index]
 	var body_h: float = fa._rt_body_h[note_index]
 	if body_h <= 0.0 or body_top + body_h < top_limit or body_top > bottom_limit:
 		return
 	var body_rect := Rect2(fa._rt_x[note_index], body_top, _note_width, body_h)
 	if _long_body_mode == "repeat":
-		_draw_long_body_repeat(comp, body_rect)
+		_draw_long_body_repeat(_long_body_tex, _long_body_core_tex, body_rect, color)
 	else:
 		# stretch：整体竖直拉伸
-		draw_texture_rect(comp, body_rect, false)
+		_draw_note_layers(_long_body_tex, _long_body_core_tex, body_rect, color)
 
 ## 绘制 Long tail（尾部）
-func _draw_long_tail(note_index: int, fa: Object, top_limit: float, bottom_limit: float, comp: Texture2D) -> void:
+func _draw_long_tail(note_index: int, fa: Object, top_limit: float, bottom_limit: float, color: Color) -> void:
 	var tail_cy: float = fa._rt_tail_cy[note_index]
 	var tail_half: float = fa._rt_tail_half[note_index]
 	if tail_cy + tail_half < top_limit or tail_cy - tail_half > bottom_limit:
 		return
-	var tail_rect := Rect2(fa._rt_x[note_index], tail_cy - tail_half, _note_width, tail_half * 2.0)
-	draw_texture_rect(comp, tail_rect, false)
+	_draw_note_layers(_long_tail_tex, _long_tail_core_tex,
+		Rect2(fa._rt_x[note_index], tail_cy - tail_half, _note_width, tail_half * 2.0), color)
 
 ## 绘制 Long head（头部，盖在 body 上）
-func _draw_long_head(note_index: int, fa: Object, top_limit: float, bottom_limit: float, comp: Texture2D) -> void:
+func _draw_long_head(note_index: int, fa: Object, top_limit: float, bottom_limit: float, color: Color) -> void:
 	var head_cy: float = fa._rt_head_cy[note_index]
 	var head_half: float = fa._rt_head_half[note_index]
 	if head_cy + head_half < top_limit or head_cy - head_half > bottom_limit:
 		return
-	var head_rect := Rect2(fa._rt_x[note_index], head_cy - head_half, _note_width, head_half * 2.0)
-	draw_texture_rect(comp, head_rect, false)
+	_draw_note_layers(_long_head_tex, _long_head_core_tex,
+		Rect2(fa._rt_x[note_index], head_cy - head_half, _note_width, head_half * 2.0), color)
 
 ## repeat 模式下分条绘制 body：水平拉伸（0-1），垂直按贴图原始高度逐条重复
 ## 最后一条不足贴图高度时只取贴图顶部剩余部分（与 LongBodyRepeat shader 的 fract(UV.y*v_repeat) 一致）
-## comp 为预合成贴图，分条周期取 base body 原始高度 _long_body_tex_height
-func _draw_long_body_repeat(comp: Texture2D, rect: Rect2) -> void:
+## 分条周期取 base body 原始高度 _long_body_tex_height；base/core 两层逐条分别绘制
+func _draw_long_body_repeat(base_tex: Texture2D, core_tex: Texture2D, rect: Rect2, color: Color) -> void:
 	var tex_h := _long_body_tex_height
 	if tex_h <= 0.0:
-		draw_texture_rect(comp, rect, false)
+		_draw_note_layers(base_tex, core_tex, rect, color)
 		return
-	var tex_w := comp.get_width()
+	var tex_w := base_tex.get_width()
 	var top := rect.position.y
 	var remain := rect.size.y
 	var guard := 0
 	while remain > 0.01:
 		var h := minf(tex_h, remain)
-		draw_texture_rect_region(comp,
-			Rect2(rect.position.x, top, rect.size.x, h),
-			Rect2(0, 0, tex_w, h))
+		var dst := Rect2(rect.position.x, top, rect.size.x, h)
+		var src := Rect2(0, 0, tex_w, h)
+		draw_texture_rect_region(base_tex, dst, src)
+		draw_texture_rect_region(core_tex, dst, src, color)
 		top += h
 		remain -= h
 		guard += 1
