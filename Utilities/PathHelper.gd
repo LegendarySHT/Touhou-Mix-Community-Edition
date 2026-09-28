@@ -17,6 +17,9 @@ class_name PathHelper
 ## Android 包名（硬编码，与 export_presets.cfg 中一致）
 const PACKAGE_NAME = "com.touhoumix.ce"
 
+## 内置皮肤配置覆盖目录名（位于皮肤目录之下，见 get_builtin_skin_config_dir()）
+const BUILTIN_SKIN_CONFIG_DIR_NAME = "builtin_skin_config"
+
 # ============ 平台判断 ============
 
 ## 是否运行在 Android 平台
@@ -99,8 +102,10 @@ static func get_charas_dir() -> String:
 
 ## 内置皮肤配置覆盖目录
 ## res:// 在导出后为只读，内置皮肤的修改持久化到此目录
+## 注意：它位于皮肤目录（get_skins_dir()）之下，只存 {皮肤名}.ini，不是皮肤包，
+## 扫描皮肤时必须按 BUILTIN_SKIN_CONFIG_DIR_NAME 跳过
 static func get_builtin_skin_config_dir() -> String:
-	return get_skins_dir() + "builtin_skin_config/"
+	return get_skins_dir() + BUILTIN_SKIN_CONFIG_DIR_NAME + "/"
 
 ## 音源目录
 static func get_soundfont_dir() -> String:

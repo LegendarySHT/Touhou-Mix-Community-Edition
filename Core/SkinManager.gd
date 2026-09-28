@@ -107,6 +107,13 @@ func _scan_skins_from_dir_worker(dir_path: String, is_builtin: bool, local_skins
 			folder_name = dir.get_next()
 			continue
 
+		# 跳过内置皮肤配置覆盖目录：它位于用户皮肤目录之下，只存 {皮肤名}.ini 覆盖文件，
+		# 不是皮肤包。否则会被当成一个名为 builtin_skin_config 的用户皮肤，
+		# 并且因为"用户皮肤配置缺失即生成并写盘"而往里写入一份多余的 skin.ini
+		if folder_name == PathHelper.BUILTIN_SKIN_CONFIG_DIR_NAME:
+			folder_name = dir.get_next()
+			continue
+
 		var skin_path = dir_path.path_join(folder_name)
 		var skin_key = folder_name
 
