@@ -498,7 +498,7 @@ func set_note_texture(texture_array: Array):
 		_recompute_fall_constants()
 
 # 加载并应用指定皮肤的贴图
-func load_note_skin(skin_name: String = "旧版2 [内置]") -> void:
+func load_note_skin(skin_name: String = SkinManager.DEFAULT_SKIN_PRESET) -> void:
 	# 获取皮肤贴图字典
 	var skin_textures = {}
 	if SkinMGR:

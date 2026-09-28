@@ -388,7 +388,7 @@ func _on_skin_resources_ready() -> void:
 
 func _do_load_note_skin() -> void:
 	# 从配置加载皮肤设置
-	var skin_name = ConfigManager.instance.get_string("Appearance", "block_skin_preset", "旧版2 [内置]")
+	var skin_name = ConfigManager.instance.get_string("Appearance", "block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 
 	# 应用皮肤
 	if flow_area and flow_area.has_method("load_note_skin"):
@@ -401,7 +401,7 @@ func _do_load_note_skin() -> void:
 func _regenerate_random_note_colors() -> void:
 	if not flow_area:
 		return
-	var skin_name = ConfigManager.instance.get_string("Appearance", "block_skin_preset", "旧版2 [内置]")
+	var skin_name = ConfigManager.instance.get_string("Appearance", "block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	var skin_config = SkinMGR.get_skin_config(skin_name)
 	if skin_config.is_empty():
 		return

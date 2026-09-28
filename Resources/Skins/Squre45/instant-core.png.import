@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://fabmpyvd83ml"
-path="res://.godot/imported/instant-core.png-1c856b7a55173a58529be814f586b00a.ctex"
+path="res://.godot/imported/instant-core.png-1d3abddc97fc2ba6159e18aec046b9e0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Resources/Skins/旧版2/instant-core.png"
-dest_files=["res://.godot/imported/instant-core.png-1c856b7a55173a58529be814f586b00a.ctex"]
+source_file="res://Resources/Skins/Squre45/instant-core.png"
+dest_files=["res://.godot/imported/instant-core.png-1d3abddc97fc2ba6159e18aec046b9e0.ctex"]
 
 [params]
 

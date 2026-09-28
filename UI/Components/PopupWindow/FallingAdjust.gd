@@ -113,7 +113,7 @@ func _select_phase(btn: OptionButton, phase_name: String) -> void:
 
 ## 应用当前选中的音符皮肤到预览 block（使用 short 类型的贴图）
 func _apply_current_skin_to_preview() -> void:
-	var skin_name := ConfigManager.instance.get_string("Appearance", "block_skin_preset", "旧版2 [内置]")
+	var skin_name := ConfigManager.instance.get_string("Appearance", "block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	var skin_textures := SkinMGR.get_skin_textures(skin_name)
 	var transparent := _create_transparent_texture()
 	_preview_block.texture = skin_textures.get("short", transparent)

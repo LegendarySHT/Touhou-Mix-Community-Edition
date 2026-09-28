@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://lw84oqj2sxho"
-path="res://.godot/imported/long-f.png-1b0ad6470f0a0665709b7dc32d54f221.ctex"
+path="res://.godot/imported/long-f.png-3ae2246b85bd70883c24423dc102f0a8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Resources/Skins/原版-CircleBar/long-f.png"
-dest_files=["res://.godot/imported/long-f.png-1b0ad6470f0a0665709b7dc32d54f221.ctex"]
+source_file="res://Resources/Skins/CircleBar/long-f.png"
+dest_files=["res://.godot/imported/long-f.png-3ae2246b85bd70883c24423dc102f0a8.ctex"]
 
 [params]
 

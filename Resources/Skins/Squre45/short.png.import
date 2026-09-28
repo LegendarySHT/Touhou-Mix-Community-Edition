@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dty1c7rmcvog8"
-path="res://.godot/imported/short.png-4567b1817c1f245ccc17c1add24374cf.ctex"
+path="res://.godot/imported/short.png-d46bef8ddc9800d29a85acfea54ac0d6.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Resources/Skins/旧版2/short.png"
-dest_files=["res://.godot/imported/short.png-4567b1817c1f245ccc17c1add24374cf.ctex"]
+source_file="res://Resources/Skins/Squre45/short.png"
+dest_files=["res://.godot/imported/short.png-d46bef8ddc9800d29a85acfea54ac0d6.ctex"]
 
 [params]
 

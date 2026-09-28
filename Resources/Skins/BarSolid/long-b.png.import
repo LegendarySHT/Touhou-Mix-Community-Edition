@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dum6q4glll0ch"
-path="res://.godot/imported/long-b.png-f36208ceffceb9319f7b16429fb73fa1.ctex"
+path="res://.godot/imported/long-b.png-231ce48d75f5b1898f4dfdbaefcffe9c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Resources/Skins/原版-BarSolid/long-b.png"
-dest_files=["res://.godot/imported/long-b.png-f36208ceffceb9319f7b16429fb73fa1.ctex"]
+source_file="res://Resources/Skins/BarSolid/long-b.png"
+dest_files=["res://.godot/imported/long-b.png-231ce48d75f5b1898f4dfdbaefcffe9c.ctex"]
 
 [params]
 

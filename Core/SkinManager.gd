@@ -18,6 +18,9 @@ const DEFAULT_SKINS_SRC = "res://Resources/Skins/"
 ## 皮肤配置文件名（放置在皮肤包目录下）
 const SKIN_CONFIG_FILE = "skin.ini"
 
+## 默认音符皮肤预设（Appearance/block_skin_preset 的兜底值，与 Resources/Config/config.ini 一致）
+const DEFAULT_SKIN_PRESET = "Squre45 [内置]"
+
 ## 长条连接模式常量
 const LONG_CONNECT_MODE_EDGE = "edge"
 const LONG_CONNECT_MODE_CENTER = "center"
@@ -547,7 +550,7 @@ static func get_global_note_color(key: String) -> Color:
 
 ## 获取默认皮肤的贴图
 func get_default_skin_textures() -> Dictionary:
-	var default_name: String = ConfigManager.instance.get_string("Appearance", "block_skin_preset", "旧版2 [内置]")
+	var default_name: String = ConfigManager.instance.get_string("Appearance", "block_skin_preset", DEFAULT_SKIN_PRESET)
 	return get_skin_textures(default_name)
 
 ## 获取皮肤路径

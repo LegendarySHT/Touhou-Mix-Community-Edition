@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cjlemxmti8vho"
-path="res://.godot/imported/instant.png-bded89fcca4f3f4326c6d06ff9b84813.ctex"
+path="res://.godot/imported/instant.png-0b8a02e62314cf49fa7fc722acc80479.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Resources/Skins/原版-CircleBar/instant.png"
-dest_files=["res://.godot/imported/instant.png-bded89fcca4f3f4326c6d06ff9b84813.ctex"]
+source_file="res://Resources/Skins/CircleBar/instant.png"
+dest_files=["res://.godot/imported/instant.png-0b8a02e62314cf49fa7fc722acc80479.ctex"]
 
 [params]
 

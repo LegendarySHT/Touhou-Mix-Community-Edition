@@ -77,7 +77,7 @@ func _update_color_controls_state() -> void:
 ## 由 PopupWindow.show_note_skin_adjust 调用：刷新选项 + 应用当前皮肤到预览 + 加载工作副本
 func init_adjust() -> void:
 	_refresh_skin_options()
-	_current_skin_name = ConfigManager.instance.get_string("Appearance", "block_skin_preset", "旧版2 [内置]")
+	_current_skin_name = ConfigManager.instance.get_string("Appearance", "block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	_apply_skin_to_preview(_current_skin_name)
 	# 加载当前皮肤的配置到工作副本
 	_working_config = SkinMGR.get_skin_config(_current_skin_name).duplicate(true)
@@ -295,9 +295,27 @@ func _apply_preview_glow(note_root: Node, glow_color: Color, enable_glow: bool,
 	# 与运行时 GlowLayer 完全一致的方形 quad + UV 标定：
 	# 运行时光效是边长 max(宽,高)*GLOW_QUAD_SCALE 的方形 quad 贴 1/6 半径单位的光晕纹理，
 	# 故预览也用同尺寸方形 quad，note_uv_half 固定 1/6（1 单位 = quad 边长 / 6）。
-	_fit_glow_quad(glow, note_root)
+	_bind_glow_fit(glow, note_root)
 	mat2.set_shader_parameter("note_uv_center", Vector2(0.5, 0.5))
 	mat2.set_shader_parameter("note_uv_half", Vector2(1.0 / 6.0, 1.0 / 6.0))
+
+## 让 _glow 的方形 quad 跟随 note_root 尺寸重算（连接 resized，只绑一次）。
+## 不能只在应用预览时拟合一次：弹窗首次打开时 init_adjust() 早于 popup()，
+## 预览容器还没完成布局，节点 size 为 0 / 上一次的值，_fit_glow_quad 会直接返回，
+## 于是沿用场景里 -1..2（各轴 3 倍节点尺寸）的默认锚点 —— 扁 cap（BarSolid / BarFade
+## 头尾）的 quad 就变成横向拉长的扁矩形，光晕被上下压缩；切换皮肤时布局已稳定，
+## 才恢复正常。
+func _bind_glow_fit(glow: Node, note_root: Node) -> void:
+	if glow.has_meta("_glow_fit_bound"):
+		return
+	glow.set_meta("_glow_fit_bound", true)
+	var root_ctrl := note_root as Control
+	if root_ctrl:
+		# resized：布局变化后重算；visibility_changed：弹窗 popup() 后补一次
+		# （首次打开时容器可能是在隐藏状态下完成布局的，只靠 resized 会漏掉）
+		root_ctrl.resized.connect(_fit_glow_quad.bind(glow, note_root))
+		root_ctrl.visibility_changed.connect(_fit_glow_quad.bind(glow, note_root))
+	_fit_glow_quad(glow, note_root)
 
 ## 把 _glow 摆成与运行时 GlowLayer 相同的方形 quad：边长 = max(节点宽, 高) * GLOW_QUAD_SCALE，
 ## 中心与节点重合。必须用正方形，不能用「固定 3 倍节点尺寸」：
@@ -388,8 +406,8 @@ func _apply_skin_to_preview(skin_name: String) -> void:
 func _refresh_skin_options() -> void:
 	var skin_list: Array = SkinMGR.get_available_skins()
 	if skin_list.is_empty():
-		skin_list = ["旧版2 [内置]"]
-	var current := ConfigManager.instance.get_string("Appearance", "block_skin_preset", "旧版2 [内置]")
+		skin_list = [SkinManager.DEFAULT_SKIN_PRESET]
+	var current := ConfigManager.instance.get_string("Appearance", "block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	_skin_option_btn.clear()
 	for skin in skin_list:
 		_skin_option_btn.add_item(skin)

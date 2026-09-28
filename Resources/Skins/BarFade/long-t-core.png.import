@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://drbsnjk3vtu87"
-path="res://.godot/imported/long-t-core.png-4152d88465b2d5aa5c5f36fc040b58c2.ctex"
+path="res://.godot/imported/long-t-core.png-b6618b1d5c953c1fa6c731ef37869d34.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Resources/Skins/原版-BarFade/long-t-core.png"
-dest_files=["res://.godot/imported/long-t-core.png-4152d88465b2d5aa5c5f36fc040b58c2.ctex"]
+source_file="res://Resources/Skins/BarFade/long-t-core.png"
+dest_files=["res://.godot/imported/long-t-core.png-b6618b1d5c953c1fa6c731ef37869d34.ctex"]
 
 [params]
 
