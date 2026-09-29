@@ -819,7 +819,11 @@ func _get_soundfont_path(soundfont_name: String) -> String:
 
 ## 退出 SettingView 时调用：将变更写入 ConfigManager._current_config 并 emit config_changed
 ## 仅处理与 _initial_config 不同的项
-func apply_pending_config_updates() -> int:
+## @param sync_applied_snapshot: 是否同时把 _initial_config 同步为当前值。
+##   调用方（SettingView.save_config_to_file）须在写盘前以 false 调用发出通知
+##   （写盘会字符串化新值，导致判等吞掉通知），写盘成功后再调用
+##   sync_applied_config_snapshot() 同步快照；写盘失败则保留 diff 供下次重试。
+func apply_pending_config_updates(sync_applied_snapshot: bool = true) -> int:
 	var emitted_count = 0
 	var cm = ConfigManager.instance
 
@@ -841,12 +845,17 @@ func apply_pending_config_updates() -> int:
 		cm.set_value_and_notify(section, key, value)
 		emitted_count += 1
 
-	# 同步已应用状态到进入快照：后续 diff 基于"上次已应用值"而非"进入设置时快照"，
-	# 修复同一会话内将设置切回启动时初始值后，退出时被判定为"无变化"而跳过 emit/写盘的问题
-	for setting_id in _pending_config:
-		_initial_config[setting_id] = _pending_config[setting_id]
+	if sync_applied_snapshot:
+		sync_applied_config_snapshot()
 
 	return emitted_count
+
+## 写盘成功后调用：把"已应用"状态同步到进入快照，后续 diff 基于"上次已应用值"。
+## 修复同一会话内将设置切回启动时初始值后，退出时被判定为"无变化"而跳过 emit/写盘的问题。
+## 注意：必须在写盘成功后调用，写盘失败保留 diff 以便下次退出重试保存。
+func sync_applied_config_snapshot() -> void:
+	for setting_id in _pending_config:
+		_initial_config[setting_id] = _pending_config[setting_id]
 
 ## 是否有待保存的变更
 func has_pending_changes() -> bool:

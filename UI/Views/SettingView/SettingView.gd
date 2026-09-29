@@ -184,6 +184,8 @@ func save_config_to_file() -> bool:
 			if not setting_list._verify_soundfont_exists(str(value)):
 				GLogger.warning("Soundfont '%s' not found, falling back to default" % value, "SettingView")
 				value = "GeneralUser-GS"
+				# 同步待保存值：随后的运行时通知必须与写盘值一致，避免通知到已失效的文件名
+				pending[setting_id] = value
 
 		if not base_config.has(section) or not (base_config[section] is Dictionary):
 			base_config[section] = {}
@@ -195,15 +197,24 @@ func save_config_to_file() -> bool:
 		base_config["Game"] = {}
 	base_config["Game"]["config_version"] = ConfigManager.CONFIG_VERSION
 
+	# 先统一 emit config_changed，再写盘。顺序不可颠倒：
+	# save_config 会把"字符串化"的新值合并进 ConfigManager._current_config，
+	# 而 set_value_and_notify 以 str 比较判定"值未变化"；
+	# 若先写盘，typed 新值（如 int 1）与字符串值（"1"）判等，通知被静默吞掉，
+	# 导致 NetManager(online_mode/server_address) 等依赖 config_changed 的运行时无法即时生效
+	# （改完设置必须重启游戏才生效）。因此通知必须在 _current_config 仍是旧值时执行。
+	if setting_list and setting_list.has_method("apply_pending_config_updates"):
+		var applied_count = setting_list.apply_pending_config_updates(false)
+		GLogger.info("Applied %d deferred config updates" % applied_count, "SettingView")
+
 	# 保存到用户配置文件
 	var success = config_manager.save_config(CONFIG_PATH, base_config)
 
 	if success:
 		GLogger.info("Saved config to: %s" % CONFIG_PATH, "SettingView")
-		# 仅在成功保存后统一 emit config_changed，避免输入过程频繁触发重逻辑
-		if setting_list and setting_list.has_method("apply_pending_config_updates"):
-			var applied_count = setting_list.apply_pending_config_updates()
-			GLogger.info("Applied %d deferred config updates" % applied_count, "SettingView")
+		# 写盘成功后才同步"已应用"快照；失败时保留 diff，下次退出会重试保存并重新通知
+		if setting_list and setting_list.has_method("sync_applied_config_snapshot"):
+			setting_list.sync_applied_config_snapshot()
 	else:
 		push_error("[SettingView] Failed to save config to: %s" % CONFIG_PATH)
 
