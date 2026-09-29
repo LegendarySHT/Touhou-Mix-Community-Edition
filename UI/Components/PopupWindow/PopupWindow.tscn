@@ -30,76 +30,126 @@ content_margin_right = 50.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_x3yn0"]
 draw_center = false
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_color = Color(0.8, 0.8, 0.8, 0.5294118)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_mplfx"]
-bg_color = Color(0, 0, 0, 0.19607843)
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_color = Color(0.8, 0.8, 0.8, 0.5294118)
+bg_color = Color(0.0353, 0.0471, 0.0745, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_gyych"]
-bg_color = Color(1, 1, 1, 0.19607843)
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_color = Color(0.8, 0.8, 0.8, 0.5294118)
+bg_color = Color(0.1333, 0.1647, 0.2314, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_40n85"]
-texture = ExtResource("3_wi0v8")
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_40n85"]
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
 [sub_resource type="CompressedTexture2D" id="CompressedTexture2D_5mvff"]
 load_path = "res://.godot/imported/CancelBtn.png-fb51b90adc315a392d0c0ce4d454cb7e.ctex"
 
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_oye8v"]
-texture = SubResource("CompressedTexture2D_5mvff")
-modulate_color = Color(0.8, 0.8, 0.8, 1)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_oye8v"]
+bg_color = Color(0.0353, 0.0471, 0.0745, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
 [sub_resource type="CompressedTexture2D" id="CompressedTexture2D_oye8v"]
 load_path = "res://.godot/imported/CancelBtn.png-fb51b90adc315a392d0c0ce4d454cb7e.ctex"
 
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_sph85"]
-texture = SubResource("CompressedTexture2D_oye8v")
-modulate_color = Color(0.98039216, 0.98039216, 0.98039216, 1)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sph85"]
+bg_color = Color(0.1333, 0.1647, 0.2314, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_gb15f"]
-texture = ExtResource("4_yttj5")
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_gb15f"]
+bg_color = Color(0.1843, 0.3333, 0.7843, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 0.8)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
 [sub_resource type="CompressedTexture2D" id="CompressedTexture2D_o7g6l"]
 load_path = "res://.godot/imported/ConfirmBtn.png-41e783e6bcfdb1e53346e617b6103b0d.ctex"
 
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_vi5kq"]
-texture = SubResource("CompressedTexture2D_o7g6l")
-modulate_color = Color(0.8, 0.8, 0.8, 1)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vi5kq"]
+bg_color = Color(0.1451, 0.2588, 0.6431, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 0.8)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
 [sub_resource type="CompressedTexture2D" id="CompressedTexture2D_5mkgo"]
 load_path = "res://.godot/imported/ConfirmBtn.png-41e783e6bcfdb1e53346e617b6103b0d.ctex"
 
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_3ccbu"]
-texture = SubResource("CompressedTexture2D_5mkgo")
-modulate_color = Color(0.98039216, 0.98039216, 0.98039216, 1)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3ccbu"]
+bg_color = Color(0.3569, 0.549, 1, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.6, 0.74, 1, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xncey"]
-bg_color = Color(0.17641908, 0.17641911, 0.17641899, 1)
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
@@ -107,10 +157,10 @@ corner_radius_bottom_left = 8
 corner_detail = 5
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_iygje"]
-bg_color = Color(0.3328805, 0.33288077, 0.3328806, 1)
+bg_color = Color(0.1686, 0.2039, 0.2745, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_v2jpq"]
-bg_color = Color(1, 1, 1, 1)
+bg_color = Color(1, 1, 1, 0.9)
 
 [sub_resource type="InputEventKey" id="InputEventKey_krk8y"]
 device = -1
@@ -122,12 +172,12 @@ unicode = 32
 events = [SubResource("InputEventKey_krk8y")]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nhoxv"]
-bg_color = Color(0, 0, 0, 0.5)
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_blend = true
+bg_color = Color(0.0353, 0.0471, 0.0745, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
@@ -141,14 +191,32 @@ corner_radius_bottom_left = 12
 allow_unpress = false
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2xvos"]
-bg_color = Color(1, 1, 1, 1)
+bg_color = Color(0.576, 0.706, 1, 0.9)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_3b0ty"]
 atlas = ExtResource("20_4gkd0")
 region = Rect2(160, 80, 80, 80)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_j02sm"]
-bg_color = Color(1, 1, 1, 0.711)
+bg_color = Color(1, 1, 1, 0.5)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_addbtn_normal"]
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_addbtn_pressed"]
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_addbtn_hover"]
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
 
 [node name="TabC" type="TabContainer" unique_id=1542807723]
 anchors_preset = -1
@@ -214,22 +282,22 @@ theme_override_constants/separation = 150
 custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
 focus_mode = 0
-theme_override_colors/font_color = Color(1, 1, 1, 0.61960787)
-theme_override_font_sizes/font_size = 48
-theme_override_styles/normal = SubResource("StyleBoxTexture_40n85")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_oye8v")
-theme_override_styles/hover = SubResource("StyleBoxTexture_sph85")
+theme_override_colors/font_color = Color(0.949, 0.961, 0.984, 1)
+theme_override_font_sizes/font_size = 44
+theme_override_styles/normal = SubResource("StyleBoxFlat_40n85")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_oye8v")
+theme_override_styles/hover = SubResource("StyleBoxFlat_sph85")
 text = "取消"
 
 [node name="Confirm" type="Button" parent="Default/Btns" unique_id=977904791]
 custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
 focus_mode = 0
-theme_override_colors/font_color = Color(1, 1, 1, 0.61960787)
-theme_override_font_sizes/font_size = 48
-theme_override_styles/normal = SubResource("StyleBoxTexture_gb15f")
-theme_override_styles/pressed = SubResource("StyleBoxTexture_vi5kq")
-theme_override_styles/hover = SubResource("StyleBoxTexture_3ccbu")
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 44
+theme_override_styles/normal = SubResource("StyleBoxFlat_gb15f")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_vi5kq")
+theme_override_styles/hover = SubResource("StyleBoxFlat_3ccbu")
 text = "确定"
 
 [node name="DelayAdjust" type="VBoxContainer" parent="." unique_id=887538536]
@@ -451,8 +519,8 @@ mouse_filter = 2
 color = Color(1, 1, 1, 0)
 
 [node name="long" type="Panel" parent="NoteSkinAdjust/NotePreview/HBoxC" unique_id=193727071]
-modulate = Color(2, 2, 2, 1)
-self_modulate = Color(2, 2, 2, 1)
+modulate = Color(1, 1, 1, 1)
+self_modulate = Color(1, 1, 1, 1)
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -1320,6 +1388,9 @@ size_flags_vertical = 4
 focus_mode = 0
 theme = ExtResource("4_4gkd0")
 theme_override_font_sizes/font_size = 32
+theme_override_styles/normal = SubResource("StyleBoxFlat_addbtn_normal")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_addbtn_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_addbtn_hover")
 icon = SubResource("AtlasTexture_3b0ty")
 text_overrun_behavior = 3
 icon_alignment = 1

@@ -29,12 +29,13 @@ signal flash_requested
 
 const PROGRESS_BAR_IDLE_COLOR: Color = Color.BLACK
 
+## 判定色（与 ScoreView / recordListItem 保持一致：Perfect 品红 / Great 橙 / Good 绿 / Bad 蓝 / Miss 红）
 const color_map = {
-	"Perfect": Color.PURPLE,
-	"Great": Color.ORANGE,
-	"Good": Color.DARK_OLIVE_GREEN,
-	"Bad": Color.ROYAL_BLUE,
-	"Miss": Color.RED
+	"Perfect": Color("#FF50FD"),
+	"Great": Color("#FF7600"),
+	"Good": Color("#0AE000"),
+	"Bad": Color("#1CB0FF"),
+	"Miss": Color("#DC3450")
 }
 
 ## 分数增量消化（_process 逐帧取 sqrt 收敛到 0）

@@ -112,13 +112,13 @@ func _ready() -> void:
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
 func apply_theme() -> void:
-	# LevelingProgress — 透明 primary_dark
+	# 底部信息条 — 中性凸起面（保留 tscn 预设的 alpha）
 	if info:
 		var sb := info.get_theme_stylebox("panel")
 		if sb is StyleBoxFlat:
 			var a = sb.bg_color.a
-			var pd := ThemeMGR.get_color("primary_dark")
-			sb.bg_color = Color(pd.r, pd.g, pd.b, a)
+			var sh := ThemeMGR.get_color("surface_high")
+			sb.bg_color = Color(sh.r, sh.g, sh.b, a)
 
 func _exit_tree() -> void:
 	if ThemeMGR:

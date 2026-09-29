@@ -14,7 +14,7 @@
 [ext_resource type="Texture2D" uid="uid://bxkgbenh2ja4h" path="res://Resources/Covers/423be8d161a8a972c9014454921864a9.jpg" id="11_q4lmo"]
 
 [sub_resource type="Gradient" id="Gradient_7ak4s"]
-colors = PackedColorArray(0.3882353, 0.20392157, 0.654902, 1, 0.71, 0.355, 0.71, 1)
+colors = PackedColorArray(0.0627451, 0.08627451, 0.16470589, 1, 0.02745098, 0.039215688, 0.07058824, 1)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_uj6qe"]
 gradient = SubResource("Gradient_7ak4s")
@@ -23,7 +23,7 @@ fill_to = Vector2(1, 1)
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_50kwk"]
 
 [sub_resource type="StyleBoxLine" id="StyleBoxLine_uj6qe"]
-color = Color(2, 2, 2, 1)
+color = Color(1, 1, 1, 0.35)
 thickness = 2
 
 [sub_resource type="CanvasItemMaterial" id="CanvasItemMaterial_glow"]
@@ -40,18 +40,18 @@ region = Rect2(160, 240, 80, 80)
 variation_embolden = 0.5
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jlvmc"]
-bg_color = Color(0, 0, 0, 0)
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_color = Color(1, 1, 1, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-shadow_color = Color(0, 0, 0, 0.21176471)
-shadow_size = 15
+bg_color = Color(0.0941, 0.1176, 0.1686, 0.55)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.16)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 12
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_3y6u5"]
 atlas = ExtResource("9_q4lmo")
@@ -76,7 +76,7 @@ grow_vertical = 2
 script = ExtResource("1_uj6qe")
 
 [node name="Background" type="TextureRect" parent="." unique_id=1298054889]
-modulate = Color(1.3, 1.3, 1.3, 1)
+modulate = Color(1, 1, 1, 1)
 texture_filter = 4
 layout_mode = 1
 anchors_preset = 15
@@ -148,7 +148,7 @@ offset_right = 350.0
 offset_bottom = 140.5
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_colors/font_color = Color(2.58, 0, 0, 0.729)
+theme_override_colors/font_color = Color(1, 0.3608, 0.4235, 0.729)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.4)
 theme_override_constants/shadow_outline_size = 20
 theme_override_fonts/font = SubResource("FontVariation_v7581")
@@ -216,8 +216,8 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="type" type="Label" parent="Layer/Center" unique_id=264990940]
-modulate = Color(2, 2, 2, 1)
-self_modulate = Color(2, 2, 2, 1)
+modulate = Color(1, 1, 1, 1)
+self_modulate = Color(1, 1, 1, 1)
 layout_mode = 2
 theme_override_fonts/font = SubResource("FontVariation_nq3r2")
 theme_override_font_sizes/font_size = 72
@@ -352,7 +352,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0, 0, 0, 0.8784314)
+color = Color(0, 0, 0, 0.72)
 
 [node name="VBox" type="VBoxContainer" parent="CenterBackGround" unique_id=322506335]
 layout_mode = 1

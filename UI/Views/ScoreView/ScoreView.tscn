@@ -9,14 +9,14 @@
 
 [sub_resource type="Gradient" id="Gradient_01xql"]
 interpolation_mode = 2
-colors = PackedColorArray(0.28235295, 0.33333334, 0.63529414, 1, 0.21176471, 0.13725491, 0.4862745, 1)
+colors = PackedColorArray(0.043137256, 0.05098039, 0.078431375, 1, 0.06666667, 0.08235294, 0.12941177, 1)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_2uqmb"]
 gradient = SubResource("Gradient_01xql")
 fill_to = Vector2(1, 0.64529914)
 
 [sub_resource type="Gradient" id="Gradient_vfrgv"]
-colors = PackedColorArray(0.07350468, 0.07350608, 0.06614408, 1, 0, 0, 0, 0)
+colors = PackedColorArray(0.0627451, 0.078431375, 0.11372549, 1, 0, 0, 0, 0)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_45gh0"]
 gradient = SubResource("Gradient_vfrgv")
@@ -26,106 +26,109 @@ texture = SubResource("GradientTexture2D_45gh0")
 
 [sub_resource type="Gradient" id="Gradient_0sw27"]
 interpolation_mode = 2
-colors = PackedColorArray(1, 0, 1, 1, 1, 1, 0, 1)
+colors = PackedColorArray(0.357, 0.549, 1, 1, 0.133, 0.831, 0.879, 1)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_iqsw5"]
 gradient = SubResource("Gradient_0sw27")
 fill_to = Vector2(1, 0.517094)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wu7dc"]
-bg_color = Color(0.09023667, 0.0858, 0.11, 0.6862745)
-shadow_color = Color(0.078431375, 0.078431375, 0.078431375, 0.8666667)
-shadow_size = 50
+bg_color = Color(0.0627, 0.0784, 0.1137, 0.9)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+shadow_color = Color(0, 0, 0, 0.5)
+shadow_size = 24
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_0sw27"]
-bg_color = Color(0, 0, 0, 0)
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_color = Color(1, 1, 1, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
-shadow_color = Color(0, 0, 0, 0.21176471)
-shadow_size = 15
+bg_color = Color(0.0627, 0.0784, 0.1137, 0.6)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1216, 0.149, 0.2039, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 12
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_kq2mn"]
-bg_color = Color(0.9143316, 0.26513988, 0.45739597, 1)
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_color = Color(0, 0, 0, 0)
-border_blend = true
-corner_radius_top_left = 30
-corner_radius_top_right = 5
-corner_radius_bottom_right = 30
-corner_radius_bottom_left = 5
-corner_detail = 1
-shadow_color = Color(1, 0.28707156, 0.45533067, 0.6)
-shadow_size = 5
-shadow_offset = Vector2(5, 2)
+bg_color = Color(0.8745, 0.3176, 0.4745, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.45, 0.6, 0.8)
+corner_radius_top_left = 16
+corner_radius_top_right = 4
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 4
+corner_detail = 6
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 6
+shadow_offset = Vector2(0, 3)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3y6u5"]
-bg_color = Color(0.60971165, 0.28493494, 0.98669523, 1)
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_color = Color(0, 0, 0, 0)
-border_blend = true
-corner_radius_top_left = 30
-corner_radius_top_right = 5
-corner_radius_bottom_right = 30
-corner_radius_bottom_left = 5
-corner_detail = 1
-shadow_color = Color(0.8649391, 0.34942698, 0.92447096, 0.6)
-shadow_size = 5
-shadow_offset = Vector2(5, 2)
+bg_color = Color(0.5451, 0.3725, 0.8824, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.68, 0.52, 0.98, 0.8)
+corner_radius_top_left = 16
+corner_radius_top_right = 4
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 4
+corner_detail = 6
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 6
+shadow_offset = Vector2(0, 3)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_iqsw5"]
-bg_color = Color(0.41687015, 0.5220287, 0.86981654, 1)
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_color = Color(0, 0, 0, 0)
-border_blend = true
-corner_radius_top_left = 30
-corner_radius_top_right = 5
-corner_radius_bottom_right = 30
-corner_radius_bottom_left = 5
-corner_detail = 1
-shadow_color = Color(0.46963003, 0.59608823, 0.9246135, 0.6)
-shadow_size = 5
-shadow_offset = Vector2(5, 2)
+bg_color = Color(0.3529, 0.4471, 0.8471, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.52, 0.62, 0.95, 0.8)
+corner_radius_top_left = 16
+corner_radius_top_right = 4
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 4
+corner_detail = 6
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 6
+shadow_offset = Vector2(0, 3)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1u62t"]
-bg_color = Color(0.011764706, 0.34901962, 0.6784314, 0.6901961)
+bg_color = Color(0.2784, 0.4431, 0.8627, 0.6)
 skew = Vector2(0.268, 0)
-shadow_size = 24
-shadow_offset = Vector2(2, -2)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 12
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_0iyyr"]
 draw_center = false
-border_width_left = 6
-border_width_top = 6
-border_width_right = 6
-border_width_bottom = 6
-border_color = Color(1, 1, 1, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
-expand_margin_left = 6.0
-expand_margin_top = 6.0
-expand_margin_right = 6.0
-expand_margin_bottom = 6.0
-shadow_color = Color(0, 0, 0, 0.24313726)
-shadow_size = 12
-shadow_offset = Vector2(2, 2)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.576, 0.706, 1, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+expand_margin_left = 4.0
+expand_margin_top = 4.0
+expand_margin_right = 4.0
+expand_margin_bottom = 4.0
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 10
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_3y6u5"]
 atlas = ExtResource("6_iqsw5")
@@ -175,6 +178,7 @@ offset_left = -679.5
 offset_right = -140.5
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_shadow_color = Color(0.6392157, 0.6392157, 0.6392157, 0.972549)
 theme_override_constants/shadow_offset_x = 2
 theme_override_constants/shadow_offset_y = 0
@@ -434,7 +438,7 @@ grow_vertical = 2
 size_flags_horizontal = 3
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(1, 0, 1, 1)
+theme_override_colors/font_color = Color(1, 0.3137, 0.9922, 1)
 theme_override_font_sizes/font_size = 20
 text = "Perfect"
 
@@ -457,7 +461,7 @@ grow_vertical = 2
 size_flags_horizontal = 3
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(1, 0.4627451, 0, 1)
+theme_override_colors/font_color = Color(1, 0.4627, 0, 1)
 theme_override_font_sizes/font_size = 20
 text = "Great"
 
@@ -480,7 +484,7 @@ grow_vertical = 2
 size_flags_horizontal = 3
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(0.10980392, 0.6901961, 1, 1)
+theme_override_colors/font_color = Color(0.0392, 0.8784, 0, 1)
 theme_override_font_sizes/font_size = 20
 text = "Good"
 
@@ -503,7 +507,7 @@ grow_vertical = 2
 size_flags_horizontal = 3
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(0.4, 1, 0.3647059, 1)
+theme_override_colors/font_color = Color(0.1098, 0.6902, 1, 1)
 theme_override_font_sizes/font_size = 20
 text = "Bad"
 
@@ -526,7 +530,7 @@ grow_vertical = 2
 size_flags_horizontal = 3
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(1, 0, 0, 1)
+theme_override_colors/font_color = Color(0.8627, 0.2039, 0.3137, 1)
 theme_override_font_sizes/font_size = 20
 text = "Miss"
 
@@ -553,7 +557,7 @@ grow_vertical = 2
 size_flags_horizontal = 3
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(0.1680183, 1, 1, 1)
+theme_override_colors/font_color = Color(0.1647, 0.8314, 0.8784, 1)
 theme_override_font_sizes/font_size = 20
 text = "Early"
 
@@ -576,7 +580,7 @@ grow_vertical = 2
 size_flags_horizontal = 3
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(1, 0.30943933, 0.34409294, 1)
+theme_override_colors/font_color = Color(1, 0.4196, 0.6157, 1)
 theme_override_font_sizes/font_size = 20
 text = "Late"
 
@@ -600,7 +604,7 @@ grow_vertical = 2
 size_flags_horizontal = 3
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(1, 1, 0, 1)
+theme_override_colors/font_color = Color(1, 0.7608, 0.2941, 1)
 theme_override_font_sizes/font_size = 20
 text = "MaxCombo"
 
@@ -619,6 +623,7 @@ grow_horizontal = 2
 grow_vertical = 2
 pivot_offset = Vector2(232, 197)
 offset_transform_enabled = true
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.49400002)
 theme_override_constants/shadow_offset_x = 5
 theme_override_constants/shadow_offset_y = 2
@@ -706,6 +711,7 @@ offset_right = -70.0
 offset_bottom = 19.0
 grow_horizontal = 0
 offset_transform_enabled = true
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "成绩上传成功"
 horizontal_alignment = 2

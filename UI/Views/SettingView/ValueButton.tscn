@@ -1,6 +1,44 @@
 [gd_scene format=3 uid="uid://i06evrr1oefo"]
 
-[ext_resource type="Theme" uid="uid://clu7eeeh6aitj" path="res://UI/Theme/BtnTheme/R12NoBorder.tres" id="1_nhoxv"]
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vb_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.576, 0.706, 1, 0.9)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+corner_detail = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vb_hover"]
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+corner_detail = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vb_normal"]
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+corner_detail = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vb_pressed"]
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+corner_detail = 5
+
+[sub_resource type="Theme" id="Theme_valuebtn"]
+Button/styles/focus = SubResource("StyleBoxFlat_vb_focus")
+Button/styles/hover = SubResource("StyleBoxFlat_vb_hover")
+Button/styles/normal = SubResource("StyleBoxFlat_vb_normal")
+Button/styles/pressed = SubResource("StyleBoxFlat_vb_pressed")
 
 [node name="ValueButton" type="Button" unique_id=1925023272]
 custom_minimum_size = Vector2(200, 80)
@@ -8,6 +46,6 @@ custom_maximum_size = Vector2(500, -1)
 offset_right = 200.0
 offset_bottom = 80.0
 size_flags_vertical = 4
-theme = ExtResource("1_nhoxv")
+theme = SubResource("Theme_valuebtn")
 theme_override_font_sizes/font_size = 32
 text = "点击设置"

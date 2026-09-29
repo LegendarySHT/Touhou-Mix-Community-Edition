@@ -6,7 +6,7 @@
 
 [sub_resource type="Gradient" id="Gradient_t7rtt"]
 interpolation_mode = 2
-colors = PackedColorArray(0.4392157, 0.7294118, 0.98039216, 1, 0.03529412, 0.09803922, 0.36862746, 1)
+colors = PackedColorArray(0.043137256, 0.05882353, 0.10980392, 1, 0.08627451, 0.11764706, 0.2, 1)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_ay6ya"]
 gradient = SubResource("Gradient_t7rtt")
@@ -19,7 +19,7 @@ content_margin_right = 50.0
 content_margin_bottom = 400.0
 
 [sub_resource type="Gradient" id="Gradient_2hjjb"]
-colors = PackedColorArray(0.047058824, 0.5568628, 0.88235295, 1, 0.20784314, 0.3764706, 0.88235295, 1)
+colors = PackedColorArray(0.35686275, 0.54901963, 1, 1, 0.18431373, 0.33333334, 0.78431374, 1)
 
 [sub_resource type="GradientTexture2D" id="GradientTexture2D_aexbj"]
 gradient = SubResource("Gradient_2hjjb")
@@ -56,73 +56,73 @@ atlas = ExtResource("5_7hdap")
 region = Rect2(0, 240, 80, 80)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_aexbj"]
-bg_color = Color(0.07058824, 0.49411765, 1, 1)
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
 skew = Vector2(0.3, 0)
-border_width_left = 3
-border_width_top = 3
-border_color = Color(1, 1, 1, 1)
+border_width_left = 1
+border_width_top = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3137255)
-shadow_size = 5
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jtu5m"]
-bg_color = Color(0, 0.30434698, 0.6524356, 1)
+bg_color = Color(0.1843, 0.3333, 0.7843, 1)
 skew = Vector2(0.3, 0)
-border_width_left = 3
-border_width_top = 3
-border_color = Color(1, 1, 1, 1)
+border_width_left = 1
+border_width_top = 1
+border_color = Color(0.4, 0.58, 1, 0.8)
 expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3137255)
-shadow_size = 5
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hfgmo"]
-bg_color = Color(1.6364455e-06, 0.33383137, 0.70565444, 1)
+bg_color = Color(0.1333, 0.1647, 0.2314, 1)
 skew = Vector2(0.3, 0)
-border_width_left = 3
-border_width_top = 3
-border_color = Color(1, 1, 1, 1)
+border_width_left = 1
+border_width_top = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3137255)
-shadow_size = 5
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_77ghf"]
-bg_color = Color(0.49019608, 0.7176471, 1, 1)
-border_width_top = 2
-border_color = Color(1, 1, 1, 1)
+bg_color = Color(0.2784, 0.4431, 0.8627, 1)
+border_width_top = 1
+border_color = Color(0.52, 0.66, 1, 1)
 expand_margin_left = 13.0
 expand_margin_right = 13.0
-shadow_color = Color(1, 1, 1, 0.1882353)
-shadow_size = 5
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xj26e"]
-bg_color = Color(0.07058824, 0.49411765, 1, 1)
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
 skew = Vector2(-0.3, 0)
-border_width_top = 3
-border_width_right = 3
-border_color = Color(1, 1, 1, 1)
+border_width_top = 1
+border_width_right = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3137255)
-shadow_size = 5
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_o4ele"]
-bg_color = Color(0, 0.30434698, 0.6524356, 1)
+bg_color = Color(0.1843, 0.3333, 0.7843, 1)
 skew = Vector2(-0.3, 0)
-border_width_top = 3
-border_width_right = 3
-border_color = Color(1, 1, 1, 1)
+border_width_top = 1
+border_width_right = 1
+border_color = Color(0.4, 0.58, 1, 0.8)
 expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3137255)
-shadow_size = 5
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_15yne"]
-bg_color = Color(1.6364455e-06, 0.33383137, 0.70565444, 1)
+bg_color = Color(0.1333, 0.1647, 0.2314, 1)
 skew = Vector2(-0.3, 0)
-border_width_top = 3
-border_width_right = 3
-border_color = Color(1, 1, 1, 1)
+border_width_top = 1
+border_width_right = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3137255)
-shadow_size = 5
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
 
 [node name="Store" type="Control" unique_id=1657778665]
 z_index = 10
@@ -223,7 +223,7 @@ theme_override_constants/margin_right = 60
 position = Vector2(-578, 22)
 offset = Vector2(0, -30)
 polygon = PackedVector2Array(515, 0, 555, 150, 1350, 150, 1390, 0)
-vertex_colors = PackedColorArray(0.101961, 0.576471, 1, 1, 0.0666667, 0.556863, 1, 1, 0.0862745, 0.439216, 1, 1, 0.180392, 0.454902, 0.952941, 1)
+vertex_colors = PackedColorArray(0.3922, 0.5686, 1, 1, 0.3569, 0.549, 1, 1, 0.2118, 0.3608, 0.8, 1, 0.2784, 0.4431, 0.8627, 1)
 
 [node name="HBoxC" type="HBoxContainer" parent="TopBar/C/Search" unique_id=249968099]
 layout_mode = 2

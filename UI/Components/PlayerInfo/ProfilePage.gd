@@ -165,34 +165,37 @@ func _exit_tree() -> void:
 # ========== 主题色应用 ==========
 
 func apply_theme() -> void:
-	var p: Color= ThemeMGR.get_color("primary")
-	var pd: Color= ThemeMGR.get_color("primary_dark")
-	var pd_darker: Color= pd.darkened(0.2)
+	var p: Color = ThemeMGR.get_color("primary")
+	var surface: Color = ThemeMGR.get_color("surface")
+	var surface_high: Color = ThemeMGR.get_color("surface_high")
+	var surface_hover: Color = ThemeMGR.get_color("surface_hover")
+	var border: Color = ThemeMGR.get_color("border")
+	var accent_border: Color = Color(p.r, p.g, p.b, 0.6)
 
-	# Profile 页面面板
-	_set_panel(_info_panel, p, pd_darker)      # Info
-	_set_panel(_header_panel, pd, p)            # Header
-	_set_panel(_play_panel, pd, p)              # Play + Desc Label（共享）
-	_set_panel(_rank_total, p, pd_darker)       # RankTotal
+	# 页面底色为 InfoPanelBtn 的 surface；本页内容面板统一用 surface_high 浮起（简介与 Play 共享同一 StyleBox）
+	_set_panel(_info_panel, surface_high, accent_border)   # Info
+	_set_panel(_header_panel, surface_high, border)        # Header
+	_set_panel(_play_panel, surface_high, border)          # Play
+	_set_panel(_rank_total, surface_high, accent_border)   # RankTotal
 	# Navi 面板
-	_set_panel(_navi_panel, p, pd_darker)       # Navi
+	_set_panel(_navi_panel, surface, border)               # Navi 底栏与页面底色一致
 	# History 顶部面板
-	_set_panel_border(_history_pc, pd_darker)
+	_set_panel_border(_history_pc, border)
 	# Navi 按钮（normal/pressed/hover/focus 共享 StyleBox，改 navi_profile_btn 即同步全部）
-	# pressed 与 InfoPanelBtn 按下态同色（primary_dark），视觉上融入 PlayerInfo 面板背景
-	_set_btn(navi_profile_btn, "normal", p, pd_darker)
-	_set_btn(navi_profile_btn, "pressed", pd, pd_darker)
-	_set_btn(navi_profile_btn, "hover", p, pd_darker)
-	_set_btn(navi_profile_btn, "focus", p, pd_darker)
+	# pressed 与页面底色同色（选中项并入内容区），hover_pressed 由 tscn 直接复用 hover
+	_set_btn(navi_profile_btn, "normal", surface_high, border)
+	_set_btn(navi_profile_btn, "pressed", surface, border)
+	_set_btn(navi_profile_btn, "hover", surface_hover, accent_border)
+	_set_btn(navi_profile_btn, "focus", surface_high, p)
 	# History TopBtns
 	_set_btn_border(recent_play_btn, "pressed", p)
 	_set_btn_border(recent_play_btn, "hover", p)
 	# MostPlay hover 用单独 StyleBox
 	_set_btn_border(most_play_btn, "hover", p)
 	# Edit 页面 ConfirmBtn / UploadBtn（共享 StyleBox）
-	_set_btn(_edit_confirm_btn, "normal", p, p)
-	_set_btn(_edit_confirm_btn, "pressed", pd, p)
-	_set_btn(_edit_confirm_btn, "hover", pd, p)
+	_set_btn(_edit_confirm_btn, "normal", p.darkened(0.1), p)
+	_set_btn(_edit_confirm_btn, "pressed", p.darkened(0.3), p)
+	_set_btn(_edit_confirm_btn, "hover", p, p)
 
 ## 设置面板 bg + border
 func _set_panel(node: Control, bg: Color, border: Color) -> void:

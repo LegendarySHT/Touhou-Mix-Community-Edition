@@ -13,57 +13,62 @@
 [ext_resource type="Script" uid="uid://5bvwaglh3ekw" path="res://UI/Components/BaseScrollList.gd" id="36_gjqh3"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_srflm"]
-border_width_left = 6
-border_width_top = 6
-border_width_right = 8
-border_width_bottom = 10
-border_color = Color(0.45882353, 0.6313726, 1, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
-corner_detail = 1
-shadow_color = Color(0, 0, 0, 0.21960784)
-shadow_size = 20
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1216, 0.149, 0.2039, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+corner_detail = 4
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 12
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ewgot"]
 atlas = ExtResource("2_1rn3q")
 region = Rect2(320, 0, 80, 80)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_5h6qm"]
-bg_color = Color(0.18431373, 0.58431375, 1, 1)
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2bu1o"]
 draw_center = false
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_f13vx"]
-bg_color = Color(0, 0.46849638, 0.86440593, 1)
+bg_color = Color(0.0353, 0.0471, 0.0745, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_u7brx"]
-bg_color = Color(0, 0, 0, 0.13725491)
+bg_color = Color(1, 1, 1, 0.06)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_nq3r2"]
 atlas = ExtResource("3_qoscg")
 region = Rect2(240, 240, 80, 80)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_81q6d"]
-bg_color = Color(0.12941177, 0.4117647, 0.7058824, 0.49411765)
-border_width_left = 6
-border_width_top = 24
-border_width_right = 6
-border_width_bottom = 24
-border_color = Color(0.003921569, 0.14509805, 0.7647059, 0.36862746)
-border_blend = true
+bg_color = Color(0.357, 0.549, 1, 0.12)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.357, 0.549, 1, 0.3)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_lxuff"]
-bg_color = Color(1, 1, 1, 0.7294118)
 draw_center = false
-border_width_left = 6
-border_width_top = 20
-border_width_right = 6
-border_width_bottom = 20
-border_color = Color(1, 1, 1, 1)
-border_blend = true
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.576, 0.706, 1, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_0jaji"]
 atlas = ExtResource("3_qoscg")
@@ -74,40 +79,62 @@ atlas = ExtResource("3_qoscg")
 region = Rect2(0, 0, 80, 80)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_i6pqd"]
-bg_color = Color(0.18431373, 0.58431375, 1, 1)
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1vlqv"]
 draw_center = false
-border_width_left = 3
-border_width_right = 3
-border_color = Color(0.851769, 0.8517689, 0.85176885, 1)
+border_width_left = 1
+border_width_right = 1
+border_color = Color(0.1216, 0.149, 0.2039, 1)
 expand_margin_top = 15.0
 expand_margin_bottom = 15.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_iygje"]
-bg_color = Color(0.12941177, 0.4117647, 0.7058824, 1)
+bg_color = Color(0.0353, 0.0471, 0.0745, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_tn4wv"]
 atlas = ExtResource("8_r153q")
 region = Rect2(160, 0, 80, 80)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btcpj"]
-bg_color = Color(0.18431373, 0.58431375, 1, 1)
-shadow_color = Color(0, 0, 0, 0.27450982)
-shadow_size = 5
-shadow_offset = Vector2(5, 2)
+bg_color = Color(0.2784, 0.4431, 0.8627, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_5hcss"]
-bg_color = Color(0, 0.38775006, 0.72357893, 1)
-shadow_color = Color(0, 0, 0, 0.27450982)
-shadow_size = 5
-shadow_offset = Vector2(5, 2)
+bg_color = Color(0.2157, 0.3529, 0.7176, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wasq5"]
-bg_color = Color(3.0226112e-05, 0.49875212, 0.92237043, 1)
-shadow_color = Color(0, 0, 0, 0.27450982)
-shadow_size = 5
-shadow_offset = Vector2(5, 2)
+bg_color = Color(0.3569, 0.549, 1, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ynlhr"]
 atlas = ExtResource("3_qoscg")
@@ -119,16 +146,16 @@ atlas = ExtResource("3_qoscg")
 region = Rect2(320, 0, 80, 80)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fx5ny"]
-bg_color = Color(0.12941177, 0.4117647, 0.7058824, 1)
-border_width_left = 4
-border_width_top = 4
-border_width_right = 4
-border_width_bottom = 4
-border_color = Color(1, 1, 1, 1)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
+bg_color = Color(0.0353, 0.0471, 0.0745, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_f13vx"]
 
@@ -191,7 +218,7 @@ border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.9166399, 0.91663986, 0.9166398, 1)
+border_color = Color(1, 1, 1, 0.18)
 corner_radius_top_left = 40
 corner_radius_top_right = 40
 corner_radius_bottom_right = 40
@@ -205,7 +232,7 @@ border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.8217887, 0.8217887, 0.8217885, 1)
+border_color = Color(0.576, 0.706, 1, 0.85)
 corner_radius_top_left = 40
 corner_radius_top_right = 40
 corner_radius_bottom_right = 40
@@ -219,7 +246,7 @@ border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0.8980392, 0.8980392, 0.8980392, 1)
+border_color = Color(1, 1, 1, 0.32)
 corner_radius_top_left = 40
 corner_radius_top_right = 40
 corner_radius_bottom_right = 40

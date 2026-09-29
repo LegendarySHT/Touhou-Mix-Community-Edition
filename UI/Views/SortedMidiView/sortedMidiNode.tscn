@@ -7,8 +7,8 @@
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_o5pup"]
 content_margin_left = 20.0
 draw_center = false
-border_width_bottom = 8
-border_color = Color(1, 1, 1, 1)
+border_width_bottom = 2
+border_color = Color(0.576, 0.706, 1, 0.7)
 
 [node name="MidiNode" type="Button" unique_id=1823057639]
 custom_minimum_size = Vector2(900, 180)
@@ -56,7 +56,7 @@ size_flags_vertical = 0
 theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6745098)
 theme_override_constants/shadow_offset_x = 0
 theme_override_constants/shadow_offset_y = 0
-theme_override_constants/shadow_outline_size = 10
+theme_override_constants/shadow_outline_size = 4
 theme_override_font_sizes/font_size = 30
 text = "下载 999999 | 游玩 999999 | 赞 999999 | 踩 999999"
 

@@ -958,6 +958,8 @@ func _apply_difficulty_lock_state(apply_values_from_config: bool) -> void:
 ## ========== 主题化 ==========
 
 ## 通过 StyleBoxFlat 共享引用自动同步，无需遍历 setting_items
+## ValueButton.tscn 自带独立 Theme（不再引用共享的 R12NoBorder.tres），因此这里就地改色的
+## 只影响设置项的值按钮，不会波及其它使用 R12 的弹窗/播放界面按钮。
 ## 注意：必须直接操作按钮自带 Theme 资源的 StyleBox（而非 Control.get_theme_stylebox）——
 ## 临时刻件未入树时 get_theme_stylebox 会沿引擎默认主题链解析，既不生效也触发
 ## "Viewport Texture must be set to use it" 报错；theme.get_stylebox 才是共享引用改色的正确入口
@@ -970,12 +972,15 @@ func apply_button_theme(color: Color) -> void:
 	var sb_normal: StyleBoxFlat = button_theme.get_stylebox("normal", "Button") as StyleBoxFlat
 	var sb_pressed: StyleBoxFlat = button_theme.get_stylebox("pressed", "Button") as StyleBoxFlat
 	var sb_hover: StyleBoxFlat = button_theme.get_stylebox("hover", "Button") as StyleBoxFlat
+	var sb_focus: StyleBoxFlat = button_theme.get_stylebox("focus", "Button") as StyleBoxFlat
 	if sb_normal:
 		sb_normal.bg_color = color
 	if sb_pressed:
 		sb_pressed.bg_color = color.darkened(0.25)
 	if sb_hover:
 		sb_hover.bg_color = color.lightened(0.15)
+	if sb_focus:
+		sb_focus.border_color = color
 
 ## 供 SettingListItem.setup_item 调用：从场景直接 instantiate 出 TYPE_BUTTON 的 value_node
 func make_value_button() -> Button:

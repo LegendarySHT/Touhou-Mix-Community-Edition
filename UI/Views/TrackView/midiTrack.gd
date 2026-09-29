@@ -94,20 +94,21 @@ func _ready():
 		var is_enabled = midi_data.is_track_channel_selected(track_index, track_channel)
 		enable_btn.button_pressed = is_enabled
 	
+## 轨道色相环（仅取 .h 使用）：现代高饱和但不过分刺眼的 13 色
 const colors_set = [
-	Color.RED,
-	Color.DEEP_PINK,
-	Color.BROWN,
-	Color.BISQUE,
-	Color.GOLD,
-	Color.YELLOW_GREEN,
-	Color.LIME,
-	Color.CYAN,
-	Color.SKY_BLUE,
-	Color.AQUAMARINE,
-	Color.BLUE,
-	Color.BLUE_VIOLET,
-	Color.VIOLET,
+	Color("#FF5C6C"),
+	Color("#FF5CA8"),
+	Color("#FF8C42"),
+	Color("#FFC24B"),
+	Color("#A8E05F"),
+	Color("#3ED88C"),
+	Color("#2AD4C4"),
+	Color("#35C8E8"),
+	Color("#5B8CFF"),
+	Color("#6C6CFF"),
+	Color("#A06BFF"),
+	Color("#E05CFF"),
+	Color("#FF6B9D"),
 ]
 
 var color_light: Color

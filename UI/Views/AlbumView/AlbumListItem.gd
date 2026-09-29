@@ -24,7 +24,7 @@ var expand_tween: Tween:
 var _has_ready: bool = false
 
 func _ready() -> void:
-	cover_texture = $cover
+	cover_texture = $C/cover
 	# 显示填充由 fill_display() 统一驱动（Phase B），_ready 不再阻塞等待信号
 	if name == "SelectedAlbum" and self.button_pressed:
 		on_item_button_toggled(true)

@@ -4,8 +4,11 @@
 [ext_resource type="Theme" uid="uid://cm3mry6cxo28t" path="res://UI/Theme/BtnTheme/ListBtn-ColorBorder.tres" id="1_krpnw"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="5_3ky2n"]
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wrosb"]
+bg_color = Color(1, 1, 1, 1)
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xw3gp"]
-bg_color = Color(0.42352942, 0.72156864, 1, 1)
+bg_color = Color(0.2784, 0.4431, 0.8627, 0.9)
 
 [node name="SongNode" type="Button" unique_id=1363007175]
 custom_minimum_size = Vector2(900, 140)
@@ -23,7 +26,6 @@ script = ExtResource("1_5wnnw")
 metadata/index = 0
 
 [node name="HBoxC" type="HBoxContainer" parent="." unique_id=1501583269]
-clip_contents = true
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -38,9 +40,11 @@ mouse_filter = 2
 theme_override_constants/separation = 0
 
 [node name="PN" type="Panel" parent="HBoxC" unique_id=1364822703]
+clip_children = 1
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_wrosb")
 
 [node name="cover" type="TextureRect" parent="HBoxC/PN" unique_id=1928751118]
 layout_mode = 1

@@ -6,99 +6,102 @@
 [ext_resource type="Texture2D" uid="uid://cug51b3m7pnnr" path="res://Resources/icon/instruments_icon.png" id="2_r0ui6"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_31lmn"]
-bg_color = Color(0.59, 0.59, 0.59, 0.54509807)
-corner_radius_top_left = 12
+bg_color = Color(0.1044445, 0.12558684, 0.17314443, 0.8509804)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.34404153, 0.40147635, 0.51591545, 1)
+corner_radius_top_left = 30
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
+corner_radius_bottom_left = 30
+corner_detail = 1
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_83r2u"]
-bg_color = Color(0.75398386, 0.75398386, 0.75398374, 1)
-border_width_right = 2
-border_color = Color(0, 0, 0, 1)
+bg_color = Color(0.73333335, 0.73333335, 0.73333335, 1)
+border_width_right = 1
+border_color = Color(0, 0, 0, 0.35)
 corner_radius_top_left = 25
 corner_radius_bottom_left = 25
 corner_detail = 1
-shadow_color = Color(0, 0, 0, 0.21176471)
-shadow_size = 5
-shadow_offset = Vector2(5, 0)
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
+shadow_offset = Vector2(0, 2)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7vp1s"]
-bg_color = Color(1, 1, 1, 1)
-border_width_left = 20
-border_color = Color(0.5569528, 0.55695313, 0.55695283, 1)
-border_blend = true
-shadow_color = Color(0, 0, 0, 0.21176471)
-shadow_size = 5
-shadow_offset = Vector2(5, 0)
+bg_color = Color(0.7330051, 0.7330055, 0.7330051, 1)
+border_width_left = 1
+border_color = Color(0, 0, 0, 0.35)
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
+shadow_offset = Vector2(0, 2)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7rc5s"]
 content_margin_left = 15.0
 content_margin_right = 15.0
-bg_color = Color(0.33333334, 0.33333334, 0.33333334, 1)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.4198131, 0.4198132, 0.4198128, 1)
-corner_radius_top_left = 24
-corner_radius_top_right = 24
-corner_radius_bottom_right = 24
-corner_radius_bottom_left = 24
-shadow_color = Color(0, 0, 0, 0.1882353)
-shadow_size = 5
-shadow_offset = Vector2(-3, 0)
+bg_color = Color(0.16, 0.19, 0.26, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.28, 0.32, 0.4, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
+shadow_offset = Vector2(0, 2)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_8bk0u"]
 content_margin_left = 15.0
 content_margin_right = 15.0
 bg_color = Color(1, 1, 1, 1)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.8776157, 0.8776158, 0.87761563, 1)
-corner_radius_top_left = 24
-corner_radius_top_right = 24
-corner_radius_bottom_right = 24
-corner_radius_bottom_left = 24
-shadow_color = Color(0, 0, 0, 0.1882353)
-shadow_size = 5
-shadow_offset = Vector2(-3, 0)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(1, 1, 1, 0.5)
+shadow_size = 16
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_r0ui6"]
 content_margin_left = 15.0
 content_margin_right = 15.0
-bg_color = Color(0.33333334, 0.33333334, 0.33333334, 0.6)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.8776157, 0.8776158, 0.87761563, 1)
-corner_radius_top_left = 24
-corner_radius_top_right = 24
-corner_radius_bottom_right = 24
-corner_radius_bottom_left = 24
-shadow_color = Color(0, 0, 0, 0.1882353)
-shadow_size = 5
-shadow_offset = Vector2(-3, 0)
+bg_color = Color(0.22, 0.25, 0.32, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.34, 0.38, 0.46, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 6
+shadow_offset = Vector2(0, 2)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_kgiiq"]
 content_margin_left = 15.0
 content_margin_right = 15.0
-bg_color = Color(1, 1, 1, 0.6)
-border_width_left = 3
-border_width_top = 3
-border_width_right = 3
-border_width_bottom = 3
-border_color = Color(0.8776157, 0.8776158, 0.87761563, 1)
-corner_radius_top_left = 24
-corner_radius_top_right = 24
-corner_radius_bottom_right = 24
-corner_radius_bottom_left = 24
-shadow_color = Color(0, 0, 0, 0.1882353)
-shadow_size = 5
-shadow_offset = Vector2(-3, 0)
+bg_color = Color(1, 1, 1, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(1, 1, 1, 0.62)
+shadow_size = 20
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_7rc5s"]
 resource_local_to_scene = true
@@ -115,19 +118,23 @@ gradient = SubResource("Gradient_7rc5s")
 texture = SubResource("GradientTexture2D_r0ui6")
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xcqgn"]
-bg_color = Color(0.5689727, 0.56897277, 0.5689727, 0.88235295)
-border_width_left = 4
-border_width_top = 4
-border_width_right = 4
-border_width_bottom = 4
-border_color = Color(0.57, 0.57, 0.57, 1)
-shadow_color = Color(0, 0, 0, 0.24313726)
-shadow_size = 10
-shadow_offset = Vector2(5, 0)
+bg_color = Color(0.45177418, 0.4929024, 0.558753, 0.9019608)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0, 0, 0, 0.25)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
+shadow_offset = Vector2(0, 3)
 
 [sub_resource type="StyleBoxLine" id="StyleBoxLine_7vp1s"]
-color = Color(1, 1, 1, 1)
-thickness = 4
+color = Color(1, 1, 1, 0.25)
+thickness = 2
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_c3ket"]
 draw_center = false

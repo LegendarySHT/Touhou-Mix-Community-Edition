@@ -11,26 +11,25 @@ spacing_glyph = 3
 font = SubResource("FontVariation_jttwt")
 font_size = 32
 stacked_outline_count = 2
-stacked_outline_0/size = 3
+stacked_outline_0/size = 2
 stacked_outline_0/color = Color(1, 1, 1, 1)
-stacked_outline_1/size = 8
+stacked_outline_1/size = 5
 
 [sub_resource type="StyleBoxLine" id="StyleBoxLine_wrosb"]
 content_margin_top = 15.0
-color = Color(1, 1, 1, 1)
+color = Color(1, 1, 1, 0.7411765)
 grow_begin = -15.0
 grow_end = -15.0
-thickness = 10
+thickness = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_f1sag"]
-corner_radius_top_left = 65
-corner_radius_top_right = 65
-corner_radius_bottom_right = 65
-corner_radius_bottom_left = 65
+corner_radius_top_left = 75
+corner_radius_top_right = 75
+corner_radius_bottom_right = 75
+corner_radius_bottom_left = 75
 
 [node name="AlbumNode" type="Button" unique_id=1523238690]
 custom_minimum_size = Vector2(600, 150)
-clip_contents = true
 offset_right = 600.0
 offset_bottom = 150.0
 size_flags_horizontal = 0
@@ -43,15 +42,24 @@ toggle_mode = true
 script = ExtResource("1_pxpjj")
 metadata/index = 0
 
-[node name="cover" type="TextureRect" parent="." unique_id=944910888]
+[node name="C" type="Control" parent="." unique_id=1653050760]
 show_behind_parent = true
+clip_contents = true
 layout_mode = 1
-anchors_preset = -1
 anchor_right = 1.0
+anchor_bottom = 1.0
 offset_left = 8.0
 offset_top = 8.0
 offset_right = -8.0
-offset_bottom = 600.0
+offset_bottom = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="cover" type="TextureRect" parent="C" unique_id=944910888]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
 grow_horizontal = 2
 pivot_offset = Vector2(0, 350)
 size_flags_vertical = 0
@@ -101,7 +109,7 @@ layout_mode = 1
 anchors_preset = -1
 anchor_right = 0.99
 anchor_bottom = 1.0
-offset_left = 10.0
+offset_left = 12.0
 offset_top = 72.0
 offset_right = -70.0
 offset_bottom = -8.0

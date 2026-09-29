@@ -4,15 +4,17 @@
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="2_uq81t"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qg2wq"]
-bg_color = Color(0, 0, 0, 0.40392157)
-border_width_right = 3
-border_width_bottom = 5
-border_color = Color(0.8, 0.8, 0.8, 0.6156863)
-corner_radius_top_left = 6
-corner_radius_top_right = 24
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 24
-corner_detail = 1
+bg_color = Color(0.0627, 0.0784, 0.1137, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 16
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 16
+corner_detail = 6
 
 [sub_resource type="FontVariation" id="FontVariation_m4qc3"]
 variation_embolden = 1.0
@@ -21,20 +23,19 @@ variation_transform = Transform2D(1, 0.2, 0, 1, 0, 0)
 [sub_resource type="LabelSettings" id="LabelSettings_uq81t"]
 font = SubResource("FontVariation_m4qc3")
 font_size = 40
-font_color = Color(0.80049086, 0.80049074, 0.80049074, 1)
+font_color = Color(0.949, 0.961, 0.984, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_dnql7"]
 draw_center = false
-border_width_left = 5
-border_width_top = 5
-border_width_right = 5
-border_width_bottom = 5
-border_color = Color(1, 1, 1, 1)
-border_blend = true
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.576, 0.706, 1, 0.9)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
 
 [node name="ScoreNode" type="Button" unique_id=487824627]
 custom_minimum_size = Vector2(500, 130)

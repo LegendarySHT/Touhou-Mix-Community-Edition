@@ -5,7 +5,12 @@
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="3_3id1m"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_31lmn"]
-bg_color = Color(0.23490001, 0.50328004, 0.81, 1)
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
 corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
@@ -13,15 +18,16 @@ corner_radius_bottom_left = 12
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3id1m"]
 bg_color = Color(0, 0, 0, 0)
-border_width_left = 3
-border_width_top = 3
-border_width_bottom = 3
+border_width_left = 2
+border_width_top = 1
+border_width_bottom = 1
+border_color = Color(0.22, 0.27, 0.36, 1)
 expand_margin_left = 3.0
 expand_margin_top = 3.0
 expand_margin_right = 3.0
 expand_margin_bottom = 3.0
-shadow_color = Color(0, 0, 0, 0.3019608)
-shadow_size = 10
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_7vp1s"]
 draw_center = false
@@ -31,89 +37,94 @@ draw_center = false
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_8bk0u"]
 draw_center = false
-border_width_left = 20
-border_width_top = 20
-border_width_right = 20
-border_width_bottom = 20
-border_color = Color(1, 1, 1, 0.5019608)
-border_blend = true
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.576, 0.706, 1, 0.5)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xcqgn"]
-bg_color = Color(0.31686592, 0.6146278, 0.93180776, 1)
-border_width_left = 4
-border_width_top = 4
-border_width_right = 4
-border_width_bottom = 4
-border_color = Color(1, 1, 1, 1)
-shadow_color = Color(0, 0, 0, 0.24313726)
-shadow_size = 10
-shadow_offset = Vector2(5, 0)
+bg_color = Color(0.0627, 0.0784, 0.1137, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="StyleBoxLine" id="StyleBoxLine_7vp1s"]
-color = Color(1, 1, 1, 1)
-thickness = 4
+color = Color(0.5409905, 0.5409905, 0.54099065, 0.92156863)
+thickness = 2
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_kpleu"]
 atlas = ExtResource("3_3id1m")
 region = Rect2(240, 320, 80, 80)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_mvguw"]
-bg_color = Color(0.2364918, 0.50436205, 0.8133945, 1)
-border_width_left = 4
-border_width_top = 4
-border_width_right = 4
-border_width_bottom = 4
-corner_radius_top_left = 24
-corner_radius_top_right = 24
-corner_radius_bottom_right = 24
-corner_radius_bottom_left = 24
-shadow_color = Color(0, 0, 0, 0.24705882)
-shadow_size = 10
-shadow_offset = Vector2(5, 5)
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_kqmq3"]
-bg_color = Color(0.7248307, 0.21346554, 0.2506817, 1)
-border_width_left = 4
-border_width_top = 4
-border_width_right = 4
-border_width_bottom = 4
-corner_radius_top_left = 24
-corner_radius_top_right = 24
-corner_radius_bottom_right = 24
-corner_radius_bottom_left = 24
-shadow_color = Color(0, 0, 0, 0.24705882)
-shadow_size = 10
-shadow_offset = Vector2(5, 5)
+bg_color = Color(1, 0.3608, 0.4235, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.5, 0.55, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_6r2xy"]
-bg_color = Color(0.36175996, 0.6028589, 0.90211964, 1)
-border_width_left = 4
-border_width_top = 4
-border_width_right = 4
-border_width_bottom = 4
-border_blend = true
-corner_radius_top_left = 24
-corner_radius_top_right = 24
-corner_radius_bottom_right = 24
-corner_radius_bottom_left = 24
-shadow_color = Color(0, 0, 0, 0.24705882)
-shadow_size = 10
-shadow_offset = Vector2(5, 5)
+bg_color = Color(0.1451, 0.1804, 0.2471, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_mxrqf"]
-bg_color = Color(0.8954006, 0.33914763, 0.36271766, 1)
-border_width_left = 4
-border_width_top = 4
-border_width_right = 4
-border_width_bottom = 4
-border_blend = true
-corner_radius_top_left = 24
-corner_radius_top_right = 24
-corner_radius_bottom_right = 24
-corner_radius_bottom_left = 24
-shadow_color = Color(0, 0, 0, 0.24705882)
-shadow_size = 10
-shadow_offset = Vector2(5, 5)
+bg_color = Color(1, 0.5, 0.55, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.65, 0.68, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 8
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="DPITexture" id="DPITexture_3id1m"]
 

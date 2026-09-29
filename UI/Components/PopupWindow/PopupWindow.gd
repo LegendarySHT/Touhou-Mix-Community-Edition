@@ -86,14 +86,15 @@ func _ready() -> void:
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
 func apply_theme() -> void:
-	# WindowBG — 主题深色（保留 tscn 预设的圆角/边框，alpha 固定 0.6）
+	# WindowBG — 中性凸起面（保留 tscn 预设的圆角/边框）
 	var window_bg := get_node_or_null("WindowBG") as PanelContainer
 	if window_bg:
 		var sb := window_bg.get_theme_stylebox("panel")
 		if sb is StyleBoxFlat:
-			var pd := ThemeMGR.get_color("primary_dark")
-			sb.bg_color = Color(pd.r, pd.g, pd.b, 0.6)
-	# KBModeAdjust/AddBtn — primary 色调（内联 stylebox，不走共享 theme）
+			var sh := ThemeMGR.get_color("surface_high")
+			sb.bg_color = Color(sh.r, sh.g, sh.b, 0.98)
+	# KBModeAdjust/AddBtn — 强调色主按钮；该按钮在 tscn 里有自己的 normal/pressed/hover 样式框，
+	# 因此可就地改色而不影响共享的 R12NoBorder 主题
 	var kb_add_btn := get_node_or_null("TabC/KBModeAdjust/KeySequence/VFlowC/AddBtn") as Button
 	if kb_add_btn:
 		ThemeMGR._style_button_set_bg_color(kb_add_btn, ThemeMGR.get_color("primary"))

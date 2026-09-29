@@ -117,34 +117,35 @@ func _ready() -> void:
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
 func apply_theme() -> void:
-	var p := ThemeMGR.get_color("primary")
-	var pl := ThemeMGR.get_color("primary_light")
-	# TotalView panel -> primary
+	var surface := ThemeMGR.get_color("surface")
+	var surface_high := ThemeMGR.get_color("surface_high")
+	var surface_hover := ThemeMGR.get_color("surface_hover")
+	# TotalView panel -> 凸起面（与 VolumeView 共享同一 StyleBox，稍亮以突出顶部大面板）
 	var total_view := get_node_or_null("MC/VBox/TotalView") as Panel
 	if total_view:
 		var sb := total_view.get_theme_stylebox("panel")
 		if sb is StyleBoxFlat:
-			sb.bg_color = p
-	# noteTotal panel -> primary_light
+			sb.bg_color = surface_high
+	# noteTotal panel -> 内嵌面（比 TotalView 底色更深，避免与背景同色分不出来）
 	var note_total := get_node_or_null("MC/VBox/TotalView/MC/VBoxC/flowArea/noteTotal") as Panel
 	if note_total:
 		var sb := note_total.get_theme_stylebox("panel")
 		if sb is StyleBoxFlat:
-			sb.bg_color = pl
-	# VocalEnableBtn button states
+			sb.bg_color = surface
+	# VocalEnableBtn button states（开启=中性，关闭/按下=危险色）
 	if vocal_enable_btn:
 		var sb_n := vocal_enable_btn.get_theme_stylebox("normal")
 		if sb_n is StyleBoxFlat:
-			sb_n.bg_color = p
+			sb_n.bg_color = surface_high
 		var sb_h := vocal_enable_btn.get_theme_stylebox("hover")
 		if sb_h is StyleBoxFlat:
-			sb_h.bg_color = p.lightened(0.15)
+			sb_h.bg_color = surface_hover
 		var sb_p := vocal_enable_btn.get_theme_stylebox("pressed")
 		if sb_p is StyleBoxFlat:
-			sb_p.bg_color = ThemeMGR.DANGER_COLOR
+			sb_p.bg_color = ThemeMGR.get_color("danger")
 		var sb_hp := vocal_enable_btn.get_theme_stylebox("hover_pressed")
 		if sb_hp is StyleBoxFlat:
-			sb_hp.bg_color = ThemeMGR.DANGER_COLOR.lightened(0.2)
+			sb_hp.bg_color = ThemeMGR.get_color("danger").lightened(0.15)
 
 func _exit_tree() -> void:
 	if ThemeMGR:

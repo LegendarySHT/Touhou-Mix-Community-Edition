@@ -301,27 +301,31 @@ func _init_ui() -> void:
 
 ## 应用主题色到主框架组件（由 ThemeManager 广播调用 + _init_ui 首次自调）
 func apply_theme() -> void:
-	# LT_Btn — 蓝 (primary)，按钮各状态渐变框
+	var primary := ThemeMGR.get_color("primary")
+	var surface := ThemeMGR.get_color("surface")
+
+	# LT_Btn / RB_Btn — 强调色渐变导航按钮
 	var lt := get_node_or_null("LT_Btn") as Button
 	if lt:
 		ThemeMGR._modify_button_states_color(lt, "primary")
-	# RB_Btn — 淡蓝 (primary_light)
 	var rb := get_node_or_null("RB_Btn") as Button
 	if rb:
-		ThemeMGR._modify_button_states_color(rb, "primary_light")
-	# ShortCutMenu 面板 — 蓝 (primary)
-	var sc_panel := get_node_or_null("skew/C/ShortCutMenu/Panel")
+		ThemeMGR._modify_button_states_color(rb, "primary")
+	# ShortCutMenu 面板 — 中性凸起面 + 强调色细描边
+	var sc_panel := get_node_or_null("skew/C/ShortCutMenu/Panel") as Panel
 	if sc_panel:
-		ThemeMGR._modify_panel_color(sc_panel, "primary")
-	# PlayerInfo 面板按钮 — 暗色 (primary_dark)
+		var sc_sb := sc_panel.get_theme_stylebox("panel")
+		if sc_sb is StyleBoxFlat:
+			sc_sb.bg_color = ThemeMGR.get_color("surface_high")
+			sc_sb.border_color = Color(primary.r, primary.g, primary.b, 0.55)
+	# PlayerInfo 面板按钮 — 展开后兼作 ProfilePage 的页面底色，用较深的中性面（内容面板在其上更亮，形成层次）
 	var info_btn := get_node_or_null("PlayerInfo/InfoPanelBtn") as Button
 	if info_btn:
-		var pd := ThemeMGR.get_color("primary_dark")
 		for state in ["normal", "pressed", "hover"]:
 			var sb := info_btn.get_theme_stylebox(state)
 			if sb is StyleBoxFlat:
-				sb.bg_color = pd
-				sb.border_color = pd.lightened(0.3)
+				sb.bg_color = surface
+				sb.border_color = Color(primary.r, primary.g, primary.b, 0.7)
 	# LogIn 在 Node2D(Skew) 下，不继承 Main 的 theme，手动复制
 	var login := get_node_or_null("PlayerInfo/InfoPanelBtn/TabC/C/Skew/LogIn") as Control
 	if login:

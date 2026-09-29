@@ -38,28 +38,11 @@ func _ready() -> void:
 		apply_theme()
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
-## SettingList 的 value_button 主题 + ShortCut 导航按钮的 focus 样式
+## SettingList 的 value_button 主题；ShortCut 导航按钮的 focus 直接复用共享 Theme 的 focus StyleBox
+## （ThemeManager 在 _refresh_theme_colors 里就地改其边框色，不再逐按钮 duplicate 覆盖）
 func apply_theme() -> void:
 	if setting_list:
 		setting_list.apply_button_theme(ThemeMGR.get_color("primary"))
-	var pressed_color := ThemeMGR.get_color("primary").darkened(0.25)
-	for b in short_cut_btn.get_children():
-		if b is Button:
-			_apply_shortcut_focus_style(b, pressed_color)
-
-## 给 ShortCut 按钮设置 focus 样式：复制 pressed 样式 + 白色边框
-## 通过 theme_override_styles/focus 独立覆盖，不影响其他按钮和共享 Theme 资源
-func _apply_shortcut_focus_style(btn: Button, pressed_color: Color) -> void:
-	var sb := btn.get_theme_stylebox("pressed")
-	if sb is StyleBoxFlat:
-		var dup := (sb as StyleBoxFlat).duplicate() as StyleBoxFlat
-		dup.bg_color = pressed_color
-		dup.border_color = Color.WHITE
-		dup.border_width_left = 4
-		dup.border_width_right = 4
-		dup.border_width_top = 4
-		dup.border_width_bottom = 4
-		btn.add_theme_stylebox_override("focus", dup)
 
 func _exit_tree() -> void:
 	if ThemeMGR:

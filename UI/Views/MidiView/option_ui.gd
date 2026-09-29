@@ -36,26 +36,12 @@ func _ready():
 				if not i.button_pressed:
 					i.button_pressed = true
 			)
-			_apply_tab_focus_style(i)
 	
 	for i in [mode_btn, limit_btn, gamme_mode_btn, difficulty_btn]:
 		i.get_popup().about_to_popup.connect(_on_popup_menu_popup.bind(i.get_popup()))
 
 	_sync_mode_from_config()
 	_sync_difficulty_from_config()
-
-## 给选项卡按钮设置 focus 样式：按下效果 + 白色边框（参考 SettingView 快捷按钮）
-## 聚焦时按钮已自动按下，focus 样式叠加在 pressed 样式之上形成白边
-func _apply_tab_focus_style(btn: Button) -> void:
-	var sb := btn.get_theme_stylebox("pressed")
-	if sb is StyleBoxFlat:
-		var dup := (sb as StyleBoxFlat).duplicate() as StyleBoxFlat
-		dup.border_color = Color.WHITE
-		dup.border_width_left = 4
-		dup.border_width_right = 4
-		dup.border_width_top = 4
-		dup.border_width_bottom = 4
-		btn.add_theme_stylebox_override("focus", dup)
 
 func _sync_mode_from_config() -> void:
 	var is_auto := ConfigManager.instance.get_int("Playback", "auto_mode", 0) == 1

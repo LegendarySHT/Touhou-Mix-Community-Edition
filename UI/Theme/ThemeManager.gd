@@ -63,14 +63,30 @@ var _bg_load_thread: Thread = null
 var _bg_pending_rects: Dictionary = {}   # file_name -> Array[{rect, stretch}]
 var _bg_load_queue: Array[String] = []
 
-# 固定色 — 不从预设中读取
-const PANEL_BG := Color("#161A2E")       # 面板背景
-const SIDEBAR_BG := Color("#080C16")     # 侧边栏最深背景
-const CARD_BG := Color("#1E2A40")        # 卡片/按钮次级背景
-const DANGER_COLOR := Color("#FF5555")   # 删除/危险操作
-const SUCCESS_COLOR := Color("#55DD88")  # 成功/确认
-const WARNING_COLOR := Color("#FFCC44")  # 警告
-const INFO_COLOR := Color("#55AAFF")     # 信息提示
+# 颜色令牌一览（get_color 可取的键，均来自 theme.ini 的 [common] + 预设）：
+#   强调：primary / primary_light / primary_dark / secondary
+#   板面：surface_low / surface / surface_high / surface_hover
+#   描边：border / border_soft
+#   语义：danger / success / warning / info
+#   文字：text_primary / text_secondary / text_dim
+# 说明：语义色也统一走 get_color("danger") 等取值，不再另设常量，避免两处定义漂移。
+
+# 语义色的兜底默认值（用户配置缺键时 get_color 的返回值）
+const SEMANTIC_FALLBACK := {
+	"danger": Color("#FF5C6C"),
+	"success": Color("#3ED88C"),
+	"warning": Color("#FFC24B"),
+	"info": Color("#5B8CFF"),
+	"surface_low": Color("#090C13"),
+	"surface": Color("#10141D"),
+	"surface_high": Color("#181E2B"),
+	"surface_hover": Color("#222A3B"),
+	"border": Color("#2B3446"),
+	"border_soft": Color("#1F2634"),
+	"text_primary": Color("#F2F5FB"),
+	"text_secondary": Color("#A6B1C9"),
+	"text_dim": Color("#5C6883"),
+}
 
 # ============ 颜色 API ============
 
@@ -78,6 +94,9 @@ func get_color(key: String, default: Color = Color.WHITE) -> Color:
 	var k := key.to_lower()
 	if _palette.has(k):
 		return _palette[k]
+	if SEMANTIC_FALLBACK.has(k):
+		GLogger.warning("Theme color key missing, using fallback: %s" % key, "ThemeManager")
+		return SEMANTIC_FALLBACK[k]
 	GLogger.warning("Theme color key not found: %s" % key, "ThemeManager")
 	return default
 
@@ -225,8 +244,8 @@ func apply_background(texture_rect: TextureRect, view_name: String) -> void:
 			# ThemeManager 不实际应用，仅作为配置占位，让 PlayView 完全接管
 			return
 		"solid":
-			var color_str: String = _backgrounds.get(prefix + "solid_color", "#0D1020")
-			var solid_color := Color(color_str) if color_str.is_valid_html_color() else Color("#0D1020")
+			var color_str: String = _backgrounds.get(prefix + "solid_color", "#0A0D14")
+			var solid_color := Color(color_str) if color_str.is_valid_html_color() else Color("#0A0D14")
 			texture_rect.texture = _create_solid_gradient_texture(solid_color)
 			texture_rect.modulate = Color.WHITE
 		"image":
@@ -362,24 +381,40 @@ func invalidate_background_cache(file_name: String = "") -> void:
 
 # ============ 样式工具方法 ============
 
+## 判断节点是否对某个状态持有「本地覆盖」的 StyleBox（theme_override_styles）。
+## 只有本地覆盖的 StyleBox 才是该节点私有的，可以安全就地改色；
+## 若某状态没有覆盖，get_theme_stylebox 会沿 Theme 链返回**共享**的 StyleBox，
+## 就地修改会连带改掉所有使用该 Theme 的控件（别名污染），故一律跳过。
+func has_local_stylebox(node: Control, state: String) -> bool:
+	return node != null and node.has_theme_stylebox_override(state)
+
 ## 修改节点已有 StyleBox 的 bg_color（不新建 StyleBox，保留 tscn 预设的圆角/边框等配置）
+## 仅作用于节点自带的 theme_override_styles，避免误改共享 Theme 资源
 func _modify_panel_color(node: Control, color_key: String) -> void:
+	if not has_local_stylebox(node, "panel"):
+		return
 	var sb := node.get_theme_stylebox("panel")
 	if sb == null or sb is StyleBoxEmpty:
 		return
 	_apply_color_to_stylebox(sb, get_color(color_key))
 
+## 只替换 RGB，保留目标 StyleBox 原有的 alpha（避免主题改色时把作者设定的透明度覆盖掉）
+func _tint_keep_alpha(color: Color, alpha: float) -> Color:
+	return Color(color.r, color.g, color.b, alpha)
+
 ## 统一给（原生 StyleBoxFlat 或自定义自绘风格框）设置 bg_color/border_color
+## 只改色相，透明度沿用各 StyleBox 自身配置
 func _apply_color_to_stylebox(sb: StyleBox, color: Color) -> void:
 	if sb is StyleBoxFlat:
-		sb.bg_color = color
-		sb.border_color = color.lightened(0.3)
+		sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
+		sb.border_color = _tint_keep_alpha(color.lightened(0.3), sb.border_color.a)
 	# StyleBoxHighlightGradient（GDScript 自绘渐变风格框，继承 StyleBox 基类，属性命名与原生命名一致）
 	elif sb is StyleBoxHighlightGradient:
-		sb.bg_color = color
-		sb.border_color = color.lightened(0.3)
+		sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
+		sb.border_color = _tint_keep_alpha(color.lightened(0.3), sb.border_color.a)
 
 ## 对按钮各状态（normal/hover/pressed/hover_pressed）stylebox 应用主题色，各状态自带明暗变体
+## 仅处理按钮本地覆盖的状态样式（见 has_local_stylebox）
 func _modify_button_states_color(btn: Button, color_key: String) -> void:
 	var base := get_color(color_key)
 	for spec in [
@@ -388,6 +423,8 @@ func _modify_button_states_color(btn: Button, color_key: String) -> void:
 		["pressed", base.darkened(0.15)],
 		["hover_pressed", base],
 	]:
+		if not has_local_stylebox(btn, spec[0]):
+			continue
 		var sb := btn.get_theme_stylebox(spec[0])
 		if sb == null or sb is StyleBoxEmpty:
 			continue
@@ -413,17 +450,34 @@ func _style_song_instance(item: Control, pri_light: Color) -> void:
 			sb.bg_color = pri_light
 
 
-## 统一设置按钮三种状态的 bg_color（通过 Theme 的 StyleBoxFlat 引用）
-## normal -> base_color, hover -> base_color.lightened(0.15), pressed -> base_color.darkened(0.25)
+## 统一设置按钮各状态样式（通过 Theme 的 StyleBoxFlat 引用）。
+## 现代配色：常规态为中性板面 + 细描边，交互态才引入强调色。
+## 几何参数（圆角/边框宽/边距）由 .tscn 上的 StyleBox 决定，此处只写颜色。
 func _theme_button_set_color(theme: Theme, base_color: Color, type: String = "Button") -> void:
-	theme.get_stylebox("normal", type).bg_color = base_color
-	theme.get_stylebox("hover", type).bg_color = base_color.lightened(0.15)
-	theme.get_stylebox("pressed", type).bg_color = base_color.darkened(0.25)
-	if not theme.has_theme_item(Theme.DATA_TYPE_STYLEBOX, "hover_pressed", type):
-		theme.set_stylebox("hover_pressed", type, theme.get_stylebox("pressed", type).duplicate())
-	theme.get_stylebox("hover_pressed", type).bg_color = base_color.darkened(0.2)
-	theme.get_stylebox("focus", type).bg_color = base_color.lightened(0.1)
-	theme.get_stylebox("disabled", type).bg_color = base_color.darkened(0.6)
+	var surface := get_color("surface_high")
+	var surface_hover := get_color("surface_hover")
+	var surface_low := get_color("surface_low")
+	var border := get_color("border")
+	var border_soft := get_color("border_soft")
+
+	_set_theme_stylebox(theme, type, "normal", surface, border)
+	_set_theme_stylebox(theme, type, "hover", surface_hover, Color(base_color.r, base_color.g, base_color.b, 0.85))
+	_set_theme_stylebox(theme, type, "pressed", base_color.darkened(0.15), base_color.lightened(0.1))
+	_set_theme_stylebox(theme, type, "hover_pressed", base_color.darkened(0.32), base_color.darkened(0.05))
+	_set_theme_stylebox(theme, type, "focus", Color(0, 0, 0, 0), base_color)
+	_set_theme_stylebox(theme, type, "disabled", surface_low, border_soft)
+
+## 仅当 Theme 内确实定义了该样式时写入颜色（避免 get_stylebox 回退到引擎默认主题并被就地篡改）
+func _set_theme_stylebox(theme: Theme, type: String, state: String, bg: Color, border: Color) -> void:
+	if not theme.has_theme_item(Theme.DATA_TYPE_STYLEBOX, state, type):
+		return
+	var sb := theme.get_stylebox(state, type)
+	if sb is StyleBoxFlat:
+		(sb as StyleBoxFlat).bg_color = bg
+		(sb as StyleBoxFlat).border_color = border
+	elif sb is StyleBoxHighlightGradient:
+		sb.bg_color = bg
+		sb.border_color = border
 
 # ============ 共享按钮 Theme（几何 .tres，颜色随主题） ============
 
@@ -440,112 +494,127 @@ func _refresh_shared_btn_themes() -> void:
 	if r12_theme:
 		_style_shared_flat_btn_theme(r12_theme)
 
-## 列表项按钮 Theme 四态颜色（fancy_focus 风格：normal 边框 pri_light + 半透明底 + focus 阴影）
+## 列表项按钮 Theme 四态颜色（现代风格：不透明描边 + 透明底，四态用不同色阶区分）。
+## 列表项的封面/标题是 show_behind_parent（画在 StyleBox 之下），因此这里**不使用任何填充**
+## （哪怕半透明也会盖住封面、透出封面方角）；交互态改用卡片外侧的辉光来表达。
+## 色阶：normal 中性描边 → hover 强调色 → pressed/hover_pressed 亮强调色（选中）→ focus 亮强调色
 func _style_shared_list_btn_theme(theme: Theme) -> void:
+	var p := get_color("primary")
 	var pl := get_color("primary_light")
-	# pressed/hover — 半透明底色
-	var sb := theme.get_stylebox("pressed", "Button")
+	var border := get_color("border")
+	# normal — 中性描边，透明底，无辉光
+	var sb := theme.get_stylebox("normal", "Button")
 	if sb is StyleBoxFlat:
-		sb.bg_color = Color(pl.r, pl.g, pl.b, 0.25)
+		sb.bg_color = Color(0, 0, 0, 0)
+		sb.border_color = border
+		sb.shadow_color = Color(0, 0, 0, 0)
+	# hover — 强调色描边 + 强调色辉光
 	sb = theme.get_stylebox("hover", "Button")
 	if sb is StyleBoxFlat:
-		sb.bg_color = Color(pl.r, pl.g, pl.b, 0.15)
-	# focus — 阴影高亮
+		sb.bg_color = Color(0, 0, 0, 0)
+		sb.border_color = p
+		sb.shadow_color = Color(p.r, p.g, p.b, 0.45)
+	# pressed — 选中态：亮强调色描边 + 更强辉光
+	sb = theme.get_stylebox("pressed", "Button")
+	if sb is StyleBoxFlat:
+		sb.bg_color = Color(0, 0, 0, 0)
+		sb.border_color = pl
+		sb.shadow_color = Color(pl.r, pl.g, pl.b, 0.6)
+	# hover_pressed — 与 pressed 同款（.tres 中二者共享同一 StyleBox）
+	sb = theme.get_stylebox("hover_pressed", "Button")
+	if sb is StyleBoxFlat:
+		sb.bg_color = Color(0, 0, 0, 0)
+		sb.border_color = pl
+		sb.shadow_color = Color(pl.r, pl.g, pl.b, 0.6)
+	# focus — 亮强调色描边 + 轻微辉光
 	sb = theme.get_stylebox("focus", "Button")
 	if sb is StyleBoxFlat:
-		sb.shadow_color = Color(pl.r, pl.g, pl.b, 0.6)
-	# normal — 蓝色边框只加给 normal（与 tscn 原始设计一致）；hover/pressed 保持默认边框色
-	sb = theme.get_stylebox("normal", "Button")
-	if sb is StyleBoxFlat:
 		sb.border_color = pl
-		sb.shadow_color = Color(pl.r, pl.g, pl.b, 0.4)
-	for state in ["hover", "pressed"]:
-		sb = theme.get_stylebox(state, "Button")
-		if sb is StyleBoxFlat:
-			sb.shadow_color = Color(pl.r, pl.g, pl.b, 0.4)
+		sb.shadow_color = Color(pl.r, pl.g, pl.b, 0.35)
 
-## 圆角12 无边框按钮 Theme 四态颜色（primary 三阶，与主 Theme 按钮逻辑一致）
+## 圆角12 无边框按钮 Theme 四态颜色（solid 强调填充，交互态提亮/压暗）
 func _style_shared_flat_btn_theme(theme: Theme) -> void:
 	var base := get_color("primary")
-	var states := ["normal", "hover", "pressed", "focus"]
 	var colors := {
-		"normal": base,
-		"hover": base.lightened(0.15),
-		"pressed": base.darkened(0.25),
-		"focus": base.lightened(0.1),
+		"normal": base.darkened(0.28),
+		"hover": base.darkened(0.05),
+		"pressed": base.darkened(0.48),
+		"focus": base.lightened(0.05),
 	}
-	for state in states:
+	for state in colors:
 		var sb := theme.get_stylebox(state, "Button")
 		if sb is StyleBoxFlat:
 			sb.bg_color = colors[state]
 
 func _style_panel_set_bg_color(panel: Control, color: Color) -> void:
-	if not panel:
+	if not has_local_stylebox(panel, "panel"):
 		return
 	var sb := panel.get_theme_stylebox("panel")
 	if sb is StyleBoxFlat:
-		sb.bg_color = color
-		sb.border_color = color.lightened(0.3)
+		sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
+		sb.border_color = _tint_keep_alpha(color.lightened(0.3), sb.border_color.a)
 
-## 修改 Previ / Next 按钮的已有 StyleBoxFlat 颜色（保留 tscn 的 skew/border/shadow 配置）
+## 修改按钮自带的 normal/pressed/hover StyleBoxFlat 颜色（保留 tscn 的 skew/border/shadow/alpha 配置）
+## 仅处理按钮本地覆盖的状态样式（见 has_local_stylebox），避免误改共享 Theme 资源
 func _style_button_set_bg_color(btn: Button, color: Color) -> void:
 	if not btn:
 		return
-	btn.get_theme_stylebox("normal").bg_color = color
-	btn.get_theme_stylebox("pressed").bg_color = color.darkened(0.25)
-	btn.get_theme_stylebox("hover").bg_color = color.lightened(0.15)
+	for spec in [
+		["normal", color],
+		["pressed", color.darkened(0.25)],
+		["hover", color.lightened(0.15)],
+	]:
+		if not has_local_stylebox(btn, spec[0]):
+			continue
+		var sb := btn.get_theme_stylebox(spec[0])
+		if sb is StyleBoxFlat:
+			sb.bg_color = _tint_keep_alpha(spec[1], sb.bg_color.a)
 
 # ============ MidiView 主题 ============
 
 ## 修改 MidiView 中通过 theme_override_styles 单独设置的节点样式
 func _style_midi_individual_nodes(info_ui: Node) -> void:
 	var p := get_color("primary")
-	var pl := get_color("primary_light")
-	var pd := get_color("primary_dark")
+	var surface := get_color("surface")
+	var surface_high := get_color("surface_high")
+	var surface_low := get_color("surface_low")
 
 	# InfoWindow 边框
 	var info_window := info_ui.get_node_or_null("LeftArea/InfoWindow") as PanelContainer
-	_style_panel_set_bg_color(info_window, pd)
+	_style_panel_set_bg_color(info_window, surface)
 
 	# Fold 面板（与 Center 共享同一 StyleBoxFlat_5h6qm）
 	var fold := info_ui.get_node_or_null("LeftArea/InfoWindow/HBoxC/Left/Fold") as Panel
-	_style_panel_set_bg_color(fold, pl)
+	_style_panel_set_bg_color(fold, surface_high)
 
 	# Fold/Btn — 只改 pressed（normal 透明，hover 暗色遮罩保留）
 	var fold_btn := info_ui.get_node_or_null("LeftArea/InfoWindow/HBoxC/Left/Fold/Btn") as Button
 	if fold_btn:
 		var sb := fold_btn.get_theme_stylebox("pressed")
 		if sb is StyleBoxFlat:
-			sb.bg_color = pd
+			sb.bg_color = surface_low
 
-	# Description 背景
+	# Description 背景 — 强调色淡底
 	var desc := info_ui.get_node_or_null("LeftArea/InfoWindow/HBoxC/Description") as RichTextLabel
 	if desc:
 		var sb := desc.get_theme_stylebox("normal")
 		if sb is StyleBoxFlat:
-			sb.bg_color = Color(p.r, p.g, p.b, 0.5)
-			sb.border_color = Color(pd.r, pd.g, pd.b, 0.4)
+			sb.bg_color = Color(p.r, p.g, p.b, 0.14)
+			sb.border_color = Color(p.r, p.g, p.b, 0.35)
 
-	# PlayBtn — 中间按钮比两边亮（内联 stylebox，不走共享 theme）
+	# PlayBtn — 主操作，强调色填充
 	var play_btn := info_ui.get_node_or_null("LeftArea/MainBtn/PlayBtn") as Button
-	_style_button_set_bg_color(play_btn, pl)
+	_style_button_set_bg_color(play_btn, p.darkened(0.1))
 
-	# DetailData 的 PC1 面板（亮色，取 TrackViewBtn Normal 色=primary，比 primary_light 深）/ PC2 面板（暗色）
+	# DetailData 的 PC1 面板（亮）/ PC2 面板（暗）
 	var pc1 := info_ui.get_node_or_null("LeftArea/DetailData/PC1") as PanelContainer
-	if pc1:
-		var pc1_color := get_color("primary")
-		var tv_btn := info_ui.get_node_or_null("LeftArea/MainBtn/TrackViewBtn") as Button
-		if tv_btn:
-			var tv_sb := tv_btn.get_theme_stylebox("normal")
-			if tv_sb is StyleBoxFlat:
-				pc1_color = tv_sb.bg_color
-		_style_panel_set_bg_color(pc1, pc1_color)
+	_style_panel_set_bg_color(pc1, surface_high)
 	var pc2 := info_ui.get_node_or_null("LeftArea/DetailData/PC2") as PanelContainer
-	_style_panel_set_bg_color(pc2, pd)
+	_style_panel_set_bg_color(pc2, surface_low)
 
-	# OptionPanel 背景 (和按钮按下状态同色)
+	# OptionPanel 背景
 	var option_panel := info_ui.get_node_or_null("OptionPanel") as PanelContainer
-	_style_panel_set_bg_color(option_panel, p.darkened(0.25))
+	_style_panel_set_bg_color(option_panel, surface_low)
 
 # ============ 全局刷新 ============
 
@@ -739,38 +808,52 @@ func _switch_main_bg(target_view: String) -> void:
 func _refresh_theme_colors(thm: Theme) -> void:
 	var p := get_color("primary")
 	var pl := get_color("primary_light")
-	var pd := get_color("primary_dark")
+	var surface := get_color("surface")
+	var surface_low := get_color("surface_low")
+	var surface_high := get_color("surface_high")
+	var surface_hover := get_color("surface_hover")
+	var border := get_color("border")
+	var border_soft := get_color("border_soft")
 
-	# Button states
-	_theme_button_set_color(thm, p)
+	# 按钮 / 选项按钮：中性板面 + 强调色交互态
+	_theme_button_set_color(thm, p, "Button")
+	_theme_button_set_color(thm, p, "OptionButton")
 
-	var cb_hp := thm.get_stylebox("hover_pressed", "CheckBox")
-	if cb_hp is StyleBoxFlat:
-		(cb_hp as StyleBoxFlat).bg_color = p.darkened(0.25)
+	# 全局面板底色（Panel / PanelContainer）
+	for type in ["Panel", "PanelContainer"]:
+		_set_theme_stylebox(thm, type, "panel", surface, border_soft)
+
+	# CheckBox 悬停按下底色
+	_set_theme_stylebox(thm, "CheckBox", "hover_pressed", surface_hover, border)
 
 	thm.set_color("font_disabled_color", "Button", get_color("text_dim"))
 	thm.set_color("selection_color", "LineEdit", p)
+	thm.set_color("caret_color", "LineEdit", get_color("text_primary"))
+	thm.set_color("font_color", "LineEdit", get_color("text_primary"))
+	thm.set_color("font_placeholder_color", "LineEdit", get_color("text_dim"))
+
+	# LineEdit 三态
+	_set_theme_stylebox(thm, "LineEdit", "normal", surface_high, border)
+	_set_theme_stylebox(thm, "LineEdit", "focus", Color(0, 0, 0, 0), p)
+	_set_theme_stylebox(thm, "LineEdit", "read_only", surface_low, border_soft)
 
 	# Label
 	thm.set_color("font_color", "Label", get_color("text_primary"))
 
-	# PopupMenu hover
-	var sb_ph := thm.get_stylebox("hover", "PopupMenu")
-	if sb_ph is StyleBoxFlat: sb_ph.bg_color = p
+	# PopupMenu：面板用凸起面，悬停用半透明强调色
+	_set_theme_stylebox(thm, "PopupMenu", "panel", surface_high, border)
+	_set_theme_stylebox(thm, "PopupMenu", "hover", Color(p.r, p.g, p.b, 0.22), border_soft)
 
-	# ScrollBar grabbers
-	var sb_gr := thm.get_stylebox("grabber", "VScrollBar")
-	if sb_gr is StyleBoxFlat: sb_gr.bg_color = p
-	var sb_gh := thm.get_stylebox("grabber_highlight", "VScrollBar")
-	if sb_gh is StyleBoxFlat: sb_gh.bg_color = pl
+	# 滚动条抓取柄
+	for type in ["VScrollBar", "HScrollBar"]:
+		_set_theme_stylebox(thm, type, "grabber", border, border)
+		_set_theme_stylebox(thm, type, "grabber_highlight", p, p)
+		_set_theme_stylebox(thm, type, "grabber_pressed", pl, pl)
 
 	# TabContainer
-	var sb_tu := thm.get_stylebox("tab_unselected", "TabContainer")
-	if sb_tu is StyleBoxFlat: sb_tu.bg_color = p
-	var sb_ts := thm.get_stylebox("tab_selected", "TabContainer")
-	if sb_ts is StyleBoxFlat: sb_ts.bg_color = pd
-	var sb_tp := thm.get_stylebox("panel", "TabContainer")
-	if sb_tp is StyleBoxFlat: sb_tp.bg_color = pd
+	_set_theme_stylebox(thm, "TabContainer", "tab_unselected", surface_low, border_soft)
+	_set_theme_stylebox(thm, "TabContainer", "tab_selected", surface_high, border)
+	_set_theme_stylebox(thm, "TabContainer", "panel", surface, border_soft)
 
 	# Tree
 	thm.set_font_size("font_size", "Tree", get_font_size("body", 32))
@@ -781,6 +864,13 @@ func _refresh_theme_colors(thm: Theme) -> void:
 # ============ 内部方法 ============
 
 func _parse_theme_config(cfg: Dictionary) -> void:
+	# 全局中性色 / 语义色（[common] 段）先入调色板，预设仅覆盖强调色
+	if cfg.has("common"):
+		for key in cfg["common"]:
+			var val: String = str(cfg["common"][key])
+			if val.is_valid_html_color():
+				_palette[key.to_lower()] = Color(val)
+
 	for section in cfg:
 		if section is String and (section as String).begins_with("preset_"):
 			var _name: String = (section as String).replace("preset_", "")
@@ -802,11 +892,11 @@ func _get_str(cfg: Dictionary, section: String, key: String, default: String) ->
 	return default
 
 func _apply_gradient(texture_rect: TextureRect, prefix: String) -> void:
-	var top_str: String = _backgrounds.get(prefix + "gradient_top", "#0D1020")
-	var bottom_str: String = _backgrounds.get(prefix + "gradient_bottom", "#0A0F1E")
+	var top_str: String = _backgrounds.get(prefix + "gradient_top", "#0B0F1A")
+	var bottom_str: String = _backgrounds.get(prefix + "gradient_bottom", "#0A0D15")
 
-	var top_color := Color(top_str) if top_str.is_valid_html_color() else Color("#0D1020")
-	var bottom_color := Color(bottom_str) if bottom_str.is_valid_html_color() else Color("#0A0F1E")
+	var top_color := Color(top_str) if top_str.is_valid_html_color() else Color("#0B0F1A")
+	var bottom_color := Color(bottom_str) if bottom_str.is_valid_html_color() else Color("#0A0D15")
 
 	var gradient := Gradient.new()
 	# 用 set_color 替换默认黑白点，而非 add_point 追加导致 4 个点

@@ -142,26 +142,13 @@ func _ready() -> void:
 		apply_theme()
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
+## 标签页按钮的 focus 直接复用共享 Theme 的 focus StyleBox（ThemeManager 就地改色），不再逐按钮 duplicate 覆盖
 func apply_theme() -> void:
 	var top_panel := get_node_or_null("Content/PC") as PanelContainer
 	if top_panel:
 		var sb := top_panel.get_theme_stylebox("panel")
 		if sb is StyleBoxFlat:
-			sb.bg_color = ThemeMGR.get_color("primary_dark")
-
-## 给标签页按钮设置 focus 样式：复制 pressed 样式 + 白色边框
-## 通过 theme_override_styles/focus 独立覆盖，不影响共享 Theme 资源
-func _apply_tab_focus_style(btn: Button, pressed_color: Color) -> void:
-	var sb := btn.get_theme_stylebox("pressed")
-	if sb is StyleBoxFlat:
-		var dup := (sb as StyleBoxFlat).duplicate() as StyleBoxFlat
-		dup.bg_color = pressed_color
-		dup.border_color = Color.WHITE
-		dup.border_width_left = 4
-		dup.border_width_right = 4
-		dup.border_width_top = 4
-		dup.border_width_bottom = 4
-		btn.add_theme_stylebox_override("focus", dup)
+			sb.bg_color = ThemeMGR.get_color("surface")
 
 ## 标签页按钮聚焦时自动切换（与 SettingView 快捷按钮聚焦自动按下一致）
 func _on_tab_focus_entered(idx: int) -> void:

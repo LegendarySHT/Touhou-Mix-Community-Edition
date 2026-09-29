@@ -4,15 +4,16 @@
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="3_e3e5v"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ng81m"]
-bg_color = Color(0.12941177, 0.14509805, 0.16078432, 1)
-border_width_left = 6
-border_width_top = 6
-border_width_right = 6
-border_width_bottom = 6
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
+bg_color = Color(0.0627, 0.0784, 0.1137, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1216, 0.149, 0.2039, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
 
 [node name="RecordListItem" type="PanelContainer" unique_id=1058775657]
 custom_minimum_size = Vector2(0, 150)
@@ -162,7 +163,7 @@ vertical_alignment = 1
 [node name="Miss" type="Label" parent="HBox/VBox/Count" unique_id=1845181464]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.8627451, 0.20392157, 0.27058825, 1)
+theme_override_colors/font_color = Color(0.8627, 0.2039, 0.3137, 1)
 theme_override_font_sizes/font_size = 24
 text = "99999"
 horizontal_alignment = 2
