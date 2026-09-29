@@ -46,6 +46,29 @@ func _ready() -> void:
 	# 直接开始加载封面（不等列表构建完毕）
 	start_cover_load()
 
+	if ThemeMGR:
+		ThemeMGR.register_theme_applier(self)
+		apply_theme()
+
+## 应用主题色（由 ThemeManager 广播调用 + 首次自调）
+func apply_theme() -> void:
+	if not ThemeMGR:
+		return
+	var surface_high := ThemeMGR.get_color("surface_high")
+	var border := ThemeMGR.get_color("border")
+	# 卡片四态（保留 tscn 预设的圆角/边框宽度/阴影，仅就地改色）
+	for state in ["normal", "hover", "pressed"]:
+		var sb := get_theme_stylebox(state)
+		if sb is StyleBoxFlat:
+			sb.bg_color = ThemeMGR._tint_keep_alpha(surface_high, sb.bg_color.a)
+			sb.border_color = border
+	# 封面底板
+	var cover_panel := get_node_or_null("CoverPanel") as Panel
+	if cover_panel:
+		ThemeMGR._style_panel_set_bg_color(cover_panel, surface_high)
+	# 注：封面底部浮层（深色渐隐）上的 MidiName/Author 的固定浅色由 .tscn 的 font_color override 提供
+	# （TextScrollHelper 会锁定场景显式色），此处不再重复设置，避免与脚本刷新冲突
+
 # 设置midi数据 传入无效值时重置
 func set_display(midi: MidiData = null) -> void:
 	var midi_changed: bool = midi_data != midi
@@ -173,3 +196,5 @@ func refresh_download_state() -> void:
 
 func _exit_tree() -> void:
 	_stop_pulse_animation()
+	if ThemeMGR:
+		ThemeMGR.unregister_theme_applier(self)

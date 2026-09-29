@@ -144,6 +144,9 @@ func add_setting_item(setting_data: Dictionary, init_value: Variant = "", group_
 	# theme_preset 不持久化到 INI，从 ThemeManager 读取当前主题名作为初始值，确保下拉框选中当前主题
 	if setting_data.id == "theme_preset" and (initial_value == null or str(initial_value) == "") and ThemeMGR:
 		initial_value = ThemeMGR.get_theme_name()
+	# appearance 同样从 ThemeManager 读取当前外观模式，并映射为中文选项文本以匹配 provider 返回值
+	if setting_data.id == "appearance" and ThemeMGR:
+		initial_value = "浅色" if ThemeMGR.get_appearance() == "light" else "深色"
 
 	# 读取 JSON 中声明的回调方法名
 	var on_click_method := String(setting_data.get("on_click", ""))
@@ -276,6 +279,14 @@ func _on_setting_value_changed(id: String, value: Variant):
 			if value >= 0 and value < presets.size():
 				ThemeMGR.apply_preset(presets[value])
 		_pending_config[id] = value
+		return
+
+	# appearance 即时应用到 ThemeManager（深色 / 浅色）
+	if id == "appearance" and value is int:
+		var mode := "light" if value == 1 else "dark"
+		if ThemeMGR:
+			ThemeMGR.set_appearance(mode)
+		_pending_config[id] = mode
 		return
 
 	# 转换值（索引→实际值、类型转换）
@@ -728,6 +739,10 @@ func _provide_theme_preset_options() -> Array:
 	for p in presets:
 		texts.append(p)
 	return texts
+
+# 提供 appearance 选项（与 SettingList 中映射逻辑保持一致：0=深色 / 1=浅色）
+func _provide_appearance_options() -> Array:
+	return ["深色", "浅色"]
 
 # 提供 soundfont_select 选项
 func _provide_soundfont_options() -> Array:

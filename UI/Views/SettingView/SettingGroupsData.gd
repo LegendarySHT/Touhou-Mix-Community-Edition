@@ -531,6 +531,15 @@ static func get_setting_groups() -> Array:
 				"options_provider": "_provide_theme_preset_options"
 			},
 			{
+				"id": "appearance",
+				"name_en": "Appearance Mode",
+				"name_zh": "外观模式",
+				"description": "切换深色 / 浅色界面风格；浅色模式以主题色为主而非通用灰白",
+				"type": "TYPE_OPTION",
+				"default_value": "dark",
+				"options_provider": "_provide_appearance_options"
+			},
+			{
 				"id": "block_skin_preset",
 				"name_en": "Note Skin",
 				"name_zh": "音符外观设定",

@@ -88,8 +88,8 @@ border_color = Color(0.1686, 0.2039, 0.2745, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1vlqv"]
 draw_center = false
-border_width_left = 1
-border_width_right = 1
+border_width_left = 3
+border_width_right = 3
 border_color = Color(0.1216, 0.149, 0.2039, 1)
 expand_margin_top = 15.0
 expand_margin_bottom = 15.0
@@ -601,7 +601,6 @@ custom_minimum_size = Vector2(400, 80)
 layout_mode = 2
 size_flags_horizontal = 6
 theme = ExtResource("16_qg2wq")
-theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 36
 text = "跳转至浏览器"
 
@@ -631,6 +630,8 @@ custom_minimum_size = Vector2(300, 200)
 layout_mode = 2
 size_flags_horizontal = 3
 focus_next = NodePath("../../../OptionPanel/VBoxC/TabBtn/Rank")
+theme_override_colors/icon_normal_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_hover_color = Color(1, 1, 1, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_btcpj")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_5hcss")
 theme_override_styles/hover = SubResource("StyleBoxFlat_wasq5")

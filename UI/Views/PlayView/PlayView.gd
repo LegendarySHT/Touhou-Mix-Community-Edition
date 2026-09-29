@@ -99,6 +99,35 @@ var keyboard_lane_separator: bool = false
 
 #################################
 
+## 演奏界面（舞台 + 其上的菜单/歌曲信息/背景遮罩）整体恒为深色，
+## 因此其文字与图标必须固定为浅色，不能跟随主题的 text_primary
+## （浅色模式下 text_primary 会翻成深色，落在深色舞台上就会「深底深字」不可读）。
+## 用一个仅覆盖文字/图标色的局部 Theme 挂在根节点上，UI 组件的样式框仍向上回落主 Theme。
+const STAGE_TEXT := Color("#F2F5FB")
+const STAGE_TEXT_DIM := Color("#A6B1C9")
+
+func _apply_stage_theme() -> void:
+	var t := Theme.new()
+	for type in ["Label", "Button", "OptionButton", "CheckBox", "CheckButton"]:
+		t.set_color("font_color", type, STAGE_TEXT)
+	for type in ["Button", "OptionButton"]:
+		t.set_color("font_hover_color", type, STAGE_TEXT)
+		t.set_color("font_pressed_color", type, STAGE_TEXT)
+	t.set_color("font_hover_pressed_color", "Button", STAGE_TEXT)
+	t.set_color("font_disabled_color", "Button", STAGE_TEXT_DIM)
+	t.set_color("font_focus_color", "OptionButton", STAGE_TEXT)
+	# 图标为白色描线，深色舞台上保持浅色即正确观感
+	t.set_color("icon_normal_color", "Button", STAGE_TEXT)
+	t.set_color("icon_hover_color", "Button", STAGE_TEXT)
+	t.set_color("icon_pressed_color", "Button", STAGE_TEXT)
+	theme = t
+
+func _enter_tree() -> void:
+	# 舞台固定使用浅色文字/图标（与外观模式无关）。
+	# 必须在 _enter_tree 里挂：子节点（含 TextScrollHelper 自绘滚动文字）的 _ready 先于本节点 _ready 执行，
+	# 若拖到 _ready 才设置，子节点会先按主主题（浅色模式下是深字）解析并缓存文字色，导致黑底上出现深字。
+	_apply_stage_theme()
+
 func _ready() -> void:
 	# 从配置加载键盘和轨道相关的参数
 	_load_lane_parameters()

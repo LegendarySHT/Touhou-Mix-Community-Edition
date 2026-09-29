@@ -47,6 +47,11 @@ var _palette: Dictionary = {}
 var _font_sizes: Dictionary = {}
 var _backgrounds: Dictionary = {}
 var _presets: Dictionary = {}
+# 中性色板（[common] 段，深色模式用）。浅色模式不读取此字典，
+# 而是从当前强调色实时衍生（见 _apply_light_neutral_layer），保证浅色也以主题色为主。
+var _common: Dictionary = {}
+# 外观模式：dark（深色，默认）/ light（浅色）。独立于预设（强调色），可任意组合。
+var _appearance: String = "dark"
 var _theme_name: String = "default"
 var _loaded: bool = false
 
@@ -131,6 +136,9 @@ func apply_preset(preset_name: String) -> void:
 		if val.is_valid_html_color():
 			_palette[key.to_lower()] = Color(val)
 
+	# 强调色就位后，按当前外观模式并入中性层（深色读 _common，浅色从强调色衍生）
+	_apply_neutral_layer()
+
 	_theme_name = preset_name
 	GLogger.info("主题预设已应用: %s (%d 色)" % [preset_name, _palette.size()], "ThemeManager")
 
@@ -146,11 +154,75 @@ func set_palette_colors(pri: Color, pri_light: Color, pri_dark: Color) -> void:
 	_palette["primary_light"] = pri_light
 	_palette["primary_dark"] = pri_dark
 	_theme_name = "custom"
+	# 强调色变了，浅色模式的中性层依赖强调色，需重新衍生
+	_apply_neutral_layer()
 	GLogger.info("主题色已自定义设置", "ThemeManager")
 	_schedule_save_theme()
 	refresh_theme_only()
 	if EvtBus:
 		EvtBus.theme_changed.emit(_theme_name)
+
+# ============ 外观模式（深色 / 浅色） ============
+
+func get_appearance() -> String:
+	return _appearance
+
+## 切换外观模式（dark / light）。浅色模式的中性层从当前强调色实时衍生，
+## 因此浅色界面以主题色为主，而非通用灰白；切换同时刷新主题色与背景。
+func set_appearance(mode: String) -> void:
+	if mode != "dark" and mode != "light":
+		GLogger.warning("未知外观模式: %s" % mode, "ThemeManager")
+		return
+	if mode == _appearance:
+		return
+	_appearance = mode
+	_apply_neutral_layer()
+	GLogger.info("外观模式已切换: %s" % _appearance, "ThemeManager")
+	_schedule_save_theme()
+	refresh_theme_only()
+	refresh_backgrounds()
+	if EvtBus:
+		EvtBus.theme_changed.emit(_theme_name)
+
+## 根据当前外观模式把中性层并入 _palette：
+##   dark  → 直接采用 [common] 静态中性色
+##   light → 从当前强调色（primary 色相）衍生浅色中性层，确保浅色也以主题色为主
+func _apply_neutral_layer() -> void:
+	if _appearance == "light":
+		_apply_light_neutral_layer()
+		return
+	for key in _common:
+		_palette[key] = _common[key]
+
+## 从强调色衍生浅色中性层。
+## 思路：取 primary 的色相 h 与饱和 s，把板面/描边做成「高亮度 + 同色相明显染色」。
+## 参考上个提交（深色模式）之前那套「以主题色为主」的配色：当时的板面/按钮都强绑定强调色，
+## 因此这里刻意拉高染色饱和，让浅色板面不只是灰白而是一眼看出主题色（蓝主题→浅蓝、粉主题→浅粉……）。
+## 文字取同色相近黑，语义色取在该浅底上可读的固定值。
+func _apply_light_neutral_layer() -> void:
+	var accent := get_color("primary")
+	var h := accent.h
+	var s := accent.s
+	# 板面/描边的「同色相染色」：越靠前的面越浅，但都保留可辨识的主题色偏
+	var light := {
+		"surface_low":   Color.from_hsv(h, min(s * 0.45, 0.30), 0.97),
+		"surface":       Color.from_hsv(h, min(s * 0.48, 0.34), 0.93),
+		"surface_high":  Color.from_hsv(h, min(s * 0.55, 0.42), 0.87),
+		"surface_hover": Color.from_hsv(h, min(s * 0.62, 0.50), 0.80),
+		"border":        Color.from_hsv(h, min(s * 0.58, 0.46), 0.60),
+		"border_soft":   Color.from_hsv(h, min(s * 0.42, 0.30), 0.86),
+		# 文字：同色相近黑，保证在浅底上对比足够
+		"text_primary":  Color.from_hsv(h, min(s * 0.40, 0.30), 0.13),
+		"text_secondary":Color.from_hsv(h, min(s * 0.35, 0.26), 0.32),
+		"text_dim":      Color.from_hsv(h, min(s * 0.32, 0.24), 0.48),
+		# 语义色：浅底上需更深更收敛，避免刺眼且保证可读
+		"danger":  Color("#C7303F"),
+		"success": Color("#128A4C"),
+		"warning": Color("#A8700A"),
+		"info":    Color("#245FC4")
+	}
+	for key in light:
+		_palette[key] = light[key]
 
 # ============ 主题加载/保存 ============
 
@@ -174,6 +246,9 @@ func load_theme(file_path: String = "") -> bool:
 	_parse_theme_config(merged)
 
 	var active: String = _get_str(merged, "Theme", "active_preset", DEFAULT_PRESET)
+	# 外观模式独立于预设：读取后校验，非法值回退 dark
+	var appr: String = _get_str(merged, "Theme", "appearance", "dark")
+	_appearance = "light" if appr == "light" else "dark"
 	apply_preset(active)
 
 	_loaded = true
@@ -185,7 +260,7 @@ func save_theme(file_path: String = "") -> bool:
 	var user_path := file_path if not file_path.is_empty() else USER_THEME_PATH
 	var cfg: Dictionary = {}
 
-	cfg["Theme"] = {"version": "1.0.0", "active_preset": _theme_name}
+	cfg["Theme"] = {"version": "2.0.0", "active_preset": _theme_name, "appearance": _appearance}
 	cfg["preset_" + _theme_name] = {}
 	for key in _palette:
 		cfg["preset_" + _theme_name][key] = (_palette[key] as Color).to_html(true)
@@ -402,16 +477,21 @@ func _modify_panel_color(node: Control, color_key: String) -> void:
 func _tint_keep_alpha(color: Color, alpha: float) -> Color:
 	return Color(color.r, color.g, color.b, alpha)
 
+## 由底色推导描边色：深色模式往上提亮、浅色模式往下压暗，
+## 否则浅色模式下 lightened(0.3) 会趋近纯白而导致面板边框「蒸发」。
+func _border_from(color: Color) -> Color:
+	return color.darkened(0.18) if _appearance == "light" else color.lightened(0.3)
+
 ## 统一给（原生 StyleBoxFlat 或自定义自绘风格框）设置 bg_color/border_color
 ## 只改色相，透明度沿用各 StyleBox 自身配置
 func _apply_color_to_stylebox(sb: StyleBox, color: Color) -> void:
 	if sb is StyleBoxFlat:
 		sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
-		sb.border_color = _tint_keep_alpha(color.lightened(0.3), sb.border_color.a)
+		sb.border_color = _tint_keep_alpha(_border_from(color), sb.border_color.a)
 	# StyleBoxHighlightGradient（GDScript 自绘渐变风格框，继承 StyleBox 基类，属性命名与原生命名一致）
 	elif sb is StyleBoxHighlightGradient:
 		sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
-		sb.border_color = _tint_keep_alpha(color.lightened(0.3), sb.border_color.a)
+		sb.border_color = _tint_keep_alpha(_border_from(color), sb.border_color.a)
 
 ## 对按钮各状态（normal/hover/pressed/hover_pressed）stylebox 应用主题色，各状态自带明暗变体
 ## 仅处理按钮本地覆盖的状态样式（见 has_local_stylebox）
@@ -535,16 +615,30 @@ func _style_shared_list_btn_theme(theme: Theme) -> void:
 ## 圆角12 无边框按钮 Theme 四态颜色（solid 强调填充，交互态提亮/压暗）
 func _style_shared_flat_btn_theme(theme: Theme) -> void:
 	var base := get_color("primary")
-	var colors := {
-		"normal": base.darkened(0.28),
-		"hover": base.darkened(0.05),
-		"pressed": base.darkened(0.48),
-		"focus": base.lightened(0.05),
-	}
+	var colors: Dictionary
+	if _appearance == "light":
+		# 浅色模式：实心强调色填充（呼应浅色前「以主题色为主」的风格），文字深色（见 _refresh_theme_colors 的 Button font_color）
+		colors = {
+			"normal": base,
+			"hover": base.lightened(0.10),
+			"pressed": base.darkened(0.18),
+			"focus": base.lightened(0.10),
+		}
+	else:
+		colors = {
+			"normal": base.darkened(0.28),
+			"hover": base.darkened(0.05),
+			"pressed": base.darkened(0.48),
+			"focus": base.lightened(0.05),
+		}
 	for state in colors:
 		var sb := theme.get_stylebox(state, "Button")
 		if sb is StyleBoxFlat:
 			sb.bg_color = colors[state]
+	# focus 态在 .tres 里是「空心描边」（draw_center=false），bg_color 不生效，需同步描边色
+	var focus_sb := theme.get_stylebox("focus", "Button")
+	if focus_sb is StyleBoxFlat:
+		focus_sb.border_color = base
 
 func _style_panel_set_bg_color(panel: Control, color: Color) -> void:
 	if not has_local_stylebox(panel, "panel"):
@@ -552,7 +646,7 @@ func _style_panel_set_bg_color(panel: Control, color: Color) -> void:
 	var sb := panel.get_theme_stylebox("panel")
 	if sb is StyleBoxFlat:
 		sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
-		sb.border_color = _tint_keep_alpha(color.lightened(0.3), sb.border_color.a)
+		sb.border_color = _tint_keep_alpha(_border_from(color), sb.border_color.a)
 
 ## 修改按钮自带的 normal/pressed/hover StyleBoxFlat 颜色（保留 tscn 的 skew/border/shadow/alpha 配置）
 ## 仅处理按钮本地覆盖的状态样式（见 has_local_stylebox），避免误改共享 Theme 资源
@@ -676,6 +770,8 @@ func _on_theme_changed(preset_name: String) -> void:
 			var val: String = p[key]
 			if val.is_valid_html_color():
 				_palette[key.to_lower()] = Color(val)
+		# 强调色就位后，按当前外观模式并入中性层（浅色需重新从强调色衍生）
+		_apply_neutral_layer()
 		_theme_name = preset_name
 		GLogger.info("主题预设已应用: %s (%d 色)" % [preset_name, _palette.size()], "ThemeManager")
 		# 外部驱动的预设切换：re-apply 后需要 save + refresh
@@ -827,6 +923,36 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	_set_theme_stylebox(thm, "CheckBox", "hover_pressed", surface_hover, border)
 
 	thm.set_color("font_disabled_color", "Button", get_color("text_dim"))
+	# 按钮文字色：深色模式为浅色文字、浅色模式为深色文字（text_primary 随模式翻转），
+	# 保证两种模式下实心按钮（R12 / 主操作）文字均可读
+	var text_primary := get_color("text_primary")
+	thm.set_color("font_color", "Button", text_primary)
+	# 按钮交互态字色（Main.tscn 里写死近白，浅色模式会变成「浅底浅字」）
+	thm.set_color("font_hover_color", "Button", text_primary)
+	thm.set_color("font_pressed_color", "Button", text_primary)
+	thm.set_color("font_hover_pressed_color", "Button", text_primary)
+	# 按钮图标着色：图标贴图是白色描线，浅色模式下必须翻成深色才能在浅底上可见
+	var text_dim := get_color("text_dim")
+	thm.set_color("icon_normal_color", "Button", text_primary)
+	thm.set_color("icon_hover_color", "Button", get_color("primary"))
+	thm.set_color("icon_pressed_color", "Button", get_color("primary"))
+	thm.set_color("icon_disabled_color", "Button", text_dim)
+	# OptionButton / CheckBox / CheckButton / PopupMenu 的字色（Main.tscn 同样写死近白）
+	thm.set_color("font_color", "OptionButton", text_primary)
+	thm.set_color("font_hover_color", "OptionButton", text_primary)
+	thm.set_color("font_pressed_color", "OptionButton", text_primary)
+	thm.set_color("font_focus_color", "OptionButton", text_primary)
+	thm.set_color("font_color", "CheckBox", text_primary)
+	thm.set_color("font_color", "CheckButton", text_primary)
+	# CheckBox/CheckButton 的勾选图标是自带白底贴图，不应随 Button 图标色被染色，显式保持白色
+	thm.set_color("icon_normal_color", "CheckBox", Color.WHITE)
+	thm.set_color("icon_disabled_color", "CheckBox", Color(1, 1, 1, 0.4))
+	thm.set_color("icon_normal_color", "CheckButton", text_primary)
+	# PopupMenu（所有下拉菜单）面板在浅色模式变浅，文字必须跟着翻深
+	thm.set_color("font_color", "PopupMenu", text_primary)
+	thm.set_color("font_hover_color", "PopupMenu", text_primary)
+	thm.set_color("font_separator_color", "PopupMenu", get_color("text_secondary"))
+	thm.set_color("font_disabled_color", "PopupMenu", text_dim)
 	thm.set_color("selection_color", "LineEdit", p)
 	thm.set_color("caret_color", "LineEdit", get_color("text_primary"))
 	thm.set_color("font_color", "LineEdit", get_color("text_primary"))
@@ -839,6 +965,8 @@ func _refresh_theme_colors(thm: Theme) -> void:
 
 	# Label
 	thm.set_color("font_color", "Label", get_color("text_primary"))
+	# RichTextLabel（如 MidiView 谱面简介）：正文色走 default_color，不设会停留在引擎默认的浅色上
+	thm.set_color("default_color", "RichTextLabel", get_color("text_primary"))
 
 	# PopupMenu：面板用凸起面，悬停用半透明强调色
 	_set_theme_stylebox(thm, "PopupMenu", "panel", surface_high, border)
@@ -849,6 +977,12 @@ func _refresh_theme_colors(thm: Theme) -> void:
 		_set_theme_stylebox(thm, type, "grabber", border, border)
 		_set_theme_stylebox(thm, type, "grabber_highlight", p, p)
 		_set_theme_stylebox(thm, type, "grabber_pressed", pl, pl)
+
+	# HSlider（音量条等）：滑轨在浅色下需压暗、已填充段用强调色（原写死的近白填充在浅底上不可见）
+	var groove := Color(0, 0, 0, 0.22) if _appearance == "light" else Color(0, 0, 0, 0.6)
+	_set_theme_stylebox(thm, "HSlider", "slider", groove, Color(0, 0, 0, 0))
+	_set_theme_stylebox(thm, "HSlider", "grabber_area", p, p)
+	_set_theme_stylebox(thm, "HSlider", "grabber_area_highlight", pl, pl)
 
 	# TabContainer
 	_set_theme_stylebox(thm, "TabContainer", "tab_unselected", surface_low, border_soft)
@@ -864,12 +998,12 @@ func _refresh_theme_colors(thm: Theme) -> void:
 # ============ 内部方法 ============
 
 func _parse_theme_config(cfg: Dictionary) -> void:
-	# 全局中性色 / 语义色（[common] 段）先入调色板，预设仅覆盖强调色
+	# 全局中性色 / 语义色（[common] 段）收进 _common，apply_preset 时再按外观模式并入 _palette
 	if cfg.has("common"):
 		for key in cfg["common"]:
 			var val: String = str(cfg["common"][key])
 			if val.is_valid_html_color():
-				_palette[key.to_lower()] = Color(val)
+				_common[key.to_lower()] = Color(val)
 
 	for section in cfg:
 		if section is String and (section as String).begins_with("preset_"):
@@ -897,6 +1031,8 @@ func _apply_gradient(texture_rect: TextureRect, prefix: String) -> void:
 
 	var top_color := Color(top_str) if top_str.is_valid_html_color() else Color("#0B0F1A")
 	var bottom_color := Color(bottom_str) if bottom_str.is_valid_html_color() else Color("#0A0D15")
+	top_color = _lightify_bg(top_color)
+	bottom_color = _lightify_bg(bottom_color)
 
 	var gradient := Gradient.new()
 	# 用 set_color 替换默认黑白点，而非 add_point 追加导致 4 个点
@@ -919,11 +1055,21 @@ func _apply_gradient(texture_rect: TextureRect, prefix: String) -> void:
 	texture_rect.texture = tex
 	texture_rect.modulate = Color.WHITE
 
+## 浅色模式下把背景色转为「同色相浅染色」：保留各视图原始渐变色相（本就带主题味），
+## 拉高明度的同时尽量保留饱和，让浅色背景也像上个提交之前那样有鲜明的色彩，
+## 而不是退化成通用灰白。非浅色模式原样返回。
+func _lightify_bg(c: Color) -> Color:
+	if _appearance != "light":
+		return c
+	var v :float = 0.80 + clamp(c.v, 0.0, 1.0) * 0.12
+	return Color.from_hsv(c.h, min(c.s * 0.75, 0.55), v)
+
 ## 创建单色 GradientTexture2D（两个点都设为同色，避免 texture=null 时 modulate 失效）
 func _create_solid_gradient_texture(color: Color) -> GradientTexture2D:
+	var c := _lightify_bg(color)
 	var g := Gradient.new()
-	g.set_color(0, color)
-	g.set_color(1, color)
+	g.set_color(0, c)
+	g.set_color(1, c)
 	var tex := GradientTexture2D.new()
 	tex.gradient = g
 	tex.width = 4

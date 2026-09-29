@@ -181,12 +181,15 @@ func apply_theme() -> void:
 	_set_panel(_navi_panel, surface, border)               # Navi 底栏与页面底色一致
 	# History 顶部面板
 	_set_panel_border(_history_pc, border)
-	# Navi 按钮（normal/pressed/hover/focus 共享 StyleBox，改 navi_profile_btn 即同步全部）
-	# pressed 与页面底色同色（选中项并入内容区），hover_pressed 由 tscn 直接复用 hover
-	_set_btn(navi_profile_btn, "normal", surface_high, border)
-	_set_btn(navi_profile_btn, "pressed", surface, border)
+	# Navi 底栏三个按钮共用同一组 StyleBox，改 navi_profile_btn 即同步全部：
+	#   normal  → 与所在底栏面板同色（surface），平时与底栏融为一体
+	#   pressed → 与内容面板同色（surface_high，选中项并入内容区；浅色模式下即「略微变暗」）
+	#   hover_pressed → 保持与 pressed 同色，避免选中项 hover 时闪回普通态
+	_set_btn(navi_profile_btn, "normal", surface, border)
+	_set_btn(navi_profile_btn, "pressed", surface_high, border)
 	_set_btn(navi_profile_btn, "hover", surface_hover, accent_border)
-	_set_btn(navi_profile_btn, "focus", surface_high, p)
+	_set_btn(navi_profile_btn, "hover_pressed", surface_high, border)
+	_set_btn(navi_profile_btn, "focus", surface, p)
 	# History TopBtns
 	_set_btn_border(recent_play_btn, "pressed", p)
 	_set_btn_border(recent_play_btn, "hover", p)

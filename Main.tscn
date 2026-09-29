@@ -310,9 +310,9 @@ base_scale = 3.0
 
 [sub_resource type="Theme" id="Theme_5mvff"]
 Button/colors/font_color = Color(0.949, 0.961, 0.984, 1)
+Button/colors/font_disabled_color = Color(0.3608, 0.4078, 0.5137, 1)
 Button/colors/font_hover_color = Color(1, 1, 1, 1)
 Button/colors/font_pressed_color = Color(0.949, 0.961, 0.984, 1)
-Button/colors/font_disabled_color = Color(0.3608, 0.4078, 0.5137, 1)
 Button/colors/icon_hover_color = Color(0.8980392, 0.8980392, 0.8980392, 1)
 Button/colors/icon_pressed_color = Color(0.7490196, 0.7490196, 0.7490196, 1)
 Button/font_sizes/font_size = 48
@@ -322,12 +322,6 @@ Button/styles/hover = SubResource("StyleBoxFlat_40n85")
 Button/styles/hover_pressed = SubResource("StyleBoxFlat_bg4s2")
 Button/styles/normal = SubResource("StyleBoxFlat_gb15f")
 Button/styles/pressed = SubResource("StyleBoxFlat_sph85")
-OptionButton/styles/disabled = SubResource("StyleBoxFlat_w3rk5")
-OptionButton/styles/focus = SubResource("StyleBoxFlat_oye8v")
-OptionButton/styles/hover = SubResource("StyleBoxFlat_40n85")
-OptionButton/styles/hover_pressed = SubResource("StyleBoxFlat_bg4s2")
-OptionButton/styles/normal = SubResource("StyleBoxFlat_gb15f")
-OptionButton/styles/pressed = SubResource("StyleBoxFlat_sph85")
 CheckBox/colors/font_color = Color(0.949, 0.961, 0.984, 1)
 CheckBox/font_sizes/font_size = 28
 CheckBox/icons/checked = SubResource("DPITexture_o7g6l")
@@ -361,6 +355,12 @@ OptionButton/colors/font_focus_color = Color(0.95, 0.95, 0.95, 1)
 OptionButton/colors/font_hover_color = Color(0.95, 0.95, 0.95, 1)
 OptionButton/colors/font_pressed_color = Color(1, 1, 1, 1)
 OptionButton/font_sizes/font_size = 48
+OptionButton/styles/disabled = SubResource("StyleBoxFlat_w3rk5")
+OptionButton/styles/focus = SubResource("StyleBoxFlat_oye8v")
+OptionButton/styles/hover = SubResource("StyleBoxFlat_40n85")
+OptionButton/styles/hover_pressed = SubResource("StyleBoxFlat_bg4s2")
+OptionButton/styles/normal = SubResource("StyleBoxFlat_gb15f")
+OptionButton/styles/pressed = SubResource("StyleBoxFlat_sph85")
 Panel/styles/panel = SubResource("StyleBoxFlat_panel")
 PanelContainer/styles/panel = SubResource("StyleBoxFlat_panel")
 PopupMenu/colors/font_color = Color(1, 1, 1, 1)
@@ -473,22 +473,6 @@ expand_margin_top = 125.0
 shadow_color = Color(0, 0, 0, 0.45)
 shadow_size = 24
 shadow_offset = Vector2(0, 8)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_devvj"]
-content_margin_left = 16.0
-content_margin_top = 8.0
-content_margin_right = 16.0
-content_margin_bottom = 8.0
-bg_color = Color(0.0353, 0.0471, 0.0745, 0.85)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ck4ec"]
 atlas = ExtResource("17_xrxkg")
@@ -965,7 +949,6 @@ layout_mode = 2
 focus_neighbor_left = NodePath("../../../../../Btns/Search")
 focus_next = NodePath("../../../../../Btns/FavorList")
 theme_override_font_sizes/font_size = 35
-theme_override_styles/normal = SubResource("StyleBoxFlat_devvj")
 placeholder_text = "please enter..."
 alignment = 1
 caret_blink = true
@@ -1228,6 +1211,7 @@ offset_top = 260.00003
 offset_right = 200.0
 offset_bottom = 332.99997
 rotation = -0.34906584
+theme_override_colors/font_color = Color(0.949, 0.961, 0.984, 1)
 theme_override_font_sizes/font_size = 30
 text = "9999
 ms"

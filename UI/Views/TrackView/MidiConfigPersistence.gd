@@ -169,8 +169,8 @@ func restore_midi_ui_config() -> void:
 				track_item.enable_btn.button_pressed = is_enabled
 				track_item.enable_btn.set_block_signals(false)
 				# 更新UI显示
-				if track_item.enable_btn_text:
-					track_item.enable_btn_text.text = "已启用" if is_enabled else "已禁用"
+				if track_item.enable_btn.text:
+					track_item.enable_btn.text = "已启用" if is_enabled else "已禁用"
 				if track_item.note_display:
 					track_item.note_display.note_color = track_item.color_normal if is_enabled else track_item.color_dark
 					track_item.note_display.update_color()

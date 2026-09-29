@@ -12,6 +12,24 @@ var _can_interact: bool = false
 var _busy: bool = false
 var _comment_data: Dictionary = {}
 
+func _ready() -> void:
+	if ThemeMGR:
+		ThemeMGR.register_theme_applier(self)
+		apply_theme()
+
+## 应用主题色：评论卡片随主题翻浅/翻深（否则浅色模式下残留写死的深色卡片）
+func apply_theme() -> void:
+	if not ThemeMGR:
+		return
+	var sb := get_theme_stylebox("panel")
+	if sb is StyleBoxFlat:
+		sb.bg_color = ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("surface_high"), sb.bg_color.a)
+		sb.border_color = ThemeMGR.get_color("border_soft")
+
+func _exit_tree() -> void:
+	if ThemeMGR:
+		ThemeMGR.unregister_theme_applier(self)
+
 
 func setup_comment(comment: Dictionary, can_interact: bool = false) -> void:
 	_comment_data = comment

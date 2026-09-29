@@ -98,6 +98,14 @@ func apply_theme() -> void:
 	var kb_add_btn := get_node_or_null("TabC/KBModeAdjust/KeySequence/VFlowC/AddBtn") as Button
 	if kb_add_btn:
 		ThemeMGR._style_button_set_bg_color(kb_add_btn, ThemeMGR.get_color("primary"))
+	# 默认页 取消/确认按钮：tscn 内写死了深色/蓝色底板与近白文字，浅色模式下会残留深色块 + 浅底浅字
+	var text_primary := ThemeMGR.get_color("text_primary")
+	if _cancel_btn:
+		ThemeMGR._style_button_set_bg_color(_cancel_btn, ThemeMGR.get_color("surface_high"))
+		_cancel_btn.add_theme_color_override("font_color", text_primary)
+	if _confirm_btn:
+		ThemeMGR._style_button_set_bg_color(_confirm_btn, ThemeMGR.get_color("primary"))
+		_confirm_btn.add_theme_color_override("font_color", text_primary)
 
 func _exit_tree() -> void:
 	if ThemeMGR:

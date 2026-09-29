@@ -46,11 +46,12 @@ func _exit_tree() -> void:
 func apply_theme() -> void:
 	_apply_indicator_colors()
 
-## 指示点颜色：active（选中）= 亮色（白），inactive = 半透明白；均随主题
-## 深色背景上亮色作选中色对比更清晰
+## 指示点颜色：active（选中）= text_primary，inactive = text_primary 半透明。
+## 用 text_primary 而非写死白色，浅色模式下才会自动翻成深色点（写死白色在浅底上不可见）
 func get_indicator_color(active: bool) -> Color:
 	if ThemeMGR:
-		return ThemeMGR.get_color("text_primary") if active else Color(1, 1, 1, 0.16)
+		var tp := ThemeMGR.get_color("text_primary")
+		return tp if active else Color(tp.r, tp.g, tp.b, 0.28)
 	return Color.WHITE if active else Color(1, 1, 1, 0.16)
 
 ## 按选中态刷新全部指示点颜色

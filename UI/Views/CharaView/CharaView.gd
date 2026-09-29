@@ -29,6 +29,36 @@ const PAN_HINT_HEIGHT := 400.0
 
 func _ready() -> void:
 	_build_chara_list()
+	if ThemeMGR:
+		ThemeMGR.register_theme_applier(self)
+		apply_theme()
+
+## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）：
+## 只重着色「跟随主题」的 UI 元素（标题下划线、选择按钮），角色立绘与文字保持原方案。
+func apply_theme() -> void:
+	if not ThemeMGR:
+		return
+	# 标题下划线 → 强调色
+	if _title:
+		var tsb := _title.get_theme_stylebox("normal")
+		if tsb is StyleBoxFlat:
+			tsb.border_color = ThemeMGR.get_color("primary_light")
+	# 选择按钮：实心强调色填充，禁用态用凹陷面
+	var p := ThemeMGR.get_color("primary")
+	for state in ["normal", "pressed", "hover"]:
+		if not ThemeMGR.has_local_stylebox(_detail_select_btn, state):
+			continue
+		var sb := _detail_select_btn.get_theme_stylebox(state)
+		if sb is StyleBoxFlat:
+			sb.bg_color = ThemeMGR._tint_keep_alpha(p, sb.bg_color.a)
+	if ThemeMGR.has_local_stylebox(_detail_select_btn, "disabled"):
+		var dsb := _detail_select_btn.get_theme_stylebox("disabled")
+		if dsb is StyleBoxFlat:
+			dsb.bg_color = ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("surface_low"), dsb.bg_color.a)
+
+func _exit_tree() -> void:
+	if ThemeMGR:
+		ThemeMGR.unregister_theme_applier(self)
 
 ## 构建角色列表（清空占位项，按 CharaMGR 扫描结果重新生成）
 func _build_chara_list() -> void:

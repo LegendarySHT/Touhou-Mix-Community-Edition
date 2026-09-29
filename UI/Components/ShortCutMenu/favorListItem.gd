@@ -41,6 +41,30 @@ var _name_full_text: String = ""
 var _touch_start_pos: Vector2 = Vector2.ZERO
 var _touch_pending: bool = false   # 是否有待释放的触摸
 
+func _ready() -> void:
+	if ThemeMGR:
+		ThemeMGR.register_theme_applier(self)
+		apply_theme()
+
+## 应用主题色：根按钮四态随主题改色（原本写死的深色在浅色模式下会残留）
+func apply_theme() -> void:
+	if not ThemeMGR:
+		return
+	var sh := ThemeMGR.get_color("surface_high")
+	var shv := ThemeMGR.get_color("surface_hover")
+	var p := ThemeMGR.get_color("primary")
+	var border := ThemeMGR.get_color("border_soft")
+	var colors := {"normal": sh, "hover": shv, "pressed": p, "focus": p}
+	for state in colors:
+		var sb := get_theme_stylebox(state)
+		if sb is StyleBoxFlat:
+			sb.bg_color = ThemeMGR._tint_keep_alpha(colors[state], sb.bg_color.a)
+			sb.border_color = border
+
+func _exit_tree() -> void:
+	if ThemeMGR:
+		ThemeMGR.unregister_theme_applier(self)
+
 ## 点击名称区域：进入重命名模式
 ## 仅在"按下后未发生明显移动"时才判定为点击，避免滚动误触
 ## name Label 设为 MOUSE_FILTER_STOP，事件被其消费后不再冒泡到根 Button，

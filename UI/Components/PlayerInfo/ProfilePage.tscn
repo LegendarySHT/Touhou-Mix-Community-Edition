@@ -357,6 +357,11 @@ border_width_left = 1
 border_width_right = 1
 border_color = Color(0.52, 0.66, 1, 0.8)
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_navihp"]
+border_width_left = 1
+border_width_right = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_aeku2"]
 bg_color = Color(0.1333, 0.1647, 0.2314, 1)
 border_width_left = 1
@@ -729,6 +734,7 @@ columns = 7
 [node name="Label" type="Label" parent="PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid" unique_id=1815740216]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxLine_3y6u5")
 text = "Performace"
@@ -793,6 +799,7 @@ vertical_alignment = 1
 
 [node name="pp" type="Label" parent="PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid" unique_id=1041702721]
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "999999.99 pp"
 horizontal_alignment = 1
@@ -800,6 +807,7 @@ vertical_alignment = 2
 
 [node name="SCount" type="Label" parent="PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid" unique_id=391717684]
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "9999"
 horizontal_alignment = 1
@@ -807,6 +815,7 @@ vertical_alignment = 2
 
 [node name="ACount" type="Label" parent="PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid" unique_id=1189915291]
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "9999"
 horizontal_alignment = 1
@@ -814,6 +823,7 @@ vertical_alignment = 2
 
 [node name="BCount" type="Label" parent="PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid" unique_id=39213604]
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "9999"
 horizontal_alignment = 1
@@ -821,6 +831,7 @@ vertical_alignment = 2
 
 [node name="CCount" type="Label" parent="PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid" unique_id=935287760]
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "9999"
 horizontal_alignment = 1
@@ -828,6 +839,7 @@ vertical_alignment = 2
 
 [node name="DCount" type="Label" parent="PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid" unique_id=1927077247]
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "9999"
 horizontal_alignment = 1
@@ -835,6 +847,7 @@ vertical_alignment = 2
 
 [node name="FCount" type="Label" parent="PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid" unique_id=788456564]
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
 text = "9999"
 horizontal_alignment = 1
@@ -852,6 +865,10 @@ theme_override_constants/separation = 20
 [node name="RecentPlay" type="Button" parent="PC/PageContent/History/PC/TopBar/TopBtns" unique_id=1473519099]
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_pressed_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 36
 theme_override_styles/normal = SubResource("StyleBoxEmpty_i6pqd")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_j02sm")
@@ -865,6 +882,10 @@ text = "最近游玩"
 [node name="BestPlay" type="Button" parent="PC/PageContent/History/PC/TopBar/TopBtns" unique_id=477589048]
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_pressed_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 36
 theme_override_styles/normal = SubResource("StyleBoxEmpty_i6pqd")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_j02sm")
@@ -877,10 +898,14 @@ text = "最佳记录"
 [node name="MostPlay" type="Button" parent="PC/PageContent/History/PC/TopBar/TopBtns" unique_id=343271832]
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/font_hover_pressed_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 36
 theme_override_styles/normal = SubResource("StyleBoxEmpty_i6pqd")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_j02sm")
-theme_override_styles/hover = SubResource("StyleBoxFlat_665dv")
+theme_override_styles/hover = SubResource("StyleBoxFlat_hs1if")
 theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_hs1if")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_3y6u5")
@@ -965,8 +990,6 @@ custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
-theme_override_styles/normal = SubResource("StyleBoxFlat_8simf")
-theme_override_styles/focus = SubResource("StyleBoxFlat_xqmw5")
 
 [node name="ConfirmBtn" type="Button" parent="PC/PageContent/Edit/HBox/ProfileEdit/Nickname" unique_id=190632065]
 custom_minimum_size = Vector2(120, 60)
@@ -995,8 +1018,6 @@ theme_override_constants/separation = 50
 custom_minimum_size = Vector2(0, 400)
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_styles/normal = SubResource("StyleBoxFlat_8simf")
-theme_override_styles/focus = SubResource("StyleBoxFlat_xqmw5")
 
 [node name="ConfirmBtn" type="Button" parent="PC/PageContent/Edit/HBox/ProfileEdit/Desc" unique_id=2128739761]
 custom_minimum_size = Vector2(120, 60)
@@ -1078,8 +1099,6 @@ theme_override_constants/separation = 50
 [node name="LineEdit" type="LineEdit" parent="PC/PageContent/Edit/HBox/OtherEdit/Password" unique_id=195476193]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_styles/normal = SubResource("StyleBoxFlat_8simf")
-theme_override_styles/focus = SubResource("StyleBoxFlat_xqmw5")
 
 [node name="Space" type="Control" parent="PC/PageContent/Edit/HBox/OtherEdit/Password" unique_id=302538164]
 custom_minimum_size = Vector2(120, 60)
@@ -1100,8 +1119,6 @@ theme_override_constants/separation = 50
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 5
-theme_override_styles/normal = SubResource("StyleBoxFlat_8simf")
-theme_override_styles/focus = SubResource("StyleBoxFlat_xqmw5")
 
 [node name="ConfirmBtn" type="Button" parent="PC/PageContent/Edit/HBox/OtherEdit/NewPassword" unique_id=1395434135]
 custom_minimum_size = Vector2(120, 60)
@@ -1128,7 +1145,7 @@ layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_gvb4a")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_evr7o")
 theme_override_styles/hover = SubResource("StyleBoxFlat_js0an")
-theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_js0an")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_navihp")
 theme_override_styles/focus = SubResource("StyleBoxFlat_aeku2")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_ag846")
@@ -1141,7 +1158,7 @@ layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_gvb4a")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_evr7o")
 theme_override_styles/hover = SubResource("StyleBoxFlat_js0an")
-theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_js0an")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_navihp")
 theme_override_styles/focus = SubResource("StyleBoxFlat_aeku2")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_ag846")
@@ -1154,7 +1171,7 @@ layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_gvb4a")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_evr7o")
 theme_override_styles/hover = SubResource("StyleBoxFlat_js0an")
-theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_js0an")
+theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_navihp")
 theme_override_styles/focus = SubResource("StyleBoxFlat_aeku2")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_ag846")

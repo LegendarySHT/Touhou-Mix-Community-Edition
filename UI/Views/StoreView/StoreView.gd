@@ -96,10 +96,12 @@ func apply_theme() -> void:
 		search_base.vertex_colors = PackedColorArray([
 			p.lightened(0.1), p, pd, p.lightened(0.2),
 		])
-	# Bottom/Previ + Next — primary_dark 基调
+	# Bottom/Previ + Next — 深色模式用 primary_dark 基调；浅色模式用更亮的 primary，
+	# 避免深蓝底配（浅色模式下翻深的）深色文字导致对比不足
+	var nav_base := ThemeMGR.get_color("primary") if ThemeMGR.get_appearance() == "light" else ThemeMGR.get_color("primary_dark")
 	for btn_name in ["Previ", "Next"]:
 		var btn := store.get_node_or_null("Bottom/" + btn_name) as Button
-		ThemeMGR._style_button_set_bg_color(btn, ThemeMGR.get_color("primary_dark"))
+		ThemeMGR._style_button_set_bg_color(btn, nav_base)
 	# Bottom/Indicate — 页码标签背景 primary_light
 	var indicate := store.get_node_or_null("Bottom/Indicate") as Label
 	if indicate:

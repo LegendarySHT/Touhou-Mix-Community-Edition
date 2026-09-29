@@ -12,8 +12,6 @@ class_name MidiTrack
 @onready var channel_num: Label = $HBoxC/CH/ChannelNum
 # 切换轨道启用状态的按钮
 @onready var enable_btn: Button = $HBoxC/MC/HBoxC/enableBtn
-@onready var enable_btn_text: Label = $HBoxC/MC/HBoxC/enableBtn/HBoxC/Text
-@onready var enable_btn_icon: TextureRect = $HBoxC/MC/HBoxC/enableBtn/HBoxC/Icon #这个可能需要根据乐器类型去修改
 
 @onready var mute_btn: TextureButton = $HBoxC/MC/HBoxC/MC/ControlPanel/GridC/MuteBtn
 @onready var solo_btn: TextureButton = $HBoxC/MC/HBoxC/MC/ControlPanel/GridC/SoloBtn
@@ -69,6 +67,12 @@ func _ready():
 	# 连接按钮信号
 	_connect_signals()
 	_init_track_color()
+	# 行内文字/图标固定白色（不随主题）
+	_apply_row_text_theme()
+
+	# 注册主题应用者：外观模式切换时整行重新配色
+	if ThemeMGR:
+		ThemeMGR.register_theme_applier(self)
 
 	track_num.text = str(track_index)
 	channel_num.text = str(track_channel)
@@ -115,25 +119,135 @@ var color_light: Color
 var color_normal: Color
 var color_dark: Color
 
-func _init_track_color():
-	var h = colors_set[track_index % colors_set.size()].h
-	color_light = Color.from_hsv(h, 0.3, 0.95, 1)
-	color_normal = Color.from_hsv(h, 0.9, 0.85, 1)
-	color_dark = Color.from_hsv(h, 0.8, 0.5, 1)
+# 轨道/通道色相（主题切换时按外观模式重算）
+var _track_hue: float = 0.0
+var _channel_hue: float = 0.0
 
-	channel_panel.self_modulate = Color.from_hsv(colors_set[(-track_channel) % colors_set.size()].h, 0.8, 0.5, 1)
+func _init_track_color():
+	_track_hue = colors_set[track_index % colors_set.size()].h
+	_channel_hue = colors_set[(-track_channel) % colors_set.size()].h
+	_apply_track_colors()
+
+## 主题刷新回调（由 ThemeManager 广播调用）
+func apply_theme() -> void:
+	_apply_track_colors()
+
+## 行内文字/图标固定白色、不随主题。用一个只覆盖文字/图标色的局部 Theme 挂在根节点上，
+## 样式框仍向上回落主 Theme（PopupMenu 等其它类型不受影响，仍是主题色）。
+func _apply_row_text_theme() -> void:
+	var t := Theme.new()
+	for type in ["Label", "Button", "MenuButton", "OptionButton", "CheckBox", "CheckButton"]:
+		t.set_color("font_color", type, Color.WHITE)
+	for type in ["Button", "MenuButton", "OptionButton"]:
+		t.set_color("font_hover_color", type, Color.WHITE)
+		t.set_color("font_pressed_color", type, Color.WHITE)
+		t.set_color("icon_normal_color", type, Color.WHITE)
+		t.set_color("icon_hover_color", type, Color.WHITE)
+		t.set_color("icon_pressed_color", type, Color.WHITE)
+	t.set_color("font_hover_pressed_color", "Button", Color.WHITE)
+	t.set_color("font_disabled_color", "Button", Color(1, 1, 1, 0.5))
+	theme = t
+
+## 按当前外观模式重算整行配色。
+## 轨道行 = 共享中性底板 × 轨道色相(self_modulate)：深色模式底板偏深、色相加浓；
+## 浅色模式底板改近白、色相取浅色调，否则浅色页面里整行仍是一块深色卡片，比深色主题还暗。
+func _apply_track_colors() -> void:
+	var light: bool = ThemeMGR != null and ThemeMGR.get_appearance() == "light"
+	if light:
+		# 浅色模式同样「以音轨原色为主」：整行铺较饱和的音轨色（比深色模式亮），文字统一白色
+		color_light = Color.from_hsv(_track_hue, 0.60, 0.80)
+		color_normal = Color.from_hsv(_track_hue, 0.85, 0.75)
+		color_dark = Color.from_hsv(_track_hue, 0.75, 0.68)
+	else:
+		color_light = Color.from_hsv(_track_hue, 0.3, 0.95)
+		color_normal = Color.from_hsv(_track_hue, 0.9, 0.85)
+		color_dark = Color.from_hsv(_track_hue, 0.8, 0.5)
+
+	_set_track_base_colors(light)
+	_apply_enable_btn_colors(light)
+
+	channel_panel.self_modulate = Color.from_hsv(_channel_hue, 0.72 if light else 0.8, 0.68 if light else 0.5)
 	track_panel.self_modulate = color_dark
 
 	note_panel.self_modulate = color_light
 	self_modulate = color_light
-	enable_btn.self_modulate = color_normal
+	# enableBtn 的图标/文字是按钮自身绘制（icon/text 属性），self_modulate 会连它们一起染色；
+	# 故这里不改 self_modulate，底色改由 _apply_enable_btn_colors 直接写入每实例样式框
+	enable_btn.self_modulate = Color.WHITE
 
 	note_display.note_color = color_normal
+	note_display.update_color()
+
+## 写回整行各本地 StyleBox 的中性底板颜色（这些是场景内共享子资源，所有轨道一致；
+## 轨道间的色相差异只靠每节点的 self_modulate 表达，故底板里不写入任何色相）。
+func _set_track_base_colors(light: bool) -> void:
+	# 浅色模式：底板统一为纯白（不受主题色影响），整行颜色完全由音轨色相 modify 决定
+	var root_sb := get_theme_stylebox("panel")
+	if root_sb is StyleBoxFlat:
+		root_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.1044445, 0.12558684, 0.17314443, 0.8509804)
+		root_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0.34404153, 0.40147635, 0.51591545)
+	var tr_sb := track_panel.get_theme_stylebox("panel")
+	if tr_sb is StyleBoxFlat:
+		tr_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.7330051, 0.7330055, 0.7330051)
+		tr_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0, 0, 0, 0.35)
+	var ch_sb := channel_panel.get_theme_stylebox("panel")
+	if ch_sb is StyleBoxFlat:
+		ch_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.73333335, 0.73333335, 0.73333335)
+		ch_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0, 0, 0, 0.35)
+	var nt_sb := note_panel.get_theme_stylebox("panel")
+	if nt_sb is StyleBoxFlat:
+		nt_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.45177418, 0.4929024, 0.558753, 0.9019608)
+		nt_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0, 0, 0, 0.25)
+	# 注：noteFlowArea 上的半透明黑渐变叠加层（StyleBoxTexture）保持 .tscn 原样，不随外观模式改动。
+	# noteTotal 里的白色斜线分隔条在浅色下不可见，改为深色半透明
+	var sep := get_node_or_null("HBoxC/MC/HBoxC/MC/flowArea/noteTotal/VBoxC/Control/HSeparator") as HSeparator
+	if sep:
+		var ssb := sep.get_theme_stylebox("separator")
+		if ssb is StyleBoxLine:
+			ssb.color = Color(0, 0, 0, 0.25) if light else Color(1, 1, 1, 0.25)
+
+## enableBtn 四态配色。其图标/文字挂在按钮自身上，若用 self_modulate 染色会连它们一起被染，
+## 故这里直接给按钮「每实例独立」的样式框（.tscn 中 resource_local_to_scene）写入
+## 「中性底板 × 轨道色相」后的最终色，只染底色、不动图标/文字（图标/文字保持白色）。
+func _apply_enable_btn_colors(light: bool) -> void:
+	var cn := color_normal
+	# 各状态的中性底板与其描边（与原先 self_modulate 叠加前的底值一致）
+	var specs := {
+		"normal": [
+			Color(0.55, 0.55, 0.55, 1) if light else Color(0.16, 0.19, 0.26, 1),
+			Color(0, 0, 0, 0.25) if light else Color(0.28, 0.32, 0.4),
+		],
+		"hover": [
+			Color(0.48, 0.48, 0.48, 1) if light else Color(0.22, 0.25, 0.32, 1),
+			Color(0, 0, 0, 0.25) if light else Color(0.34, 0.38, 0.46),
+		],
+		"pressed": [
+			Color(1, 1, 1, 1),
+			Color(1, 1, 1, 1),
+		],
+		"hover_pressed": [
+			Color(1, 1, 1, 0.92),
+			Color(1, 1, 1, 1),
+		],
+	}
+	for state in specs:
+		var sb := enable_btn.get_theme_stylebox(state)
+		if sb is StyleBoxFlat:
+			var bg: Color = specs[state][0]
+			var bd: Color = specs[state][1]
+			sb.bg_color = Color(bg.r * cn.r, bg.g * cn.g, bg.b * cn.b, bg.a)
+			sb.border_color = Color(bd.r * cn.r, bd.g * cn.g, bd.b * cn.b, bd.a)
+	# 按下 / 悬停按下态带一圈「辉光」（StyleBoxFlat.shadow）。原来白色辉光会被 self_modulate 染成轨道色，
+	# 现改为直接写入轨道色辉光（浅色模式下白辉光落在浅底上不可见，必须跟着轨道色走）。
+	for state in ["pressed", "hover_pressed"]:
+		var sb := enable_btn.get_theme_stylebox(state)
+		if sb is StyleBoxFlat:
+			sb.shadow_color = Color(cn.r, cn.g, cn.b, sb.shadow_color.a)
 
 # 根据乐器大类索引设置图标区域（图标材质由外部 setup，此处仅改坐标）
-# enable_btn_icon.texture 须为 AtlasTexture 才会生效
+# enable_btn.icon 须为 AtlasTexture 才会生效
 func set_instrument_category(category: int) -> void:
-	var tex := enable_btn_icon.texture as AtlasTexture
+	var tex := enable_btn.icon as AtlasTexture
 	if tex:
 		tex.region = InstrumentCategory.get_icon_region(category)
 
@@ -190,7 +304,7 @@ func setup_track(parent: Node, index: int, track_name: String, instruments: Arra
 		else:
 			instrument_options = instruments  # fallback
 
-	# 两级乐器菜单在 _ready 构建（此时 @onready 节点可用、enable_btn_icon 图集就绪）
+	# 两级乐器菜单在 _ready 构建
 	_init_fin.emit()
 
 # 按大类把 instrument_options 分组成 _category_items（instrument_options 已按大类排序）
@@ -203,9 +317,9 @@ func _build_category_items() -> void:
 			_category_items[cat] = []
 		_category_items[cat].append(display)
 
-# 用 enable_btn_icon 的同源图集生成某个大类的菜单图标
+# 用 enable_btn.icon 的同源图集生成某个大类的菜单图标
 func _make_cat_icon(category: int) -> Texture2D:
-	var icon_tex := enable_btn_icon.texture as AtlasTexture
+	var icon_tex := enable_btn.icon as AtlasTexture
 	if icon_tex == null or icon_tex.atlas == null:
 		return null
 	var at := AtlasTexture.new()
@@ -490,7 +604,11 @@ func _on_solo_toggled(is_pressed: bool):
 func _on_enable_toggled(toggle_on: bool):
 	if midi_data:
 		midi_data.set_track_channel_enabled(track_index, track_channel, toggle_on)
-	enable_btn_text.text = "已启用" if toggle_on else "已禁用"
+	enable_btn.text = "已启用" if toggle_on else "已禁用"
 
 	note_display.note_color = color_normal if toggle_on else color_dark
 	note_display.update_color()
+
+func _exit_tree() -> void:
+	if ThemeMGR:
+		ThemeMGR.unregister_theme_applier(self)

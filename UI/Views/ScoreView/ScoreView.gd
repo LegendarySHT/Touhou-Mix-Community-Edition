@@ -112,13 +112,22 @@ func _ready() -> void:
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
 func apply_theme() -> void:
-	# 底部信息条 — 中性凸起面（保留 tscn 预设的 alpha）
-	if info:
-		var sb := info.get_theme_stylebox("panel")
-		if sb is StyleBoxFlat:
-			var a = sb.bg_color.a
-			var sh := ThemeMGR.get_color("surface_high")
-			sb.bg_color = Color(sh.r, sh.g, sh.b, a)
+	var light := ThemeMGR.get_appearance() == "light"
+	var surface := ThemeMGR.get_color("surface")
+	var surface_high := ThemeMGR.get_color("surface_high")
+	# 底部信息条 — 中性凸起面（保留 tscn 预设的 alpha/圆角）
+	ThemeMGR._style_panel_set_bg_color(bottom, surface_high)
+	# 歌曲信息卡
+	var song_pc := get_node_or_null("Bottom/skew/C/SongInfo/PanelContainer") as PanelContainer
+	if song_pc:
+		ThemeMGR._style_panel_set_bg_color(song_pc, surface)
+	# 等级进度 / 头像面板
+	ThemeMGR._style_panel_set_bg_color(info, surface_high)
+	# 分数区是一层「上深下透明」的渐隐纹理，无法靠调色变浅：
+	# 浅色模式下直接隐去该深色渐隐，让浅色背景透出、深色分数文字自然可读；深色模式保持原样。
+	if score_panel:
+		score_panel.self_modulate = Color(1, 1, 1, 0) if light else Color.WHITE
+	# 文字/图标颜色一律保持 .tscn 原样，不做任何随模式改写（用户要求：该白的还是白的）
 
 func _exit_tree() -> void:
 	if ThemeMGR:
