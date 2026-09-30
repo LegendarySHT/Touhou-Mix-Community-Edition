@@ -102,6 +102,13 @@ func _animate_to_state(s: State) -> void:
 	# 让 PROFILE → CHARA → 返回等导航复用标准 change_state/go_back，无需特判
 	if s == State.FULL_EXPANDED:
 		if UiStatMGR.current_state != UIStateManager.UIState.PROFILE_VIEW:
+			var pp := info_tab_c.profile_page
+			if pp:
+				pp.page_content.modulate.a = 0.0
+				var navi := pp.get_node_or_null("Navi")
+				if navi:
+					navi.offset_transform_enabled = true
+					navi.offset_transform_position = Vector2(0, navi.size.y)
 			UiStatMGR.change_state(UIStateManager.UIState.PROFILE_VIEW, true)
 	elif _state == State.FULL_EXPANDED:
 		if UiStatMGR.current_state == UIStateManager.UIState.PROFILE_VIEW:
