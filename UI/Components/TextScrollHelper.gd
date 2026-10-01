@@ -31,6 +31,8 @@ const PAUSE_DURATION := 1.0
 @export var text_color: Color = Color(1, 1, 1, 1)
 ## 场景是否显式指定了 font_color（压在图片/封面上的固定色）：锁定后主题切换不刷新
 var _locked_color: bool = false
+## 锁定时捕获一次的显式色（后续透明 override 会覆盖原 override，故需缓存）
+var _locked_text_color: Color = Color(1, 1, 1, 1)
 ## 描边宽度（0 = 不描边）
 @export var outline_size := 0
 ## 描边颜色
@@ -67,6 +69,9 @@ func _ready() -> void:
 	# 场景若显式指定 font_color（如压在封面/图片上的固定色文字），锁定该色，主题切换时保持不变；
 	# 否则跟随主题，外观/主题色切换时重新解析。
 	_locked_color = has_theme_color_override("font_color")
+	# 锁定时缓存一次显式色：后续透明 override 会覆盖原 override，若每次都读会读到透明
+	if _locked_color:
+		_locked_text_color = get_theme_color("font_color")
 	# 记录文字颜色，再让引擎文字透明（引擎绘制无法拦截，靠透明隐藏）
 	_refresh_text_color()
 	if not _resized_callable.is_valid():
@@ -85,12 +90,17 @@ func apply_theme() -> void:
 
 ## 解析当前文字色并让引擎文本透明隐藏。
 ## 引擎文本靠 font_color 透明 override 隐藏：未锁定时先移除 override 读取真实主题色、
-## 再写回透明 override；锁定色（场景显式 font_color，压在图片上）则保持原色不动。
+## 再写回透明 override；锁定色（场景显式 font_color，压在图片上）则用缓存的显式色自绘，
+## 同样写透明 override 把引擎文字藏起来，避免「原始白字」残留。
 func _refresh_text_color() -> void:
-	if not _locked_color:
+	begin_bulk_theme_override()
+	if _locked_color:
+		text_color = _locked_text_color
+	else:
 		remove_theme_color_override("font_color")
 		text_color = get_theme_color("font_color")
-		add_theme_color_override("font_color", Color(0, 0, 0, 0))
+	add_theme_color_override("font_color", Color(0, 0, 0, 0))
+	end_bulk_theme_override()
 	queue_redraw()
 
 

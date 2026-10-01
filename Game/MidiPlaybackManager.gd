@@ -48,6 +48,8 @@ var default_soundfont_path: String = "res://Resources/Soundfont/GeneralUser-GS.s
 ## 当前使用的SoundFont路径
 var current_soundfont_path: String = ""
 var _soundfont_preloaded_to_backend: bool = false
+## 是否已向后端派发过一次异步加载（避免 play() 每次都回调 set_soundfont 触发线程 Join 卡顿）
+var _soundfont_preload_dispatched: bool = false
 
 ## 人声偏移量（毫秒）
 var vocal_offset_ms: float = 0.0
@@ -645,10 +647,12 @@ func play() -> void:
 	# 调试：打印启动时的当前音量（TrackView 起始入口）
 	_log_volume_state("play()")
 
-	# 设置音源
-	if not _soundfont_preloaded_to_backend and not current_soundfont_path.is_empty():
-		backend.set_soundfont(current_soundfont_path)
-		_soundfont_preloaded_to_backend = true
+	# 设置音源：未就绪时只派发一次后台异步加载，不阻塞等待；
+	# 后端 play() 会在加载完成后由 C# 侧自动续播（见 MeltySynthPlayer._pendingPlayAfterLoad）
+	if not _soundfont_preloaded_to_backend and not _soundfont_preload_dispatched and not current_soundfont_path.is_empty():
+		if backend != null:
+			backend.set_soundfont(current_soundfont_path)
+		_soundfont_preload_dispatched = true
 
 	# 重置同步状态
 	reset_sync_state()
@@ -882,9 +886,10 @@ func _preload_soundfont_to_backend() -> void:
 		return
 
 	GLogger.info("Pre-loading SoundFont: %s" % current_soundfont_path, "MidiPlaybackManager")
+	# 后台线程异步解析（约 3-5s），不阻塞主线程；加载完成后由 soundfont_changed 信号置位 _soundfont_preloaded_to_backend
 	midi_player.set_soundfont(current_soundfont_path)
-	_soundfont_preloaded_to_backend = true
-	GLogger.info("SoundFont pre-loaded successfully", "MidiPlaybackManager")
+	_soundfont_preload_dispatched = true
+	GLogger.info("SoundFont pre-load dispatched (async)", "MidiPlaybackManager")
 
 ## 确保 SoundFont 已加载到后端合成器
 ## 供 trigger_note_on 等即时音符播放场景（如 DelayAdjust 校准）调用，
@@ -940,8 +945,14 @@ func set_soundfont(soundfont_name: String) -> bool:
 	if is_playing and midi_player != null:
 		midi_player.set_soundfont(soundfont_path)
 		_soundfont_preloaded_to_backend = true
+		_soundfont_preload_dispatched = true
 	else:
+		# 非播放态切换音源：提前在后台异步预加载（约 3-5s），避免首次播放时再卡一次；
+		# 加载完成由 soundfont_changed 信号置位 _soundfont_preloaded_to_backend。
+		if midi_player != null:
+			midi_player.set_soundfont(soundfont_path)
 		_soundfont_preloaded_to_backend = false
+		_soundfont_preload_dispatched = true
 
 	GLogger.info("Soundfont set to: %s" % soundfont_path, "MidiPlaybackManager")
 	return true
@@ -1028,6 +1039,11 @@ func _initialize_meltysynth_backend() -> bool:
 	if wrapper.has_signal("vocal_finished"):
 		wrapper.vocal_finished.connect(_on_vocal_finished)
 		GLogger.info("Connected vocal_finished signal", "MidiPlaybackManager")
+
+	# 后台加载完成（含异步预加载）时标记已就绪，play() 不再重复触发加载
+	if wrapper.has_signal("soundfont_changed"):
+		wrapper.soundfont_changed.connect(_on_backend_soundfont_changed)
+		GLogger.info("Connected soundfont_changed signal", "MidiPlaybackManager")
 
 	# 保存引用
 	midi_player = wrapper
@@ -1363,6 +1379,12 @@ func _on_midi_finished() -> void:
 func _on_vocal_finished() -> void:
 	_vocal_initialized = false
 	GLogger.info("Vocal playback finished naturally", "MidiPlaybackManager")
+
+## 回调：C# 后端 SoundFont 加载完成（含启动期异步预加载与设置切换）
+## 标记已就绪，使 play() 不再重复触发加载。
+func _on_backend_soundfont_changed(_path: String) -> void:
+	_soundfont_preloaded_to_backend = true
+	_soundfont_preload_dispatched = true
 
 ## 获取当前MIDI的轨道信息列表
 func get_track_infos() -> Array:

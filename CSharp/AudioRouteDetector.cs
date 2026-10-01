@@ -168,8 +168,8 @@ public partial class AudioRouteDetector : Node
 		});
 		thread.IsBackground = true;
 		thread.Start();
-		// COM 检测正常 1-5ms；2s 超时防御音频服务卡死
-		if (!thread.Join(TimeSpan.FromSeconds(2)) || error != null)
+		// COM 检测正常 1-5ms；500ms 超时足以防御音频服务卡死，同时把最坏阻塞从 2s 降到 0.5s
+		if (!thread.Join(TimeSpan.FromMilliseconds(500)) || error != null)
 		{
 			if (error != null)
 			{

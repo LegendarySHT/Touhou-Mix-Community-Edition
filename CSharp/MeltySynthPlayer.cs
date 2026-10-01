@@ -138,6 +138,22 @@ public partial class MeltySynthPlayer : Node
 	// 管道只构建一次，但用 volatile 引用交换保证音频线程迭代的是一致快照
 	private volatile IReadOnlyList<IMidiMessageHandler> _handlers = Array.Empty<IMidiMessageHandler>();
 
+	// ============ 后台线程加载 SoundFont（避免启动期 3-5s 解析阻塞主线程）============
+	// 解析与合成器/序列器创建在 worker 线程完成（纯 C#，不碰 Godot/音频桥），
+	// 主线程在 _Process 里 FinalizeSoundfontLoad 完成合成器引用与音频桥绑定（必须主线程）。
+	private Thread _sfLoadThread = null;
+	private readonly object _sfLock = new object();
+	private volatile bool _sfParseDone = false;
+	private bool _sfFinalized = false;
+	private SoundFont _sfPendingSoundFont;
+	private Synthesizer _sfPendingAuto;
+	private Synthesizer _sfPendingManual;
+	private MidiFileSequencer _sfPendingSeq;
+	private MessageHandlerContext _sfPendingMsgCtx;
+	private List<IMidiMessageHandler> _sfPendingHandlers;
+	// 音源后台加载完成前若已调用 play()/load_midi，记录意图待 FinalizeSoundfontLoad 补启动
+	private bool _pendingPlayAfterLoad = false;
+
 	private void RequestAudioOutputPlay()
 	{
 		if (_audioOutput == null) return;
@@ -508,6 +524,13 @@ public partial class MeltySynthPlayer : Node
 
 	public override void _Process(double delta)
 	{
+		// 后台 SoundFont 解析完成后，在主线程完成合成器/音频桥绑定（音频相关 API 必须主线程）
+		if (_sfParseDone && !_sfFinalized && (_sfLoadThread == null || !_sfLoadThread.IsAlive))
+		{
+			_sfLoadThread = null;
+			FinalizeSoundfontLoad();
+		}
+
 		_audioOutput?.Update();
 
 		if (_audioOutput is MiniaudioAudioOutputBridge maBridge && maBridge.IsVocalFinished())
@@ -701,6 +724,15 @@ public partial class MeltySynthPlayer : Node
 		GD.Print($"[MeltySynthPlayer] play() called - _midiFile={_midiFile != null}, _sequencerStarted={_sequencerStarted}, _audioOutput={( _audioOutput != null ? "OK" : "NULL" )}, _synth={(_synth != null ? "OK" : "NULL")}, _autoSynth={(_autoSynth != null ? "OK" : "NULL")}");
 		if (_sequencer == null)
 		{
+			// 音源仍在后台异步加载中：记录播放意图，待 FinalizeSoundfontLoad 完成后再自动启动，
+			// 避免主线程阻塞等待（原同步加载会卡 3-5s）。若无任何加载在飞，才是真正的失败。
+			if (!_sfFinalized && (_sfLoadThread != null || _sfParseDone))
+			{
+				GD.Print("[MeltySynthPlayer] SoundFont still loading, deferring play() until finalized");
+				_pendingPlayAfterLoad = true;
+				playing = true;
+				return;
+			}
 			GD.PrintErr("[MeltySynthPlayer] Cannot play: sequencer is null");
 			return;
 		}
@@ -746,6 +778,7 @@ public partial class MeltySynthPlayer : Node
 	public void stop()
 	{
 		playing = false;
+		_pendingPlayAfterLoad = false;
 		// ma_bridge_stop 会等待回调完成，必须在锁外调用
 		_audioOutput?.Stop();
 		// 与回调渲染互斥
@@ -802,13 +835,28 @@ public partial class MeltySynthPlayer : Node
 	{
 		EnsureAudioInitialized();
 		_soundfont = soundfontPath;
-		LoadSoundfont(soundfontPath);
-		// 注意：LoadSoundfont 创建新的 _sequencer，需要重新加载 MIDI 文件
-		if (!string.IsNullOrEmpty(_file))
+		if (playing)
 		{
-			// GD.Print($"[MeltySynthPlayer] Reloading MIDI after soundfont change: {_file}");
-			LoadMidiFile(_file);
+			// 播放中切换音源：保持原有同步行为（无法在播放时后台替换合成器）
+			LoadSoundfont(soundfontPath);
+			return;
 		}
+		// 若已有后台加载在飞，先等它完成并 finalize（主线程），避免并发与重复加载
+		if (_sfLoadThread != null && _sfLoadThread.IsAlive)
+		{
+			_sfLoadThread.Join();
+			_sfLoadThread = null;
+			if (!_sfFinalized)
+			{
+				FinalizeSoundfontLoad();
+			}
+			if (_soundfont == soundfontPath)
+			{
+				return;
+			}
+		}
+		// 否则在后台线程解析 SoundFont（30MB / 3-5s），主线程继续渲染不阻塞
+		StartSoundfontLoadAsync(soundfontPath);
 	}
 
 	public void set_file(string midiPath)
@@ -1689,6 +1737,15 @@ public partial class MeltySynthPlayer : Node
 	public void resume()
 	{
 		InvalidateJudgeClock();  // 按 resume 后的音频参考重建锚点
+		// 音源后台加载/切换尚未完成（_sequencer 可能仍是旧合成器）：不在旧合成器上续播，
+		// 改为记录意图，待 FinalizeSoundfontLoad 用新合成器续播，避免切换瞬间静音。
+		if (!_sfFinalized && (_sfLoadThread != null || _sfParseDone))
+		{
+			GD.Print("[MeltySynthPlayer] SoundFont still loading/switching, deferring resume() until finalized");
+			_pendingPlayAfterLoad = true;
+			playing = true;
+			return;
+		}
 		if (_midiFile != null && _sequencer != null)
 		{
 			// 线程模型：同 pause()，Resume 重设墙钟锚点，必须与回调渲染互斥
@@ -1760,6 +1817,156 @@ public partial class MeltySynthPlayer : Node
 		file.Close();
 		// GD.Print($"[MeltySynthPlayer] Loaded {length} bytes from: {path}");
 		return new MemoryStream(bytes);
+	}
+
+	// 启动后台线程解析 SoundFont（纯 CPU：读文件 + 建合成器/序列器），解析完成置 _sfParseDone，
+	// 由主线程 _Process → FinalizeSoundfontLoad 完成合成器引用与音频桥绑定（必须主线程）。
+	private void StartSoundfontLoadAsync(string path)
+	{
+		_sfParseDone = false;
+		_sfFinalized = false;
+		_sfLoadThread = new Thread(() => ParseSoundfontIntoPending(path));
+		_sfLoadThread.IsBackground = true;
+		_sfLoadThread.Start();
+	}
+
+	// worker 线程执行：只做纯 C# 解析，绝不碰 _audioOutput / EmitSignal（那些必须主线程）。
+	private void ParseSoundfontIntoPending(string path)
+	{
+		try
+		{
+			using var stream = OpenFileAsStream(path);
+			var soundFont = new SoundFont(stream);
+			var settings = new SynthesizerSettings(_sampleRate)
+			{
+				MaximumPolyphony = max_polyphony,
+				BlockSize = 256,
+				EnableReverbAndChorus = false
+			};
+			var autoSynth = new Synthesizer(soundFont, settings);
+
+			MessageHandlerContext msgCtx = _messageContext;
+			List<IMidiMessageHandler> handlers;
+			if (msgCtx == null)
+			{
+				msgCtx = new MessageHandlerContext(
+					_virtualChannelCurrentBank, _virtualChannelCurrentProgram,
+					_virtualChannelCc7, _virtualChannelCc11, _virtualChannelCc10,
+					_virtualChannelPitchBend, _virtualChannelInstruments,
+					_virtualChannelVolumes, _manualFilterRegistry,
+					_mutedVirtualChannels, _channelStateAppliedToManual);
+				handlers = new List<IMidiMessageHandler>
+				{
+					new ChannelStateMirrorHandler(msgCtx),
+					new ManualNoteFilterHandler(msgCtx),
+					new MuteFilterHandler(msgCtx),
+					new InstrumentOverrideHandler(msgCtx),
+					new VolumeScaleHandler(msgCtx),
+					new SynthForwarderHandler()
+				};
+			}
+			else
+			{
+				// 管道只构建一次：复用已有的 handler 快照
+				handlers = new List<IMidiMessageHandler>(_handlers);
+			}
+
+			var sequencer = new MidiFileSequencer(autoSynth) { OnSendMessage = OnSendMessage };
+			sequencer.SetSystemClockMode(_systemClockRequested);
+			sequencer.SetDiagnosticsEnabled(false);
+
+			Synthesizer manualSynth;
+			if (_useSeparateSynthForManual)
+			{
+				var manualSettings = new SynthesizerSettings(_sampleRate)
+				{
+					MaximumPolyphony = Math.Max(16, max_polyphony / 4),
+					BlockSize = 256,
+					EnableReverbAndChorus = false
+				};
+				manualSynth = new Synthesizer(soundFont, manualSettings);
+			}
+			else
+			{
+				manualSynth = autoSynth;
+			}
+
+			lock (_sfLock)
+			{
+				_sfPendingSoundFont = soundFont;
+				_sfPendingAuto = autoSynth;
+				_sfPendingManual = manualSynth;
+				_sfPendingSeq = sequencer;
+				_sfPendingMsgCtx = msgCtx;
+				_sfPendingHandlers = handlers;
+			}
+			_sfParseDone = true;
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr($"[MeltySynthPlayer] background SoundFont parse failed: {e.Message}");
+			_sfParseDone = true; // 标记完成（即便失败），避免 _Process 反复重试
+		}
+	}
+
+	// 主线程：把后台解析结果绑定到合成器与音频桥（音频相关 API 必须主线程）。
+	private void FinalizeSoundfontLoad()
+	{
+		SoundFont soundFont;
+		Synthesizer autoSynth, manualSynth;
+		MidiFileSequencer sequencer;
+		MessageHandlerContext msgCtx;
+		List<IMidiMessageHandler> handlers;
+		lock (_sfLock)
+		{
+			soundFont = _sfPendingSoundFont;
+			autoSynth = _sfPendingAuto;
+			manualSynth = _sfPendingManual;
+			sequencer = _sfPendingSeq;
+			msgCtx = _sfPendingMsgCtx;
+			handlers = _sfPendingHandlers;
+			_sfPendingSoundFont = null; _sfPendingAuto = null; _sfPendingManual = null;
+			_sfPendingSeq = null; _sfPendingMsgCtx = null; _sfPendingHandlers = null;
+		}
+		if (soundFont == null)
+		{
+			return;
+		}
+
+		_soundFont = soundFont;
+		_autoSynth = autoSynth;
+		_synth = autoSynth;
+		_manualSynth = manualSynth;
+		_sequencer = sequencer;
+		_messageContext = msgCtx;
+		_handlers = handlers;
+
+		// 【TMX-005】合成器重建后清理手动通道状态缓存，并重新应用乐器覆盖
+		_channelStateAppliedToManual.Clear();
+		ApplyInstrumentOverridesToSynth();
+
+		_sequencerStarted = false;
+		_currentOffsetMs = 0.0;
+		_hasSkippedPreroolEvents = false;
+
+		// 纯 soundfont 重载（未重新 load_midi）时重新加载 MIDI 文件
+		if (!string.IsNullOrEmpty(_file))
+		{
+			LoadMidiFile(_file);
+		}
+
+		_audioOutput?.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
+		_audioOutput?.SetVolume(_volumeLinear);
+		_sfFinalized = true;
+		EmitSignal(SignalName.soundfont_changed, _soundfont);
+
+		// 异步加载完成前若已请求播放，现在后端已就绪，自动续播
+		if (_pendingPlayAfterLoad && _midiFile != null)
+		{
+			_pendingPlayAfterLoad = false;
+			GD.Print("[MeltySynthPlayer] Resuming deferred play() after soundfont finalize");
+			play();
+		}
 	}
 
 	private void LoadSoundfont(string path)
@@ -1869,6 +2076,13 @@ public partial class MeltySynthPlayer : Node
 
 		if (_synth == null)
 		{
+			// 后台异步加载进行中：不要同步阻塞主线程（会卡 3-5s 且与后台线程竞争合成器），
+			// 等待 FinalizeSoundfontLoad 完成后由它/load_midi 续接载入 MIDI。
+			if (!_sfFinalized && (_sfLoadThread != null || _sfParseDone))
+			{
+				GD.Print("[MeltySynthPlayer] SoundFont async loading; deferring MIDI load to finalize");
+				return;
+			}
 			// 如果没有设置 soundfont，使用默认的
 			if (string.IsNullOrEmpty(_soundfont))
 			{
@@ -1910,6 +2124,15 @@ public partial class MeltySynthPlayer : Node
 		// 注意：不在这里调用 Play()，而是等待明确的 play() 调用
 		// 这样可以与 MidiPlayer (Addon) 的行为保持一致
 		// _sequencer.Play(_midiFile, loop);  // 移除自动播放
+
+		// 音源就绪前已请求播放：MIDI 现已载入，补启动。
+		// 仅当 finalize 已完成（音频桥已在 FinalizeSoundfontLoad 绑定合成器）后才触发，
+		// 否则（同在 finalize 内、SetSynthesizers 之前）交由 finalize 末尾统一续播。
+		if (_pendingPlayAfterLoad && _sequencer != null && _sfFinalized)
+		{
+			_pendingPlayAfterLoad = false;
+			play();
+		}
 	}
 
 	private void LegacySeekByFastForward(double targetMs)
