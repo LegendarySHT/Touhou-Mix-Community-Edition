@@ -512,8 +512,9 @@ func _modify_button_states_color(btn: Button, color_key: String) -> void:
 
 # ============ 列表项样式 ============
 
-## 修改 albumNode 列表项上的 SongCount 圆形标签背景色
-## （按钮四态已由共享 theme ListBtn-ColorBorder.tres 统一处理，不再逐实例改色）
+## 修改 albumNode 列表项上的 SongCount 圆形标签背景色（共享 StyleBox，改一次同步全部列表项）
+## （按钮四态已由共享 theme ListBtn-ColorBorder.tres 统一处理，不再逐实例改色；
+##   数字文字固定白色由 .tscn 的 theme_override_colors 静态设置，见 albumNode.tscn）
 func _style_album_instance(item: Control, pri_light: Color) -> void:
 	var song_count := item.get_node_or_null("SongCount") as Label
 	if song_count:
@@ -949,8 +950,10 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	tmp.set_color("font_color", "LineEdit", get_color("text_primary"))
 	tmp.set_color("font_placeholder_color", "LineEdit", get_color("text_dim"))
 
-	# LineEdit 三态
-	_set_theme_stylebox(thm, tmp, "LineEdit", "normal", surface_high, border)
+	# LineEdit 三态：normal 用更深的 surface_low 做出凹陷感，与 surface/surface_high 面板拉开层次；
+	# 边框用 border（比 border_soft 明显）+ 2px 宽度（见 Main.tscn 的 StyleBoxFlat_lineedit_normal）。
+	# read_only 维持更弱的 border_soft 以便与可编辑输入框区分。
+	_set_theme_stylebox(thm, tmp, "LineEdit", "normal", surface_low, border)
 	_set_theme_stylebox(thm, tmp, "LineEdit", "focus", Color(0, 0, 0, 0), p)
 	_set_theme_stylebox(thm, tmp, "LineEdit", "read_only", surface_low, border_soft)
 

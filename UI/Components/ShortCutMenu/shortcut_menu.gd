@@ -8,16 +8,16 @@ extends VBoxContainer
 @onready var favor_list_button = $Btns/FavorList
 
 @onready var page_container = $Panel # 页面背景
-@onready var page = $Panel/Page # 页面内容
+@onready var page = $Panel/Clip/Page # 页面内容
 
-@onready var search_lineedit: LineEdit = $Panel/Page/SortPage/SearchBox/TextEdit
+@onready var search_lineedit: LineEdit = $Panel/Clip/Page/SortPage/SearchBox/TextEdit
 
 # 收藏夹相关节点
-@onready var favor_list_container: VBoxContainer = $Panel/Page/FavorPage/FavorList/VBoxC
-@onready var favor_list: ScrollContainer = $Panel/Page/FavorPage/FavorList
-@onready var create_list: VBoxContainer = $Panel/Page/FavorPage/CreateList
-@onready var add_btn: Button = $Panel/Page/FavorPage/CreateList/AddBtn
-@onready var favor_page: VBoxContainer = $Panel/Page/FavorPage
+@onready var favor_list_container: VBoxContainer = $Panel/Clip/Page/FavorPage/FavorList/VBoxC
+@onready var favor_list: ScrollContainer = $Panel/Clip/Page/FavorPage/FavorList
+@onready var create_list: VBoxContainer = $Panel/Clip/Page/FavorPage/CreateList
+@onready var add_btn: Button = $Panel/Clip/Page/FavorPage/CreateList/AddBtn
+@onready var favor_page: VBoxContainer = $Panel/Clip/Page/FavorPage
 
 # 收藏夹列表项场景
 const FAVOR_ITEM_SCENE := preload("res://UI/Components/ShortCutMenu/favorListItem.tscn")
@@ -140,7 +140,7 @@ var sortByStatus: SortEngine.SortStatField = SortEngine.SortStatField.ALL
 var sortByData: SortEngine.SortDataField = SortEngine.SortDataField.DOWNLOAD_COUNT
 var sortDirection: SortEngine.SortDirection = SortEngine.SortDirection.ASCENDING
 
-@onready var sort_btns = $Panel/Page/SortPage/SortButton
+@onready var sort_btns = $Panel/Clip/Page/SortPage/SortButton
 
 # icon_set2.png 各筛选图标 region（80x80）：第三行状态 / 第四行升降序 / 第五行数据
 const _STATUS_REGION := {

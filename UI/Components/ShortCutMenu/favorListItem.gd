@@ -45,21 +45,27 @@ func _ready() -> void:
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
+	# 圆角遮罩：shader 拿不到 Control 尺寸，resize 时把尺寸传入
+	cover.resized.connect(_update_cover_mask)
+	_update_cover_mask()
 
 ## 应用主题色：根按钮四态随主题改色（原本写死的深色在浅色模式下会残留）
+## normal 用 surface_low：ShortCutMenu 面板是 surface_high、MidiFavorPanel 面板是 surface，
+## 只有 surface_low 能同时与其拉开层次；边框用 border 增强轮廓。
 func apply_theme() -> void:
 	if not ThemeMGR:
 		return
-	var sh := ThemeMGR.get_color("surface_high")
+	var sl := ThemeMGR.get_color("surface_low")
 	var shv := ThemeMGR.get_color("surface_hover")
 	var p := ThemeMGR.get_color("primary")
-	var border := ThemeMGR.get_color("border_soft")
-	var colors := {"normal": sh, "hover": shv, "pressed": p, "focus": p}
-	for state in colors:
+	var border := ThemeMGR.get_color("border")
+	var bg_map := {"normal": sl, "hover": shv, "pressed": p, "focus": shv}
+	var border_map := {"normal": border, "hover": border, "pressed": p, "focus": p}
+	for state in bg_map:
 		var sb := get_theme_stylebox(state)
 		if sb is StyleBoxFlat:
-			sb.bg_color = ThemeMGR._tint_keep_alpha(colors[state], sb.bg_color.a)
-			sb.border_color = border
+			sb.bg_color = bg_map[state]
+			sb.border_color = border_map[state]
 
 func _exit_tree() -> void:
 	if ThemeMGR:
@@ -127,16 +133,23 @@ func setup(fav: FavoriteListData, p_mode: Mode, p_midi: MidiData = null) -> void
 	_apply_mode()
 
 
+## 把 Cover 尺寸写入圆角遮罩 shader（见 CoverRound.gdshader）
+func _update_cover_mask() -> void:
+	var mat := cover.material as ShaderMaterial
+	if mat:
+		mat.set_shader_parameter("rect_size", cover.size)
+
+
 func _load_cover(fav: FavoriteListData) -> void:
+	# 空收藏夹保留场景里的占位纹理
 	if fav.midi_ids.is_empty():
-		cover.texture = null
 		return
-	var last_midi_id: String = fav.midi_ids.back()
-	var midi := DataMGR.get_midi_by_id(last_midi_id)
-	if midi:
-		cover.texture = FileSystemManager.instance.get_cover_by_midiData(midi)
-	else:
-		cover.texture = null
+	# 封面路径走磁盘索引反查（与 FavoriteManager._validate_favorites 一致）：
+	# 不依赖 DataMGR/ChartDB 水合出 MidiData，谱面未加载 / DB 不可用时仍能取到封面；
+	# 未命中时 _cover_path_from_chart 内部已回退默认封面，避免直接置 null 导致空白。
+	var fs := FileSystemManager.instance
+	var key: String = fav.midi_ids.back()
+	cover.texture = fs.load_cover_with_cache(fs.get_cover_path_by_ids(key, key))
 
 
 func _apply_mode() -> void:

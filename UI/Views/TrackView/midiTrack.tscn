@@ -173,6 +173,26 @@ region = Rect2(80, 160, 80, 80)
 atlas = ExtResource("2_phpps")
 region = Rect2(320, 320, 80, 80)
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slider_fill"]
+bg_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+corner_detail = 5
+expand_margin_top = 8.0
+expand_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slider_fill_hl"]
+bg_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+corner_detail = 5
+expand_margin_top = 8.0
+expand_margin_bottom = 8.0
+
 [node name="MidiTrack" type="Panel" unique_id=1103190500]
 custom_minimum_size = Vector2(1600, 220)
 anchors_preset = 15
@@ -446,6 +466,8 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 1
 size_flags_stretch_ratio = 3.5
+theme_override_styles/grabber_area = SubResource("StyleBoxFlat_slider_fill")
+theme_override_styles/grabber_area_highlight = SubResource("StyleBoxFlat_slider_fill_hl")
 max_value = 1.0
 step = 0.01
 

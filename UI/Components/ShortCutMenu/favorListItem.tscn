@@ -4,13 +4,14 @@
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="3_0mqhb"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="4_0mqhb"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="5_0mqhb"]
+[ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ShortCutMenu/CoverRound.gdshader" id="6_coverround"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sohxy"]
 bg_color = Color(0.0941, 0.1176, 0.1686, 0.8)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
 border_color = Color(0.1686, 0.2039, 0.2745, 1)
 corner_radius_top_left = 10
 corner_radius_top_right = 10
@@ -31,10 +32,10 @@ corner_radius_bottom_left = 10
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vqh6o"]
 bg_color = Color(0.1333, 0.1647, 0.2314, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
 border_color = Color(0.1686, 0.2039, 0.2745, 1)
 corner_radius_top_left = 10
 corner_radius_top_right = 10
@@ -53,6 +54,19 @@ corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_cover"]
+resource_local_to_scene = true
+shader = ExtResource("6_coverround")
+shader_parameter/corner_radius = 8.0
+shader_parameter/rect_size = Vector2(126, 126)
+
+[sub_resource type="Gradient" id="Gradient_vqh6o"]
+offsets = PackedFloat32Array(0)
+colors = PackedColorArray(0.28235295, 0.28235295, 0.28235295, 0.54901963)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_vqh6o"]
+gradient = SubResource("Gradient_vqh6o")
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3y6u5"]
 bg_color = Color(0, 0, 0, 0.45)
 
@@ -60,18 +74,6 @@ bg_color = Color(0, 0, 0, 0.45)
 resource_local_to_scene = true
 atlas = ExtResource("3_0mqhb")
 region = Rect2(160, 80, 80, 80)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_w3rk5"]
-draw_center = false
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(1, 1, 1, 0.25)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_vqh6o"]
 
@@ -98,9 +100,10 @@ script = ExtResource("1_script")
 
 [node name="HBox" type="HBoxContainer" parent="." unique_id=1284658319]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 2.0
 grow_horizontal = 2
 grow_vertical = 2
 size_flags_horizontal = 3
@@ -108,9 +111,12 @@ theme_override_constants/separation = 40
 alignment = 1
 
 [node name="Cover" type="TextureRect" parent="HBox" unique_id=33163108]
-custom_minimum_size = Vector2(130, 130)
+material = SubResource("ShaderMaterial_cover")
+custom_minimum_size = Vector2(126, 126)
 layout_mode = 2
+size_flags_vertical = 4
 mouse_filter = 2
+texture = SubResource("GradientTexture2D_vqh6o")
 expand_mode = 5
 stretch_mode = 6
 
@@ -137,16 +143,6 @@ mouse_filter = 2
 texture = SubResource("AtlasTexture_hhcpw")
 expand_mode = 3
 stretch_mode = 5
-
-[node name="Border" type="PanelContainer" parent="HBox/Cover" unique_id=2007048721]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_w3rk5")
 
 [node name="Detail" type="VBoxContainer" parent="HBox" unique_id=1418457743]
 custom_minimum_size = Vector2(230, 0)

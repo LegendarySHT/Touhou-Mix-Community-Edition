@@ -203,10 +203,10 @@ content_margin_top = 6.0
 content_margin_right = 8.0
 content_margin_bottom = 6.0
 bg_color = Color(0.0941, 0.1176, 0.1686, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
 border_color = Color(0.1686, 0.2039, 0.2745, 1)
 corner_radius_top_left = 10
 corner_radius_top_right = 10
@@ -473,6 +473,15 @@ expand_margin_top = 125.0
 shadow_color = Color(0, 0, 0, 0.45)
 shadow_size = 24
 shadow_offset = Vector2(0, 8)
+
+[sub_resource type="Gradient" id="Gradient_2gh4u"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_devvj"]
+gradient = SubResource("Gradient_2gh4u")
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_2gh4u"]
+texture = SubResource("GradientTexture2D_devvj")
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_ck4ec"]
 atlas = ExtResource("17_xrxkg")
@@ -888,7 +897,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_hri7i")
 custom_minimum_size = Vector2(120, 120)
 layout_mode = 2
 focus_neighbor_left = NodePath("../Search")
-focus_neighbor_bottom = NodePath("../../Panel/Page/FavorPage/FavorList/VBoxC/FavorListItem")
+focus_neighbor_bottom = NodePath("../../Panel/Clip/Page/FavorPage/FavorList/VBoxC/FavorListItem")
 focus_next = NodePath("../Search")
 theme_override_constants/icon_max_width = 95
 theme_override_styles/focus = SubResource("StyleBoxFlat_5mvff")
@@ -910,8 +919,7 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_hri7i")
 
 [node name="Panel" type="Panel" parent="skew/C/ShortCutMenu" unique_id=1377748302]
 visible = false
-show_behind_parent = true
-clip_children = 2
+z_index = -1
 custom_minimum_size = Vector2(600, 700)
 layout_mode = 2
 offset_transform_enabled = true
@@ -920,7 +928,17 @@ offset_transform_pivot_ratio = Vector2(0.5, -0.17)
 offset_transform_visual_only = false
 theme_override_styles/panel = SubResource("StyleBoxFlat_sqvbp")
 
-[node name="Page" type="HBoxContainer" parent="skew/C/ShortCutMenu/Panel" unique_id=2123375734]
+[node name="Clip" type="Panel" parent="skew/C/ShortCutMenu/Panel" unique_id=1811362688]
+clip_children = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_2gh4u")
+
+[node name="Page" type="HBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip" unique_id=2123375734]
 layout_mode = 0
 offset_left = 40.0
 offset_top = 50.0
@@ -934,51 +952,51 @@ mouse_filter = 2
 theme_override_constants/separation = 100
 metadata/_edit_lock_ = true
 
-[node name="SortPage" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Page" unique_id=1166316195]
+[node name="SortPage" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page" unique_id=1166316195]
 custom_minimum_size = Vector2(600, 0)
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 15
 
-[node name="SearchBox" type="HBoxContainer" parent="skew/C/ShortCutMenu/Panel/Page/SortPage" unique_id=928308120]
+[node name="SearchBox" type="HBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage" unique_id=928308120]
 layout_mode = 2
 
-[node name="TextEdit" type="LineEdit" parent="skew/C/ShortCutMenu/Panel/Page/SortPage/SearchBox" unique_id=637319179]
+[node name="TextEdit" type="LineEdit" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SearchBox" unique_id=637319179]
 custom_minimum_size = Vector2(440, 100)
 layout_mode = 2
-focus_neighbor_left = NodePath("../../../../../Btns/Search")
-focus_next = NodePath("../../../../../Btns/FavorList")
+focus_neighbor_left = NodePath("../../../../../../Btns/Search")
+focus_next = NodePath("../../../../../../Btns/FavorList")
 theme_override_font_sizes/font_size = 35
 placeholder_text = "please enter..."
 alignment = 1
 caret_blink = true
 
-[node name="SearchBtn" type="Button" parent="skew/C/ShortCutMenu/Panel/Page/SortPage/SearchBox" unique_id=540940752]
+[node name="SearchBtn" type="Button" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SearchBox" unique_id=540940752]
 custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
-focus_next = NodePath("../../../../../Btns/FavorList")
+focus_next = NodePath("../../../../../../Btns/FavorList")
 icon = SubResource("AtlasTexture_ck4ec")
 icon_alignment = 1
 expand_icon = true
 
-[node name="Line" type="ColorRect" parent="skew/C/ShortCutMenu/Panel/Page/SortPage" unique_id=155937236]
+[node name="Line" type="ColorRect" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage" unique_id=155937236]
 custom_minimum_size = Vector2(600, 5)
 layout_mode = 2
 size_flags_horizontal = 4
 color = Color(0.1686, 0.2039, 0.2745, 1)
 
-[node name="SortButton" type="HBoxContainer" parent="skew/C/ShortCutMenu/Panel/Page/SortPage" unique_id=909477443]
+[node name="SortButton" type="HBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage" unique_id=909477443]
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_constants/separation = 40
 
-[node name="Status" type="Button" parent="skew/C/ShortCutMenu/Panel/Page/SortPage/SortButton" unique_id=59956079]
+[node name="Status" type="Button" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton" unique_id=59956079]
 custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
-focus_neighbor_left = NodePath("../../../../../Btns/Search")
+focus_neighbor_left = NodePath("../../../../../../Btns/Search")
 focus_neighbor_right = NodePath("../Data")
-focus_next = NodePath("../../../../../Btns/FavorList")
+focus_next = NodePath("../../../../../../Btns/FavorList")
 theme_override_styles/normal = SubResource("StyleBoxEmpty_iygje")
 theme_override_styles/pressed = SubResource("StyleBoxEmpty_j02sm")
 theme_override_styles/hover = SubResource("StyleBoxEmpty_2xvos")
@@ -986,12 +1004,12 @@ icon = SubResource("AtlasTexture_u2pgb")
 icon_alignment = 1
 expand_icon = true
 
-[node name="Data" type="Button" parent="skew/C/ShortCutMenu/Panel/Page/SortPage/SortButton" unique_id=1988043361]
+[node name="Data" type="Button" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton" unique_id=1988043361]
 custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
 focus_neighbor_left = NodePath("../Status")
 focus_neighbor_right = NodePath("../Ordering")
-focus_next = NodePath("../../../../../Btns/FavorList")
+focus_next = NodePath("../../../../../../Btns/FavorList")
 theme_override_styles/normal = SubResource("StyleBoxEmpty_iygje")
 theme_override_styles/pressed = SubResource("StyleBoxEmpty_j02sm")
 theme_override_styles/hover = SubResource("StyleBoxEmpty_2xvos")
@@ -999,12 +1017,12 @@ icon = SubResource("AtlasTexture_jttwt")
 icon_alignment = 1
 expand_icon = true
 
-[node name="Ordering" type="Button" parent="skew/C/ShortCutMenu/Panel/Page/SortPage/SortButton" unique_id=1323616722]
+[node name="Ordering" type="Button" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton" unique_id=1323616722]
 custom_minimum_size = Vector2(100, 100)
 layout_mode = 2
 focus_neighbor_left = NodePath("../Data")
 focus_neighbor_right = NodePath("../../SearchBox/SearchBtn")
-focus_next = NodePath("../../../../../Btns/FavorList")
+focus_next = NodePath("../../../../../../Btns/FavorList")
 theme_override_styles/normal = SubResource("StyleBoxEmpty_iygje")
 theme_override_styles/pressed = SubResource("StyleBoxEmpty_j02sm")
 theme_override_styles/hover = SubResource("StyleBoxEmpty_2xvos")
@@ -1012,17 +1030,17 @@ icon = SubResource("AtlasTexture_4ycmv")
 icon_alignment = 1
 expand_icon = true
 
-[node name="MarginContainer" type="MarginContainer" parent="skew/C/ShortCutMenu/Panel/Page/SortPage/SortButton" unique_id=1037083053]
+[node name="MarginContainer" type="MarginContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton" unique_id=1037083053]
 layout_mode = 2
 theme_override_constants/margin_right = 20
 
-[node name="FavorPage" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Page" unique_id=1714220272]
+[node name="FavorPage" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page" unique_id=1714220272]
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
 theme_override_constants/separation = 20
 
-[node name="FavorList" type="ScrollContainer" parent="skew/C/ShortCutMenu/Panel/Page/FavorPage" unique_id=1954604137]
+[node name="FavorList" type="ScrollContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/FavorPage" unique_id=1954604137]
 custom_minimum_size = Vector2(500, 530)
 layout_mode = 2
 size_flags_vertical = 3
@@ -1031,18 +1049,18 @@ follow_focus = true
 horizontal_scroll_mode = 3
 vertical_scroll_mode = 3
 
-[node name="VBoxC" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Page/FavorPage/FavorList" unique_id=1181947446]
+[node name="VBoxC" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/FavorPage/FavorList" unique_id=1181947446]
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="FavorListItem" parent="skew/C/ShortCutMenu/Panel/Page/FavorPage/FavorList/VBoxC" unique_id=1385106200 instance=ExtResource("20_devvj")]
+[node name="FavorListItem" parent="skew/C/ShortCutMenu/Panel/Clip/Page/FavorPage/FavorList/VBoxC" unique_id=1385106200 instance=ExtResource("20_devvj")]
 layout_mode = 2
 
-[node name="CreateList" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Page/FavorPage" unique_id=659633133]
+[node name="CreateList" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/FavorPage" unique_id=659633133]
 layout_mode = 2
 alignment = 1
 
-[node name="AddBtn" type="Button" parent="skew/C/ShortCutMenu/Panel/Page/FavorPage/CreateList" unique_id=628121933]
+[node name="AddBtn" type="Button" parent="skew/C/ShortCutMenu/Panel/Clip/Page/FavorPage/CreateList" unique_id=628121933]
 custom_minimum_size = Vector2(80, 80)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -1459,11 +1477,11 @@ offset_right = 830.0
 offset_bottom = 600.0
 offset_transform_enabled = true
 
-[connection signal="text_submitted" from="skew/C/ShortCutMenu/Panel/Page/SortPage/SearchBox/TextEdit" to="skew/C/ShortCutMenu" method="_on_search_query"]
-[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Page/SortPage/SearchBox/SearchBtn" to="skew/C/ShortCutMenu" method="_on_search_query"]
-[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Page/SortPage/SortButton/Status" to="skew/C/ShortCutMenu" method="_on_status_pressed"]
-[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Page/SortPage/SortButton/Data" to="skew/C/ShortCutMenu" method="_on_data_pressed"]
-[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Page/SortPage/SortButton/Ordering" to="skew/C/ShortCutMenu" method="_on_ordering_pressed"]
+[connection signal="text_submitted" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SearchBox/TextEdit" to="skew/C/ShortCutMenu" method="_on_search_query"]
+[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SearchBox/SearchBtn" to="skew/C/ShortCutMenu" method="_on_search_query"]
+[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton/Status" to="skew/C/ShortCutMenu" method="_on_status_pressed"]
+[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton/Data" to="skew/C/ShortCutMenu" method="_on_data_pressed"]
+[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton/Ordering" to="skew/C/ShortCutMenu" method="_on_ordering_pressed"]
 [connection signal="pressed" from="skew/C/RandomSelectBtn" to="skew/C/AlbumList" method="_on_random_select_btn_pressed"]
 [connection signal="pressed" from="skew/C/SelectedAlbum" to="skew/C/SelectedAlbum" method="_on_selected_album_pressed"]
 [connection signal="pressed" from="LT_Btn" to="LT_Btn" method="_on_button_pressed"]

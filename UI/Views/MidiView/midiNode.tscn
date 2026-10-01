@@ -9,12 +9,7 @@ draw_center = false
 border_width_top = 20
 border_width_bottom = 20
 border_color = Color(0, 0, 0, 0.35)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_u2pgb"]
-draw_center = false
-border_width_top = 20
-border_width_bottom = 20
-border_color = Color(0, 0, 0, 0.28)
+border_blend = true
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_yxlt8"]
 draw_center = false
@@ -28,7 +23,7 @@ border_color = Color(0.576, 0.706, 1, 0.85)
 bg_color = Color(1, 1, 1, 0.16)
 
 [node name="MidiNode" type="Button" unique_id=188973569]
-custom_minimum_size = Vector2(765, 150)
+custom_minimum_size = Vector2(778, 150)
 clip_contents = true
 anchors_preset = -1
 offset_right = 8.0
@@ -38,7 +33,7 @@ size_flags_horizontal = 3
 mouse_filter = 1
 theme_override_styles/normal = SubResource("StyleBoxFlat_pxpjj")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_pxpjj")
-theme_override_styles/hover = SubResource("StyleBoxFlat_u2pgb")
+theme_override_styles/hover = SubResource("StyleBoxFlat_pxpjj")
 theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_pxpjj")
 theme_override_styles/focus = SubResource("StyleBoxFlat_yxlt8")
 toggle_mode = true

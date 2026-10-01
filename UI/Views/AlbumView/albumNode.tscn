@@ -133,6 +133,7 @@ offset_top = 10.0
 offset_right = -10.0
 offset_bottom = 140.0
 grow_horizontal = 0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 60
 theme_override_styles/normal = SubResource("StyleBoxFlat_f1sag")
 text = "9"

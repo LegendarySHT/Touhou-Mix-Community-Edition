@@ -134,6 +134,8 @@ func apply_theme() -> void:
 
 ## 行内文字/图标固定白色、不随主题。用一个只覆盖文字/图标色的局部 Theme 挂在根节点上，
 ## 样式框仍向上回落主 Theme（PopupMenu 等其它类型不受影响，仍是主题色）。
+## 音量滑条的白色填充不在此处设置——它由 midiTrack.tscn 里 Slider 节点的 theme_override_styles
+## 统一定义（所有音轨实例共享同一份样式框，无需每轨复制）。
 func _apply_row_text_theme() -> void:
 	var t := Theme.new()
 	for type in ["Label", "Button", "MenuButton", "OptionButton", "CheckBox", "CheckButton"]:

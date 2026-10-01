@@ -168,7 +168,7 @@ func set_expanded(expanded: bool) -> void:
 	expand_tween.set_ease(Tween.EASE_OUT)
 	expand_tween.set_trans(Tween.TRANS_QUINT)
 	expand_tween.set_parallel(true)
-	expand_tween.tween_property(self, "custom_minimum_size", Vector2(self.custom_minimum_size.x, 150 + 240 * expa), 0.35)
+	expand_tween.tween_property(self, "custom_minimum_size", Vector2(self.custom_minimum_size.x, 150 + 250 * expa), 0.35)
 	expand_tween.tween_property(midi_name_label, "theme_override_font_sizes/font_size", 30 + 10 * expa, 0.25)
 	# 指示器颜色（选中=高亮暗色，其余=亮色，随主题）
 	var indicator_node := get_node(INDICATOR)
