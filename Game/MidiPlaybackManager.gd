@@ -27,6 +27,13 @@ var cached_track_channel_instruments: Dictionary = {}
 var is_playing: bool = false
 var is_paused: bool = false
 
+## 因音源仍在后台加载/切换而推迟的续播/播放：音源就绪前人声与轨道显示不启动，
+## 待 _on_backend_soundfont_changed 再统一从起点对齐启动，避免错位于从头重播的 MIDI
+var deferred_play_pending: bool = false
+
+## 音源就绪后需在下一帧按 C# 实际位置重新对齐人声（覆盖推迟启动与播放中重载两种情形）
+var deferred_vocal_resync_pending: bool = false
+
 ## 当前播放位置（MIDI tick单位，NOT毫秒！）
 ## 注意：MidiPlayer.position使用tick单位。此属性直接来自MidiPlayer.position
 ## 要获取毫秒值，请使用 get_position_ms()
@@ -95,6 +102,9 @@ var _last_raw_midi_position_ms: float = -1.0
 
 ## 信号：MIDI播放完成
 signal midi_finished
+
+## 信号：因音源未就绪而推迟的续播/播放在音源就绪后真正开始（供视图延迟启动轨道显示）
+signal deferred_play_resumed
 
 func _ready() -> void:
 	if instance == null:
@@ -221,6 +231,16 @@ func _process(_delta: float) -> void:
 
 	# 调用自动同步逻辑
 	_sync_vocal_with_midi()
+
+	# 音源重载完成后的下一帧：按 C# 当前实际位置重新对齐人声，抵消重载引入的固定错位。
+	# 延后一帧确保 C# 已在 FinalizeSoundfontLoad/切换后启动并定位到正确位置。
+	if deferred_vocal_resync_pending and is_playing and current_midi_data != null:
+		deferred_vocal_resync_pending = false
+		var live_pos: float = get_raw_position_ms()
+		if live_pos < 0.0:
+			live_pos = 0.0
+		reset_sync_state()
+		start_vocal_playback(live_pos)
 
 ## 确保该 MIDI 的轨道配置已按简介完成初始化（幂等，仅主线程调用）
 ## 首次进入 MidiView（统计音符数 / MPP）前必须保证已调用，使统计口径与
@@ -635,7 +655,7 @@ func await_vocal_preload() -> void:
 
 ## 播放MIDI
 func play() -> void:
-	var backend = _get_active_backend()
+	var backend  = _get_active_backend()
 	if backend == null:
 		push_error("No MIDI backend initialized")
 		return
@@ -643,6 +663,8 @@ func play() -> void:
 	if current_midi_data == null:
 		push_error("No MIDI loaded")
 		return
+
+	deferred_play_pending = false
 
 	# 调试：打印启动时的当前音量（TrackView 起始入口）
 	_log_volume_state("play()")
@@ -666,7 +688,8 @@ func play() -> void:
 		position_ms = 0.0
 		position = 0.0
 
-	backend.play()
+	# 主动调用 C# play()：真正启动返回 true；音源仍在加载/切换而推迟时返回 false。
+	var actually_started: bool = backend.play()
 	is_playing = true
 	is_paused = false
 
@@ -678,6 +701,11 @@ func play() -> void:
 		position = 0.0
 		position_ms = 0.0
 
+	# C# 推迟播放时人声也推迟，待 _on_backend_soundfont_changed 从起点对齐启动，避免人声先按旧位置播放导致错位。
+	if not actually_started:
+		deferred_play_pending = current_midi_data != null and not current_midi_data.vocal_file_path.is_empty() and current_midi_data.vocal_enabled
+		return
+
 	# 启动人声播放（如果有人声文件）
 	if not current_midi_data.vocal_file_path.is_empty():
 		start_vocal_playback()
@@ -688,6 +716,8 @@ func play() -> void:
 ## 停止播放
 func stop() -> void:
 	_last_raw_midi_position_ms = -1.0
+	deferred_play_pending = false
+	deferred_vocal_resync_pending = false
 	var backend = _get_active_backend()
 	if backend == null:
 		return
@@ -722,9 +752,17 @@ func resume() -> void:
 	if backend == null:
 		return
 
-	backend.resume()
+	deferred_play_pending = false
+
+	# 主动调用 C# resume()：真正续播返回 true；音源仍在加载/切换而推迟时返回 false。
+	var actually_resumed: bool = backend.resume()
 	is_playing = true
 	is_paused = false
+
+	# C# 推迟时人声也推迟，待 _on_backend_soundfont_changed 从起点对齐启动。
+	if not actually_resumed:
+		deferred_play_pending = current_midi_data != null and not current_midi_data.vocal_file_path.is_empty() and current_midi_data.vocal_enabled
+		return
 
 	# 恢复或启动人声播放
 	if current_midi_data and not current_midi_data.vocal_file_path.is_empty() and current_midi_data.vocal_enabled:
@@ -1386,6 +1424,19 @@ func _on_backend_soundfont_changed(_path: String) -> void:
 	_soundfont_preloaded_to_backend = true
 	_soundfont_preload_dispatched = true
 
+	var was_deferred: bool = deferred_play_pending
+	var vocal_relevant: bool = current_midi_data != null and not current_midi_data.vocal_file_path.is_empty() and current_midi_data.vocal_enabled
+
+	# 音源就绪后若正在播放且人声本应处于活动状态（已推迟启动，或重载前已在响），
+	# 在下一帧按 C# 实际位置重新对齐人声：覆盖"从头续播"与"播放中切换音源"两种情形，
+	# 避免重载后人声固定错位（拖动进度条也是同样的对齐效果）。
+	if is_playing and vocal_relevant and (was_deferred or _vocal_initialized):
+		deferred_vocal_resync_pending = true
+
+	if was_deferred:
+		deferred_play_pending = false
+		deferred_play_resumed.emit()
+
 ## 获取当前MIDI的轨道信息列表
 func get_track_infos() -> Array:
 	if current_midi_data == null:
@@ -1585,7 +1636,8 @@ func _seek_vocal_to_midi_position(midi_position_ms: float) -> void:
 	audio_manager.set_vocal_playing(is_playing)
 
 ## 启动人声播放并同步（原生 miniaudio 统一输出链路）
-func start_vocal_playback() -> void:
+## start_ms_override >= 0 时忽略当前 MIDI 位置，强制从指定毫秒启动（用于音源就绪后从头对齐续播）
+func start_vocal_playback(start_ms_override: float = -1.0) -> void:
 	if current_midi_data == null or current_midi_data.vocal_file_path.is_empty():
 		return
 	if not current_midi_data.vocal_enabled:
@@ -1597,7 +1649,8 @@ func start_vocal_playback() -> void:
 
 	var vocal_file_path = current_midi_data.vocal_file_path
 	# 用音频渲染时钟（get_raw_position_ms）定位人声，与 MIDI 合成器同一时钟，避免叠加视觉校准延迟造成错位
-	var expected_vocal_position = get_raw_position_ms() - vocal_offset_ms
+	var raw_pos := get_raw_position_ms() if start_ms_override < 0.0 else start_ms_override
+	var expected_vocal_position = raw_pos - vocal_offset_ms
 	var start_position_ms = max(0.0, expected_vocal_position)
 
 	audio_manager.set_vocal_volume_db(linear_to_db(current_midi_data.vocal_volume))
@@ -1735,6 +1788,13 @@ func _sync_vocal_with_midi() -> void:
 		if audio_manager.is_vocal_playing():
 			audio_manager.set_vocal_playing(false)
 		_vocal_initialized = false
+		return
+
+	# 音源未就绪、续播处于推迟等待期间：人声保持静音，不读取冻结的 MIDI 位置去“从旧位置续播”，
+	# 否则人声会比 MIDI 先响（_on_backend_soundfont_changed 会在音源就绪后从起点统一启动）。
+	if deferred_play_pending:
+		if audio_manager.is_vocal_playing():
+			audio_manager.set_vocal_playing(false)
 		return
 
 	# 自然结束后不再尝试恢复，等待下次 start_vocal_playback

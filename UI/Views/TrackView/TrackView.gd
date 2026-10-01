@@ -85,6 +85,10 @@ func _ready() -> void:
 	if midi_playback_manager.midi_player and not midi_playback_manager.midi_player.is_connected("soundfont_changed", Callable(self, "_on_soundfont_changed")):
 		midi_playback_manager.midi_player.soundfont_changed.connect(_on_soundfont_changed)
 
+	# 音源未就绪时推迟的续播在音源就绪后真正开始：延迟启动轨道显示，避免静止音符
+	if not midi_playback_manager.is_connected("deferred_play_resumed", Callable(self, "_on_deferred_play_resumed")):
+		midi_playback_manager.deferred_play_resumed.connect(_on_deferred_play_resumed)
+
 	if not midi_vol_btn.is_connected("toggled", Callable(self, "_on_volume_btn_toggled")):
 		midi_vol_btn.toggled.connect(_on_volume_btn_toggled.bind(midi_vol_btn))
 
@@ -240,7 +244,9 @@ func _load_midi(midi: MidiData) -> void:
 
 	# 启用 TrackView 进度更新和音符显示器
 	set_process(true)
-	_set_note_displayers_process(true)
+	# 音源未就绪时 play() 会推迟续播：轨道显示同样延后，待 deferred_play_resumed 再启动
+	if not midi_playback_manager.deferred_play_pending:
+		_set_note_displayers_process(true)
 
 	# 等容器尺寸更新，再增加上下边距 （这个不是一定会触发，请勿在后面加总是需要执行的代码）
 	await get_tree().process_frame
@@ -881,7 +887,10 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 		if current_midi_data:
 			midi_playback_manager.set_loop(true)
 			midi_playback_manager.resume()
-			_set_note_displayers_process(true)
+			# 音源仍在后台加载/切换时，resume() 会推迟续播：轨道显示也一并延后，
+			# 待 deferred_play_resumed 信号（音源就绪、从头续播真正开始）再启动，避免静止音符。
+			if not midi_playback_manager.deferred_play_pending:
+				_set_note_displayers_process(true)
 			GLogger.info("Reloaded MIDI after returning from settings", "TrackView")
 
 ## 释放视图内部资源（列表项、音符数据），保留节点壳和信号连接
@@ -1056,6 +1065,12 @@ func _on_soundfont_changed(soundfont_path: String) -> void:
 
 	# 更新所有现有的MidiTrack UI项的乐器选项
 	_refresh_all_track_instruments()
+
+## 音源未就绪时推迟的续播在音源就绪后真正开始：启动轨道音符显示
+## （此前为避免静止音符而延后，待 MIDI 从头续播真正推进位置后再显示）
+func _on_deferred_play_resumed() -> void:
+	if ui_stat_mgr.current_state == work_state:
+		_set_note_displayers_process(true)
 
 ## 当乐器列表变更时，快速更新所有MidiTrack的选项
 func _refresh_all_track_instruments() -> void:

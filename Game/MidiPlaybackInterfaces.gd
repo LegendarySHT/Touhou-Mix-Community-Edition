@@ -10,17 +10,19 @@ func load_midi(_file_path: String) -> bool:
 	push_error("load_midi not implemented")
 	return false
 
-## 播放
-func play() -> void:
+## 播放。返回 true 表示已真正启动；false 表示音源仍在加载/切换、已推迟到加载完成后续播。
+func play() -> bool:
 	push_error("play not implemented")
+	return false
 
 ## 暂停
 func pause() -> void:
 	push_error("pause not implemented")
 
-## 恢复播放
-func resume() -> void:
+## 恢复播放。返回 true 表示已真正续播；false 表示音源仍在加载/切换、已推迟。
+func resume() -> bool:
 	push_error("resume not implemented")
+	return false
 
 ## 停止
 func stop() -> void:

@@ -154,6 +154,16 @@ public partial class MeltySynthPlayer : Node
 	// 音源后台加载完成前若已调用 play()/load_midi，记录意图待 FinalizeSoundfontLoad 补启动
 	private bool _pendingPlayAfterLoad = false;
 
+	// 当前在响音符集合（自动音符，经序列器管道产生）：暂停时记录、续播时重发以延续长音。
+	// 键为 (virtualChannel, key)，值为 velocity。手动音符走 _manualSynth 不经过管道，不纳入。
+	private readonly object _activeNotesLock = new object();
+	private readonly Dictionary<(int, int), int> _activeNotes = new Dictionary<(int, int), int>();
+	// 暂停时记录：是否需要在续播时重发在响音符，以及当时的音源代际
+	private bool _restoreHeldNotes = false;
+	private int _pausedSoundfontGen = 0;
+	// 每次音源重建(finalize)自增；用于判断续播时音源是否与暂停时同一实例
+	private int _soundfontGeneration = 0;
+
 	private void RequestAudioOutputPlay()
 	{
 		if (_audioOutput == null) return;
@@ -718,7 +728,8 @@ public partial class MeltySynthPlayer : Node
 		_midiFile = null;
 	}
 
-	public void play()
+	/// <summary>开始播放。返回 true 表示已真正启动，false 表示音源未就绪、已推迟到加载完成后续播。</summary>
+	public bool play()
 	{
 		EnsureAudioInitialized();
 		GD.Print($"[MeltySynthPlayer] play() called - _midiFile={_midiFile != null}, _sequencerStarted={_sequencerStarted}, _audioOutput={( _audioOutput != null ? "OK" : "NULL" )}, _synth={(_synth != null ? "OK" : "NULL")}, _autoSynth={(_autoSynth != null ? "OK" : "NULL")}");
@@ -731,10 +742,10 @@ public partial class MeltySynthPlayer : Node
 				GD.Print("[MeltySynthPlayer] SoundFont still loading, deferring play() until finalized");
 				_pendingPlayAfterLoad = true;
 				playing = true;
-				return;
+								return false;
 			}
 			GD.PrintErr("[MeltySynthPlayer] Cannot play: sequencer is null");
-			return;
+						return false;
 		}
 
 		// 判定钟锚点作废：下次读取按当前音频参考重建
@@ -747,7 +758,7 @@ public partial class MeltySynthPlayer : Node
 		{
 			// GD.Print($"[MeltySynthPlayer] In pre-roll mode (offset={_currentOffsetMs} ms), sequencer will start when crossing zero");
 			playing = true;
-			return;
+			return true;
 		}
 
 		// 如果 MIDI 已加载但还未启动 sequencer，则启动它（与回调渲染互斥）
@@ -764,7 +775,7 @@ public partial class MeltySynthPlayer : Node
 		else if (_midiFile == null)
 		{
 			GD.PrintErr("[MeltySynthPlayer] Cannot play: no MIDI file loaded");
-			return;
+						return false;
 		}
 		else if (_sequencerStarted)
 		{
@@ -773,12 +784,18 @@ public partial class MeltySynthPlayer : Node
 		
 		playing = true;
 		RequestAudioOutputPlay();
+		return true;
 	}
 
 	public void stop()
 	{
 		playing = false;
 		_pendingPlayAfterLoad = false;
+		_restoreHeldNotes = false;
+		lock (_activeNotesLock)
+		{
+			_activeNotes.Clear();
+		}
 		// ma_bridge_stop 会等待回调完成，必须在锁外调用
 		_audioOutput?.Stop();
 		// 与回调渲染互斥
@@ -1727,14 +1744,29 @@ public partial class MeltySynthPlayer : Node
 		{
 			// 线程模型：系统时钟模式下音频线程在 GetSystemClockPosition 中读取
 			// isPaused/clockBasePosition/clockBaseTimestamp，Pause 写这些字段必须与回调渲染互斥。
-			WithSynthLock(() => _sequencer.Pause());
+			WithSynthLock(() =>
+			{
+				_sequencer.Pause();
+				// 释放正在响的声部（发 NoteOff，走 release 包络自然衰减），避免暂停时
+				// 已进入延音阶段的音符（长音/管风琴）因永远收不到 NoteOff 而持续鸣响。
+				_synth?.NoteOffAll(false);
+				if (_useSeparateSynthForManual && _manualSynth != null)
+					_manualSynth.NoteOffAll(false);
+			});
 		}
 		// GD.Print($"[MeltySynthPlayer] pause() called - _currentOffsetMs={_currentOffsetMs}, _sequencerStarted={_sequencerStarted}");
 		// 保持 sequencer 状态，不重置位置
+
+		// 记录暂停时的音源代际与在响音符，供 resume() 决定是否重发以延续长音
+		_pausedSoundfontGen = _soundfontGeneration;
+		lock (_activeNotesLock)
+		{
+			_restoreHeldNotes = _activeNotes.Count > 0;
+		}
 	}
 
-	/// <summary>恢复播放 (接口方法)</summary>
-	public void resume()
+	/// <summary>恢复播放 (接口方法)。返回 true 表示已真正续播，false 表示音源未就绪、已推迟到加载完成后续播。</summary>
+	public bool resume()
 	{
 		InvalidateJudgeClock();  // 按 resume 后的音频参考重建锚点
 		// 音源后台加载/切换尚未完成（_sequencer 可能仍是旧合成器）：不在旧合成器上续播，
@@ -1744,7 +1776,7 @@ public partial class MeltySynthPlayer : Node
 			GD.Print("[MeltySynthPlayer] SoundFont still loading/switching, deferring resume() until finalized");
 			_pendingPlayAfterLoad = true;
 			playing = true;
-			return;
+						return false;
 		}
 		if (_midiFile != null && _sequencer != null)
 		{
@@ -1756,12 +1788,31 @@ public partial class MeltySynthPlayer : Node
 			{
 				// GD.Print($"[MeltySynthPlayer] Resume from pre-roll (offset={_currentOffsetMs} ms)");
 				playing = true;
-				return;  // 不启动 AudioStreamPlayer，等待跨越零点
+				return true;  // 不启动 AudioStreamPlayer，等待跨越零点
 			}
 
 			playing = true;
 			_audioOutput?.Play();
+
+			// 续播：把暂停瞬间仍在响的音符重新触发（经管道，乐器覆盖等仍生效），
+			// 其后续 NoteOff 会由原序列器按时发出自然收尾。音源已切换（代际不符）则不重发。
+			if (_restoreHeldNotes && _soundfontGeneration == _pausedSoundfontGen)
+			{
+			List<(int ch, int key, int vel)> toRestore = new List<(int, int, int)>();
+			lock (_activeNotesLock)
+			{
+				foreach (var kv in _activeNotes)
+					toRestore.Add((kv.Key.Item1, kv.Key.Item2, kv.Value));
+			}
+				foreach (var n in toRestore)
+				{
+					OnSendMessage(_synth, n.ch, 0x90, n.key, n.vel, 0);
+				}
+				_restoreHeldNotes = false;
+			}
+			return true;
 		}
+				return false;
 	}
 
 	/// <summary>跳转到指定位置 (接口别名)</summary>
@@ -1931,6 +1982,15 @@ public partial class MeltySynthPlayer : Node
 		if (soundFont == null)
 		{
 			return;
+		}
+
+		// 音源已重建：代际自增并使旧在响集合作废，避免把暂停时记录的旧音符注入新合成器
+		// （设置→TrackView 切换音源后走 defer→play() 从头续播，不应残留旧音）。
+		_soundfontGeneration++;
+		_restoreHeldNotes = false;
+		lock (_activeNotesLock)
+		{
+			_activeNotes.Clear();
 		}
 
 		_soundFont = soundFont;
@@ -2188,6 +2248,22 @@ public partial class MeltySynthPlayer : Node
 
 	private void OnSendMessage(Synthesizer synthesizer, int virtualChannel, int command, int data1, int data2, int tick)
 	{
+		// 维护当前在响音符集合（供暂停记录 / 续播重发）。音频线程写入，主线程 pause/resume 读取，需加锁。
+		if (command == 0x90 && data2 > 0)
+		{
+			lock (_activeNotesLock)
+			{
+				_activeNotes[(virtualChannel, data1)] = data2;
+			}
+		}
+		else if (command == 0x80 || (command == 0x90 && data2 == 0))
+		{
+			lock (_activeNotesLock)
+			{
+				_activeNotes.Remove((virtualChannel, data1));
+			}
+		}
+
 		var handlers = _handlers;  // volatile 快照：与主线程重建管道互不干扰
 		foreach (var handler in handlers)
 		{

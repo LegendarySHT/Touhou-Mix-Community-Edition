@@ -19,10 +19,16 @@ func _ready() -> void:
 		meltysynth_player.connect("finished", Callable(self, "_on_finished"))
 	if meltysynth_player != null and meltysynth_player.has_signal("vocal_finished"):
 		meltysynth_player.connect("vocal_finished", Callable(self, "_on_vocal_finished"))
+	if meltysynth_player != null and meltysynth_player.has_signal("soundfont_changed"):
+		meltysynth_player.connect("soundfont_changed", Callable(self, "_on_soundfont_changed"))
 
 ## 转发 C# 自然结束信号，供 MidiPlaybackManager.midi_finished → PlayView 结算
 func _on_finished() -> void:
 	finished.emit()
+
+## 转发 C# 音源加载完成信号，供 MidiPlaybackManager 在推迟播放下从此起点对齐启动人声
+func _on_soundfont_changed(path: String) -> void:
+	soundfont_changed.emit(path)
 
 ## 设置最大复音数（走属性 setter，由其驱动 C# 调用统一生效）
 func set_max_polyphony(value: int) -> void:
@@ -39,11 +45,12 @@ func load_midi(file_path: String) -> bool:
 		return false
 	return meltysynth_player.call("load_midi", file_path)
 
-## 播放
-func play() -> void:
+## 播放。返回 C# 结果：true=已真正启动，false=音源仍在加载/切换、已推迟。
+func play() -> bool:
 	if meltysynth_player == null:
-		return
-	meltysynth_player.call("play")
+		return false
+	var result = meltysynth_player.call("play")
+	return result if result is bool else true
 
 ## 暂停
 func pause() -> void:
@@ -51,11 +58,12 @@ func pause() -> void:
 		return
 	meltysynth_player.call("pause")
 
-## 恢复
-func resume() -> void:
+## 恢复。返回 C# 结果：true=已真正续播，false=音源仍在加载/切换、已推迟。
+func resume() -> bool:
 	if meltysynth_player == null:
-		return
-	meltysynth_player.call("resume")
+		return false
+	var result = meltysynth_player.call("resume")
+	return result if result is bool else true
 
 ## 停止
 func stop() -> void:
