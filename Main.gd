@@ -442,13 +442,18 @@ func _reload_all_settings() -> void:
 	if _is_reloading_settings:
 		return
 	_is_reloading_settings = true
-	# 重新加载配置
-	config_loader.reload_config()
+	# 注意：不在此重新从磁盘读取配置。设置退出时 live 配置已由 SettingView.apply_pending_config_updates
+	# 更新为正确值；若重新读取磁盘（延迟落盘尚未完成）会读到旧值，反而把刚改的音源当成"变化"触发重载。
 
 	# 应用Gameplay设置（包括SoundFont）
 	if midi_playback_manager:
 		var soundfont_name = config_loader.get_value("Gameplay", "soundfont_file", "GeneralUser-GS.sf2")
-		midi_playback_manager.set_soundfont(soundfont_name)
+		# 仅当音源确实与当前已加载的不同时才重载：避免"未变也重载"导致 FinalizeSoundfontLoad
+		# 再次把播放位置清零（表现为从设置返回后重头播放）。live 配置已是正确值，无需重读磁盘。
+		var cur_basename = midi_playback_manager.current_soundfont_path.get_file().get_basename()
+		var new_basename = soundfont_name.replace(".sf2", "").replace("[内置]", "").strip_edges()
+		if new_basename != cur_basename:
+			midi_playback_manager.set_soundfont(soundfont_name)
 
 	# 应用显示设置
 	var fullscreen = config_loader.get_bool("Display", "fullscreen", true)

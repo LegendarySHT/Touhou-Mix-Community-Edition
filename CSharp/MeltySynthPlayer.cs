@@ -90,6 +90,7 @@ public partial class MeltySynthPlayer : Node
 	private double _pendingSeekMs = double.NaN;  // 待处理的 seek 位置（NaN 表示无待处理的 seek）
 	private double _currentOffsetMs = 0.0;  // 当前相对于 sequencer 的时间偏移（支持负数 pre-roll）
 	private double _lastPositionMs = 0.0;  // 最后已知播放位置（暂停/seek 后保持，供 get_position_ms 读取）
+	private int _seekPositionHoldFrames = 0;  // seek 后短暂保持目标位置，避免渲染钟未更新瞬回 0
 	private bool _hasSkippedPreroolEvents = false;  // 标志：已跳过 pre-roll 事件
 
 	// ============ 判定钟：墙钟锚点推进 + 音频参考慢速校准 ============
@@ -640,6 +641,7 @@ public partial class MeltySynthPlayer : Node
 			ResetRenderTimestamp();
 			InvalidateJudgeClock();  // 按 seek 后的音频参考重建锚点
 			_lastPositionMs = _pendingSeekMs;  // 记录 seek 目标，供非播放状态读取
+			_seekPositionHoldFrames = 10;  // 保持目标位置约 10 帧，待渲染钟追上
 
 			// 3. 如果之前在播放，重新启动 AudioStreamPlayer（锁外，ma_bridge_start 不等待回调）
 			if (playing)
@@ -1052,6 +1054,15 @@ public partial class MeltySynthPlayer : Node
 		{
 			_lastPositionMs = _pendingSeekMs;
 			return _pendingSeekMs;
+		}
+
+		// 【修复】seek 完成后若干帧内（原生 Seek 后 sequencer 渲染钟尚未反映新位置，
+		// 会瞬回 ~0），直接返回 seek 目标位置，避免上层 NoteDisplayer 误判位置回退而
+		// 触发音符左缩、各音轨已通过计数清零。
+		if (_seekPositionHoldFrames > 0)
+		{
+			_seekPositionHoldFrames--;
+			return _lastPositionMs;
 		}
 
 		// 在 pre-roll 阶段返回当前的负数 offset

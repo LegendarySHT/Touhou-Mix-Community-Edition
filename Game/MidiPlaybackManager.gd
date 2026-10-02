@@ -57,6 +57,8 @@ var current_soundfont_path: String = ""
 var _soundfont_preloaded_to_backend: bool = false
 ## 是否已向后端派发过一次异步加载（避免 play() 每次都回调 set_soundfont 触发线程 Join 卡顿）
 var _soundfont_preload_dispatched: bool = false
+## 由设置退出触发的音源重载是否仍在进行（TrackView 借此判断是否需要等重载完成再续播）
+var _settings_reload_pending: bool = false
 
 ## 人声偏移量（毫秒）
 var vocal_offset_ms: float = 0.0
@@ -105,6 +107,9 @@ signal midi_finished
 
 ## 信号：因音源未就绪而推迟的续播/播放在音源就绪后真正开始（供视图延迟启动轨道显示）
 signal deferred_play_resumed
+
+## 信号：由设置退出触发的音源重载已完成（TrackView 据此在重载后再续播，避免人声被重启）
+signal soundfont_reload_completed
 
 func _ready() -> void:
 	if instance == null:
@@ -159,14 +164,16 @@ func _apply_delay_preset() -> void:
 func _on_settings_changed(setting_name: String, value: Variant) -> void:
 	GLogger.info("Settings changed event: setting_name='%s', value=%s" % [setting_name, value], "MidiPlaybackManager")
 
-	# 如果是泛指信号或音源改变
+	# 仅当音源或复音数实际变化时才重载合成器：避免"从设置返回"时无条件重载把播放位置清零
+	# （从头重播），也避免重载完成回调误重启人声（"多放一下"）。其余设置变更保留当前合成器。
+	var soundfont_changed := false
 	if setting_name == "*" or setting_name == "soundfont_select":
-		# 重新读取音源配置
-		GLogger.info("Reloading soundfont from settings", "MidiPlaybackManager")
-		_load_soundfont_from_config()
-		GLogger.info("Soundfont reloaded successfully", "MidiPlaybackManager")
-	
-	# 【修复D-4】如果是泛指信号或系统时钟设置改变
+		var new_sf : String = ConfigManager.instance.get_value("Gameplay", "soundfont_file", "GeneralUser-GS.sf2")
+		new_sf = new_sf.replace(".sf2", "").replace("[内置]", "").strip_edges()
+		if new_sf != current_soundfont_path.get_file().get_basename():
+			soundfont_changed = true
+
+	# 【修复D-4】如果是泛指信号或系统时钟设置改变（轻量，无需重载）
 	if setting_name == "*" or setting_name == "use_system_stopwatch":
 		GLogger.info("Applying system stopwatch setting", "MidiPlaybackManager")
 		var use_system_stopwatch = ConfigManager.instance.get_int("Playback", "use_system_stopwatch", 0) == 1
@@ -176,34 +183,31 @@ func _on_settings_changed(setting_name: String, value: Variant) -> void:
 			GLogger.info("System stopwatch mode: %s" % ("ON" if use_system_stopwatch else "OFF"), "MidiPlaybackManager")
 
 	# 最大复音数改变（需要重新加载SoundFont才能生效）
+	var polyphony_changed := false
 	if setting_name == "*" or setting_name == "max_polyphony":
-		GLogger.info("Polyphony setting changed, reloading soundfont", "MidiPlaybackManager")
+		var new_polyphony := ConfigManager.instance.get_int("Playback", "max_polyphony", 96)
+		if new_polyphony != int(midi_player_config.get("max_polyphony", 96)):
+			polyphony_changed = true
 
-		# 获取当前是否正在播放
-		var was_playing = is_playing
-		var current_pos = get_position_ms()
-
-		# 停止播放
-		if was_playing:
-			stop()
-
-		# 重新设置复音数并重新加载SoundFont
-		var backend = _get_active_backend()
-		if backend != null:
-			# 设置新的复音数
-			var max_polyphony = ConfigManager.instance.get_int("Playback", "max_polyphony", 96)
-			backend.set_max_polyphony(max_polyphony)
-			GLogger.info("Updated max polyphony to: %d" % max_polyphony, "MidiPlaybackManager")
-
-			# 重新加载SoundFont使设置生效
-			_load_soundfont_from_config()
-			GLogger.info("Soundfont reloaded with new audio settings", "MidiPlaybackManager")
-
-			# 如果之前正在播放，恢复播放位置
-			if was_playing and current_midi_data != null:
-				seek(current_pos)
-				play()
-				GLogger.info("Resumed playback at %.2fms" % current_pos, "MidiPlaybackManager")
+	# 音源或复音数真正变化时才重载：保留当前合成器（播放位置不被重置），
+	# 返回 TrackView 后能原位置续播；且重载完成回调不会误重启人声。
+	# 用 _settings_reload_pending 去重：config_changed 已触发重载时会先置位，此处跳过，避免二次重载
+	# （两次 finalize 会让第二次把位置清零的合成器换入，导致"先回到原位置又从头重播"）。
+	if (soundfont_changed or polyphony_changed) and not _settings_reload_pending:
+		GLogger.info("Soundfont/polyphony changed, reloading", "MidiPlaybackManager")
+		# 标记设置触发的重载进行中：TrackView 返回时会据此等重载完成再 resume，
+		# 否则重载完成回调在已启动的人声之上再次重启人声（"多放一下"）。
+		if midi_player != null:
+			_settings_reload_pending = true
+		if polyphony_changed:
+			var backend = _get_active_backend()
+			if backend != null:
+				var max_polyphony = ConfigManager.instance.get_int("Playback", "max_polyphony", 96)
+				backend.set_max_polyphony(max_polyphony)
+				midi_player_config["max_polyphony"] = max_polyphony
+				GLogger.info("Updated max polyphony to: %d" % max_polyphony, "MidiPlaybackManager")
+		_load_soundfont_from_config()
+		GLogger.info("Soundfont reloaded successfully", "MidiPlaybackManager")
 
 
 func _process(_delta: float) -> void:
@@ -972,7 +976,7 @@ func set_soundfont(soundfont_name: String) -> bool:
 			# 默认文件也不存在，作为最后的回退
 			soundfont_path = default_soundfont_path
 			push_warning("[MidiPlaybackManager] Default soundfont also not found, using fallback: %s" % soundfont_path)
-	
+
 	current_soundfont_path = soundfont_path
 	if current_midi_data != null:
 		# 提取文件名用于存储（不带路径和扩展名）
@@ -1437,6 +1441,11 @@ func _on_backend_soundfont_changed(_path: String) -> void:
 		deferred_play_pending = false
 		deferred_play_resumed.emit()
 
+	# 设置触发的音源重载已完成：通知等待中的视图（TrackView）可以安全续播了。
+	if _settings_reload_pending:
+		_settings_reload_pending = false
+		soundfont_reload_completed.emit()
+
 ## 获取当前MIDI的轨道信息列表
 func get_track_infos() -> Array:
 	if current_midi_data == null:
@@ -1594,6 +1603,10 @@ func _load_soundfont_from_config() -> void:
 	# 使用硬编码的默认值（如果加载失败）
 	GLogger.info("Using hardcoded default soundfont", "MidiPlaybackManager")
 	current_soundfont_path = default_soundfont_path
+
+## 设置触发的音源重载是否仍在进行（TrackView 返回时据此决定等待或立即续播）
+func is_soundfont_reload_pending() -> bool:
+	return _settings_reload_pending
 
 ## ========== 人声同步相关方法 ==========
 
@@ -1874,6 +1887,9 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 		if key == "soundfont_file":
 			var soundfont_name = str(value).replace(".sf2", "").strip_edges()
 			if not soundfont_name.is_empty():
+				# 置位去重标记：与 settings_changed('*') 共用，确保只触发一次重载
+				if midi_player != null:
+					_settings_reload_pending = true
 				set_soundfont(soundfont_name)
 
 	# 处理 Playback 部分的配置变更
@@ -1893,9 +1909,13 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 			# 重新设置复音数并重新加载SoundFont
 			var backend = _get_active_backend()
 			if backend != null:
+				# 置位去重标记：与 settings_changed('*') 共用，确保只触发一次重载
+				if midi_player != null:
+					_settings_reload_pending = true
 				# 设置新的复音数
 				var max_polyphony = int(value) if value is int else ConfigManager.instance.get_int("Playback", "max_polyphony", 96)
 				backend.set_max_polyphony(max_polyphony)
+				midi_player_config["max_polyphony"] = max_polyphony
 				GLogger.info("Updated max polyphony to: %d" % max_polyphony, "MidiPlaybackManager")
 
 				# 重新加载SoundFont使设置生效

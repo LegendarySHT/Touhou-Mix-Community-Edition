@@ -35,6 +35,8 @@ var _prev_vocal_vol: float = -1.0
 
 var current_tick: int = 0
 var last_position_ms: float = 0.0  # 用于检测循环播放重置
+# 显式 seek（进度条/返回续播）后短暂抑制循环检测：避免 seek 越过循环尾回绕被误判为循环而重置到 0
+var _seek_suppress_loop_frames: int = 0
 
 # 给midi轨道访问的默认值，临时占位用。
 var instrument_options: Array = [] # 全局乐器列表（会被 _extract_instruments_from_midi() 填充）
@@ -336,6 +338,9 @@ func _on_progress_bar_drag_ended(_value_changed: bool) -> void:
 	# Then reset master displayer
 	if master_note_displayer:
 		master_note_displayer.reset_playhead_position(target_ms)
+
+	# 显式跳转后抑制循环检测若干帧：seek 越过循环尾回绕（位置由大跳小）不应触发重置到 0
+	_seek_suppress_loop_frames = 30
 
 # 进度条值改变 - 预览时间
 func _on_progress_bar_value_changed(value: float) -> void:
@@ -718,7 +723,9 @@ func _process(delta: float) -> void:
 		var current_position = midi_playback_manager.position_ms
 		
 		# 检测循环播放重置（位置从大跳到小，说明循环了）
-		if current_position < last_position_ms - 100:  # 100ms容差，避免误判seek操作
+		if _seek_suppress_loop_frames > 0:
+			_seek_suppress_loop_frames -= 1
+		elif current_position < last_position_ms - 100:  # 100ms容差，避免误判seek操作
 			GLogger.info("Loop detected: %.1f -> %.1f ms, resetting noteDisplayers" % [last_position_ms, current_position], "TrackView")
 			_reset_player()
 		
@@ -886,12 +893,37 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 	if old_state == ui_stat_mgr.UIState.SETTINGS_VIEW and new_state == work_state:
 		if current_midi_data:
 			midi_playback_manager.set_loop(true)
-			midi_playback_manager.resume()
-			# 音源仍在后台加载/切换时，resume() 会推迟续播：轨道显示也一并延后，
-			# 待 deferred_play_resumed 信号（音源就绪、从头续播真正开始）再启动，避免静止音符。
-			if not midi_playback_manager.deferred_play_pending:
-				_set_note_displayers_process(true)
-			GLogger.info("Reloaded MIDI after returning from settings", "TrackView")
+			# 若本次退出设置触发了音源重载（settings_changed 已在退场前同步发出），
+			# 须等重载完成后再 resume：否则重载完成回调会在已启动的人声之上再次重启人声（"多放一下"）。
+			# 重载多在退场动画期间完成；若仍进行中则挂起续播，待 soundfont_reload_completed 再启动。
+			if midi_playback_manager.is_soundfont_reload_pending():
+				if not midi_playback_manager.soundfont_reload_completed.is_connected(_on_soundfont_reload_completed):
+					midi_playback_manager.soundfont_reload_completed.connect(_on_soundfont_reload_completed)
+			else:
+				_resume_after_settings_return()
+
+## 音源重载完成后再续播（避免人声被重载回调二次重启）
+func _on_soundfont_reload_completed() -> void:
+	if midi_playback_manager.soundfont_reload_completed.is_connected(_on_soundfont_reload_completed):
+		midi_playback_manager.soundfont_reload_completed.disconnect(_on_soundfont_reload_completed)
+	_resume_after_settings_return()
+
+## 从设置返回后真正续播（音源已就绪）
+func _resume_after_settings_return() -> void:
+	if current_midi_data == null:
+		return
+	var resume_pos_ms = midi_playback_manager.position_ms
+	midi_playback_manager.resume()
+	# 音源重载会把后端合成器位置清零：续播后立即恢复到暂停时的位置，避免从头重播
+	if resume_pos_ms > 0.001:
+		midi_playback_manager.seek(resume_pos_ms)
+	# 音源仍在后台加载/切换时，resume() 会推迟续播：轨道显示也一并延后，
+	# 待 deferred_play_resumed 信号（音源就绪、从头续播真正开始）再启动，避免静止音符。
+	if not midi_playback_manager.deferred_play_pending:
+		_set_note_displayers_process(true)
+	# 显式续播跳转后抑制循环检测若干帧，避免回绕被误判为循环而重置到 0
+	_seek_suppress_loop_frames = 30
+	GLogger.info("Reloaded MIDI after returning from settings", "TrackView")
 
 ## 释放视图内部资源（列表项、音符数据），保留节点壳和信号连接
 ## 不 unload_midi / 不 clear_parsed_notes：同一 MIDI 在 MidiView/TrackView/PlayView 间
