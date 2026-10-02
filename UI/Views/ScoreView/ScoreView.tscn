@@ -7,6 +7,7 @@
 [ext_resource type="Script" uid="uid://dpn6fchjbt3b8" path="res://UI/Components/SkewArea.gd" id="5_skew"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="5_y1cb1"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="6_iqsw5"]
+[ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="7_a5v8y"]
 
 [sub_resource type="Gradient" id="Gradient_01xql"]
 interpolation_mode = 2
@@ -58,6 +59,7 @@ shadow_size = 12
 shader = ExtResource("3_y1cb1")
 shader_parameter/corner_radius = 14.0
 shader_parameter/rect_size = Vector2(248, 248)
+shader_parameter/uv_rect = Vector4(0, 0, 1, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_kq2mn"]
 bg_color = Color(0.8745, 0.3176, 0.4745, 1)
@@ -128,13 +130,12 @@ corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
-expand_margin_left = 4.0
-expand_margin_top = 4.0
-expand_margin_right = 4.0
-expand_margin_bottom = 4.0
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
 shadow_color = Color(0, 0, 0, 0.3)
 shadow_size = 10
-shadow_offset = Vector2(0, 4)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_3y6u5"]
 atlas = ExtResource("6_iqsw5")
@@ -653,7 +654,8 @@ offset_right = 337.0
 offset_bottom = 126.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_0iyyr")
 
-[node name="TextureRect" type="TextureRect" parent="LevelingProgress/Panel" unique_id=1522070878]
+[node name="TextureRect" type="TextureRect" parent="LevelingProgress/Panel" unique_id=1193097683]
+custom_minimum_size = Vector2(100, 100)
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -664,6 +666,8 @@ size_flags_horizontal = 8
 texture = ExtResource("5_0sw27")
 expand_mode = 3
 stretch_mode = 5
+script = ExtResource("7_a5v8y")
+metadata/_custom_type_script = "uid://ciu0utm2fhqdw"
 
 [node name="Data" type="VBoxContainer" parent="LevelingProgress" unique_id=567145788]
 custom_minimum_size = Vector2(0, 160)

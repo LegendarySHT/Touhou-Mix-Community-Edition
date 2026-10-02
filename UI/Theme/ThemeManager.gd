@@ -594,8 +594,8 @@ func _style_shared_list_btn_theme(theme: Theme, tmp: Theme) -> void:
 	var p := get_color("primary")
 	var pl := get_color("primary_light")
 	var border := get_color("border")
-	# normal — 中性描边，透明底，无辉光
-	_set_theme_stylebox(theme, tmp, "Button", "normal", Color(0, 0, 0, 0), border, Color(0, 0, 0, 0))
+	# normal — 中性描边，透明底，无辉光。border 在深色模式偏暗，压在暗背景上看不出卡片轮廓，故提亮一档
+	_set_theme_stylebox(theme, tmp, "Button", "normal", Color(0, 0, 0, 0), border.lightened(0.18) if _appearance != "light" else border, Color(0, 0, 0, 0))
 	# hover — 强调色描边 + 强调色辉光
 	_set_theme_stylebox(theme, tmp, "Button", "hover", Color(0, 0, 0, 0), p, Color(p.r, p.g, p.b, 0.45))
 	# pressed / hover_pressed — 亮强调色描边 + 更强辉光（.tres 中二者共享同一 StyleBox）
@@ -954,6 +954,7 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	tmp.set_color("caret_color", "LineEdit", get_color("text_primary"))
 	tmp.set_color("font_color", "LineEdit", get_color("text_primary"))
 	tmp.set_color("font_placeholder_color", "LineEdit", get_color("text_dim"))
+	tmp.set_color("font_uneditable_color", "LineEdit", text_dim)
 
 	# LineEdit 三态：normal 用更深的 surface_low 做出凹陷感，与 surface/surface_high 面板拉开层次；
 	# 边框用 border（比 border_soft 明显）+ 2px 宽度（见 Main.tscn 的 StyleBoxFlat_lineedit_normal）。
@@ -982,6 +983,15 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	_set_theme_stylebox(thm, tmp, "HSlider", "slider", groove, Color(0, 0, 0, 0))
 	_set_theme_stylebox(thm, tmp, "HSlider", "grabber_area", p, p)
 	_set_theme_stylebox(thm, tmp, "HSlider", "grabber_area_highlight", pl, pl)
+
+	# ProgressBar（等级/经验条）：底槽用 surface_high 配 border 描边，与面板拉开一档；
+	# 填充用 primary。深色下若用 surface_low 会比面板更暗而糊掉，故深浅两色反向取值。
+	if _appearance == "light":
+		_set_theme_stylebox(thm, tmp, "ProgressBar", "background", surface_low, border_soft)
+	else:
+		_set_theme_stylebox(thm, tmp, "ProgressBar", "background", surface_hover, border)
+	_set_theme_stylebox(thm, tmp, "ProgressBar", "fill", p, p)
+	tmp.set_color("font_color", "ProgressBar", text_primary)
 
 	# TabContainer
 	_set_theme_stylebox(thm, tmp, "TabContainer", "tab_unselected", surface_low, border_soft)
