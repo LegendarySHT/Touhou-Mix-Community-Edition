@@ -24,6 +24,10 @@ var _initial_config: Dictionary = {}
 # 当前待保存的配置（setting_id → 已转换好类型的最终值）
 var _pending_config: Dictionary = {}
 
+# 即时型设置的运行时应用器注册表（由设置数据的 "applier" 字段引用）
+# 键为 applier 名，值为 Callable(id, converted_value)；仅负责把变更应用到运行时
+var APPLIERS: Dictionary = {}
+
 var setting_groups: Array = []
 
 func _ready() -> void:
@@ -56,6 +60,13 @@ func _ready() -> void:
 	# 监听难度变更：SettingView 缓存不重跑 load_settings，需主动刷新 5 个受控项
 	if EvtBus and not EvtBus.config_changed.is_connected(_on_difficulty_config_changed):
 		EvtBus.config_changed.connect(_on_difficulty_config_changed)
+
+	# 即时型设置应用器：与设置数据里的 "applier" 字段对应（"何时/如何生效"随数据声明，而非硬编 if id==）
+	APPLIERS = {
+		"theme_preset": func(_id: String, v: Variant) -> void: _apply_theme_preset(v),
+		"appearance": func(_id: String, v: Variant) -> void: _apply_appearance(v),
+		"advanced_visibility": func(_id: String, _v: Variant) -> void: _apply_advanced_visibility(),
+	}
 
 # 传入配置字典加载界面
 func load_settings(setting: Dictionary = {}):
@@ -272,23 +283,6 @@ func _on_setting_value_changed(id: String, value: Variant):
 
 	GLogger.info("Setting '%s' changed to: %s" % [id, value], "SettingList")
 
-	# theme_preset 即时应用到 ThemeManager
-	if id == "theme_preset" and value is int:
-		if ThemeMGR:
-			var presets := ThemeMGR.get_available_presets()
-			if value >= 0 and value < presets.size():
-				ThemeMGR.apply_preset(presets[value])
-		_pending_config[id] = value
-		return
-
-	# appearance 即时应用到 ThemeManager（深色 / 浅色）
-	if id == "appearance" and value is int:
-		var mode := "light" if value == 1 else "dark"
-		if ThemeMGR:
-			ThemeMGR.set_appearance(mode)
-		_pending_config[id] = mode
-		return
-
 	# 转换值（索引→实际值、类型转换）
 	var converted_value = _convert_setting_value(id, value)
 	if converted_value == null:
@@ -297,14 +291,35 @@ func _on_setting_value_changed(id: String, value: Variant):
 	_pending_config[id] = converted_value
 	GLogger.info("Pending config: %s = %s" % [id, str(converted_value)], "SettingList")
 
-	# performing_mode 实时生效：立即写入当前配置并 emit config_changed（与键盘模式弹窗同一约定）
-	# 否则退出时仅与进入快照 diff，同会话内来回切换会因最终值绕回初始值而被跳过，导致切不回原模式
-	if id == "performing_mode":
-		ConfigManager.instance.set_value_and_notify("Playback", "performing_mode", converted_value)
+	# 即时型设置（数据里 apply_mode == "immediate"）：切换即生效，不等待退出
+	var data: Dictionary = _find_setting_data(id)
+	if data.get("apply_mode", "on_exit") == "immediate":
+		_apply_setting_runtime(id, data, converted_value)
 
-	# 即时可见性刷新
-	if id == "show_advanced_settings":
-		_apply_advanced_visibility()
+## 即时型设置的运行时应用：优先走声明式 applier，否则默认写回 ConfigManager（通用映射设置）
+func _apply_setting_runtime(id: String, data: Dictionary, converted: Variant) -> void:
+	var applier_name := String(data.get("applier", ""))
+	if not applier_name.is_empty() and APPLIERS.has(applier_name):
+		APPLIERS[applier_name].call(id, converted)
+		return
+	if SettingsMapper.mappings.has(id):
+		var m: Dictionary = SettingsMapper.mappings[id]
+		ConfigManager.instance.set_value_and_notify(m["section"], m["key"], converted)
+
+## theme_preset 即时应用到 ThemeManager（不持久化到 INI，持久化由 ThemeMGR 自身处理）
+func _apply_theme_preset(v: Variant) -> void:
+	if ThemeMGR and v is int:
+		var presets := ThemeMGR.get_available_presets()
+		if v >= 0 and v < presets.size():
+			ThemeMGR.apply_preset(presets[v])
+	_pending_config["theme_preset"] = v
+
+## appearance 即时应用到 ThemeManager（深色 / 浅色；不持久化到 INI）
+func _apply_appearance(v: Variant) -> void:
+	var mode := "light" if v == 1 else "dark"
+	if ThemeMGR:
+		ThemeMGR.set_appearance(mode)
+	_pending_config["appearance"] = mode
 
 # 将 UI 控件返回的值转换为配置存储用的值（索引→文件名、类型转换等）
 # 返回 null 表示值不完整，调用方应跳过本次写入
@@ -394,6 +409,32 @@ func _flush_pending_to_runtime() -> void:
 			continue
 		cm.set_value_and_notify(section, key, _pending_config[setting_id])
 
+# 弹窗结果统一提交：按声明式 result_map 把弹窗返回值写入 _pending_config，并（可选）即时应用到运行时
+## entry: {from, key, section, type, apply}
+##   from  = result 字典中的键；key = 写入 _pending_config / ConfigManager 的键（通常即 setting_id）
+##   section / type = ConfigManager 段与转换类型；apply=true 时额外 set_value_and_notify
+## 返回值未包含的 entry 自动跳过；此助手消除了各弹窗里逐字段赋值 + 专属 _apply_*_to_runtime 的样板
+func _commit_popup_result(result: Dictionary, result_map: Array) -> void:
+	var cm := ConfigManager.instance
+	for entry in result_map:
+		var from := String(entry.get("from", ""))
+		var key := String(entry.get("key", ""))
+		if from.is_empty() or key.is_empty() or not result.has(from):
+			continue
+		var raw = result.get(from)
+		var type := String(entry.get("type", ""))
+		var val: Variant
+		match type:
+			"int": val = int(raw)
+			"float": val = float(raw)
+			"string": val = str(raw)
+			_: val = raw
+		_pending_config[key] = val
+		if bool(entry.get("apply", false)):
+			var section := String(entry.get("section", ""))
+			if not section.is_empty():
+				cm.set_value_and_notify(section, key, val)
+
 # ===== 键位设置弹窗入口 =====
 # 弹出键位设置窗口，关闭后即时应用（set_value_and_notify）+ 缓存 _pending_config
 # 打开弹窗时从 _pending_config 读取当前值传入，确保未保存的修改能接着改
@@ -401,57 +442,48 @@ func _flush_pending_to_runtime() -> void:
 # 同会话内键盘模式先关再开、最终值绕回初始值时会被判为"无变化"而跳过 emit，
 # 导致 PlayView 的 keyboard_mode 字段停留在中间状态不生效
 func _popup_kb_mode_adjust() -> void:
-	var pending_keys := String(_pending_config.get("keyboard_mode_keys", ""))
-	var pending_names := String(_pending_config.get("keyboard_mode_display_names", ""))
-	var pending_kb_mode := int(_pending_config.get("keyboard_mode", 0))
-	var pending_gap := int(_pending_config.get("keyboard_mode_gap", 0))
-	var pending_alt_color := int(_pending_config.get("keyboard_alt_color", 1))
-	var pending_alt_count := int(_pending_config.get("keyboard_alt_color_count", 2))
-	var pending_alt_colors := String(_pending_config.get("keyboard_alt_colors", "#ff0000,#0000ff"))
-	var pending_separator := int(_pending_config.get("keyboard_lane_separator", 0))
+	var p := _pending_config
 	var result := await PopupWindow.instance.show_kb_mode_adjust(
-		pending_keys, pending_names, pending_kb_mode, pending_alt_color, pending_alt_count, pending_alt_colors, pending_gap, pending_separator)
-	var keys_str := String(result.get("keys", ""))
-	var names_str := String(result.get("display_names", ""))
-	_pending_config["keyboard_mode_keys"] = keys_str
-	_pending_config["keyboard_mode_display_names"] = names_str
-	_pending_config["keyboard_mode"] = int(result.get("keyboard_mode", 0))
-	_pending_config["keyboard_mode_gap"] = int(result.get("keyboard_mode_gap", 0))
-	_pending_config["keyboard_alt_color"] = int(result.get("alt_color", 1))
-	_pending_config["keyboard_alt_color_count"] = int(result.get("alt_count", 2))
-	_pending_config["keyboard_alt_colors"] = String(result.get("alt_colors", "#ff0000,#0000ff"))
-	_pending_config["keyboard_lane_separator"] = int(result.get("lane_separator", 0))
-	# 即时应用到运行时（关闭弹窗即提交，无取消路径）
-	_apply_kb_mode_result_to_runtime(result)
-	GLogger.info("keyboard_mode_keys updated: %s, kb_mode=%s" % [keys_str, str(result.get("keyboard_mode", 0))], "SettingList")
-
-## 弹窗结果即时写回 ConfigManager 并 emit config_changed（PlayView/KeySequenceManager 热更新）
-func _apply_kb_mode_result_to_runtime(result: Dictionary) -> void:
-	var cm := ConfigManager.instance
-	cm.set_value_and_notify("Lane", "keyboard_mode", int(result.get("keyboard_mode", 0)))
-	cm.set_value_and_notify("Lane", "keyboard_mode_keys", String(result.get("keys", "")))
-	cm.set_value_and_notify("Lane", "keyboard_mode_display_names", String(result.get("display_names", "")))
-	cm.set_value_and_notify("Lane", "keyboard_mode_gap", max(0, int(result.get("keyboard_mode_gap", 0))))
-	cm.set_value_and_notify("Lane", "keyboard_alt_color", int(result.get("alt_color", 1)))
-	cm.set_value_and_notify("Lane", "keyboard_alt_color_count", max(1, int(result.get("alt_count", 2))))
-	cm.set_value_and_notify("Lane", "keyboard_alt_colors", String(result.get("alt_colors", "#ff0000,#0000ff")))
-	cm.set_value_and_notify("Lane", "keyboard_lane_separator", int(result.get("lane_separator", 0)))
+		String(p.get("keyboard_mode_keys", "")),
+		String(p.get("keyboard_mode_display_names", "")),
+		int(p.get("keyboard_mode", 0)),
+		int(p.get("keyboard_alt_color", 1)),
+		int(p.get("keyboard_alt_color_count", 2)),
+		String(p.get("keyboard_alt_colors", "#ff0000,#0000ff")),
+		int(p.get("keyboard_mode_gap", 0)),
+		int(p.get("keyboard_lane_separator", 0)))
+	if result.is_empty():
+		return
+	# 键盘模式弹窗内部未写 ConfigManager，此处统一即时提交（apply=true）
+	_commit_popup_result(result, [
+		{"from":"keys","section":"Lane","key":"keyboard_mode_keys","type":"string","apply":true},
+		{"from":"display_names","section":"Lane","key":"keyboard_mode_display_names","type":"string","apply":true},
+		{"from":"keyboard_mode","section":"Lane","key":"keyboard_mode","type":"int","apply":true},
+		{"from":"keyboard_mode_gap","section":"Lane","key":"keyboard_mode_gap","type":"int","apply":true},
+		{"from":"alt_color","section":"Lane","key":"keyboard_alt_color","type":"int","apply":true},
+		{"from":"alt_count","section":"Lane","key":"keyboard_alt_color_count","type":"int","apply":true},
+		{"from":"alt_colors","section":"Lane","key":"keyboard_alt_colors","type":"string","apply":true},
+		{"from":"lane_separator","section":"Lane","key":"keyboard_lane_separator","type":"int","apply":true},
+	])
+	GLogger.info("keyboard_mode_keys updated: %s, kb_mode=%s" % [p.get("keyboard_mode_keys"), result.get("keyboard_mode")], "SettingList")
 
 # ===== 下落模式设置弹窗入口 =====
 # 弹出下落模式设置窗口，关闭后 FallingAdjust 已通过 set_value_and_notify 即时应用到 FlowArea
-# _pending_config 同步缓存，确保退出 SettingView 时 diff 保存到 settings.ini
+# 此处仅把结果缓存进 _pending_config（apply=false），确保退出 SettingView 时 diff 保存到 settings.ini
 func _popup_falling_adjust() -> void:
 	var result := await PopupWindow.instance.show_falling_adjust()
 	if result.is_empty():
 		return
-	_pending_config["note_fall_mode"] = int(result.get("note_fall_mode", 0))
-	_pending_config["note_fall_time"] = float(result.get("note_fall_time", 1.0))
-	_pending_config["note_fall_speed_after_judge_multiplier"] = float(result.get("note_fall_speed_after_judge_multiplier", 1.0))
-	_pending_config["note_fall_easing_before_func"] = String(result.get("note_fall_easing_before_func", "LINEAR"))
-	_pending_config["note_fall_easing_before_phase"] = String(result.get("note_fall_easing_before_phase", "IN"))
-	_pending_config["note_fall_easing_after_func"] = String(result.get("note_fall_easing_after_func", "LINEAR"))
-	_pending_config["note_fall_easing_after_phase"] = String(result.get("note_fall_easing_after_phase", "IN"))
-	GLogger.info("Falling params updated: mode=%s time=%s (pending save)" % [result.get("note_fall_mode"), result.get("note_fall_time")], "SettingList")
+	_commit_popup_result(result, [
+		{"from":"note_fall_mode","section":"Generator","key":"note_fall_mode","type":"int"},
+		{"from":"note_fall_time","section":"Generator","key":"note_fall_time","type":"float"},
+		{"from":"note_fall_speed_after_judge_multiplier","section":"Generator","key":"note_fall_speed_after_judge_multiplier","type":"float"},
+		{"from":"note_fall_easing_before_func","section":"Generator","key":"note_fall_easing_before_func","type":"string"},
+		{"from":"note_fall_easing_before_phase","section":"Generator","key":"note_fall_easing_before_phase","type":"string"},
+		{"from":"note_fall_easing_after_func","section":"Generator","key":"note_fall_easing_after_func","type":"string"},
+		{"from":"note_fall_easing_after_phase","section":"Generator","key":"note_fall_easing_after_phase","type":"string"},
+	])
+	GLogger.info("Falling params updated (pending save)" , "SettingList")
 
 # 弹出延迟校准窗口，校准结果写入当前输出类型对应的延迟预设（pending 保存）
 # 双预设：蓝牙输出校准写 audio_playback_delay_bt，普通输出校准写 audio_playback_delay

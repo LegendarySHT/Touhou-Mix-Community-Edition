@@ -633,21 +633,19 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 	return tween
 
 ## 保存设置配置（在 SettingView 退出时调用）
+## 同步部分（内存态更新）立即执行；磁盘写入与 settings_changed 通知由 SettingView 推迟到下一帧，
+## 避免阻塞退场动画首帧
 func _save_settings_on_exit(setting_view: Control) -> void:
 	if not setting_view or not setting_view.has_method("save_config_to_file"):
 		return
-	
-	# 调用 SettingView 的保存方法
+
+	# 调用 SettingView 的保存方法（其内部已做 soundfont 回退 + 同步应用；落盘/通知异步进行）
 	var success = setting_view.save_config_to_file()
-	
+
 	if success:
-		GLogger.info("Settings saved successfully", "AnimationManager")
-		
-		# 发出通配符信号，通知所有监听者配置已变化
-		if EvtBus:
-			EvtBus.settings_changed.emit("*", null)
+		GLogger.info("Settings applied successfully", "AnimationManager")
 	else:
-		push_warning("[AnimationManager] Failed to save settings")
+		push_warning("[AnimationManager] Failed to apply settings")
 
 func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween:
 	GLogger.info("组件进入动画: %s" % ui_name, "AnimationManager")

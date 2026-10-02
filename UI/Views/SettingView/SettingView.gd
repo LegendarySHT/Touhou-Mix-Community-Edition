@@ -123,32 +123,32 @@ func _load_config_from_file() -> void:
 	GLogger.info("Loaded %d settings from: %s" % [settings_dict.size(), config_path], "SettingView")
 
 ## 保存配置到文件（由 AnimationManager 在退出时调用）
-## 取 SettingList._pending_config 与进入时的 _initial_config 的 diff，仅写入变更项
+## 同步：构造待写盘配置（内存计算，含 soundfont 回退 + 类型化→字符串，颜色转 hex）+ 应用运行时变更。
+##   这一步让运行时在退场动画开始前即更新，回去的界面读到的是新值，消除"卡得比较旧"。
+## 异步：INI 序列化 + 磁盘写入较重，推到下一帧执行（call_deferred），避免阻塞退场动画首帧导致卡顿。
 func save_config_to_file() -> bool:
 	var config_manager = ConfigManager.instance
-	var base_config_path = CONFIG_PATH if FileAccess.file_exists(CONFIG_PATH) else DEFAULT_CONFIG_PATH
-	var base_config = config_manager.load_config(base_config_path).duplicate(true)
 
+	# 1. 构造待写盘配置：基于磁盘已有内容做 diff，仅写变更项（内存计算，load_config 多数为缓存命中）
+	#    value_type 统一字符串化；颜色转 hex（ConfigManager._serialize_ini 对 Color 只会写成 Color(...) 而非 hex，
+	#    故必须在此显式处理，否则改过的配色会写坏）。
 	var pending = setting_list._pending_config
 	var initial = setting_list._initial_config
+	var base_config = config_manager.load_config(
+		CONFIG_PATH if FileAccess.file_exists(CONFIG_PATH) else DEFAULT_CONFIG_PATH).duplicate(true)
 
-	# diff 并写入 base_config
 	for setting_id in pending:
-		# theme_preset 等不在 mappings 中的项跳过（不写入 INI）
 		if not SettingsMapper.mappings.has(setting_id):
-			continue
+			continue  # theme_preset 等不在 mappings 中的项跳过（不写入 INI）
 		var mapping = SettingsMapper.mappings[setting_id]
 		var section = mapping.section
 		var key = mapping.key
 		var value = pending[setting_id]
 
-		# 仅保存变更项
 		var old_value = initial.get(setting_id, null)
 		if str(old_value) == str(value):
-			continue
+			continue  # 仅保存变更项
 
-		# 按 value_type 统一转为字符串：配置链（INI 解析/内存读取）一律以字符串存储，
-		# 避免 typed 值（int/bool/float）进入 _current_config 后 get_bool 等类型假设失效
 		var value_type = mapping.get("value_type", "string")
 		match value_type:
 			"int":
@@ -167,41 +167,46 @@ func save_config_to_file() -> bool:
 			if not setting_list._verify_soundfont_exists(str(value)):
 				GLogger.warning("Soundfont '%s' not found, falling back to default" % value, "SettingView")
 				value = "GeneralUser-GS"
-				# 同步待保存值：随后的运行时通知必须与写盘值一致，避免通知到已失效的文件名
-				pending[setting_id] = value
+				pending[setting_id] = value  # 同步待保存值：通知与写盘须一致
 
 		if not base_config.has(section) or not (base_config[section] is Dictionary):
 			base_config[section] = {}
 		base_config[section][key] = value
 		GLogger.info("Save diff: [%s] %s = %s" % [section, key, str(value)], "SettingView")
 
-	# 确保有 Game 节（包含版本号）
 	if not base_config.has("Game"):
 		base_config["Game"] = {}
 	base_config["Game"]["config_version"] = ConfigManager.CONFIG_VERSION
 
-	# 先统一 emit config_changed，再写盘。顺序不可颠倒：
-	# save_config 会把"字符串化"的新值合并进 ConfigManager._current_config，
-	# 而 set_value_and_notify 以 str 比较判定"值未变化"；
-	# 若先写盘，typed 新值（如 int 1）与字符串值（"1"）判等，通知被静默吞掉，
-	# 导致 NetManager(online_mode/server_address) 等依赖 config_changed 的运行时无法即时生效
-	# （改完设置必须重启游戏才生效）。因此通知必须在 _current_config 仍是旧值时执行。
+	# 2. 先统一 emit config_changed（运行时即时生效），再写盘。顺序不可颠倒：
+	#    save_config 会把"字符串化"的新值合并进 ConfigManager._current_config，而 set_value_and_notify
+	#    以 str 比较判定"值未变化"；若先写盘，typed 新值（如 int 1）与字符串值（"1"）判等，通知被静默吞掉，
+	#    导致 NetManager(online_mode/server_address) 等依赖 config_changed 的运行时无法即时生效。
 	if setting_list and setting_list.has_method("apply_pending_config_updates"):
 		var applied_count = setting_list.apply_pending_config_updates(false)
 		GLogger.info("Applied %d deferred config updates" % applied_count, "SettingView")
 
-	# 保存到用户配置文件
-	var success = config_manager.save_config(CONFIG_PATH, base_config)
+	# 同步发出 settings_changed：必须在退场动画之前。
+	#    MidiPlaybackManager 据此异步重载音源，重载完成回调在 is_playing=false（退场/暂停态）时
+	#    会跳过人声 resync；若推迟到下一帧，TrackView 已 resume 并启动人声，重载完成会再次重启人声
+	if EvtBus:
+		EvtBus.settings_changed.emit("*", null)
 
+	# 3. 磁盘写入较重，推迟到下一帧，避免阻塞退场动画首帧导致卡顿
+	call_deferred("_persist_config_to_disk", base_config)
+	return true
+
+## 退场帧之后执行：把构造好的配置序列化并写盘。
+## 写盘成功后才同步"已应用"快照；失败则保留 diff，下次退出会重试保存并重新通知。
+func _persist_config_to_disk(base_config: Dictionary) -> void:
+	var config_manager = ConfigManager.instance
+	var success = config_manager.save_config(CONFIG_PATH, base_config)
 	if success:
 		GLogger.info("Saved config to: %s" % CONFIG_PATH, "SettingView")
-		# 写盘成功后才同步"已应用"快照；失败时保留 diff，下次退出会重试保存并重新通知
 		if setting_list and setting_list.has_method("sync_applied_config_snapshot"):
 			setting_list.sync_applied_config_snapshot()
 	else:
 		push_error("[SettingView] Failed to save config to: %s" % CONFIG_PATH)
-
-	return success
 
 var _snap_tween: Tween = null
 # 左侧快速跳转按钮的事件

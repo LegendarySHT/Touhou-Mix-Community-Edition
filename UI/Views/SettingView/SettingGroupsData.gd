@@ -41,16 +41,18 @@ static func get_setting_groups() -> Array:
 				"option_values": ["asc", "desc"]
 			},
 			{
-				"id": "show_advanced_settings",
-				"name_en": "Show Advanced Settings",
-				"name_zh": "显示高级设置项",
-				"description": "控制是否显示通常不需要调整的高级设置项",
-				"type": "TYPE_OPTION",
-				"default_value": "0",
-				"options": [
-					{"text_en": "Off", "text_zh": "关闭"},
-					{"text_en": "On", "text_zh": "开启"}
-				]
+			"id": "show_advanced_settings",
+			"name_en": "Show Advanced Settings",
+			"name_zh": "显示高级设置项",
+			"description": "控制是否显示通常不需要调整的高级设置项",
+			"type": "TYPE_OPTION",
+			"default_value": "0",
+			"apply_mode": "immediate",
+			"applier": "advanced_visibility",
+			"options": [
+				{"text_en": "Off", "text_zh": "关闭"},
+				{"text_en": "On", "text_zh": "开启"}
+			]
 			},
 			{
 				"id": "display_debug_info",
@@ -134,16 +136,17 @@ static func get_setting_groups() -> Array:
 		"name": "播放设置",
 		"settings": [
 			{
-				"id": "performing_mode",
-				"name_en": "Performing Mode",
-				"name_zh": "弹奏模式",
-				"description": "关闭后，即使不去点击下落的音符，选择了的音轨也会正常发声",
-				"type": "TYPE_OPTION",
-				"default_value": "1",
-				"options": [
-					{"text_en": "Off", "text_zh": "关闭"},
-					{"text_en": "On", "text_zh": "开启"}
-				]
+			"id": "performing_mode",
+			"name_en": "Performing Mode",
+			"name_zh": "弹奏模式",
+			"description": "关闭后，即使不去点击下落的音符，选择了的音轨也会正常发声",
+			"type": "TYPE_OPTION",
+			"default_value": "1",
+			"apply_mode": "immediate",
+			"options": [
+				{"text_en": "Off", "text_zh": "关闭"},
+				{"text_en": "On", "text_zh": "开启"}
+			]
 			},
 			{
 				"id": "play_ready_animation",
@@ -521,23 +524,27 @@ static func get_setting_groups() -> Array:
 		"name": "外观设置",
 		"settings": [
 			{
-				"id": "theme_preset",
-				"name_en": "Theme Preset",
-				"name_zh": "主题色配置",
-				"description": "选择界面主题配色方案",
-				"type": "TYPE_OPTION",
-				"default_value": "",
-				"dynamic_options": true,
-				"options_provider": "_provide_theme_preset_options"
+			"id": "theme_preset",
+			"name_en": "Theme Preset",
+			"name_zh": "主题色配置",
+			"description": "选择界面主题配色方案",
+			"type": "TYPE_OPTION",
+			"default_value": "",
+			"apply_mode": "immediate",
+			"applier": "theme_preset",
+			"dynamic_options": true,
+			"options_provider": "_provide_theme_preset_options"
 			},
 			{
-				"id": "appearance",
-				"name_en": "Appearance Mode",
-				"name_zh": "外观模式",
-				"description": "切换深色 / 浅色界面风格；浅色模式以主题色为主而非通用灰白",
-				"type": "TYPE_OPTION",
-				"default_value": "dark",
-				"options_provider": "_provide_appearance_options"
+			"id": "appearance",
+			"name_en": "Appearance Mode",
+			"name_zh": "外观模式",
+			"description": "切换深色 / 浅色界面风格；浅色模式以主题色为主而非通用灰白",
+			"type": "TYPE_OPTION",
+			"default_value": "dark",
+			"apply_mode": "immediate",
+			"applier": "appearance",
+			"options_provider": "_provide_appearance_options"
 			},
 			{
 				"id": "block_skin_preset",
