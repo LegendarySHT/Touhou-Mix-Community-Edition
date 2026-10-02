@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://bysbwc1jgvu75"]
 
 [ext_resource type="Script" uid="uid://sdxdtvdsllvp" path="res://UI/Views/ScoreView/ScoreView.gd" id="1_xn8wu"]
+[ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ImgRoundCorner.gdshader" id="3_y1cb1"]
 [ext_resource type="Texture2D" uid="uid://bxkgbenh2ja4h" path="res://Resources/Covers/423be8d161a8a972c9014454921864a9.jpg" id="4_iqsw5"]
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="5_0sw27"]
 [ext_resource type="Script" uid="uid://dpn6fchjbt3b8" path="res://UI/Components/SkewArea.gd" id="5_skew"]
@@ -52,6 +53,11 @@ corner_radius_bottom_right = 14
 corner_radius_bottom_left = 14
 shadow_color = Color(0, 0, 0, 0.35)
 shadow_size = 12
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_l05do"]
+shader = ExtResource("3_y1cb1")
+shader_parameter/corner_radius = 14.0
+shader_parameter/rect_size = Vector2(248, 248)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_kq2mn"]
 bg_color = Color(0.8745, 0.3176, 0.4745, 1)
@@ -290,12 +296,12 @@ theme_override_constants/separation = 50
 
 [node name="PanelContainer" type="PanelContainer" parent="Bottom/skew/C/SongInfo" unique_id=2037160204]
 custom_minimum_size = Vector2(250, 250)
-clip_contents = true
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_styles/panel = SubResource("StyleBoxFlat_0sw27")
 
 [node name="TextureRect" type="TextureRect" parent="Bottom/skew/C/SongInfo/PanelContainer" unique_id=226451417]
+material = SubResource("ShaderMaterial_l05do")
 layout_mode = 2
 texture = ExtResource("4_iqsw5")
 expand_mode = 5

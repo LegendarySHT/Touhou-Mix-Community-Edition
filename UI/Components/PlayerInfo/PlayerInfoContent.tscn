@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://c24k3xb5msmbw" path="res://UI/Components/PlayerInfo/PlayerInfoContent.gd" id="1_5k12w"]
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="2_1nkbp"]
+[ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ImgRoundCorner.gdshader" id="2_yxdox"]
 [ext_resource type="PackedScene" uid="uid://bt37v73uu1f0n" path="res://UI/Components/PlayerInfo/ProfilePage.tscn" id="3_nu1yf"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_3y6u5"]
@@ -17,49 +18,24 @@ corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
-expand_margin_left = 4.0
-expand_margin_top = 4.0
-expand_margin_right = 4.0
-expand_margin_bottom = 4.0
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
 shadow_color = Color(0, 0, 0, 0.3)
 shadow_size = 10
-shadow_offset = Vector2(0, 4)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_2c5n8"]
+shader = ExtResource("2_yxdox")
+shader_parameter/corner_radius = 12.0
+shader_parameter/rect_size = Vector2(150, 150)
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_shxvi"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_nu1yf"]
-content_margin_left = 20.0
-content_margin_top = 4.0
-content_margin_right = 4.0
-content_margin_bottom = 4.0
-bg_color = Color(0.0353, 0.0471, 0.0745, 0.85)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-corner_detail = 5
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1nkbp"]
-content_margin_left = 20.0
-content_margin_top = 4.0
-content_margin_right = 4.0
-content_margin_bottom = 4.0
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.576, 0.706, 1, 0.9)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-corner_detail = 5
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_yverd"]
+shader = ExtResource("2_yxdox")
+shader_parameter/corner_radius = 12.0
+shader_parameter/rect_size = Vector2(200, 200)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3y6u5"]
 draw_center = false
@@ -123,6 +99,7 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_hhcpw")
 
 [node name="TextureRect" type="TextureRect" parent="MiniInfo/Avatar" unique_id=90732037]
+material = SubResource("ShaderMaterial_2c5n8")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -218,8 +195,6 @@ text = "帐号"
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
-theme_override_styles/normal = SubResource("StyleBoxFlat_nu1yf")
-theme_override_styles/focus = SubResource("StyleBoxFlat_1nkbp")
 
 [node name="Password" type="Label" parent="C/Skew/LogIn" unique_id=1913502855]
 layout_mode = 2
@@ -230,8 +205,6 @@ text = "密码"
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
-theme_override_styles/normal = SubResource("StyleBoxFlat_nu1yf")
-theme_override_styles/focus = SubResource("StyleBoxFlat_1nkbp")
 secret = true
 
 [node name="ConfirmPassword" type="Label" parent="C/Skew/LogIn" unique_id=1095402338]
@@ -245,8 +218,6 @@ visible = false
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
-theme_override_styles/normal = SubResource("StyleBoxFlat_nu1yf")
-theme_override_styles/focus = SubResource("StyleBoxFlat_1nkbp")
 secret = true
 
 [node name="Control" type="Control" parent="C/Skew/LogIn" unique_id=197178585]
@@ -286,6 +257,7 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_hhcpw")
 
 [node name="TextureRect" type="TextureRect" parent="ProfileView/Header/AvatarBig" unique_id=1518243604]
+material = SubResource("ShaderMaterial_yverd")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0

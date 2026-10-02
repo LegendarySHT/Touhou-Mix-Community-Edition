@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://bp8bri6wqdv2r"]
 
 [ext_resource type="Script" uid="uid://b5vntbnq4wmg6" path="res://UI/Views/MidiView/ScoreListItem.gd" id="1_uq81t"]
-[ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ImgRoundCorner.gdshader" id="2_m4qc3"]
+[ext_resource type="Script" path="res://UI/Components/RoundedTextureRect.gd" id="2_rtr"]
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="2_uq81t"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qg2wq"]
@@ -25,11 +25,6 @@ variation_transform = Transform2D(1, 0.2, 0, 1, 0, 0)
 font = SubResource("FontVariation_m4qc3")
 font_size = 40
 font_color = Color(0.949, 0.961, 0.984, 1)
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_rar21"]
-shader = ExtResource("2_m4qc3")
-shader_parameter/corner_radius = 12.0
-shader_parameter/rect_size = Vector2(120, 126)
 
 [node name="ScoreNode" type="Button" unique_id=487824627]
 custom_minimum_size = Vector2(500, 130)
@@ -77,7 +72,8 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="Avator" type="TextureRect" parent="HBox" unique_id=1969631023]
-material = SubResource("ShaderMaterial_rar21")
+script = ExtResource("2_rtr")
+corner_radius = 12.0
 custom_minimum_size = Vector2(80, 80)
 propagate_maximum_size = true
 layout_mode = 2

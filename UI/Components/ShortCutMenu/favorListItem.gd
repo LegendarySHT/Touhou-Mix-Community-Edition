@@ -45,9 +45,6 @@ func _ready() -> void:
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
-	# 圆角遮罩：shader 拿不到 Control 尺寸，resize 时把尺寸传入
-	cover.resized.connect(_update_cover_mask)
-	_update_cover_mask()
 
 ## 应用主题色：根按钮四态随主题改色（原本写死的深色在浅色模式下会残留）
 ## normal 用 surface_low：ShortCutMenu 面板是 surface_high、MidiFavorPanel 面板是 surface，
@@ -131,13 +128,6 @@ func setup(fav: FavoriteListData, p_mode: Mode, p_midi: MidiData = null) -> void
 	_load_cover(fav)
 	# 模式切换
 	_apply_mode()
-
-
-## 把 Cover 尺寸写入圆角遮罩 shader（见 CoverRound.gdshader）
-func _update_cover_mask() -> void:
-	var mat := cover.material as ShaderMaterial
-	if mat:
-		mat.set_shader_parameter("rect_size", cover.size)
 
 
 func _load_cover(fav: FavoriteListData) -> void:
