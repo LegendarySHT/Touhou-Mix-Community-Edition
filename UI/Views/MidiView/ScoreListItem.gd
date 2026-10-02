@@ -13,7 +13,7 @@ const SCALE_MIN_SCALE := 0.8
 @onready var _accuracy_label: Label = get_node("Score/Acc")
 
 @onready var _score_rank_label: Label = get_node("HBox/ScoreRank")
-@onready var _avatar_img: TextureRect = get_node("HBox/Avator/img")
+@onready var _avatar_img: TextureRect = get_node("HBox/Avator")
 @onready var _player_name_label: Label = get_node("HBox/VBox/Name")
 
 @onready var _perfect_label: Label = get_node("HBox/VBox/Count/perfect")

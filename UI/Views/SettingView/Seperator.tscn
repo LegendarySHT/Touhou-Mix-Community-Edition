@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://dqfuc8qy1qhb7"]
 
 [sub_resource type="StyleBoxLine" id="StyleBoxLine_m3shx"]
-color = Color(1, 1, 1, 0.15)
+color = Color(0.7330055, 0.7330054, 0.73300564, 1)
 grow_begin = 50.0
 grow_end = 60.0
 thickness = 2

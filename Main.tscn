@@ -229,6 +229,11 @@ corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
+[sub_resource type="DPITexture" id="DPITexture_bg4s2"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\"><path fill=\"none\" stroke=\"#b2b2b2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-opacity=\".85\" stroke-width=\"2\" d=\"m2 4 4 4 4-4\"/></svg>
+"
+base_scale = 2.5
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.0627, 0.0784, 0.1137, 1)
 border_width_left = 1
@@ -240,6 +245,11 @@ corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
+
+[sub_resource type="DPITexture" id="DPITexture_hhcpw"]
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"16\"><path fill=\"none\" stroke=\"#b2b2b2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-opacity=\".45\" stroke-width=\"2\" d=\"m2.5 11 3-3-3-3\"/></svg>
+"
+base_scale = 2.5
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_popup_hover"]
 bg_color = Color(0.3568, 0.549, 1, 0.22)
@@ -354,7 +364,10 @@ OptionButton/colors/font_color = Color(0.949, 0.961, 0.984, 1)
 OptionButton/colors/font_focus_color = Color(0.95, 0.95, 0.95, 1)
 OptionButton/colors/font_hover_color = Color(0.95, 0.95, 0.95, 1)
 OptionButton/colors/font_pressed_color = Color(1, 1, 1, 1)
+OptionButton/constants/arrow_margin = 10
+OptionButton/constants/h_separation = 15
 OptionButton/font_sizes/font_size = 48
+OptionButton/icons/arrow = SubResource("DPITexture_bg4s2")
 OptionButton/styles/disabled = SubResource("StyleBoxFlat_w3rk5")
 OptionButton/styles/focus = SubResource("StyleBoxFlat_oye8v")
 OptionButton/styles/hover = SubResource("StyleBoxFlat_40n85")
@@ -366,10 +379,11 @@ PanelContainer/styles/panel = SubResource("StyleBoxFlat_panel")
 PopupMenu/colors/font_color = Color(1, 1, 1, 1)
 PopupMenu/colors/font_hover_color = Color(1, 1, 1, 1)
 PopupMenu/constants/h_separation = 10
-PopupMenu/constants/item_end_padding = 10
-PopupMenu/constants/item_start_padding = 10
+PopupMenu/constants/item_end_padding = 15
+PopupMenu/constants/item_start_padding = 15
 PopupMenu/constants/v_separation = 15
 PopupMenu/font_sizes/font_size = 42
+PopupMenu/icons/submenu = SubResource("DPITexture_hhcpw")
 PopupMenu/styles/hover = SubResource("StyleBoxFlat_popup_hover")
 PopupMenu/styles/panel = SubResource("StyleBoxFlat_o7g6l")
 ProgressBar/colors/font_color = Color(0.949, 0.961, 0.984, 1)
@@ -1464,8 +1478,7 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 20.0
-offset_right = 830.0
-offset_bottom = 600.0
+offset_right = -20.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_3y6u5")
@@ -1473,8 +1486,8 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_3y6u5")
 [node name="TabC" parent="PopupWindow" unique_id=1542807723 instance=ExtResource("28_hri7i")]
 offset_left = 20.0
 offset_top = 0.0
-offset_right = 830.0
-offset_bottom = 600.0
+offset_right = -20.0
+offset_bottom = 0.0
 offset_transform_enabled = true
 
 [connection signal="text_submitted" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SearchBox/TextEdit" to="skew/C/ShortCutMenu" method="_on_search_query"]

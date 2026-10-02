@@ -4,7 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="3_0mqhb"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="4_0mqhb"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="5_0mqhb"]
-[ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ShortCutMenu/CoverRound.gdshader" id="6_coverround"]
+[ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ImgRoundCorner.gdshader" id="6_coverround"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sohxy"]
 bg_color = Color(0.0941, 0.1176, 0.1686, 0.8)
@@ -113,6 +113,7 @@ alignment = 1
 [node name="Cover" type="TextureRect" parent="HBox" unique_id=33163108]
 material = SubResource("ShaderMaterial_cover")
 custom_minimum_size = Vector2(126, 126)
+custom_maximum_size = Vector2(126, 126)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
