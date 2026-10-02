@@ -145,7 +145,7 @@ func _can_drag_scroll() -> bool:
 func _scroll_by_drag(dy: float) -> void:
 	var sc := _scroll_container()
 	if is_instance_valid(sc):
-		sc.scroll_vertical -= dy
+		sc.scroll_vertical = roundi(sc.scroll_vertical - dy)
 
 ## 焦点滚入视口：项在覆盖层上、非滚动容器子节点，自动滚动失效，
 ## 故聚焦时手动把项滚进可见区（越界方向补正 scroll_vertical）
@@ -159,9 +159,9 @@ func _on_focus_scroll_into_view() -> void:
 	var top := position.y
 	var bottom := position.y + size.y
 	if top < 0.0:
-		sc.scroll_vertical += top
+		sc.scroll_vertical = roundi(sc.scroll_vertical + top)
 	elif bottom > vsz:
-		sc.scroll_vertical += bottom - vsz
+		sc.scroll_vertical = roundi(sc.scroll_vertical + bottom - vsz)
 
 func _ready() -> void:
 	cover_texture = $cover

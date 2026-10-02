@@ -17,9 +17,6 @@ var _last_cover_offset: float = 0.0
 ## 是否启用视差(子类可禁用,如 StoreMidiListItem)
 var _parallax_enabled: bool = true
 
-## 额外动画 tween(子类可赋值,如 AlbumListItem 的 expand_tween),存在时强制更新视差
-var _extra_motion_tween: Tween = null
-
 ## 封面是否已加载(控制 cover_texture.texture 是否有效)
 var _cover_loaded: bool = false
 

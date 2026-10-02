@@ -50,6 +50,11 @@ var _scroll_offset := 0.0
 var _text_width := 0.0
 var _tween: Tween = null
 var _resized_callable: Callable
+## 文本溢出但在视口外：标_pending，等首次绘制时再补建 tween
+var _scroll_pending := false
+## 文本是否溢出（与 tween 是否已建无关）：溢出时按滚动模式左对齐，
+## 不能用 _tween 判定——视口外尚未建 tween 时会误落到 alignment 分支，滚入视口时位置跳一下
+var _overflow := false
 
 
 ## 设置滚动文本并自动重算（外部必须用此函数，勿直接赋 label.text）
@@ -123,12 +128,16 @@ func _notification(what: int) -> void:
 		# 静止裁剪窗口 = 节点自身矩形
 		RenderingServer.canvas_item_set_clip(get_canvas_item(), true)
 		_draw_scroll_text()
+		# 首次真正进入视口时补建滚动 tween（_draw_scroll_text 会读 _tween 判定对齐，故放在其后）
+		if _scroll_pending and _is_in_viewport():
+			_start_scroll_tween()
 
 
 ## 测量文本宽度并启动/停止滚动
 func _measure_and_scroll() -> void:
 	_kill_tween()
 	_scroll_offset = 0.0
+	_scroll_pending = false
 
 	var font := get_theme_font("font")
 	var font_size := get_theme_font_size("font_size")
@@ -136,10 +145,24 @@ func _measure_and_scroll() -> void:
 
 	# 文字未溢出（含两端填充）：不滚动，避免刚好能塞下却顶着左边
 	if _text_width + 2 * end_padding <= size.x:
+		_overflow = false
 		queue_redraw()
 		return
 
-	# 文字溢出：来回滚动
+	_overflow = true
+
+	# 文字溢出，但当前不在视口内：先不建 tween（长列表里绝大多数 label 都在视口外，
+	# 每条 tween 都是常驻内存 + 每帧回调）。等首次真正绘制时再补建。
+	if not _is_in_viewport():
+		_scroll_pending = true
+		return
+
+	_start_scroll_tween()
+
+
+## 启动来回滚动 tween（调用方须已确认文本溢出且本节点在视口内）
+func _start_scroll_tween() -> void:
+	_scroll_pending = false
 	# 滚动范围含 2*end_padding：起始文本左边留 end_padding，终点文本右边留 end_padding，两端对称
 	var max_offset := _text_width - size.x + 2 * end_padding
 	# 单程时长按滚动距离换算，保证不同长度文本像素速度一致
@@ -183,10 +206,11 @@ func _draw_scroll_text() -> void:
 			top = size.y - font_h
 	var base_y := top + ascent
 
-	# 水平起点：滚动时左对齐 + 起始留空隙（默认左对齐会贴左边，这里空出左侧）；
-	# 非滚动时按 horizontal_alignment 对齐
+	# 水平起点：溢出（滚动模式）时左对齐 + 起始留空隙（默认左对齐会贴左边，这里空出左侧）；
+	# 非溢出时按 horizontal_alignment 对齐。用 _overflow 而非 _tween 判定，
+	# 视口外尚未建 tween 时也须保持同一画法，避免滚入视口时位置跳一下
 	var x := 0.0
-	if _tween != null and _tween.is_valid():
+	if _overflow:
 		x = end_padding
 	else:
 		match horizontal_alignment:

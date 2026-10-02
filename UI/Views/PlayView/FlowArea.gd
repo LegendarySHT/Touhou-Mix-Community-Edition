@@ -541,10 +541,10 @@ func load_note_skin(skin_name: String = SkinManager.DEFAULT_SKIN_PRESET) -> void
 	GLogger.info("Loaded note skin: %s, glow=%s, connect_mode=%s" % [skin_name, _is_glow_enabled, _long_connect_mode], "FlowArea")
 
 ## 根据 _skin_config + _random_colors + _global_random_colors 解析出最终音符颜色。
-## 规则实现集中在 SkinMGR.resolve_note_colors（与 NoteSkinAdjust 皮肤预览共用，避免两份逻辑漂移）
+## 规则实现集中在 SkinManager.resolve_note_colors（与 NoteSkinAdjust 皮肤预览共用，避免两份逻辑漂移）
 func _resolve_note_colors() -> void:
 	var keyboard_mode: bool = parent_node != null and bool(parent_node.get("keyboard_mode"))
-	_resolved_colors = SkinMGR.resolve_note_colors(_skin_config, keyboard_mode,
+	_resolved_colors = SkinManager.resolve_note_colors(_skin_config, keyboard_mode,
 		_random_colors, _global_random_colors)
 
 ## 重新解析颜色并同步到所有活跃音符（用于随机颜色刷新等场景）

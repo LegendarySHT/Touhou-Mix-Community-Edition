@@ -118,9 +118,9 @@ func _on_button_toggled(toggle_on, button):
 		AniMGR.animate_fade_in(t_page, 0.2, "tabSwitch")
 
 
-func _on_game_mode_selected(index: int) -> void:
+func _on_game_mode_selected(_index: int) -> void:
 	pass # Replace with function body.
 
 
-func _on_limit_selected(index: int) -> void:
+func _on_limit_selected(_index: int) -> void:
 	pass # Replace with function body.

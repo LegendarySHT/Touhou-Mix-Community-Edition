@@ -25,8 +25,9 @@ var _offset := 0.0
 ## 主窗口内被上移的宿主控件（根 UI = Main）；与 _popup_target 二选一
 var _host: Control = null
 ## 弹窗场景被上移的目标窗口（PopupPanel）及其初始 Y（归位基准）
+## Window.position 为整型向量，基准保持 int 避免回写时截断
 var _popup_target: Window = null
-var _popup_base_y := 0.0
+var _popup_base_y: int = 0
 
 func _ready() -> void:
 	var root := get_tree().get_root()
@@ -63,9 +64,9 @@ func _rearm_focus_after_popup() -> void:
 	var popup := PopupWindow.instance
 	if popup == null or not popup.visible:
 		return
-	var owner := popup.gui_get_focus_owner()
-	if owner != null:
-		_on_focus_changed(owner)
+	var focus_owner := popup.gui_get_focus_owner()
+	if focus_owner != null:
+		_on_focus_changed(focus_owner)
 
 func _on_popup_hidden() -> void:
 	_reset_pan()
@@ -172,4 +173,4 @@ func _apply_offset(target: float, speed: float) -> void:
 	if _host:
 		_host.position = Vector2(_host.position.x, -_offset)
 	elif _popup_target:
-		_popup_target.position.y = _popup_base_y - _offset
+		_popup_target.position.y = roundi(_popup_base_y - _offset)

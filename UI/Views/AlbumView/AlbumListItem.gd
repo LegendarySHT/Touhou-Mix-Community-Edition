@@ -15,10 +15,7 @@ extends CoverListItemBase
 var item_dict: Dictionary = {}
 
 ## 展开动画补间
-var expand_tween: Tween:
-	set(t):
-		expand_tween = t
-		_extra_motion_tween = t
+var expand_tween: Tween
 
 ## 是否已 ready 且填充过显示（fill_display 后置 true；bind 阶段保持 false 等待 Phase B）
 var _has_ready: bool = false

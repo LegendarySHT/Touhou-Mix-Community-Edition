@@ -200,7 +200,7 @@ func _apply_preview_from_config() -> void:
 		long_color = _resolve_preview_color("long", _long_color_cb, _long_color_picker, _random_long_cb)
 	else:
 		# 预览无键盘模式语境，按非键盘模式解析（实战常见情形）
-		var resolved: Dictionary = SkinMGR.resolve_note_colors(
+		var resolved: Dictionary = SkinManager.resolve_note_colors(
 			_working_config, false, {}, _preview_global_random_colors())
 		block_color = resolved.get("short", Color.WHITE)
 		slide_color = resolved.get("instant", Color.WHITE)

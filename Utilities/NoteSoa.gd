@@ -155,7 +155,7 @@ func build_from_indices(indices: Array) -> Array:
 func grouped_indices() -> Dictionary:
 	if _group_keys != null and _group_keys.size() > 0 \
 			and _group_offsets != null and _group_indices != null:
-		var groups: Dictionary = {}
+		var fast_groups: Dictionary = {}
 		var gcount: int = _group_keys.size()
 		for g in range(gcount):
 			var key := "%d:%d" % [_group_keys[g] >> 8, _group_keys[g] & 0xFF]
@@ -165,8 +165,8 @@ func grouped_indices() -> Dictionary:
 			arr.resize(end - start)
 			for w in range(start, end):
 				arr[w - start] = _group_indices[w]
-			groups[key] = arr
-		return groups
+			fast_groups[key] = arr
+		return fast_groups
 
 	var total := size()
 	# 兜底：第一遍统计每 key 元素个数 + 记录 key 顺序（纯整数累加，无 COW）

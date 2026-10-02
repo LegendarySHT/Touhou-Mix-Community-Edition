@@ -247,11 +247,14 @@ func get_portrait(chara_key: String, emotion: int) -> Texture2D:
 			var rows := int(meta.get("emotion_rows", 1))
 			var ew := maxi(1, emos_img.get_width())
 			var eh := maxi(1, emos_img.get_height())
+			@warning_ignore("integer_division")
 			var cell_w := ew / cols
+			@warning_ignore("integer_division")
 			var cell_h := eh / rows
 			# emotion N（1 起）对应网格第 N-1 格
 			var idx := emotion - 1
 			var col := idx % cols
+			@warning_ignore("integer_division")
 			var row := idx / cols
 			var cell_rect := Rect2i(col * cell_w, row * cell_h, cell_w, cell_h)
 			var region := emos_img.get_region(cell_rect)

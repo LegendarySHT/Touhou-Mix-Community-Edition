@@ -79,15 +79,15 @@ func has_point(point: Vector2) -> bool:
 	if tsize.x <= 0.0 or tsize.y <= 0.0 or bsize.x <= 0.0 or bsize.y <= 0.0:
 		return false
 	# 与 stretch_mode = keep_aspect_centered 一致的缩放 + 居中
-	var scale := minf(bsize.x / tsize.x, bsize.y / tsize.y)
-	var dw := tsize.x * scale
-	var dh := tsize.y * scale
+	var fit_scale := minf(bsize.x / tsize.x, bsize.y / tsize.y)
+	var dw := tsize.x * fit_scale
+	var dh := tsize.y * fit_scale
 	var origin := (bsize - Vector2(dw, dh)) * 0.5
 	var local := point - origin
 	if local.x < 0.0 or local.y < 0.0 or local.x >= dw or local.y >= dh:
 		return false
-	var ix := clampi(int(local.x / scale), 0, _hit_img.get_width() - 1)
-	var iy := clampi(int(local.y / scale), 0, _hit_img.get_height() - 1)
+	var ix := clampi(int(local.x / fit_scale), 0, _hit_img.get_width() - 1)
+	var iy := clampi(int(local.y / fit_scale), 0, _hit_img.get_height() - 1)
 	return _hit_img.get_pixel(ix, iy).a > ALPHA_THRESHOLD
 
 ## 无纹理时的兜底命中区（整块）

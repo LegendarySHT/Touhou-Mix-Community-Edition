@@ -83,8 +83,8 @@ func _draw(to_canvas_item: RID, rect: Rect2) -> void:
 
 ## 按 rect 尺寸自适应每边细分段数（渐变更平滑）。
 func _compute_segments(rect: Rect2) -> int:
-	var len := maxf(rect.size.x, rect.size.y)
-	return clampi(int(len / 6.0), 4, 64)
+	var max_dim := maxf(rect.size.x, rect.size.y)
+	return clampi(int(max_dim / 6.0), 4, 64)
 
 
 ## 沿 highlight_angle 方向给每个顶点按投影计算双向渐变：

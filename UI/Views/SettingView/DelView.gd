@@ -529,8 +529,10 @@ func _create_midi_album_root(album_index: int) -> Variant:
 
 
 ## MIDI 子项工厂：为指定专辑创建一条 TreeItem（懒加载，展开时才逐条构建）
-## slot_index 为 _midi_album_midi_map[album_id] 中的下标；每次只水合一条
+## slot_index 为 _midi_album_midi_map[album_id] 中的下标；每次只取一条轻量投影
 ## 用 root_node.add_sibling 插到专辑根之后，保证专辑块在列表中保持连续
+## 只读 name + artist_name，走 DB 轻量投影而非 MidiData 水合（避免把 2200 个
+## MidiData 永久塞进 DataMGR.midis 全局缓存）
 ## 返回 Array[Node]（已 add_child）；返回 null 请求中止构建
 func _create_midi_album_child(slot_index: int, album_id: String) -> Variant:
 	if _current_tab != Tab.MIDI:
@@ -544,12 +546,16 @@ func _create_midi_album_child(slot_index: int, album_id: String) -> Variant:
 	var midi_key := String(slots[slot_index])
 	if _midi_item_map.has(midi_key):
 		return []  # 已存在（取消后重入续建），跳过
-	var midi: MidiData = DataMGR.get_midi_by_id(midi_key)
-	if not midi:
+	# searchQuery 必须显式传空串：C# 默认参数只在编译期生效，Godot 绑定只注册 2 参签名
+	var projections: Array = ChartDB.GetMidiListItemsByKeys([midi_key], "")
+	if projections.is_empty():
 		return null
+	var info: Dictionary = projections[0]
 
-	var author := midi.artist_name if not midi.artist_name.is_empty() else "-"
-	var item_node := _create_tree_item("    %s" % midi.name, author)
+	var author := String(info.get("artist_name", ""))
+	if author.is_empty():
+		author = "-"
+	var item_node := _create_tree_item("    %s" % String(info.get("name", "")), author)
 	# 插到专辑根之后（add_sibling = 紧随其后），折叠态时隐藏
 	root_node.add_sibling(item_node)
 	item_node.visible = not bool(root_node.get_meta("collapsed", false))
@@ -815,9 +821,12 @@ func _create_audio_group(group_index: int) -> Variant:
 	var song_name: String = _audio_group_order[group_index]
 	var indices: Array = _audio_items_in_group[song_name]
 	var created: Array = []
+	# 单文件分组不建子项：文件名上浮到根行右标签（避免"1 个"占一行还多一行文件名）
+	var single: bool = indices.size() == 1
+	var right_text: String = String(_audio_items[indices[0]]["file_name"]) if single else "%d 个" % indices.size()
 
 	# 创建 TreeRoot
-	var root_node := _create_tree_root(song_name, "%d 个" % indices.size(), song_name)
+	var root_node := _create_tree_root(song_name, right_text, song_name)
 	_audio_list.add_child(root_node)
 	_audio_root_map[song_name] = root_node
 	created.append(root_node)
@@ -825,16 +834,17 @@ func _create_audio_group(group_index: int) -> Variant:
 	var root_cb := root_node.get_node("CheckBox") as CheckBox
 	root_cb.toggled.connect(_on_audio_root_checkbox_toggled.bind(song_name))
 
-	for idx in indices:
-		var item: Dictionary = _audio_items[idx]
-		var fmt: String = item.get("format", "")
-		var item_node := _create_tree_item(item["file_name"], fmt)
-		_audio_list.add_child(item_node)
-		_audio_item_map[idx] = item_node
-		created.append(item_node)
+	if not single:
+		for idx in indices:
+			var item: Dictionary = _audio_items[idx]
+			var fmt: String = item.get("format", "")
+			var item_node := _create_tree_item(item["file_name"], fmt)
+			_audio_list.add_child(item_node)
+			_audio_item_map[idx] = item_node
+			created.append(item_node)
 
-		var item_cb := item_node.get_node("CheckBox") as CheckBox
-		item_cb.toggled.connect(_on_audio_item_checkbox_toggled.bind(idx, song_name))
+			var item_cb := item_node.get_node("CheckBox") as CheckBox
+			item_cb.toggled.connect(_on_audio_item_checkbox_toggled.bind(idx, song_name))
 
 	return created
 

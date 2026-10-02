@@ -702,16 +702,19 @@ func _style_midi_individual_nodes(info_ui: Node) -> void:
 
 ## 主题应用者注册表：视图/组件在 _ready 时注册，refresh_theme_only 遍历调用其 apply_theme()
 ## 懒加载视图实例化后自动注册，不再依赖 ThemeManager 主动按路径查找节点，从根本上解决懒加载时序问题
-var _theme_appliers: Array[Node] = []
+## 用 instance_id → Node 的字典而非 Array：DelView 展开 2200 首会注册数千个
+## TextScrollHelper，Array.has() 的线性查找会让注册退化成O(N²)
+var _theme_appliers: Dictionary[int, Node] = {}
 
 ## 注册主题应用者（视图/组件 _ready 时调用，并自调一次 apply_theme() 完成首次着色）
 func register_theme_applier(node: Node) -> void:
-	if node and not _theme_appliers.has(node):
-		_theme_appliers.append(node)
+	if node:
+		_theme_appliers[node.get_instance_id()] = node
 
 ## 注销主题应用者（视图/组件 _exit_tree 时调用，防止 refresh 时访问已释放节点）
 func unregister_theme_applier(node: Node) -> void:
-	_theme_appliers.erase(node)
+	if node:
+		_theme_appliers.erase(node.get_instance_id())
 
 ## 刷新主题色（不刷新背景）
 ## 仅刷新调色板、Theme 资源，并广播通知所有已注册应用者各自更新内部样式；
@@ -740,14 +743,16 @@ func refresh_theme_only() -> void:
 	# 第二阶段：广播通知所有已注册应用者各自更新内部样式
 	# 视图/组件在 _ready 时 register_theme_applier(self) 并自调 apply_theme() 完成首次着色；
 	# 懒加载视图实例化后自动注册，不再有"启动阶段查找节点落空"的问题。
-	var i := _theme_appliers.size() - 1
-	while i >= 0:
-		var applier = _theme_appliers[i]
+	# apply_theme() 可能触发节点释放进而 unregister，故先收集再统一 erase（不在迭代中改字典）
+	var stale: Array[int] = []
+	for id in _theme_appliers:
+		var applier: Node = _theme_appliers[id]
 		if is_instance_valid(applier) and applier.has_method("apply_theme"):
 			applier.apply_theme()
 		else:
-			_theme_appliers.remove_at(i)
-		i -= 1
+			stale.append(id)
+	for id in stale:
+		_theme_appliers.erase(id)
 	GLogger.info("主题刷新完成: %s" % _theme_name, "ThemeManager")
 
 func _on_theme_changed(preset_name: String) -> void:

@@ -126,7 +126,7 @@ func _step_fling(delta: float) -> void:
 	if not _flinging:
 		return
 	var prev := scroll_vertical
-	scroll_vertical -= _fling_velocity * delta
+	scroll_vertical = roundi(scroll_vertical - _fling_velocity * delta)
 	var s := 1.0 if _fling_velocity >= 0.0 else -1.0
 	_fling_velocity = s * maxf(0.0, absf(_fling_velocity) - 1000.0 * delta)
 	if _fling_velocity == 0.0 or scroll_vertical == prev:
@@ -374,9 +374,9 @@ func _scroll_to_item(idx: int) -> void:
 	var item_top := TOP_PAD + idx * ITEM_STRIDE
 	var item_bot := item_top + ITEM_HEIGHT
 	if item_top < scroll_vertical:
-		scroll_vertical = item_top
+		scroll_vertical = roundi(item_top)
 	elif item_bot > scroll_vertical + view_h:
-		scroll_vertical = item_bot - view_h
+		scroll_vertical = roundi(item_bot - view_h)
 
 ## 供 FocusManager 把焦点移入列表：确保选中的数据索引滚入可视窗口（被池化）
 ## 后聚焦其按钮。虚拟化项不在固定子位、且可能已滚出屏幕被释放，必须先滚动补位。

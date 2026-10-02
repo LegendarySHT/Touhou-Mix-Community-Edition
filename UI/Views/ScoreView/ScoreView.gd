@@ -210,10 +210,10 @@ func set_display(result: ScoreData, midi: MidiData = null, is_auto: bool = false
 	_upload_generation += 1
 
 ## 按评级合成并切换人物立绘（人物未就绪或合成失败时静默跳过，保留原立绘）
-func _update_chara_art(rank: String) -> void:
+func _update_chara_art(rank_str: String) -> void:
 	if CharaMGR.charas_index.is_empty():
 		return
-	var tex := CharaMGR.get_current_portrait_by_rank(rank)
+	var tex := CharaMGR.get_current_portrait_by_rank(rank_str)
 	if tex:
 		chara.texture = tex
 

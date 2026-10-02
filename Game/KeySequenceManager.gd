@@ -272,5 +272,6 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 
 ## 清空 C# 输出与缓存（PlayView/离开 MidiList 项时调用，释放常驻）
 func clear_sequences() -> void:
-	_get_core().ClearOutput() if _core else null
+	if _core:
+		_get_core().ClearOutput()
 	_cache_key = ""
