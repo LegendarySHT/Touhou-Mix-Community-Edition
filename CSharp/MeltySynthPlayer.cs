@@ -908,10 +908,26 @@ public partial class MeltySynthPlayer : Node
 		}
 
 		// 【修复】允许负数 seek，设置待处理的 seek 标志
-		// _Process 会在下一帧处理这个 seek，确保不会阻塞音频线程
-		_pendingSeekMs = positionMs;  // 负数值会被接受
+		// 负数（pre-roll）依赖 _currentOffsetMs 等主线程状态，仍走 _Process 路径
+		if (positionMs < 0.0)
+		{
+			_pendingSeekMs = positionMs;
+			return;
+		}
 
-		// GD.Print($"[MeltySynthPlayer] Queued seek to {positionMs} ms");
+		// 非负 seek 下沉到音频线程：后台时 _Process 停摆，只有音频线程仍在跑。
+		// 前台也走同一路径，保证两条路径行为一致（不会重复 seek）。
+		if (_audioOutput is MiniaudioAudioOutputBridge ma)
+		{
+			// 同步上层缓存，使 get_position_ms 立即反映目标位置；
+			// hold 若干帧避免 sequencer 渲染钟尚未反映新位置时瞬回 0
+			_lastPositionMs = positionMs;
+			_seekPositionHoldFrames = 10;
+			InvalidateJudgeClock();
+			ma.RequestSeek(positionMs);
+			return;
+		}
+		_pendingSeekMs = positionMs;
 	}
 
 	public void set_soundfont(string soundfontPath)

@@ -355,7 +355,9 @@ func _on_media_command(action: String, position_ms: float) -> void:
 		return
 	match action:
 		"play", "toggle":
-			if midi_playback_manager.is_paused:
+			if midi_playback_manager.is_playing:
+				pass  # 已在播放，play 键语义为"确保在播放"
+			elif midi_playback_manager.is_paused:
 				midi_playback_manager.resume()
 				if not midi_playback_manager.deferred_play_pending:
 					_set_note_displayers_process(true)
@@ -367,11 +369,27 @@ func _on_media_command(action: String, position_ms: float) -> void:
 			_set_note_displayers_process(false)
 		"seek":
 			_seek_to(position_ms)
-		"next", "prev":
-			# 本页无上一首/下一首语义，暂统一映射为从头重播
-			_restart_from_beginning()
+		"next":
+			_activate(midi_playback_manager.play_next())
+		"prev":
+			_activate(midi_playback_manager.play_previous())
+		"repeat":
+			midi_playback_manager.cycle_repeat_mode()
+			GLogger.info("Repeat mode: %d" % midi_playback_manager.repeat_mode, "TrackView")
+		"shuffle":
+			midi_playback_manager.set_repeat_mode(MidiPlaybackManager.RepeatMode.SHUFFLE)
 		_:
 			pass
+
+## 执行切歌结果并同步 UI 状态。无播放列表时退回"从头重播"
+func _activate(changed: bool) -> void:
+	if not changed:
+		_restart_from_beginning()
+		return
+	_set_note_displayers_process(true)
+	# 换曲后把循环检测基准对齐到新曲起点
+	last_position_ms = 0.0
+	_seek_suppress_loop_frames = 30
 
 ## 从头重播：回到 0 并确保处于播放态
 func _restart_from_beginning() -> void:
@@ -760,14 +778,14 @@ func _set_display_current_time(current_ms: float) -> void:
 func _process(delta: float) -> void:
 	if midi_playback_manager.is_playing:
 		var current_position = midi_playback_manager.position_ms
-		
+
 		# 检测循环播放重置（位置从大跳到小，说明循环了）
 		if _seek_suppress_loop_frames > 0:
 			_seek_suppress_loop_frames -= 1
 		elif current_position < last_position_ms - 100:  # 100ms容差，避免误判seek操作
 			GLogger.info("Loop detected: %.1f -> %.1f ms, resetting noteDisplayers" % [last_position_ms, current_position], "TrackView")
 			_reset_player()
-		
+
 		# 更新当前时间
 		_set_display_current_time(current_position)
 		# 更新当前 tick（从 position 获取）
@@ -776,6 +794,41 @@ func _process(delta: float) -> void:
 		last_position_ms = current_position
 
 	super._process(delta)
+
+## 窗口/应用重新获得焦点：同步循环检测基准。
+## 后台期间 Godot 主循环挂起（本页 _process 不运行），last_position_ms 停滞在
+## 切走前的旧值；回前台首帧必然满足「当前位置 < 基准 - 100」而被误判成循环回绕，
+## 触发 _reset_player() 把音符显示清零。此处把基准直接对齐当前真实位置。
+func _on_focus_regained() -> void:
+	if midi_playback_manager == null:
+		return
+	# 音频设备可能在后台被系统抢占，重建后位置会归零，此时应按"新起点"重置显示
+	if not midi_playback_manager.is_playing:
+		last_position_ms = 0.0
+		_seek_suppress_loop_frames = 30
+		return
+	last_position_ms = midi_playback_manager.position_ms
+	current_tick = int(midi_playback_manager.position)
+	_seek_suppress_loop_frames = 30
+	if master_note_displayer:
+		master_note_displayer.reset_playhead_position(last_position_ms)
+	for track in list_items:
+		if track.note_display:
+			track.note_display.reset_playhead_position(last_position_ms)
+	_set_display_current_time(last_position_ms)
+	GLogger.info("Focus regained: resynced loop baseline to %.1f ms" % last_position_ms, "TrackView")
+
+func _notification(what: int) -> void:
+	# 节点初始化早期也会收到这些通知，此时 @onready 成员尚未赋值，访问会中断 autoload 初始化
+	if midi_playback_manager == null or ui_stat_mgr == null or master_note_displayer == null:
+		return
+	# 切后台（Android 主循环挂起）与回前台都要重置循环检测基准
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_set_note_displayers_process(false)
+	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		_on_focus_regained()
+		if ui_stat_mgr.current_state == work_state and midi_playback_manager.is_playing:
+			_set_note_displayers_process(true)
 
 func _gui_input(event: InputEvent) -> void:
 	super._gui_input(event)

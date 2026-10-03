@@ -114,6 +114,186 @@ signal soundfont_reload_completed
 ## 信号：播放状态/位置发生外部可见变化（供 SystemMediaSession 同步系统媒体控制）
 signal playback_state_changed
 
+## 信号：播放列表内容或顺序发生变化
+signal playlist_changed
+
+## 信号：播放模式变化（repeat_all / repeat_one / shuffle / sequential）
+signal repeat_mode_changed
+
+## 播放列表播放模式
+enum RepeatMode {
+	SEQUENTIAL,   ## 顺序：播完列表末尾停止
+	REPEAT_ALL,   ## 列表循环
+	REPEAT_ONE,   ## 单曲循环
+	SHUFFLE,      ## 随机（不重复，播完一轮后才重洗）
+}
+
+## 播放列表条目数变化 / 当前索引变化时发出
+@warning_ignore("unused_signal")
+signal playlist_index_changed(index: int)
+
+## ===== 播放列表 =====
+## 由 MidiPlaybackManager 持有，供播放器页与系统媒体控件（上一首/下一首）共用。
+## 存 MidiData 引用而非路径，换曲时直接复用 load_midi 的既有流程。
+var playlist: Array[MidiData] = []
+var playlist_index: int = -1
+var repeat_mode: int = RepeatMode.SEQUENTIAL
+## 随机模式的洗牌结果（长度与 playlist 相同），避免每次 next 都重新随机导致重复
+var _shuffle_order: Array[int] = []
+var _shuffle_pos: int = 0
+
+## 设置播放列表（会重置索引，不自动播放）
+func set_playlist(items: Array[MidiData], start_index: int = 0) -> void:
+	playlist = items.duplicate()
+	playlist_index = -1 if playlist.is_empty() else clampi(start_index, 0, playlist.size() - 1)
+	_reshuffle()
+	playlist_changed.emit()
+
+## 向列表尾部追加
+func append_to_playlist(items: Array[MidiData]) -> void:
+	for item in items:
+		playlist.append(item)
+	_reshuffle()
+	playlist_changed.emit()
+
+## 清空列表
+func clear_playlist() -> void:
+	playlist.clear()
+	playlist_index = -1
+	_shuffle_order.clear()
+	_reshuffle()
+	playlist_changed.emit()
+
+## 列表是否为空
+func has_playlist() -> bool:
+	return not playlist.is_empty()
+
+## 切换播放模式。shuffle 需重新洗牌，其余仅改值
+func set_repeat_mode(mode: int) -> void:
+	if mode == repeat_mode:
+		return
+	repeat_mode = mode
+	if mode == RepeatMode.SHUFFLE:
+		_reshuffle()
+	repeat_mode_changed.emit(mode)
+
+## 循环切换播放模式（媒体控件的"循环"按钮语义：列表循环 → 单曲 → 关闭）
+func cycle_repeat_mode() -> void:
+	match repeat_mode:
+		RepeatMode.SEQUENTIAL:
+			set_repeat_mode(RepeatMode.REPEAT_ALL)
+		RepeatMode.REPEAT_ALL:
+			set_repeat_mode(RepeatMode.REPEAT_ONE)
+		_:
+			set_repeat_mode(RepeatMode.SHUFFLE)
+
+## 跳转到列表中的指定曲目并播放。index 越界时自动夹取
+func play_playlist_index(index: int) -> void:
+	if playlist.is_empty():
+		return
+	playlist_index = clampi(index, 0, playlist.size() - 1)
+	playlist_index_changed.emit(playlist_index)
+	_shuffle_pos = _shuffle_pos_of(playlist_index)
+	var data: MidiData = playlist[playlist_index]
+	if not load_midi(data):
+		return
+	play()
+
+## 下一首。user_initiated=true 时不受单曲循环限制
+## （媒体控件的"下一首"按钮应能跳出单曲循环）
+func play_next(user_initiated: bool = true) -> bool:
+	if playlist.is_empty():
+		return false
+	# 单曲循环下的自动续播：重播本曲
+	if not user_initiated and repeat_mode == RepeatMode.REPEAT_ONE:
+		seek(0.0)
+		play()
+		return true
+	var next := _next_index()
+	if next < 0:
+		return false
+	play_playlist_index(next)
+	return true
+
+## 上一首。距开头不足 3 秒时回到上一首，否则回到本曲开头（常见播放器语义）
+func play_previous() -> bool:
+	if playlist.is_empty():
+		return false
+	var pos := get_position_ms()
+	if pos > 3000.0:
+		seek(0.0)
+		return true
+	var prev := _prev_index()
+	play_playlist_index(prev)
+	return true
+
+## 当前是否还有下一首（用于禁用媒体控件的"下一首"按钮）
+func has_next() -> bool:
+	return not playlist.is_empty() and _next_index() >= 0
+
+## 当前是否还有上一首
+func has_previous() -> bool:
+	return not playlist.is_empty() and playlist_index > 0
+
+## 下一首索引；到末尾且非列表循环时返回 -1
+func _next_index() -> int:
+	if repeat_mode == RepeatMode.SHUFFLE:
+		return _shuffle_next_index()
+	var n := playlist_index + 1
+	if n < playlist.size():
+		return n
+	# 末尾：列表循环则回到开头，否则停止
+	if repeat_mode == RepeatMode.REPEAT_ALL:
+		return 0
+	return -1
+
+func _prev_index() -> int:
+	if repeat_mode == RepeatMode.SHUFFLE:
+		return _shuffle_prev_index()
+	return maxi(playlist_index - 1, 0)
+
+## 洗牌：Fisher-Yates，生成 playlist 索引的一个排列
+func _reshuffle() -> void:
+	_shuffle_order.clear()
+	for i in playlist.size():
+		_shuffle_order.append(i)
+	_shuffle_pos = 0
+	if repeat_mode != RepeatMode.SHUFFLE:
+		return
+	# 用实例 id 派生的伪随机种子，避免连续洗牌得到相同顺序
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(get_instance_id()) + str(Time.get_ticks_usec()))
+	for i in range(_shuffle_order.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp := _shuffle_order[i]
+		_shuffle_order[i] = _shuffle_order[j]
+		_shuffle_order[j] = tmp
+	# 若当前曲目在列表中，把洗牌位置对齐到它，避免切模式时"跳到别的歌"
+	if playlist_index >= 0 and playlist_index < _shuffle_order.size():
+		_shuffle_pos = _shuffle_order.find(playlist_index)
+
+func _shuffle_pos_of(target_index: int) -> int:
+	var p := _shuffle_order.find(target_index)
+	return p if p >= 0 else 0
+
+func _shuffle_next_index() -> int:
+	if _shuffle_order.is_empty():
+		return -1
+	_shuffle_pos += 1
+	if _shuffle_pos >= _shuffle_order.size():
+		# 一轮放完：随机模式下重洗并从头开始
+		_reshuffle()
+		_shuffle_pos = 0 if not _shuffle_order.is_empty() else -1
+	if _shuffle_pos < 0 or _shuffle_pos >= _shuffle_order.size():
+		return -1
+	return _shuffle_order[_shuffle_pos]
+
+func _shuffle_prev_index() -> int:
+	if _shuffle_order.is_empty():
+		return -1
+	_shuffle_pos = maxi(0, _shuffle_pos - 1)
+	return _shuffle_order[_shuffle_pos]
+
 func _ready() -> void:
 	if instance == null:
 		instance = self

@@ -54,10 +54,11 @@ func register_view(view: Node) -> void:
 	if _view == view:
 		return
 	_view = view
-	_ensure_backend()
-	# Android 13+ 通知权限是运行时权限，切到播放页时才请求（已授予则后端直接返回）
-	if _backend != null and _backend.has_method("ensure_notification_permission"):
-		_backend.ensure_notification_permission()
+	if _ensure_backend():
+		_on_backend_ready()
+	else:
+		# 插件尚未注册（Android 异步注册），_process 会重试
+		_backend_retry_frames = 0
 	push_state(true)
 	GLogger.info("Media session view registered: %s" % view.name, "SystemMediaSession")
 	_log_backend_diagnostics()
@@ -87,6 +88,7 @@ func unregister_view(view: Node) -> void:
 		_backend.clear()
 	_last_pushed_position_ms = -1.0
 	_last_pushed_playing = false
+	_backend_retry_frames = 0
 	GLogger.info("Media session view unregistered", "SystemMediaSession")
 
 ## 当前是否有播放页面注册
@@ -112,9 +114,25 @@ func push_state(force: bool = false) -> void:
 		meta["title"], meta["album"], _cover_png)
 
 func _process(delta: float) -> void:
+	# 后端未就绪时持续重试（Android Java 插件在渲染线程上异步注册）
+	if _backend == null:
+		if not has_view():
+			return
+		_backend_retry_frames += 1
+		if _backend_retry_frames > BACKEND_RETRY_MAX_FRAMES:
+			if _backend_retry_frames == BACKEND_RETRY_MAX_FRAMES + 1:
+				push_warning("[SystemMediaSession] backend unavailable after %d frames; " % BACKEND_RETRY_MAX_FRAMES
+					+ "system media control disabled on this platform")
+			return
+		if _ensure_backend():
+			GLogger.info("Media session backend became available after %d frames" % _backend_retry_frames,
+				"SystemMediaSession")
+			_on_backend_ready()
+		return
+
 	# 后台时 Godot 主循环暂停（Android 渲染线程被挂起），_process 不运行；
 	# 此时系统侧按 playback_rate 外推位置，返回前台后此处补一次校正。
-	if not has_view() or _backend == null:
+	if not has_view():
 		return
 	var mgr = MidiPlaybackManager.instance
 	if mgr == null or not mgr.is_playing:
@@ -212,16 +230,16 @@ func _on_backend_command(action: String, position_ms: float) -> void:
 	# 外部命令后立刻回推权威状态，避免系统 UI 与实际播放短暂不一致
 	push_state(true)
 
-## 惰性创建平台后端。不支持的平台保持 null，所有调用点做 null 检查
-func _ensure_backend() -> void:
+## 惰性创建平台后端。不支持的平台保持 null，所有调用点做 null 检查。
+## Android 的 Java 插件由 Godot 在渲染线程上异步注册（queueOnRenderThread），
+## 可能晚于本页 _ready，故拿不到时由 _process 继续重试。
+func _ensure_backend() -> bool:
 	if _backend != null:
-		return
+		return true
 	match OS.get_name():
 		"Android":
 			# Java GodotPlugin，由 addons/media_session 的导出插件注入 manifest meta-data 注册
 			_backend = Engine.get_singleton("MediaSessionControl")
-			if _backend == null:
-				push_warning("[SystemMediaSession] Android MediaSessionControl plugin not registered")
 		"Windows":
 			# 非 autoload：Android 目标不编译该 C# 文件（无 CsWinRT），故按需实例化
 			var script: Script = load("res://CSharp/MediaSessionControlCs.cs")
@@ -230,9 +248,21 @@ func _ensure_backend() -> void:
 				if node is Node:
 					add_child(node)
 					_backend = node
-			if _backend == null:
-				push_warning("[SystemMediaSession] Windows media session control not available")
 		_:
 			pass
-	if _backend != null and _backend.has_signal("command_received"):
-		_backend.command_received.connect(_on_backend_command)
+	if _backend != null:
+		if _backend.has_signal("command_received"):
+			_backend.command_received.connect(_on_backend_command)
+		return true
+	return false
+
+## 后端就绪后补做的初始化（通知权限请求 + 首次状态推送）
+func _on_backend_ready() -> void:
+	if _backend != null and _backend.has_method("ensure_notification_permission"):
+		_backend.ensure_notification_permission()
+	push_state(true)
+	_log_backend_diagnostics()
+
+## Android 插件注册重试次数（_process 每帧尝试，超过则放弃并告警）
+var _backend_retry_frames: int = 0
+const BACKEND_RETRY_MAX_FRAMES: int = 120

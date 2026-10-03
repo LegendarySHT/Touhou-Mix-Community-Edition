@@ -1,4 +1,4 @@
-<Project Sdk="Godot.NET.Sdk/4.7.1">
+<Project Sdk="Godot.NET.Sdk/4.7.2">
   <PropertyGroup>
     <!-- Windows 走 windows10 TFM 以获得 CsWinRT 投影（系统媒体控制 SMTC 需要）。
          纯 net8.0 无 WinRT 投影，SMTC 只能靠手搓 vtable 调用，可读性差很多。 -->

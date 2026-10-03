@@ -372,6 +372,59 @@ public partial class MeltySynthPlayer
 			_lastLoopPositionMs = nowMs;
 		}
 
+		// 后台 seek：Godot 主循环挂起时 _Process 不再处理 _pendingSeekMs，
+		// 故由音频线程消费。_seekTargetMs 为 NaN 表示无待处理请求。
+		private volatile bool _hasPendingSeek = false;
+		private double _seekTargetMs = double.NaN;
+
+		/// <summary>请求在音频线程内执行 seek（后台可用）</summary>
+		public void RequestSeek(double positionMs)
+		{
+			_seekTargetMs = positionMs;
+			_hasPendingSeek = true;
+		}
+
+		/// <summary>
+		/// 在音频回调内消费 seek 请求。回绕检测与进度条自走共用此处，
+		/// 保证 seek 与人声循环在同一时序内一致。
+		/// </summary>
+		private void ProcessPendingSeekInCallback()
+		{
+			if (!_hasPendingSeek)
+			{
+				return;
+			}
+			_hasPendingSeek = false;
+			double targetMs = _seekTargetMs;
+			_seekTargetMs = double.NaN;
+			if (_sequencer == null || targetMs < 0.0)
+			{
+				return;
+			}
+			try
+			{
+				_sequencer.Seek(TimeSpan.FromMilliseconds(targetMs));
+			}
+			catch (Exception)
+			{
+				// 音频线程内不打印（会争用打印锁拖慢回调）；失败留给主线程的诊断
+			}
+			// MIDI 跳变后人声跟随定位（loop 开启时从头对齐）
+			if (IsVocalLoaded())
+			{
+				SeekVocal(0.0);
+				if (_vocalLoopEnabled)
+				{
+					PlayVocal();
+				}
+			}
+		}
+
+		private bool IsVocalLoaded()
+		{
+			return _bridgeHandle != IntPtr.Zero && _vocalLoaded;
+		}
+
 			public uint GetVocalUnderrunCount()
 			{
 				return _bridgeHandle != IntPtr.Zero
@@ -815,8 +868,9 @@ public partial class MeltySynthPlayer
 						MixToOutput(_tempLeft, _tempRight, null, null, framesRequested, scale);
 					}
 
-					// MIDI 回绕后人声跟着回卷。此处必须在音频回调内：Android 切后台后
-					// Godot 主循环挂起，GDScript 侧无法再检测回绕来重启人声。
+					// 后台 seek 与 MIDI 回绕后人声重播。此处必须在音频回调内：
+					// Android 切后台后 Godot 主循环挂起，GDScript 与 _Process 均无法执行。
+					ProcessPendingSeekInCallback();
 					RestartVocalOnLoopWrap();
 				}
 
