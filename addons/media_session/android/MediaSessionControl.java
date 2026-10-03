@@ -283,6 +283,11 @@ public class MediaSessionControl extends GodotPlugin {
 			}
 		}
 
+		// 以本次下发的 lastPositionMs 为墙钟新基准。必须在读取位置之前：
+		// 外部（媒体控件 seek / 换曲 / 循环回绕）会经 update_state 更新 lastPositionMs，
+		// 若基准未重置，currentPositionMs() 会从旧基准继续推进，导致进度条不反映新位置。
+		resetTickBase();
+
 		MediaMetadata.Builder metadata = new MediaMetadata.Builder()
 				.putString(MediaMetadata.METADATA_KEY_TITLE, lastTitle)
 				.putString(MediaMetadata.METADATA_KEY_ALBUM, lastAlbum);
@@ -305,15 +310,20 @@ public class MediaSessionControl extends GodotPlugin {
 		if (lastPlaying) {
 			long pos = (long) currentPositionMs();
 			state.setState(PlaybackState.STATE_PLAYING, pos, 1.0f);
-			schedulePositionTick();
 		} else if (lastPositionMs > 0.0) {
-			cancelPositionTick();
 			state.setState(PlaybackState.STATE_PAUSED, (long) lastPositionMs, 0.0f);
 		} else {
-			cancelPositionTick();
 			state.setState(PlaybackState.STATE_STOPPED, 0L, 0.0f);
 		}
 		session.setPlaybackState(state.build());
+
+		// 每次下发都以 lastPositionMs 为新基准：外部 seek（含暂停态下的 seek）后
+		// 墙钟必须重新起算，否则进度条会从旧基准继续推进而不反映 seek 结果。
+		if (lastPlaying) {
+			schedulePositionTick();
+		} else {
+			cancelPositionTick();
+		}
 
 		if (lastPlaying) {
 			startForegroundPlayback();
@@ -332,6 +342,12 @@ public class MediaSessionControl extends GodotPlugin {
 	private long _tickBaseUptimeMs = 0L;
 
 	private static final long POSITION_TICK_INTERVAL_MS = 500L;
+
+	/** 以当前 lastPositionMs 重置墙钟基准 */
+	private void resetTickBase() {
+		_tickBasePositionMs = (long) lastPositionMs;
+		_tickBaseUptimeMs = android.os.SystemClock.elapsedRealtime();
+	}
 
 	/** 依据墙钟推算当前位置；已知时长时按取模回绕（loop 由上层语义保证） */
 	private double currentPositionMs() {
@@ -375,9 +391,7 @@ public class MediaSessionControl extends GodotPlugin {
 	};
 
 	private void schedulePositionTick() {
-		// 重置基准，使外部下发的新位置成为新起点
-		_tickBasePositionMs = (long) lastPositionMs;
-		_tickBaseUptimeMs = android.os.SystemClock.elapsedRealtime();
+		// 基准已由 pushState 起始处的 resetTickBase 设好，此处只需重排定时器
 		_ticker.removeCallbacks(_tickRunnable);
 		_ticker.postDelayed(_tickRunnable, POSITION_TICK_INTERVAL_MS);
 	}
