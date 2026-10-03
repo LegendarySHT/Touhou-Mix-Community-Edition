@@ -331,11 +331,46 @@ public partial class MeltySynthPlayer
 					MiniaudioNative.ma_bridge_vocal_is_playing(_bridgeHandle) != 0;
 			}
 
-			public bool IsVocalFinished()
+		public bool IsVocalFinished()
+		{
+			return _bridgeHandle != IntPtr.Zero &&
+				MiniaudioNative.ma_bridge_vocal_is_finished(_bridgeHandle) != 0;
+		}
+
+		// loop 开关由 MeltySynthPlayer.set_loop 同步进来（人声循环跟随 MIDI）
+		private volatile bool _vocalLoopEnabled = false;
+		private double _lastLoopPositionMs = -1.0;
+
+		public void SetVocalLoopEnabled(bool enabled)
+		{
+			_vocalLoopEnabled = enabled;
+			if (!enabled)
 			{
-				return _bridgeHandle != IntPtr.Zero &&
-					MiniaudioNative.ma_bridge_vocal_is_finished(_bridgeHandle) != 0;
+				_lastLoopPositionMs = -1.0;
 			}
+		}
+
+		/// <summary>
+		/// 人声跟随 MIDI 回绕重播。在音频回调内调用（无锁、无分配）。
+		/// 未加载人声时 IsVocalFinished 为 false，不会误触发。
+		/// </summary>
+		public void RestartVocalOnLoopWrap()
+		{
+			if (!_vocalLoopEnabled || _sequencer == null)
+			{
+				return;
+			}
+			double nowMs = _sequencer.RenderedPosition.TotalMilliseconds;
+			if (_lastLoopPositionMs >= 0.0 && nowMs < _lastLoopPositionMs - 100.0)
+			{
+				if (IsVocalFinished())
+				{
+					SeekVocal(0.0);
+					PlayVocal();
+				}
+			}
+			_lastLoopPositionMs = nowMs;
+		}
 
 			public uint GetVocalUnderrunCount()
 			{
@@ -775,11 +810,15 @@ public partial class MeltySynthPlayer
 							MixToOutput(_tempLeft, _tempRight, _manualLeft, _manualRight, framesRequested, scale);
 						}
 						else
-						{
-							_sequencer.Render(_tempLeft.AsSpan(0, framesRequested), _tempRight.AsSpan(0, framesRequested));
-							MixToOutput(_tempLeft, _tempRight, null, null, framesRequested, scale);
-						}
+					{
+						_sequencer.Render(_tempLeft.AsSpan(0, framesRequested), _tempRight.AsSpan(0, framesRequested));
+						MixToOutput(_tempLeft, _tempRight, null, null, framesRequested, scale);
 					}
+
+					// MIDI 回绕后人声跟着回卷。此处必须在音频回调内：Android 切后台后
+					// Godot 主循环挂起，GDScript 侧无法再检测回绕来重启人声。
+					RestartVocalOnLoopWrap();
+				}
 
 					_lastRenderTimestampTicks = Stopwatch.GetTimestamp();
 					Marshal.Copy(_outputBuffer, 0, pOutput, framesRequested * 2);

@@ -710,8 +710,72 @@ public partial class MeltySynthPlayer : Node
 			return;
 		}
 
+		// [诊断] 音频看门狗：playing 且非暂停时，音频钟应在推进。
+		// 若长时间不动，说明音频回调停摆（Android 后台挂起 / 设备被抢占）。
+		// 正常播放时静默，仅在检出停摆时打印。
+		_tickAudioWatchdog();
+
+		// [诊断] 曲尾回绕观测：进入末尾 1.5s 后每帧打印一次位置与 loop 状态，
+		// 用于区分"回绕成功"与"卡在末尾不再推进"。只在接近曲尾时输出。
+		_tickLoopTailDiag();
+
 		// 直接在回调中合成，主循环只需要确保播放已启动
 		RequestAudioOutputPlay();
+	}
+
+	// [诊断] 曲尾回绕观测
+	private int _loopTailDiagFrames = 0;
+
+	private void _tickLoopTailDiag()
+	{
+		if (_midiFile == null || !_sequencerStarted)
+		{
+			_loopTailDiagFrames = 0;
+			return;
+		}
+		double durMs = _midiFile.Length.TotalMilliseconds;
+		double posMs = _sequencer.RenderedPosition.TotalMilliseconds;
+		if (durMs - posMs > 1500.0)
+		{
+			_loopTailDiagFrames = 0;
+			return;
+		}
+		// 每 30 帧（约 0.5s）打一条，避免刷屏
+		if (++_loopTailDiagFrames % 30 != 1)
+		{
+			return;
+		}
+		GD.Print($"[MeltySynthPlayer][DIAG] TAIL pos={posMs:F0}/{durMs:F0}ms loop={loop} " +
+			$"endOfSeq={_sequencer.EndOfSequence} paused={_sequencer.IsPaused} playing={playing}");
+	}
+
+	// [诊断] 音频推进看门狗
+	private double _watchdogLastPositionMs = -1.0;
+	private int _watchdogStallFrames = 0;
+
+	private void _tickAudioWatchdog()
+	{
+		double pos = _sequencer.RenderedPosition.TotalMilliseconds;
+		if (_watchdogLastPositionMs >= 0.0 && pos <= _watchdogLastPositionMs + 0.5)
+		{
+			_watchdogStallFrames++;
+			// 主循环约 60fps，连续 2 秒不动即视为停摆
+			if (_watchdogStallFrames == 120)
+			{
+				GD.Print($"[MeltySynthPlayer][DIAG] AUDIO STALLED pos={pos:F1}ms loop={loop} " +
+					$"playing={playing} started={_sequencerStarted} endOfSeq={_sequencer.EndOfSequence}");
+			}
+		}
+		else
+		{
+			if (_watchdogStallFrames >= 120)
+			{
+				GD.Print($"[MeltySynthPlayer][DIAG] AUDIO RESUMED pos={pos:F1}ms " +
+					$"(stalled {_watchdogStallFrames} frames)");
+			}
+			_watchdogStallFrames = 0;
+		}
+		_watchdogLastPositionMs = pos;
 	}
 
 	public override void _ExitTree()
@@ -975,6 +1039,7 @@ public partial class MeltySynthPlayer : Node
 		return _audioOutput?.GetVocalUnderrunCount() ?? 0u;
 	}
 
+
 	public void set_bus(StringName targetBus)
 	{
 		_bus = targetBus;
@@ -987,6 +1052,11 @@ public partial class MeltySynthPlayer : Node
 	public void set_loop(bool enabled)
 	{
 		loop = enabled;
+		// 人声循环需跟随 MIDI 一起开关
+		if (_audioOutput is MiniaudioAudioOutputBridge ma)
+		{
+			ma.SetVocalLoopEnabled(enabled);
+		}
 		// GD.Print($"[MeltySynthPlayer] Loop set to: {enabled}");
 	}
 

@@ -32,6 +32,7 @@ ChartDB="*res://CSharp/ChartDb/ChartDb.cs"
 CoverLoader="*res://UI/Components/CoverLoader.gd"
 ResMGR="*res://Core/ResourceManager.gd"
 AudioRouteDetector="*res://CSharp/AudioRouteDetector.cs"
+MediaSess="*res://Game/SystemMediaSession.gd"
 AudioBtDetector="*res://Utilities/AudioBtDetector.gd"
 VkGuard="*res://UI/Components/VirtualKeyboardGuard.gd"
 
@@ -49,7 +50,7 @@ project/assembly_name="Touhou Mix Community Edition"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/miniaudio/plugin.cfg", "res://addons/android_runtime_inject/plugin.cfg")
+enabled=PackedStringArray("res://addons/miniaudio/plugin.cfg", "res://addons/android_runtime_inject/plugin.cfg", "res://addons/media_session/plugin.cfg")
 
 [gui]
 

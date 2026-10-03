@@ -115,6 +115,10 @@ func _ready() -> void:
 		add_child(_config_persistence)
 		_config_persistence.setup(self)
 
+	# 系统媒体控制（通知栏/锁屏/媒体键）命令入口
+	if not MediaSess.command_received.is_connected(_on_media_command):
+		MediaSess.command_received.connect(_on_media_command)
+
 	super._ready()
 
 	if ThemeMGR:
@@ -316,20 +320,22 @@ func _on_progress_bar_drag_started() -> void:
 # 进度条拖拽结束 - 执行跳转
 func _on_progress_bar_drag_ended(_value_changed: bool) -> void:
 	is_progress_dragging = false
-	
+	_seek_to(progress_bar.value)
+
+## 跳转到指定毫秒位置，并同步各轨道播放头
+func _seek_to(target_ms: float) -> void:
 	if midi_playback_manager == null:
 		return
-	
-	var target_ms = progress_bar.value
-	GLogger.info("Progress bar seek to: %.1f ms" % target_ms, "TrackView")
-	
+
+	GLogger.info("Seek to: %.1f ms" % target_ms, "TrackView")
+
 	# 执行跳转
 	midi_playback_manager.seek(target_ms)
 
 	# 【关键】更新 last_position_ms 和 current_tick，防止下一帧循环检测误判
 	last_position_ms = target_ms
 	current_tick = int(midi_playback_manager.position)
-	
+
 	# Reset individual track displayers first
 	for track in list_items:
 		if track.note_display:
@@ -341,6 +347,39 @@ func _on_progress_bar_drag_ended(_value_changed: bool) -> void:
 
 	# 显式跳转后抑制循环检测若干帧：seek 越过循环尾回绕（位置由大跳小）不应触发重置到 0
 	_seek_suppress_loop_frames = 30
+
+## 系统媒体控制命令（通知栏/锁屏/媒体键）。PlayView 不注册会话，故不会与
+## 打歌界面的暂停菜单/视觉时钟锚定冲突
+func _on_media_command(action: String, position_ms: float) -> void:
+	if ui_stat_mgr.current_state != work_state:
+		return
+	match action:
+		"play", "toggle":
+			if midi_playback_manager.is_paused:
+				midi_playback_manager.resume()
+				if not midi_playback_manager.deferred_play_pending:
+					_set_note_displayers_process(true)
+		"pause":
+			midi_playback_manager.pause()
+			_set_note_displayers_process(false)
+		"stop":
+			midi_playback_manager.stop()
+			_set_note_displayers_process(false)
+		"seek":
+			_seek_to(position_ms)
+		"next", "prev":
+			# 本页无上一首/下一首语义，暂统一映射为从头重播
+			_restart_from_beginning()
+		_:
+			pass
+
+## 从头重播：回到 0 并确保处于播放态
+func _restart_from_beginning() -> void:
+	_seek_to(0.0)
+	if midi_playback_manager.is_paused:
+		midi_playback_manager.resume()
+	if not midi_playback_manager.deferred_play_pending:
+		_set_note_displayers_process(true)
 
 # 进度条值改变 - 预览时间
 func _on_progress_bar_value_changed(value: float) -> void:
@@ -878,6 +917,7 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 		_config_persistence.call_deferred("save_midi_config")
 
 	if old_state == work_state:
+		MediaSess.unregister_view(self)
 		if midi_playback_manager:
 			if new_state == ui_stat_mgr.UIState.MIDI_VIEW:
 				midi_playback_manager.stop()
@@ -888,6 +928,10 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 		_set_note_displayers_process(false)
 		# 收起主面板的展开状态
 		get_node("MC/VBox/TotalView/MC/VBoxC/flowArea/noteFlowArea/Button").button_pressed = false
+
+	# 进入本视图时接管系统媒体控制（切后台继续播放由 miniaudio 音频线程维持）
+	if new_state == work_state:
+		MediaSess.register_view(self)
 
 	# Reload MIDI when returning from settings (handles backend switch)
 	if old_state == ui_stat_mgr.UIState.SETTINGS_VIEW and new_state == work_state:

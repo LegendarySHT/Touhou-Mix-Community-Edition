@@ -111,6 +111,9 @@ signal deferred_play_resumed
 ## 信号：由设置退出触发的音源重载已完成（TrackView 据此在重载后再续播，避免人声被重启）
 signal soundfont_reload_completed
 
+## 信号：播放状态/位置发生外部可见变化（供 SystemMediaSession 同步系统媒体控制）
+signal playback_state_changed
+
 func _ready() -> void:
 	if instance == null:
 		instance = self
@@ -228,6 +231,7 @@ func _process(_delta: float) -> void:
 		# MeltySynth 在 loop=true 时只回绕 sequencer，不发 finished 信号。
 		# 人声已自然结束时必须在这里显式重新定位并启动，否则只能靠 UI 开关恢复。
 		if get_loop():
+			GLogger.info("[DIAG] loop wrap detected: %.0f -> %.0f ms" % [_last_raw_midi_position_ms, raw_midi_position_ms], "MidiPlaybackManager")
 			_restart_vocal_for_current_position()
 		_last_raw_midi_position_ms = raw_midi_position_ms
 	else:
@@ -496,6 +500,7 @@ func unload_midi() -> void:
 	is_paused = false
 	position = 0.0
 	position_ms = 0.0
+	playback_state_changed.emit()
 
 ## 将 MIDI 运行时配置保存到 chart_runtime（权威 DB，替代 JSON 写回）
 ## 用于首次初始化后立即持久化，避免每次启动重复解析简介
@@ -708,6 +713,7 @@ func play() -> void:
 	# C# 推迟播放时人声也推迟，待 _on_backend_soundfont_changed 从起点对齐启动，避免人声先按旧位置播放导致错位。
 	if not actually_started:
 		deferred_play_pending = current_midi_data != null and not current_midi_data.vocal_file_path.is_empty() and current_midi_data.vocal_enabled
+		playback_state_changed.emit()
 		return
 
 	# 启动人声播放（如果有人声文件）
@@ -716,6 +722,8 @@ func play() -> void:
 		GLogger.info("Started vocal playback: %s (offset: %d ms)" % [current_midi_data.vocal_file_path, vocal_offset_ms], "MidiPlaybackManager")
 	else:
 		GLogger.info("No vocal file configured (path: '%s')" % current_midi_data.vocal_file_path, "MidiPlaybackManager")
+
+	playback_state_changed.emit()
 
 ## 停止播放
 func stop() -> void:
@@ -735,6 +743,8 @@ func stop() -> void:
 	# 停止人声播放
 	stop_vocal_playback()
 
+	playback_state_changed.emit()
+
 ## 暂停播放
 func pause() -> void:
 	var backend = _get_active_backend()
@@ -749,6 +759,8 @@ func pause() -> void:
 	var audio_manager = AudioManager.instance
 	if current_midi_data and audio_manager:
 		audio_manager.set_vocal_playing(false)
+
+	playback_state_changed.emit()
 
 ## 继续播放
 func resume() -> void:
@@ -766,6 +778,7 @@ func resume() -> void:
 	# C# 推迟时人声也推迟，待 _on_backend_soundfont_changed 从起点对齐启动。
 	if not actually_resumed:
 		deferred_play_pending = current_midi_data != null and not current_midi_data.vocal_file_path.is_empty() and current_midi_data.vocal_enabled
+		playback_state_changed.emit()
 		return
 
 	# 恢复或启动人声播放
@@ -779,6 +792,8 @@ func resume() -> void:
 				var audio_manager = AudioManager.instance
 				if audio_manager:
 					audio_manager.set_vocal_playing(true)
+
+	playback_state_changed.emit()
 
 ## 设置循环播放
 func set_loop(enabled: bool) -> void:
@@ -818,6 +833,8 @@ func seek(pos: float) -> void:
 	_last_raw_midi_position_ms = -1.0
 	last_sync_check_pos_ms = pos
 	_seek_vocal_to_midi_position(pos)
+
+	playback_state_changed.emit()
 
 ## 辅助函数：根据BPM时间线计算当前的实际播放时间（毫秒）
 func _calculate_position_with_bpm_timeline(current_tick: float, timebase: int) -> float:
@@ -1415,6 +1432,7 @@ func _on_midi_finished() -> void:
 	is_playing = false
 	# 同步停止人声播放，避免 MIDI 结束后人声继续响
 	stop_vocal_playback()
+	playback_state_changed.emit()
 	midi_finished.emit()
 
 ## 回调：人声自然结束
