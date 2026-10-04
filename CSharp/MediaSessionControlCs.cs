@@ -259,6 +259,7 @@ public partial class MediaSessionControlCs : Node
 			}
 
 			_smtc.ButtonPressed += OnButtonPressed;
+			_smtc.PlaybackPositionChangeRequested += OnPositionChangeRequested;
 			_smtc.IsEnabled = true;
 			GD.Print("[MediaSessionControlCs] SMTC registered");
 			return true;
@@ -279,6 +280,7 @@ public partial class MediaSessionControlCs : Node
 		try
 		{
 			_smtc.ButtonPressed -= OnButtonPressed;
+			_smtc.PlaybackPositionChangeRequested -= OnPositionChangeRequested;
 			_smtc.IsEnabled = false;
 		}
 		catch (Exception e)
@@ -286,6 +288,14 @@ public partial class MediaSessionControlCs : Node
 			GD.PrintErr($"[MediaSessionControlCs] detach failed: {e.Message}");
 		}
 		_smtc = null;
+	}
+
+	/// <summary>COM 线程回调：进度条被拖动。同样只记录，由 _Process 转信号。</summary>
+	private void OnPositionChangeRequested(SystemMediaTransportControls sender,
+		PlaybackPositionChangeRequestedEventArgs args)
+	{
+		_pendingAction = "seek";
+		_pendingPositionMs = args.RequestedPlaybackPosition.TotalMilliseconds;
 	}
 
 	/// <summary>COM 线程回调：只记录命令，由 _Process 在主线程转成信号</summary>

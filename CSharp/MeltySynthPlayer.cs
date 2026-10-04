@@ -102,6 +102,9 @@ public partial class MeltySynthPlayer : Node
 	private long _judgeAnchorTicks = 0;       // 锚点对应的墙钟时间戳
 	private bool _judgeAnchorValid = false;   // 锚点是否有效（play/seek/暂停/停止后失效，下次读取重建）
 	private double _lastRenderedRefMs = 0.0;  // 上次读到的音频渲染钟，用于识别 loop 回绕
+	// seek 目标位置：重锚判定钟时优先用它，而不是等音频渲染钟追上。
+	// 否则拖动进度条后渲染钟仍是旧位置，墙钟从旧值起算导致进度条复位到错误位置。
+	private double _seekAnchorMs = double.NaN;
 	private const double JudgeCalibrationDeadbandMs = 25.0;  // 音频参考误差超过此值视为真实欠载，不做校准
 	private const double JudgeSlewGain = 0.02;               // 每次读取吸收的误差比例（慢速校准，避免跳变）
 	private const double JudgeWrapBackwardEpsilonMs = 1.0;   // 渲染钟回跳超过此值视为 loop 回绕
@@ -642,6 +645,7 @@ public partial class MeltySynthPlayer : Node
 			InvalidateJudgeClock();  // 按 seek 后的音频参考重建锚点
 			_lastPositionMs = _pendingSeekMs;  // 记录 seek 目标，供非播放状态读取
 			_seekPositionHoldFrames = 10;  // 保持目标位置约 10 帧，待渲染钟追上
+			_seekAnchorMs = _lastPositionMs;  // 同上：重锚优先用目标位置而非滞后的渲染钟
 
 			// 3. 如果之前在播放，重新启动 AudioStreamPlayer（锁外，ma_bridge_start 不等待回调）
 			if (playing)
@@ -923,6 +927,7 @@ public partial class MeltySynthPlayer : Node
 			// hold 若干帧避免 sequencer 渲染钟尚未反映新位置时瞬回 0
 			_lastPositionMs = positionMs;
 			_seekPositionHoldFrames = 10;
+			_seekAnchorMs = positionMs;
 			InvalidateJudgeClock();
 			ma.RequestSeek(positionMs);
 			return;
@@ -1191,7 +1196,10 @@ public partial class MeltySynthPlayer : Node
 		// 设备一旦开始渲染 renderedMs 立即大于 0，此后恢复正常锚点推进。
 		if (!_judgeAnchorValid || renderedMs <= 0.0)
 		{
-			ReanchorJudgeClock(audioRefMs);
+			// seek 后优先按目标位置重建：音频渲染钟要等音频线程消费请求后才更新，
+			// 用它重锚会让进度条从 seek 前的位置起算（表现为复位到错误位置）。
+			ReanchorJudgeClock(double.IsNaN(_seekAnchorMs) ? audioRefMs : _seekAnchorMs);
+			_seekAnchorMs = double.NaN;
 		}
 
 		double latencyMs = (_audioOutput != null && _audioOutput.IsPlaying) ? _audioOutput.GetLatencyMs() : 0.0;

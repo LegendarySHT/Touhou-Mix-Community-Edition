@@ -409,16 +409,11 @@ public partial class MeltySynthPlayer
 			{
 				// 音频线程内不打印（会争用打印锁拖慢回调）；失败留给主线程的诊断
 			}
-			// MIDI 跳变后人声跟随定位（loop 开启时从头对齐）
-			if (IsVocalLoaded())
-			{
-				SeekVocal(0.0);
-				if (_vocalLoopEnabled)
-				{
-					PlayVocal();
-				}
-			}
-		}
+		// 人声定位不在这里做：上层 MidiPlaybackManager.seek() 已按目标位置调用
+		// _seek_vocal_to_midi_position(pos)，这里再拉回 0 会覆盖掉正确结果，
+		// 导致拖动进度条后 MIDI 在新位置、人声却从头播（拖到靠后处即立刻播完）。
+		// 音频线程只负责 MIDI 时钟，与人声各自独立。
+	}
 
 		private bool IsVocalLoaded()
 		{
