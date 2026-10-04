@@ -223,9 +223,10 @@ func _on_playback_state_changed() -> void:
 	push_state(true)
 
 func _on_backend_command(action: String, position_ms: float) -> void:
+	# 日志放在 has_view() 守卫之前：否则页面已注销时会静默返回，看不出命令是否到达
+	GLogger.info("Media session command: %s (%.1f ms) has_view=%s" % [action, position_ms, has_view()], "SystemMediaSession")
 	if not has_view():
 		return
-	GLogger.info("Media session command: %s (%.1f ms)" % [action, position_ms], "SystemMediaSession")
 	command_received.emit(action, position_ms)
 	# 外部命令后立刻回推权威状态，避免系统 UI 与实际播放短暂不一致
 	push_state(true)
@@ -252,7 +253,11 @@ func _ensure_backend() -> bool:
 			pass
 	if _backend != null:
 		if _backend.has_signal("command_received"):
-			_backend.command_received.connect(_on_backend_command)
+			if not _backend.command_received.is_connected(_on_backend_command):
+				_backend.command_received.connect(_on_backend_command)
+				GLogger.info("Media session command signal connected", "SystemMediaSession")
+		else:
+			push_warning("[SystemMediaSession] backend has no command_received signal")
 		return true
 	return false
 

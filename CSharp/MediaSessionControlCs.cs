@@ -90,6 +90,7 @@ public partial class MediaSessionControlCs : Node
 		_pendingAction = null;
 		double positionMs = _pendingPositionMs;
 		_pendingPositionMs = -1.0;
+		GD.Print($"[MediaSessionControlCs] emit command_received: {action} {positionMs}");
 		EmitSignal(SignalName.CommandReceived, action, positionMs);
 	}
 
@@ -106,6 +107,13 @@ public partial class MediaSessionControlCs : Node
 		}
 		try
 		{
+			// clear() 会把 IsEnabled 置 false，但会话对象与事件订阅仍保留。
+			// 再次进入播放页时若不重新启用，卡片可能因系统缓存仍在、但按钮不再响应，
+			// 表现为「有卡片却按不动」。
+			if (!_smtc.IsEnabled)
+			{
+				_smtc.IsEnabled = true;
+			}
 			_smtc.PlaybackStatus = playing
 				? Windows.Media.MediaPlaybackStatus.Playing
 				: (positionMs > 0.0 ? Windows.Media.MediaPlaybackStatus.Paused
@@ -215,6 +223,69 @@ public partial class MediaSessionControlCs : Node
 	[DllImport("shell32.dll", CharSet = CharSet.Unicode)]
 	private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
 
+	[DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+	private static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid riid, out IntPtr propStore);
+
+	[System.Runtime.InteropServices.DllImport("ole32.dll")]
+	private static extern IntPtr CoTaskMemAlloc(int cb);
+
+	[StructLayout(LayoutKind.Explicit)]
+	private struct PropVariant
+	{
+		[FieldOffset(0)] public ushort vt;
+		[FieldOffset(8)] public IntPtr pointer;
+	}
+
+	[ComImport, Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"),
+		InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+	private interface IPropertyStore
+	{
+		void GetCount(out uint c);
+		void GetAt(uint i, out PropVariant p);
+		void GetValue(ref Guid key, out PropVariant v);
+		void SetValue(ref Guid key, ref PropVariant v);
+		void Commit();
+	}
+
+	// VT_LPWSTR
+	private const ushort VtLpwstr = 31;
+	// PKEY_AppUserModel_ID
+	private static readonly Guid PkeyAppUserModelId = new("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
+	private static readonly Guid IidPropertyStore = new("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99");
+
+	/// <summary>
+	/// 给已创建的窗口补设 AppUserModelID。
+	/// SetCurrentProcessExplicitAppUserModelID 是进程级的，对已存在的 HWND 无效；
+	/// 必须走窗口的 IPropertyStore 写 PKEY_AppUserModel_ID（Godot 自己的文件对话框
+	/// 也是这么做的），否则系统媒体浮层显示「未知应用」且不路由媒体按键。
+	/// </summary>
+	private static void ApplyWindowAppUserModelId(IntPtr hwnd, string appId)
+	{
+		IntPtr store;
+		Guid iid = IidPropertyStore;
+		if (SHGetPropertyStoreForWindow(hwnd, ref iid, out store) != 0 || store == IntPtr.Zero)
+		{
+			return;
+		}
+		int bytes = (appId.Length + 1) * 2;
+		IntPtr mem = CoTaskMemAlloc(bytes);
+		Marshal.Copy(appId.ToCharArray(), 0, mem, appId.Length);
+		Marshal.WriteInt16(mem, bytes - 2, 0);
+		var pv = new PropVariant { vt = VtLpwstr, pointer = mem };
+		try
+		{
+			var store2 = (IPropertyStore)Marshal.GetObjectForIUnknown(store);
+			Guid key = PkeyAppUserModelId;
+			store2.SetValue(ref key, ref pv);
+			store2.Commit();
+			Marshal.Release(store);
+		}
+		finally
+		{
+			Marshal.FreeCoTaskMem(mem);
+		}
+	}
+
 	private bool TryInit()
 	{
 		try
@@ -235,6 +306,7 @@ public partial class MediaSessionControlCs : Node
 				GD.PrintErr("[MediaSessionControlCs] main window handle unavailable");
 				return false;
 			}
+			ApplyWindowAppUserModelId(hwnd, "TouhouMix.TouhouMixCommunityEdition");
 
 			IntPtr hstr;
 			if (WindowsCreateString(SmtcClassName, SmtcClassName.Length, out hstr) != 0)
@@ -316,6 +388,7 @@ public partial class MediaSessionControlCs : Node
 	private void OnButtonPressed(SystemMediaTransportControls sender,
 		SystemMediaTransportControlsButtonPressedEventArgs args)
 	{
+		GD.Print($"[MediaSessionControlCs] ButtonPressed: {(SmtcButton)args.Button}");
 		switch ((SmtcButton)args.Button)
 		{
 			case SmtcButton.Play:
