@@ -361,6 +361,10 @@ public partial class MeltySynthPlayer
 				return;
 			}
 		double nowMs = _sequencer.RenderedPosition.TotalMilliseconds;
+		if (double.IsNaN(nowMs))
+		{
+			return;
+		}
 		if (_lastLoopPositionMs >= 0.0 && nowMs < _lastLoopPositionMs - 100.0)
 		{
 			// 无条件从头重播，不看 IsVocalFinished()。
@@ -392,17 +396,21 @@ public partial class MeltySynthPlayer
 		/// </summary>
 		private void ProcessPendingSeekInCallback()
 		{
-			if (!_hasPendingSeek)
-			{
-				return;
-			}
-			_hasPendingSeek = false;
-			double targetMs = _seekTargetMs;
-			_seekTargetMs = double.NaN;
-			if (_sequencer == null || targetMs < 0.0)
-			{
-				return;
-			}
+		if (!_hasPendingSeek)
+		{
+			return;
+		}
+		_hasPendingSeek = false;
+		double targetMs = _seekTargetMs;
+		_seekTargetMs = double.NaN;
+		if (_sequencer == null || double.IsNaN(targetMs) || targetMs < 0.0)
+		{
+			return;
+		}
+		// seek 会让渲染钟从大值跳到目标值（例如跳到 0），紧接着的循环回绕检测会把这
+		// 次跳变误判成 loop，从而在同一回调里既 seek 又重置人声——两者交叉易崩。
+		// 故清空基准，让下一帧重新建立。
+		_lastLoopPositionMs = -1.0;
 			try
 			{
 				_sequencer.Seek(TimeSpan.FromMilliseconds(targetMs));

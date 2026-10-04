@@ -130,6 +130,8 @@ func _process(delta: float) -> void:
 			_on_backend_ready()
 		return
 
+	_poll_backend_command()
+
 	# 后台时 Godot 主循环暂停（Android 渲染线程被挂起），_process 不运行；
 	# 此时系统侧按 playback_rate 外推位置，返回前台后此处补一次校正。
 	if not has_view():
@@ -222,6 +224,26 @@ func _on_cover_loaded(path: String, texture: Texture2D, _version: int) -> void:
 func _on_playback_state_changed() -> void:
 	push_state(true)
 
+func _poll_backend_command() -> void:
+	# 后端命令的收取方式因平台而异：Java 侧在 UI 线程 emitSignal，可直接连；
+	# C# 侧 [Signal] 不会注册为 Godot 信号，只能轮询。
+	if _backend.has_signal("command_received"):
+		return
+	if not _backend.has_method("poll_command"):
+		if not _poll_warned:
+			_poll_warned = true
+			push_warning("[SystemMediaSession] backend has neither command_received signal nor poll_command")
+		return
+	var res: Array = _backend.poll_command()
+	if res.is_empty():
+		return
+	var action: String = res[0]
+	var pos: float = float(res[1]) if res.size() > 1 else -1.0
+	GLogger.info("[DIAG] polled command: %s (%.1f ms)" % [action, pos], "SystemMediaSession")
+	_on_backend_command(action, pos)
+
+var _poll_warned: bool = false
+
 func _on_backend_command(action: String, position_ms: float) -> void:
 	# 日志放在 has_view() 守卫之前：否则页面已注销时会静默返回，看不出命令是否到达
 	GLogger.info("Media session command: %s (%.1f ms) has_view=%s" % [action, position_ms, has_view()], "SystemMediaSession")
@@ -252,12 +274,12 @@ func _ensure_backend() -> bool:
 		_:
 			pass
 	if _backend != null:
-		if _backend.has_signal("command_received"):
-			if not _backend.command_received.is_connected(_on_backend_command):
-				_backend.command_received.connect(_on_backend_command)
-				GLogger.info("Media session command signal connected", "SystemMediaSession")
-		else:
-			push_warning("[SystemMediaSession] backend has no command_received signal")
+		# Java 后端在 UI 线程 emitSignal，直接连即可；C# 后端的 [Signal] 不会注册为
+		# Godot 信号（has_signal 为 false，EmitSignal 静默成功），只能由 _process 轮询
+		# poll_command 取走。
+		if _backend.has_signal("command_received") \
+				and not _backend.command_received.is_connected(_on_backend_command):
+			_backend.command_received.connect(_on_backend_command)
 		return true
 	return false
 

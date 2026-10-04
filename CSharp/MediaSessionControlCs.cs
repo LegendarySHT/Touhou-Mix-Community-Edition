@@ -79,19 +79,29 @@ public partial class MediaSessionControlCs : Node
 		Detach();
 	}
 
-	public override void _Process(double delta)
+	// SMTC 事件在 COM 线程到达，命令由 SystemMediaSession 每帧调用 poll_command 取走。
+	// 不用 [Signal]：C# 的 [Signal] 委托在本项目里不会注册为 Godot 信号
+	// （has_signal("command_received") 为 false，而 EmitSignal 不校验、静默成功），
+	// 运行时用 load().new() 创建的 C# 节点尤其如此。Java 侧走 getPluginSignals 注册，不受影响。
+	// 因此本类不需要 _Process。
+
+	/// <summary>
+	/// 由 SystemMediaSession 每帧调用，取走一条待处理命令。
+	/// 返回 [action, position_ms]；无命令时返回空数组。
+	/// 用数组而非 out/ref 参数：Godot 的 C# 方法绑定不支持 out 参数
+	/// （has_method 会返回 false，方法根本不会被导出给 GDScript）。
+	/// </summary>
+	public string[] poll_command()
 	{
-		// SMTC 事件在 COM 线程到达，信号必须在主线程发
 		string? action = _pendingAction;
 		if (action == null)
 		{
-			return;
+			return Array.Empty<string>();
 		}
 		_pendingAction = null;
-		double positionMs = _pendingPositionMs;
+		double pos = _pendingPositionMs;
 		_pendingPositionMs = -1.0;
-		GD.Print($"[MediaSessionControlCs] emit command_received: {action} {positionMs}");
-		EmitSignal(SignalName.CommandReceived, action, positionMs);
+		return new[] { action, pos.ToString(System.Globalization.CultureInfo.InvariantCulture) };
 	}
 
 	/// <summary>向系统下发播放状态与元数据。由 SystemMediaSession 调用。</summary>
