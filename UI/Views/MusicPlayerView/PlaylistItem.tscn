@@ -1,0 +1,45 @@
+[gd_scene format=3 uid="uid://d03njat560k1c"]
+
+[ext_resource type="Script" uid="uid://jp14hnne4qil" path="res://UI/Views/MusicPlayerView/PlaylistItem.gd" id="1_item"]
+[ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="2_3hfq4"]
+
+[node name="PlaylistItem" type="Button" unique_id=515357210]
+custom_minimum_size = Vector2(0, 50)
+offset_right = 394.0
+offset_bottom = 50.0
+mouse_filter = 1
+toggle_mode = true
+script = ExtResource("1_item")
+
+[node name="HBox" type="HBoxContainer" parent="." unique_id=1977100613]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="DragBtn" type="Button" parent="HBox" unique_id=725974266]
+custom_minimum_size = Vector2(35, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 32
+text = "≡"
+
+[node name="Title" type="Label" parent="HBox" unique_id=880093056]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "歌名"
+vertical_alignment = 1
+clip_text = true
+script = ExtResource("2_3hfq4")
+
+[node name="RemoveBtn" type="Button" parent="HBox" unique_id=2014382139]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+mouse_filter = 1
+theme_override_font_sizes/font_size = 30
+text = "✕"

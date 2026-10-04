@@ -6,7 +6,7 @@
 ## 音频完全走 miniaudio 原生设备、不经过 Godot AudioServer，引擎内置的媒体集成
 ## 不可用，各平台需自行实现后端。后端统一契约：
 ##   signal command_received(action: String, position_ms: float)
-##   func update_state(playing, position_ms, duration_ms, title, album, cover_png)
+##   func update_state(playing, position_ms, duration_ms, title, album, cover_png, end_action)
 ##   func clear()
 ## cover_png 为 PNG 字节（封面嵌入 MediaMetadata 需字节流，路径仅平台内部使用）
 ##
@@ -21,6 +21,9 @@ extends Node
 ## 系统媒体控制下发的命令。action: play / pause / toggle / stop / next / prev / seek
 ## position_ms 仅 seek 有效，其余为 -1
 signal command_received(action: String, position_ms: float)
+## 用户在系统媒体控件点上下首，且当前播放列表为空（尚无歌单）时发出，
+## 请求打开音乐播放器页。判定留在本层：MidiPlaybackManager 不该知道 UI 存在。
+signal open_player_requested
 
 ## 平台后端（惰性创建，见 _ensure_backend）
 var _backend: Object = null
@@ -35,9 +38,6 @@ var _position_accum: float = 0.0
 var _cover_png_cache: Dictionary = {}
 var _cover_png_path: String = ""
 var _cover_png: PackedByteArray = PackedByteArray()
-## 封面加载在途标记（避免同一路径重复入队）
-var _cover_loading_path: String = ""
-const COVER_ITEM_ID := "media_session_cover"
 ## 位置推送节流间隔（秒）。系统侧按 playback_rate 自行外推，无需高频刷新
 const POSITION_PUSH_INTERVAL: float = 0.5
 
@@ -45,8 +45,14 @@ func _ready() -> void:
 	add_to_group("singleton")
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
+	_ensure_manager_signals()
+
+## 确保已订阅 manager 的状态信号。连接建立后不再重复，故可安全每帧调用。
+func _ensure_manager_signals() -> void:
 	var mgr = MidiPlaybackManager.instance
-	if mgr != null and not mgr.playback_state_changed.is_connected(_on_playback_state_changed):
+	if mgr == null:
+		return
+	if not mgr.playback_state_changed.is_connected(_on_playback_state_changed):
 		mgr.playback_state_changed.connect(_on_playback_state_changed)
 
 ## 注册播放页面：此后系统媒体控制可见，命令回送至该页面
@@ -79,17 +85,23 @@ func _log_backend_diagnostics() -> void:
 		if not err.is_empty():
 			GLogger.warning("[DIAG] last foreground error: %s" % err, "SystemMediaSession")
 
-## 注销播放页面：系统媒体控制隐藏，不再接收命令
+## 注销播放页面：系统媒体控制隐藏，并停止播放。
+##
+## 停止播放是当前明确的行为（离开播放器页即退出播放）。命令本身由
+## MidiPlaybackManager 执行、不依赖页面，所以这里只负责"没有页面 = 没人听"。
 func unregister_view(view: Node) -> void:
 	if _view != view:
 		return
 	_view = null
+	var mgr := MidiPlaybackManager.instance
+	if mgr != null and mgr.is_playing:
+		mgr.stop()
 	if _backend != null:
 		_backend.clear()
 	_last_pushed_position_ms = -1.0
 	_last_pushed_playing = false
 	_backend_retry_frames = 0
-	GLogger.info("Media session view unregistered", "SystemMediaSession")
+	GLogger.info("Media session view unregistered (playback stopped)", "SystemMediaSession")
 
 ## 当前是否有播放页面注册
 func has_view() -> bool:
@@ -111,9 +123,12 @@ func push_state(force: bool = false) -> void:
 	var meta := _build_metadata()
 	_ensure_cover_loaded(meta["cover_path"])
 	_backend.update_state(playing, mgr.position_ms, mgr.get_backend_duration_ms(),
-		meta["title"], meta["album"], _cover_png)
+		meta["title"], meta["album"], _cover_png, mgr.get_track_end_action())
 
 func _process(delta: float) -> void:
+	# MidiPlaybackManager 由 Main 在 autoload 之后创建，_ready 时可能尚未实例化，
+	# 导致状态信号根本没连上（表现为「进了播放器页后媒体控件不再更新」）。每帧补连一次。
+	_ensure_manager_signals()
 	# 后端未就绪时持续重试（Android Java 插件在渲染线程上异步注册）
 	if _backend == null:
 		if not has_view():
@@ -164,8 +179,9 @@ func _resolve_cover_path(data: MidiData) -> String:
 		return ""
 	return fs_mgr.get_cover_path_by_midiData(data)
 
-## 确保封面 PNG 已就绪。读盘 + PNG 编码较慢，走 CoverLoader 后台线程，
-## 完成后回调再补推一次状态（此时 update_state 带封面）
+## 确保封面 PNG 已就绪。同步读盘 + PNG 编码（结果缓存，每封面一次）：
+## 异步加载的回调依赖主循环，后台主循环停摆时永远不返回，
+## 表现为系统卡片只能显示已缓存的封面，故这里必须同步补齐。
 func _ensure_cover_loaded(path: String) -> void:
 	if path.is_empty():
 		_cover_png = PackedByteArray()
@@ -175,51 +191,32 @@ func _ensure_cover_loaded(path: String) -> void:
 		_cover_png = _cover_png_cache[path]
 		_cover_png_path = path
 		return
-	if _cover_loading_path == path:
-		return  # 同路径在途
-	var fs_mgr := FileSystemManager.instance
-	if fs_mgr == null:
-		return
-	# res:// 封面在 PCK 内，同步读盘即可（导入资源解码很快）
-	if path.begins_with("res://"):
-		_load_cover_bytes(path)
-		return
-	_cover_loading_path = path
-	CoverLoader.request_load(COVER_ITEM_ID, path, _on_cover_loaded)
+	_load_cover_bytes(path)
 
-## 把封面纹理编码为 PNG 字节
+## 把封面编码为 PNG 字节。优先复用纹理缓存；未缓存时文件路径直接解码 Image
+## （不建 GPU 纹理，任何线程可跑），res:// 封面在 PCK 内只能经 ResourceLoader 取
 func _load_cover_bytes(path: String) -> void:
-	var tex: Texture2D = FileSystemManager.instance.get_cached_cover_texture(path) if FileSystemManager.instance else null
-	if tex == null:
-		tex = load(path) as Texture2D
 	var bytes := PackedByteArray()
-	if tex != null:
-		var img := tex.get_image()
-		if img != null:
-			if img.is_compressed():
-				img.decompress()
-			bytes = img.save_png_to_buffer()
+	var tex: Texture2D = FileSystemManager.instance.get_cached_cover_texture(path) if FileSystemManager.instance else null
+	var img: Image = tex.get_image() if tex != null else null
+	if img == null:
+		if path.begins_with("res://"):
+			var loaded := load(path) as Texture2D
+			img = loaded.get_image() if loaded != null else null
+		else:
+			img = Image.load_from_file(_globalize_path(path))
+	if img != null:
+		if img.is_compressed():
+			img.decompress()
+		bytes = img.save_png_to_buffer()
 	_cover_png_cache[path] = bytes
 	_cover_png = bytes
 	_cover_png_path = path
 
-## CoverLoader 后台加载回调（主线程）
-func _on_cover_loaded(path: String, texture: Texture2D, _version: int) -> void:
-	if _cover_loading_path != path:
-		return  # 期间已切歌，结果作废
-	_cover_loading_path = ""
-	var bytes := PackedByteArray()
-	if texture != null:
-		var img := texture.get_image()
-		if img != null:
-			if img.is_compressed():
-				img.decompress()
-			bytes = img.save_png_to_buffer()
-	_cover_png_cache[path] = bytes
-	_cover_png = bytes
-	_cover_png_path = path
-	# 封面后到，补推一次让系统卡片更新
-	push_state(true)
+func _globalize_path(path: String) -> String:
+	if path.begins_with("user://") or path.begins_with("res://"):
+		return ProjectSettings.globalize_path(path)
+	return path
 
 func _on_playback_state_changed() -> void:
 	push_state(true)
@@ -244,11 +241,52 @@ func _poll_backend_command() -> void:
 
 var _poll_warned: bool = false
 
+## 跳转到播放器页。当前在 TrackView 时先一次性退回 AlbumView，避免把 TrackView
+## 留在返回栈里（否则从播放器返回会回到音轨页，语义不对）。
+func _navigate_to_player() -> void:
+	if UiStatMGR.current_state == UIStateManager.UIState.MUSIC_PLAYER_VIEW:
+		return
+	if UiStatMGR.current_state == UIStateManager.UIState.TRACK_VIEW:
+		UiStatMGR.go_back_to(UIStateManager.UIState.ALBUM_VIEW)
+	# stash=false：不再把当前页压栈，返回键从播放器直接回 AlbumView
+	UiStatMGR.change_state(UIStateManager.UIState.MUSIC_PLAYER_VIEW, false)
+	GLogger.info("Navigated to music player view", "SystemMediaSession")
+
+## 播放列表为空时，把当前正在播放的曲子作为单元素列表。
+## 区分"用户还没配列表"与"列表播到尾"：后者由 has_next() 为 false 表达，不走这里。
+func _ensure_playlist_has_current() -> void:
+	var mgr := MidiPlaybackManager.instance
+	if mgr == null or mgr.current_midi_data == null:
+		return
+	if not mgr.playlist.is_empty():
+		return
+	var data: MidiData = mgr.current_midi_data
+	var key := data.chart_key if not data.chart_key.is_empty() else data.id
+	if key.is_empty():
+		return
+	# 列表本体只在 manager 一处；单曲是临时状态，标记后不落盘，避免下次恢复成旧曲
+	PlaylistMGR.transient_single = true
+	mgr.set_playlist([data] as Array[MidiData], 0)
+	GLogger.info("Playlist seeded with current song: %s" % data.name, "SystemMediaSession")
+
 func _on_backend_command(action: String, position_ms: float) -> void:
-	# 日志放在 has_view() 守卫之前：否则页面已注销时会静默返回，看不出命令是否到达
-	GLogger.info("Media session command: %s (%.1f ms) has_view=%s" % [action, position_ms, has_view()], "SystemMediaSession")
+	# 日志放在守卫之前：否则页面已注销时会静默返回，看不出命令是否到达
+	GLogger.info("Media session command: %s (%.1f ms) has_view=%s" % [action, position_ms, has_view()],
+		"SystemMediaSession")
 	if not has_view():
 		return
+	var mgr := MidiPlaybackManager.instance
+	if mgr != null:
+		var consumed := mgr.handle_media_command(action, position_ms)
+		# 上下首但歌单为空（无法切歌）：把当前这首作为起点
+		if not consumed and (action == "next" or action == "prev"):
+			_ensure_playlist_has_current()
+	# 上下首一律进播放器页——这是该页面的入口语义，与歌单是否为空无关。
+	# 之前只在歌单为空时跳转，导致退出播放器页后在 TrackView 点上下首
+	# 会按列表切歌却留在原页面。
+	if action == "next" or action == "prev":
+		open_player_requested.emit()
+		_navigate_to_player()
 	command_received.emit(action, position_ms)
 	# 外部命令后立刻回推权威状态，避免系统 UI 与实际播放短暂不一致
 	push_state(true)

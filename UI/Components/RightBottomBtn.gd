@@ -33,7 +33,7 @@ func _ready():
 func _on_state_change(_old_state, new_state: UIStateManager.UIState):
 	if new_state in [ui.UIState.ALBUM_VIEW]:
 		switch_display(ShowStat.STORE_BTN)
-	elif new_state in [ui.UIState.PLAY_VIEW]:
+	elif new_state in [ui.UIState.PLAY_VIEW, ui.UIState.MUSIC_PLAYER_VIEW]:
 		switch_display(ShowStat.NONE)
 	else:
 		switch_display(ShowStat.BACK_BTN)

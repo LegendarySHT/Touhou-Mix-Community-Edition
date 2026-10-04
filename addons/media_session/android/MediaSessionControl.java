@@ -67,6 +67,9 @@ public class MediaSessionControl extends GodotPlugin {
 	private double lastDurationMs = 0.0;
 	private String lastTitle = "";
 	private String lastAlbum = "";
+	/** 上层声明的播完行为：0=无 1=原地重播（重启人声） 2=前进下一首。
+	 *  后台主循环停摆、GDScript 侧回绕检测不运行，墙钟 ticker 据此在回绕时补发 track_end。 */
+	private int lastEndAction = 0;
 	/** 最近一次的封面 PNG 字节与解码结果（字节相同则跳过重复解码） */
 	@Nullable
 	private byte[] lastCoverPng;
@@ -194,13 +197,14 @@ public class MediaSessionControl extends GodotPlugin {
 
 	@UsedByGodot
 	public void update_state(boolean playing, double positionMs, double durationMs,
-			String title, String album, byte[] coverPng) {
+			String title, String album, byte[] coverPng, int endAction) {
 		runOnUiThread(() -> {
 			lastPlaying = playing;
 			lastPositionMs = positionMs;
 			lastDurationMs = durationMs;
 			lastTitle = title == null ? "" : title;
 			lastAlbum = album == null ? "" : album;
+			lastEndAction = endAction;
 			setCoverPng(coverPng);
 			pushState();
 		});
@@ -340,6 +344,8 @@ public class MediaSessionControl extends GodotPlugin {
 	private final Handler _ticker = new Handler(Looper.getMainLooper());
 	private long _tickBasePositionMs = 0L;
 	private long _tickBaseUptimeMs = 0L;
+	/** 上一次 tick 的外推位置，用于识别墙钟回绕 */
+	private long _lastTickPos = -1L;
 
 	private static final long POSITION_TICK_INTERVAL_MS = 500L;
 
@@ -347,6 +353,7 @@ public class MediaSessionControl extends GodotPlugin {
 	private void resetTickBase() {
 		_tickBasePositionMs = (long) lastPositionMs;
 		_tickBaseUptimeMs = android.os.SystemClock.elapsedRealtime();
+		_lastTickPos = -1L;
 	}
 
 	/** 依据墙钟推算当前位置；已知时长时按取模回绕（loop 由上层语义保证） */
@@ -376,6 +383,18 @@ public class MediaSessionControl extends GodotPlugin {
 			if (session == null || !lastPlaying) {
 				return;
 			}
+			long pos = (long) currentPositionMs();
+			// 墙钟回绕检测：上次 tick 在曲尾附近、本次已回到开头，且上层声明了播完行为时，
+			// 经命令通道补发 track_end（渲染线程暂停前会先排空事件队列，后台可达），
+			// 驱动 GDScript 侧换曲或重启人声。只在后台生效：前台每次 update_state
+			// 都重置基线（_lastTickPos=-1），GDScript 的逐帧回绕检测先于这里触发。
+			if (lastEndAction != 0 && lastDurationMs > 0.0 && _lastTickPos >= 0L
+					&& _lastTickPos >= lastDurationMs - 1500L
+					&& pos + 1000L < _lastTickPos) {
+				Log.i(TAG, "[DIAG] wall-clock wrap detected, endAction=" + lastEndAction);
+				emitCommand("track_end", -1.0);
+			}
+			_lastTickPos = pos;
 			PlaybackState.Builder b = new PlaybackState.Builder()
 					.setActions(PlaybackState.ACTION_PLAY
 							| PlaybackState.ACTION_PAUSE

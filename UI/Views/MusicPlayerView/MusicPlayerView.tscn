@@ -1,9 +1,661 @@
 [gd_scene format=3 uid="uid://2pkadyk3bgtd"]
 
-[node name="MusicPlayerView" type="Control" unique_id=967073334]
+[ext_resource type="Script" uid="uid://cu4fctgl1c76n" path="res://UI/Views/MusicPlayerView/MusicPlayerView.gd" id="1_main"]
+[ext_resource type="Script" uid="uid://cbh87b36twohc" path="res://UI/Views/MusicPlayerView/NoteRollView.gd" id="2_noteroll"]
+[ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="2_ny7ko"]
+[ext_resource type="Script" uid="uid://ck64tyl2tgn3n" path="res://UI/Views/MusicPlayerView/FavoritePicker.gd" id="3_favpick"]
+[ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="4_omuun"]
+[ext_resource type="Script" uid="uid://ceef0gfqu0lbm" path="res://UI/Views/MusicPlayerView/LibraryOverlay.gd" id="4_ovl"]
+[ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="4_wihuv"]
+[ext_resource type="Texture2D" uid="uid://cug51b3m7pnnr" path="res://Resources/icon/instruments_icon.png" id="5_omuun"]
+[ext_resource type="Script" uid="uid://dkr4cp4lsqqll" path="res://UI/Views/MusicPlayerView/PlaylistList.gd" id="7_ia34b"]
+[ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="8_hk5dp"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3y6u5"]
+atlas = ExtResource("2_ny7ko")
+region = Rect2(160, 160, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_j02sm"]
+bg_color = Color(0.07284262, 0.072842635, 0.072842576, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_2xvos"]
+atlas = ExtResource("4_wihuv")
+region = Rect2(0, 80, 80, 80)
+margin = Rect2(5, 0, 0, 0)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_iygje"]
+atlas = ExtResource("2_ny7ko")
+region = Rect2(160, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_i6pqd"]
+atlas = ExtResource("2_ny7ko")
+region = Rect2(160, 240, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_hk5dp"]
+atlas = ExtResource("4_wihuv")
+region = Rect2(80, 80, 80, 80)
+margin = Rect2(-15, 0, 0, 0)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_moh5i"]
+atlas = ExtResource("4_wihuv")
+region = Rect2(160, 80, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_2a7w2"]
+atlas = ExtResource("4_wihuv")
+region = Rect2(240, 80, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_j02sm"]
+atlas = ExtResource("2_ny7ko")
+region = Rect2(0, 160, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_1pkam"]
+atlas = ExtResource("5_omuun")
+region = Rect2(0, 240, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ng81m"]
+atlas = ExtResource("4_wihuv")
+region = Rect2(0, 160, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7fsko"]
+atlas = ExtResource("4_wihuv")
+region = Rect2(80, 160, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ia34b"]
+atlas = ExtResource("4_wihuv")
+region = Rect2(240, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_rosiw"]
+atlas = ExtResource("4_wihuv")
+region = Rect2(320, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_p3d4u"]
+atlas = ExtResource("2_ny7ko")
+region = Rect2(320, 240, 80, 80)
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_df07l"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_61gxp"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_dvno7"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_m2n2l"]
+atlas = ExtResource("8_hk5dp")
+region = Rect2(0, 160, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_qukpt"]
+atlas = ExtResource("8_hk5dp")
+region = Rect2(0, 320, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3iebj"]
+atlas = ExtResource("8_hk5dp")
+region = Rect2(0, 240, 80, 80)
+
+[node name="MusicPlayerView" type="Control" unique_id=1059361591]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("1_main")
+
+[node name="Bg" type="ColorRect" parent="." unique_id=1809739910]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.09, 0.09, 0.12, 1)
+
+[node name="BackBtn" type="TextureButton" parent="." unique_id=373800642]
+custom_minimum_size = Vector2(72, 48)
+layout_mode = 0
+offset_left = 25.0
+offset_top = 20.0
+offset_right = 97.0
+offset_bottom = 76.0
+texture_normal = SubResource("AtlasTexture_3y6u5")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="MainColumn" type="VBoxContainer" parent="." unique_id=608055964]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 25.0
+offset_right = -25.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_transform_enabled = true
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="Stage" type="Control" parent="MainColumn" unique_id=1089731924]
+clip_contents = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="CoverView" type="Control" parent="MainColumn/Stage" unique_id=1498282561]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="AspectRatio" type="AspectRatioContainer" parent="MainColumn/Stage/CoverView" unique_id=530260857]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 50.0
+offset_bottom = -50.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="CoverPlaceholder" type="Label" parent="MainColumn/Stage/CoverView/AspectRatio" unique_id=1595028572]
+layout_mode = 2
+text = "暂无封面"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Cover" type="TextureRect" parent="MainColumn/Stage/CoverView/AspectRatio" unique_id=1351568770]
+layout_mode = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+
+[node name="NoteRollView" type="Control" parent="MainColumn/Stage" unique_id=250907908]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 150.0
+offset_right = -150.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_noteroll")
+
+[node name="BottomBar" type="Panel" parent="MainColumn" unique_id=1149311821]
+custom_minimum_size = Vector2(0, 170)
+layout_mode = 2
+size_flags_vertical = 0
+offset_transform_enabled = true
+offset_transform_visual_only = false
+theme_override_styles/panel = SubResource("StyleBoxFlat_j02sm")
+
+[node name="Progress" type="HSlider" parent="MainColumn/BottomBar" unique_id=185113757]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+offset_left = 120.0
+offset_top = 10.0
+offset_right = -120.0
+offset_bottom = 30.0
+grow_horizontal = 2
+
+[node name="CurrentTime" type="Label" parent="MainColumn/BottomBar/Progress" unique_id=1876956652]
+layout_mode = 1
+anchors_preset = -1
+anchor_bottom = 1.0
+offset_right = -20.0
+grow_horizontal = 0
+grow_vertical = 2
+theme_override_font_sizes/font_size = 24
+text = "99:99"
+vertical_alignment = 1
+
+[node name="TotalTime" type="Label" parent="MainColumn/BottomBar/Progress" unique_id=323204214]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+grow_vertical = 2
+theme_override_font_sizes/font_size = 24
+text = "99:99"
+vertical_alignment = 1
+
+[node name="SongInfo" type="VBoxContainer" parent="MainColumn/BottomBar" unique_id=276429803]
+custom_minimum_size = Vector2(260, 0)
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 40.0
+offset_right = -150.0
+grow_vertical = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="SongTitle" type="Label" parent="MainColumn/BottomBar/SongInfo" unique_id=1910322903]
+layout_mode = 2
+text = "未在播放"
+clip_text = true
+script = ExtResource("4_omuun")
+
+[node name="SongArtist" type="Label" parent="MainColumn/BottomBar/SongInfo" unique_id=960658618]
+layout_mode = 2
+clip_text = true
+script = ExtResource("4_omuun")
+
+[node name="CenterBtns" type="HBoxContainer" parent="MainColumn/BottomBar" unique_id=1132986968]
+layout_mode = 1
+anchors_preset = 13
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_top = 40.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 20
+
+[node name="PrevBtn" type="TextureButton" parent="MainColumn/BottomBar/CenterBtns" unique_id=857406186]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+size_flags_vertical = 4
+texture_normal = SubResource("AtlasTexture_2xvos")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="PlayPauseBtn" type="TextureButton" parent="MainColumn/BottomBar/CenterBtns" unique_id=1509885080]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+size_flags_vertical = 4
+toggle_mode = true
+texture_normal = SubResource("AtlasTexture_iygje")
+texture_pressed = SubResource("AtlasTexture_i6pqd")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="NextBtn" type="TextureButton" parent="MainColumn/BottomBar/CenterBtns" unique_id=2035437870]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+size_flags_vertical = 4
+texture_normal = SubResource("AtlasTexture_hk5dp")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="RightBts" type="HBoxContainer" parent="MainColumn/BottomBar" unique_id=971634280]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.65
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 40.0
+offset_right = -40.0
+grow_horizontal = 0
+grow_vertical = 2
+theme_override_constants/separation = 15
+alignment = 2
+
+[node name="RepeatBtn" type="TextureButton" parent="MainColumn/BottomBar/RightBts" unique_id=2030878683]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "播放方式"
+toggle_mode = true
+texture_normal = SubResource("AtlasTexture_moh5i")
+texture_pressed = SubResource("AtlasTexture_2a7w2")
+
+[node name="VolumeBtn" type="TextureButton" parent="MainColumn/BottomBar/RightBts" unique_id=2088621448]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+size_flags_vertical = 4
+toggle_mode = true
+texture_normal = SubResource("AtlasTexture_j02sm")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="VolumePopup" type="VBoxContainer" parent="MainColumn/BottomBar/RightBts/VolumeBtn" unique_id=827507680]
+visible = false
+custom_minimum_size = Vector2(450, 120)
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+offset_bottom = -90.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 0
+theme_override_constants/separation = 6
+
+[node name="MidiVolLabel" type="Label" parent="MainColumn/BottomBar/RightBts/VolumeBtn/VolumePopup" unique_id=1102471706]
+layout_mode = 2
+text = "MIDI 音量"
+
+[node name="MidiVolSlider" type="HSlider" parent="MainColumn/BottomBar/RightBts/VolumeBtn/VolumePopup" unique_id=43423126]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="VocalVolLabel" type="Label" parent="MainColumn/BottomBar/RightBts/VolumeBtn/VolumePopup" unique_id=1982480628]
+layout_mode = 2
+text = "人声音量"
+
+[node name="VocalVolSlider" type="HSlider" parent="MainColumn/BottomBar/RightBts/VolumeBtn/VolumePopup" unique_id=719781671]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+min_value = -40.0
+max_value = 12.0
+step = 0.5
+
+[node name="EqualizerBtn" type="TextureButton" parent="MainColumn/BottomBar/RightBts" unique_id=1311525650]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+size_flags_vertical = 4
+tooltip_text = "均衡器暂不可用：音频不经 Godot 总线输出"
+disabled = true
+toggle_mode = true
+texture_normal = SubResource("AtlasTexture_1pkam")
+
+[node name="LibraryBtn" type="TextureButton" parent="MainColumn/BottomBar/RightBts" unique_id=1668560734]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+size_flags_vertical = 4
+toggle_mode = true
+texture_normal = SubResource("AtlasTexture_ng81m")
+
+[node name="PlaylistBtn" type="TextureButton" parent="MainColumn/BottomBar/RightBts" unique_id=449875309]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+size_flags_vertical = 4
+toggle_mode = true
+texture_normal = SubResource("AtlasTexture_7fsko")
+
+[node name="StageSwitchBtn" type="TextureButton" parent="MainColumn/BottomBar/RightBts" unique_id=232124583]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+size_flags_vertical = 4
+toggle_mode = true
+texture_normal = SubResource("AtlasTexture_ia34b")
+texture_pressed = SubResource("AtlasTexture_rosiw")
+
+[node name="PlaylistPanel" type="Panel" parent="." unique_id=1827640994]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_top = 0.05
+anchor_right = 1.0
+anchor_bottom = 0.8
+offset_left = -850.0
+grow_horizontal = 0
+grow_vertical = 2
+offset_transform_enabled = true
+offset_transform_visual_only = false
+mouse_filter = 2
+
+[node name="PlColumn" type="VBoxContainer" parent="PlaylistPanel" unique_id=1948461757]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 10.0
+offset_right = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="PlTitle" type="Label" parent="PlaylistPanel/PlColumn" unique_id=1202559830]
+layout_mode = 2
+text = "播放列表"
+horizontal_alignment = 1
+
+[node name="PlCtrl" type="HBoxContainer" parent="PlaylistPanel/PlColumn" unique_id=785455701]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="FavSelectLabel" type="Label" parent="PlaylistPanel/PlColumn/PlCtrl" unique_id=1686245534]
+layout_mode = 2
+text = "歌单："
+vertical_alignment = 1
+
+[node name="FavSelectBtn" type="OptionButton" parent="PlaylistPanel/PlColumn/PlCtrl" unique_id=2078702074]
+custom_minimum_size = Vector2(160, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 25
+
+[node name="PlAddFavBtn" type="Button" parent="PlaylistPanel/PlColumn/PlCtrl" unique_id=75394059]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+tooltip_text = "把播放列表里的歌曲加入某一收藏夹"
+theme_override_font_sizes/font_size = 25
+text = "加入收藏夹"
+
+[node name="PlClearBtn" type="Button" parent="PlaylistPanel/PlColumn/PlCtrl" unique_id=394908992]
+custom_minimum_size = Vector2(80, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "清空"
+
+[node name="PlScroll" type="ScrollContainer" parent="PlaylistPanel/PlColumn" unique_id=800511286]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+horizontal_scroll_mode = 0
+
+[node name="PlList" type="VBoxContainer" parent="PlaylistPanel/PlColumn/PlScroll" unique_id=1597765906]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 0
+theme_override_constants/separation = 4
+script = ExtResource("7_ia34b")
+
+[node name="PlEmpty" type="Label" parent="PlaylistPanel/PlColumn/PlScroll/PlList" unique_id=1811985564]
+layout_mode = 2
+text = "播放列表为空"
+horizontal_alignment = 1
+
+[node name="LibraryLayer" type="Control" parent="." unique_id=1187999609]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 25.0
+offset_top = 180.0
+offset_right = -25.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Content" type="PanelContainer" parent="LibraryLayer" unique_id=1726261784]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 30.0
+offset_top = 95.0
+offset_right = -30.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_vertical = 3
+
+[node name="LibraryOverlay" type="Control" parent="LibraryLayer/Content" unique_id=950609886]
+clip_contents = true
+layout_mode = 2
+size_flags_vertical = 3
+offset_transform_enabled = true
+offset_transform_visual_only = false
+mouse_filter = 1
+script = ExtResource("4_ovl")
+
+[node name="LibraryEmpty" type="Label" parent="LibraryLayer/Content" unique_id=1127244638]
+layout_mode = 2
+text = "没有匹配的歌曲"
+horizontal_alignment = 1
+
+[node name="SearchRow" type="HBoxContainer" parent="LibraryLayer" unique_id=1723017834]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 80.0
+grow_horizontal = 2
+theme_override_constants/separation = 20
+
+[node name="SearchEdit" type="LineEdit" parent="LibraryLayer/SearchRow" unique_id=1501241948]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "搜索曲名 / 歌手 / 专辑"
+
+[node name="SearchBtn" type="TextureRect" parent="LibraryLayer/SearchRow/SearchEdit" unique_id=1793324785]
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = -10.0
+grow_horizontal = 0
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("AtlasTexture_p3d4u")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="FilterStatusBtn" type="Button" parent="LibraryLayer/SearchRow" unique_id=2099732262]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxEmpty_df07l")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_61gxp")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_dvno7")
+icon = SubResource("AtlasTexture_m2n2l")
+icon_alignment = 1
+expand_icon = true
+
+[node name="FilterDataBtn" type="Button" parent="LibraryLayer/SearchRow" unique_id=1254180135]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxEmpty_df07l")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_61gxp")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_dvno7")
+icon = SubResource("AtlasTexture_qukpt")
+icon_alignment = 1
+expand_icon = true
+
+[node name="SortOrderBtn" type="Button" parent="LibraryLayer/SearchRow" unique_id=1881687940]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+theme_override_styles/normal = SubResource("StyleBoxEmpty_df07l")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_61gxp")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_dvno7")
+icon = SubResource("AtlasTexture_3iebj")
+icon_alignment = 1
+expand_icon = true
+
+[node name="BatchAddBtn" type="Button" parent="LibraryLayer/SearchRow" unique_id=752915514]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+size_flags_horizontal = 10
+text = "全部加入播放列表"
+
+[node name="BatchFavBtn" type="Button" parent="LibraryLayer/SearchRow" unique_id=1419214387]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+text = "全部加入收藏夹"
+
+[node name="FavoritePicker" type="Panel" parent="." unique_id=1122668452]
+visible = false
+custom_minimum_size = Vector2(500, 600)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -240.0
+offset_right = 220.0
+offset_bottom = 240.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("3_favpick")
+
+[node name="FpColumn" type="VBoxContainer" parent="FavoritePicker" unique_id=1490567891]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 15.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 8
+
+[node name="FpTitle" type="Label" parent="FavoritePicker/FpColumn" unique_id=1030998383]
+layout_mode = 2
+text = "选择收藏夹"
+horizontal_alignment = 1
+
+[node name="FpScroll" type="ScrollContainer" parent="FavoritePicker/FpColumn" unique_id=725757272]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="FpList" type="VBoxContainer" parent="FavoritePicker/FpColumn/FpScroll" unique_id=829771272]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="FpEmpty" type="Label" parent="FavoritePicker/FpColumn/FpScroll/FpList" unique_id=1292549939]
+layout_mode = 2
+text = "还没有收藏夹"
+horizontal_alignment = 1
+
+[node name="FpCloseBtn" type="Button" parent="FavoritePicker/FpColumn" unique_id=287698142]
+layout_mode = 2
+text = "取消"
+
+[connection signal="pressed" from="BackBtn" to="." method="_on_back_pressed" flags=3]
+[connection signal="drag_ended" from="MainColumn/BottomBar/Progress" to="." method="_on_progress_drag_ended" flags=3]
+[connection signal="pressed" from="MainColumn/BottomBar/CenterBtns/PrevBtn" to="." method="_on_prev_pressed" flags=3]
+[connection signal="toggled" from="MainColumn/BottomBar/CenterBtns/PlayPauseBtn" to="." method="_on_play_pause_toggled" flags=3]
+[connection signal="pressed" from="MainColumn/BottomBar/CenterBtns/NextBtn" to="." method="_on_next_pressed" flags=3]
+[connection signal="toggled" from="MainColumn/BottomBar/RightBts/RepeatBtn" to="." method="_on_repeat_toggled" flags=3]
+[connection signal="toggled" from="MainColumn/BottomBar/RightBts/VolumeBtn" to="." method="_on_volume_toggled" flags=3]
+[connection signal="value_changed" from="MainColumn/BottomBar/RightBts/VolumeBtn/VolumePopup/MidiVolSlider" to="." method="_on_midi_volume_changed" flags=3]
+[connection signal="value_changed" from="MainColumn/BottomBar/RightBts/VolumeBtn/VolumePopup/VocalVolSlider" to="." method="_on_vocal_volume_changed" flags=3]
+[connection signal="toggled" from="MainColumn/BottomBar/RightBts/LibraryBtn" to="." method="_on_library_toggled" flags=3]
+[connection signal="toggled" from="MainColumn/BottomBar/RightBts/PlaylistBtn" to="." method="_on_playlist_toggled" flags=3]
+[connection signal="pressed" from="MainColumn/BottomBar/RightBts/StageSwitchBtn" to="." method="_on_stage_switch_pressed" flags=3]
+[connection signal="item_selected" from="PlaylistPanel/PlColumn/PlCtrl/FavSelectBtn" to="." method="_on_fav_select_selected" flags=3]
+[connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrl/PlAddFavBtn" to="." method="_on_pl_add_fav_pressed" flags=3]
+[connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrl/PlClearBtn" to="." method="_on_pl_clear_pressed" flags=3]
+[connection signal="gui_input" from="PlaylistPanel/PlColumn/PlScroll" to="." method="_on_pl_scroll_gui_input" flags=3]
+[connection signal="move_requested" from="PlaylistPanel/PlColumn/PlScroll/PlList" to="." method="_on_pl_move" flags=3]
+[connection signal="text_changed" from="LibraryLayer/SearchRow/SearchEdit" to="." method="_on_search_changed" flags=3]
+[connection signal="pressed" from="LibraryLayer/SearchRow/FilterStatusBtn" to="." method="_on_filter_status_pressed" flags=3]
+[connection signal="pressed" from="LibraryLayer/SearchRow/FilterDataBtn" to="." method="_on_filter_data_pressed" flags=3]
+[connection signal="pressed" from="LibraryLayer/SearchRow/SortOrderBtn" to="." method="_on_sort_order_pressed" flags=3]
+[connection signal="pressed" from="LibraryLayer/SearchRow/BatchAddBtn" to="." method="_on_batch_add_pressed" flags=3]
+[connection signal="pressed" from="LibraryLayer/SearchRow/BatchFavBtn" to="." method="_on_batch_fav_pressed" flags=3]
+[connection signal="picked" from="FavoritePicker" to="." method="_on_favorite_picked" flags=3]

@@ -351,37 +351,24 @@ func _seek_to(target_ms: float) -> void:
 ## 系统媒体控制命令（通知栏/锁屏/媒体键）。PlayView 不注册会话，故不会与
 ## 打歌界面的暂停菜单/视觉时钟锚定冲突
 func _on_media_command(action: String, position_ms: float) -> void:
+	# 播放动作已由 MidiPlaybackManager 统一执行（SystemMediaSession 在那里调用
+	# handle_media_command），本页只做音符显示的伴生同步。
 	if ui_stat_mgr.current_state != work_state:
 		return
 	match action:
 		"play", "toggle":
-			if midi_playback_manager.is_playing:
-				pass  # 已在播放，play 键语义为"确保在播放"
-			elif midi_playback_manager.is_paused:
-				midi_playback_manager.resume()
-				if not midi_playback_manager.deferred_play_pending:
-					_set_note_displayers_process(true)
-		"pause":
-			midi_playback_manager.pause()
-			_set_note_displayers_process(false)
-		"stop":
-			midi_playback_manager.stop()
+			if not midi_playback_manager.deferred_play_pending:
+				_set_note_displayers_process(true)
+		"pause", "stop":
 			_set_note_displayers_process(false)
 		"seek":
 			_seek_to(position_ms)
-		"next":
-			_activate(midi_playback_manager.play_next())
-		"prev":
-			_activate(midi_playback_manager.play_previous())
-		"repeat":
-			midi_playback_manager.cycle_repeat_mode()
-			GLogger.info("Repeat mode: %d" % midi_playback_manager.repeat_mode, "TrackView")
-		"shuffle":
-			midi_playback_manager.set_repeat_mode(MidiPlaybackManager.RepeatMode.SHUFFLE)
+		"next", "prev":
+			_activate(true)
 		_:
 			pass
 
-## 执行切歌结果并同步 UI 状态。无播放列表时退回"从头重播"
+
 func _activate(changed: bool) -> void:
 	if not changed:
 		_restart_from_beginning()
@@ -776,6 +763,7 @@ func _set_display_current_time(current_ms: float) -> void:
 		current_time.text = _format_time(current_ms)
 
 func _process(delta: float) -> void:
+	_process_focus_lost()
 	if midi_playback_manager.is_playing:
 		var current_position = midi_playback_manager.position_ms
 
@@ -828,10 +816,36 @@ func _notification(what: int) -> void:
 	# 是常态，失焦不代表该停。
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		_set_note_displayers_process(false)
+	elif what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		# 失焦不等于切走：系统媒体浮层/音量面板会临时夺焦（PC 上同时跑多程序是常态，
+		# 那样就停显示看起来像卡死）。延迟确认：焦点回来就什么都不做，
+		# 仍未回来才认为用户真切到别的应用。
+		_focus_lost_pending = true
+		_focus_lost_frames = 0
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		_focus_lost_pending = false
 		_on_focus_regained()
 		if ui_stat_mgr.current_state == work_state and midi_playback_manager.is_playing:
 			_set_note_displayers_process(true)
+
+## 失焦延迟确认：连续 N 帧仍未回到前台，才认为用户真切走，停掉音符显示。
+## 系统媒体浮层/音量面板夺焦后很快就会还焦，此时画面照常刷新。
+const FOCUS_LOST_CONFIRM_FRAMES := 12
+
+var _focus_lost_pending: bool = false
+var _focus_lost_frames: int = 0
+
+func _process_focus_lost() -> void:
+	if not _focus_lost_pending:
+		return
+	_focus_lost_frames += 1
+	if _focus_lost_frames < FOCUS_LOST_CONFIRM_FRAMES:
+		return
+	_focus_lost_pending = false
+	if DisplayServer.window_is_focused(DisplayServer.MAIN_WINDOW_ID):
+		return
+	if midi_playback_manager != null and midi_playback_manager.is_playing:
+		_set_note_displayers_process(false)
 
 func _gui_input(event: InputEvent) -> void:
 	super._gui_input(event)
@@ -972,7 +986,9 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 	if current_midi_data != null:
 		_config_persistence.call_deferred("save_midi_config")
 
-	if old_state == work_state:
+	if old_state == work_state and new_state != UIStateManager.UIState.MUSIC_PLAYER_VIEW:
+		# 去播放器页不算退出播放（那边是同一首歌的另一种视图），保留会话；
+		# 否则 unregister_view 会 stop()，刚切过去的歌会被停掉再重播。
 		MediaSess.unregister_view(self)
 		if midi_playback_manager:
 			if new_state == ui_stat_mgr.UIState.MIDI_VIEW:

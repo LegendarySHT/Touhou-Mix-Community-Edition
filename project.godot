@@ -19,6 +19,7 @@ config/icon="uid://von2js75nk2a"
 [autoload]
 
 DataMGR="*res://Core/DataManager.gd"
+PlaylistMGR="*res://Core/PlaylistManager.gd"
 EvtBus="*res://Core/EventBus.gd"
 SortEngine="*res://Core/SortingEngine.gd"
 UiStatMGR="*res://Core/UIStateManager.gd"

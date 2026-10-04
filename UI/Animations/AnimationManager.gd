@@ -251,6 +251,21 @@ func animate_fade_slide_in(target: Control, from_offset: Vector2,
 	tween.parallel().tween_property(target, "offset_transform_position", Vector2.ZERO, duration)
 	return tween
 
+## 同时补间 offset_transform_position 与 offset_transform_position_ratio。
+## 必须用同一个 tween 驱动两个属性才能真正同步——若分两次调 animate_offset_to，
+## 后者会 kill 同名 tween（见 _create_tween），只能剩一条通道在动。
+## 典型用途：页面整体上移时，ratio 负责「从全出屏归位」，offset 负责「再让出固定距离」。
+func animate_offset_and_ratio_to(target: Control, to_offset: Vector2, to_ratio: Vector2,
+	duration: float = DURATION_NORMAL, tween_id: String = "") -> Tween:
+	var tween = _create_tween(tween_id)
+	tween.set_ease(EASING_STANDARD)
+	tween.set_trans(Tween.TRANS_CUBIC)
+	target.offset_transform_enabled = true
+	target.offset_transform_visual_only = false
+	tween.tween_property(target, "offset_transform_position", to_offset, duration)
+	tween.parallel().tween_property(target, "offset_transform_position_ratio", to_ratio, duration)
+	return tween
+
 ## 淡出 + 位移滑出（to_offset），作为 fade_slide_in 的反向动画
 func animate_fade_slide_out(target: Control, to_offset: Vector2,
 							 duration: float = DURATION_NORMAL, tween_id: String = "") -> Tween:
@@ -408,6 +423,7 @@ var ui_exist = {
 	"Score_View": false,
 	"Chara_View": false,
 	"Profile_Page": false,
+	"Music_Player_View": false,
 }
 
 ## 记录每个页面存在哪些组件
@@ -423,7 +439,8 @@ var ui_part = {
 	UIStateManager.UIState.PLAY_VIEW: ["Play_View"],
 	UIStateManager.UIState.SCORE_VIEW: ["Score_View"],
 	UIStateManager.UIState.CHARA_VIEW: ["Chara_View"],
-	UIStateManager.UIState.PROFILE_VIEW: ["Profile_Page", "Player_Info"]
+	UIStateManager.UIState.PROFILE_VIEW: ["Profile_Page", "Player_Info"],
+	UIStateManager.UIState.MUSIC_PLAYER_VIEW: ["Music_Player_View"],
 }
 
 var ui_path_map = {
@@ -441,6 +458,7 @@ var ui_path_map = {
 	"Score_View": PathRegistry.SCORE_VIEW,
 	"Chara_View": PathRegistry.CHARA_VIEW,
 	"Profile_Page": PathRegistry.PROFILE_PAGE,
+	"Music_Player_View": PathRegistry.MUSIC_PLAYER_VIEW,
 }
 
 func get_comp(ui_part_name: String) -> Node:
@@ -629,6 +647,12 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 			var content := ani_comp.get_node_or_null("PC/PageContent")
 			if content:
 				tween = animate_fade_out(content, 0.3, tween_id)
+		"Music_Player_View":
+			# 退出动画同样由页面自管（animate(false)）
+			if ani_comp == null or not is_instance_valid(ani_comp):
+				return null
+			ani_comp.call("animate", false)
+			return null
 
 	return tween
 
@@ -772,5 +796,12 @@ func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween
 			if content:
 				content.modulate.a = 0.0
 				tween = animate_fade_in(content, 0.35, tween_id)
+		"Music_Player_View":
+			# 入场/出场动画由 MusicPlayerView.animate() 自管（同 ScoreView 模式），
+			# 这里只负责置可见并转发调用。
+			if ani_comp == null or not is_instance_valid(ani_comp):
+				return null
+			ani_comp.visible = true
+			ani_comp.call("animate")
 
 	return tween

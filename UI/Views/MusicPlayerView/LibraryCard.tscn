@@ -1,0 +1,120 @@
+[gd_scene format=3 uid="uid://dx4pxb30ko3mo"]
+
+[ext_resource type="Script" uid="uid://chdhbp3u5k1gl" path="res://UI/Views/MusicPlayerView/LibraryCard.gd" id="1_card"]
+[ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="2_bct7p"]
+[ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="2_slpyo"]
+[ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="4_r0c80"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_5qb41"]
+atlas = ExtResource("4_r0c80")
+region = Rect2(320, 80, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_fpwv8"]
+atlas = ExtResource("4_r0c80")
+region = Rect2(320, 160, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_h1c8g"]
+atlas = ExtResource("4_r0c80")
+region = Rect2(320, 240, 80, 80)
+
+[node name="LibraryCard" type="PanelContainer" unique_id=239024992]
+custom_minimum_size = Vector2(600, 250)
+offset_right = 403.0
+offset_bottom = 125.0
+size_flags_horizontal = 3
+offset_transform_enabled = true
+offset_transform_visual_only = false
+mouse_filter = 1
+script = ExtResource("1_card")
+
+[node name="HBox" type="HBoxContainer" parent="." unique_id=933549957]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Cover" type="TextureRect" parent="HBox" unique_id=1549440985]
+custom_minimum_size = Vector2(250, 250)
+custom_maximum_size = Vector2(-1, 250)
+layout_mode = 2
+expand_mode = 5
+stretch_mode = 6
+script = ExtResource("2_bct7p")
+
+[node name="Info" type="VBoxContainer" parent="HBox" unique_id=1613760243]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="Album" type="Label" parent="HBox/Info" unique_id=752232329]
+layout_mode = 2
+mouse_filter = 1
+text = "专辑"
+clip_text = true
+script = ExtResource("2_slpyo")
+
+[node name="Song" type="Label" parent="HBox/Info" unique_id=1309462093]
+layout_mode = 2
+mouse_filter = 1
+text = "曲名"
+clip_text = true
+script = ExtResource("2_slpyo")
+
+[node name="Artist" type="Label" parent="HBox/Info" unique_id=296780778]
+layout_mode = 2
+mouse_filter = 1
+text = "歌手"
+clip_text = true
+script = ExtResource("2_slpyo")
+
+[node name="MidiName" type="Label" parent="HBox/Info" unique_id=1334673238]
+layout_mode = 2
+size_flags_vertical = 10
+mouse_filter = 1
+text = "Midi名"
+clip_text = true
+script = ExtResource("2_slpyo")
+
+[node name="MidiAuthor" type="Label" parent="HBox/Info" unique_id=466898868]
+layout_mode = 2
+mouse_filter = 1
+text = "Midi作者"
+clip_text = true
+script = ExtResource("2_slpyo")
+
+[node name="Btns" type="VBoxContainer" parent="HBox" unique_id=474877025]
+layout_mode = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="NextBtn" type="Button" parent="HBox/Btns" unique_id=1217820615]
+custom_minimum_size = Vector2(88, 26)
+layout_mode = 2
+size_flags_vertical = 3
+tooltip_text = "下一首播放这首"
+mouse_filter = 1
+theme_override_font_sizes/font_size = 28
+icon = SubResource("AtlasTexture_5qb41")
+icon_alignment = 1
+expand_icon = true
+
+[node name="AddBtn" type="Button" parent="HBox/Btns" unique_id=1530027126]
+custom_minimum_size = Vector2(88, 26)
+layout_mode = 2
+size_flags_vertical = 3
+tooltip_text = "加入播放列表"
+mouse_filter = 1
+theme_override_font_sizes/font_size = 28
+icon = SubResource("AtlasTexture_fpwv8")
+expand_icon = true
+
+[node name="FavBtn" type="Button" parent="HBox/Btns" unique_id=422932935]
+custom_minimum_size = Vector2(88, 26)
+layout_mode = 2
+size_flags_vertical = 3
+tooltip_text = "加入收藏夹"
+mouse_filter = 1
+theme_override_font_sizes/font_size = 28
+icon = SubResource("AtlasTexture_h1c8g")
+icon_alignment = 1
+expand_icon = true

@@ -82,6 +82,8 @@ var _bt_state_initialized: bool = false
 
 ## 上次同步检查时的MIDI位置（毫秒）
 var last_sync_check_pos_ms: float = 0.0
+## 人声音量（dB），供 UI 回填滑条
+var _vocal_volume_db: float = 0.0
 
 ## MIDI播放器配置
 var midi_player_config: Dictionary = {
@@ -119,6 +121,10 @@ signal playlist_changed
 
 ## 信号：播放模式变化（repeat_all / repeat_one / shuffle / sequential）
 signal repeat_mode_changed
+## 信号：换曲（切到另一首）。data 为新曲，null 表示播放已停止
+signal current_song_changed(data)
+## 信号：媒体控件/页面下发命令后播放状态发生变化（播放、暂停、停止、seek）
+signal transport_changed
 
 ## 播放列表播放模式
 enum RepeatMode {
@@ -149,10 +155,130 @@ func set_playlist(items: Array[MidiData], start_index: int = 0) -> void:
 	_reshuffle()
 	playlist_changed.emit()
 
+## 列表变更 → 落盘
+func _on_playlist_changed_persist() -> void:
+	# 恢复中的头部快照：期间落盘会拿半截列表覆盖全表，必须等回填
+	if not _restored_head.is_empty():
+		if playlist == _restored_head:
+			GLogger.info("[PlaylistDiag] persist 跳过：恢复中头部快照 size=%d" % playlist.size(), "PlaylistMGR")
+			return
+		_restored_head = []  # 期间用户改过列表，放弃回填，恢复正常落盘
+	PlaylistMGR.save(self)
+
+## 从存储恢复播放列表（启动 / 播放器页进入时调用）。
+## 只填列表不自动起播——是否播放由调用方决定。
+## 全表水合可能上千项，同步做会卡住调用线程：这里只同步取自 saved_index 起的
+## 头部若干项（起播与面板开头够用），其余由 PlaylistMGR 分帧水合后整体回填。
+const RESTORE_HEAD_COUNT := 16
+## 恢复中的头部快照（回填前禁止落盘半截列表；被改动即放弃回填）
+var _restored_head: Array[MidiData] = []
+
+func restore_playlist() -> void:
+	var res := PlaylistMGR.load_midis(RESTORE_HEAD_COUNT)
+	var head: Array[MidiData] = res["midis"]
+	GLogger.info("[PlaylistDiag] restore 头部 size=%d start=%d hydrating=%s" % [
+		head.size(), int(res["start"]), str(PlaylistMGR.is_hydrating())], "PlaylistMGR")
+	if head.is_empty():
+		return
+	# 恢复出的是磁盘上的正式列表，不再是「临时单曲」，解除标记（否则 size<=1 时仍跳过落盘）
+	PlaylistMGR.transient_single = false
+	playlist = head
+	playlist_index = clampi(int(res["start"]), 0, playlist.size() - 1)
+	_shuffle_pos = _shuffle_pos_of(playlist_index)
+	_reshuffle()
+	# 先记头部快照再发信号：否则 playlist_changed 会走到落盘，把磁盘上的完整列表
+	# 覆盖成这个「头部窗口」（saved_index 靠尾时可能只剩 1 首，等同被清空）
+	_restored_head = head
+	playlist_changed.emit()
+	if PlaylistMGR.is_hydrating() \
+			and not PlaylistMGR.hydration_finished.is_connected(_on_playlist_hydrated):
+		PlaylistMGR.hydration_finished.connect(_on_playlist_hydrated)
+
+## 后台全表水合完成：期间用户没改过列表才整体回填
+func _on_playlist_hydrated(full: Array[MidiData]) -> void:
+	var head := _restored_head
+	_restored_head = []
+	if playlist != head:
+		return
+	# 保持当前曲位置：按对象定位，找不到就夹取
+	var idx := clampi(playlist_index, 0, full.size() - 1)
+	if current_midi_data != null:
+		for i in full.size():
+			if full[i] == current_midi_data:
+				idx = i
+				break
+	set_playlist(full, idx)
+
+## 把当前下标对齐到正在播放的曲目（在列表里时）。静默：不发 playlist_index_changed，
+## 因为该信号直连落盘，而恢复期间列表可能只是头部快照，落盘会把全表截断。
+func align_index_to_current() -> void:
+	if current_midi_data == null or playlist.is_empty():
+		return
+	for i in playlist.size():
+		if playlist[i] == current_midi_data:
+			playlist_index = i
+			_shuffle_pos = _shuffle_pos_of(playlist_index)
+			return
+
+## 按标识播放：给定 chart_key / id / file_hash 任一别名，命中则在列表中定位并播放。
+## 返回是否命中。用于「从曲库点歌」「媒体控件换曲」这类只拿到标识的场景。
+func play_by_key(chart_key: String) -> bool:
+	if chart_key.is_empty():
+		return false
+	for i in playlist.size():
+		var m: MidiData = playlist[i]
+		if chart_key == m.chart_key or chart_key == m.id or chart_key == m.file_hash:
+			play_playlist_index(i)
+			return true
+	# 列表里没有：水合后加入并播放
+	var data: MidiData = DataMGR.get_midi_by_id(chart_key)
+	if data == null:
+		return false
+	playlist.append(data)
+	_reshuffle()
+	play_playlist_index(playlist.size() - 1)
+	return true
+
 ## 向列表尾部追加
 func append_to_playlist(items: Array[MidiData]) -> void:
 	for item in items:
 		playlist.append(item)
+	_reshuffle()
+	playlist_changed.emit()
+
+## 插到当前曲之后（"下一首播放"）。已在列表中则不动。返回是否插入
+func insert_next_in_playlist(data: MidiData) -> bool:
+	if data == null or playlist.has(data):
+		return false
+	var at := mini(playlist_index + 1, playlist.size())
+	playlist.insert(at, data)
+	if playlist_index >= at:
+		playlist_index += 1
+	_reshuffle()
+	playlist_changed.emit()
+	return true
+
+## 从列表中移除指定下标
+func remove_from_playlist(index: int) -> void:
+	if index < 0 or index >= playlist.size():
+		return
+	playlist.remove_at(index)
+	if playlist_index >= playlist.size():
+		playlist_index = playlist.size() - 1
+	_reshuffle()
+	playlist_changed.emit()
+	playlist_index_changed.emit(playlist_index)
+
+## 调整列表中两项的顺序
+func move_in_playlist(from_idx: int, to_idx: int) -> void:
+	if from_idx < 0 or from_idx >= playlist.size():
+		return
+	var to := clampi(to_idx, 0, playlist.size() - 1)
+	if from_idx == to:
+		return
+	var item: MidiData = playlist[from_idx]
+	playlist.remove_at(from_idx)
+	playlist.insert(to, item)
 	_reshuffle()
 	playlist_changed.emit()
 
@@ -187,6 +313,67 @@ func cycle_repeat_mode() -> void:
 		_:
 			set_repeat_mode(RepeatMode.SHUFFLE)
 
+## 供系统媒体侧声明的"播完行为"：0=无 1=原地重播（重启人声即可） 2=前进下一首。
+## Android 后台主循环停摆、_process 的回绕检测不运行，Java 侧墙钟越过曲长时
+## 按此值补发 track_end 命令。判定规则与 _process 的回绕点保持一致。
+func get_track_end_action() -> int:
+	if not is_playing or not get_loop():
+		return 0
+	if playlist.size() > 1 and repeat_mode != RepeatMode.REPEAT_ONE:
+		return 2 if _next_index() >= 0 else 1
+	return 1
+
+## 统一处理系统媒体控件与页面按钮下发的播放命令。
+##
+## 命令执行刻意放在这里而非各页面：这样页面切换、后台、失焦都不影响播放控制，
+## 页面只需订阅状态信号刷新界面。返回 true 表示命令已被消费。
+func handle_media_command(action: String, position_ms: float = -1.0) -> bool:
+	match action:
+		"play":
+			# play 键语义为"确保在播放"，已在播则不重复触发
+			if is_paused:
+				resume()
+			else:
+				return false
+		"toggle":
+			if is_playing:
+				pause()
+			else:
+				resume()
+		"pause":
+			if not is_playing:
+				return false
+			pause()
+		"stop":
+			stop()
+		"seek":
+			if position_ms < 0.0:
+				return false
+			seek(position_ms)
+		"next":
+			if playlist.is_empty():
+				return false
+			return play_next(true)
+		"prev":
+			if playlist.is_empty():
+				return false
+			return play_previous()
+		"track_end":
+			# 系统侧墙钟检测到循环回绕时补发的命令（后台主循环停摆，_process 的
+			# 回绕检测不运行）。判定规则与 _process 的回绕点一致：
+			# 列表还有下一首就走换曲，单曲循环 / 单曲列表只重启人声。
+			if playlist.size() > 1 and repeat_mode != RepeatMode.REPEAT_ONE:
+				return play_next(false)
+			_restart_vocal_for_current_position()
+		"repeat":
+			cycle_repeat_mode()
+		"shuffle":
+			set_repeat_mode(RepeatMode.SHUFFLE)
+		_:
+			return false
+	transport_changed.emit()
+	return true
+
 ## 跳转到列表中的指定曲目并播放。index 越界时自动夹取
 func play_playlist_index(index: int) -> void:
 	if playlist.is_empty():
@@ -197,6 +384,9 @@ func play_playlist_index(index: int) -> void:
 	var data: MidiData = playlist[playlist_index]
 	if not load_midi(data):
 		return
+	# 换曲的必经点在此发信号：手动上下首 / 播完自动前进 / 点歌单 都汇到这里，
+	# 页面（歌名/封面/可视化）只订这个信号即可，不必各自监听多条路径
+	current_song_changed.emit(data)
 	play()
 
 ## 下一首。user_initiated=true 时不受单曲循环限制
@@ -253,7 +443,8 @@ func _prev_index() -> int:
 	return maxi(playlist_index - 1, 0)
 
 ## 洗牌：Fisher-Yates，生成 playlist 索引的一个排列
-func _reshuffle() -> void:
+## avoid_first >= 0 时把该索引换离队首（跨轮接缝处避免新轮第一首 = 刚播完那首）
+func _reshuffle(avoid_first: int = -1) -> void:
 	_shuffle_order.clear()
 	for i in playlist.size():
 		_shuffle_order.append(i)
@@ -268,6 +459,11 @@ func _reshuffle() -> void:
 		var tmp := _shuffle_order[i]
 		_shuffle_order[i] = _shuffle_order[j]
 		_shuffle_order[j] = tmp
+	if avoid_first >= 0 and _shuffle_order.size() > 1 and _shuffle_order[0] == avoid_first:
+		var j := rng.randi_range(1, _shuffle_order.size() - 1)
+		var tmp := _shuffle_order[0]
+		_shuffle_order[0] = _shuffle_order[j]
+		_shuffle_order[j] = tmp
 	# 若当前曲目在列表中，把洗牌位置对齐到它，避免切模式时"跳到别的歌"
 	if playlist_index >= 0 and playlist_index < _shuffle_order.size():
 		_shuffle_pos = _shuffle_order.find(playlist_index)
@@ -281,8 +477,8 @@ func _shuffle_next_index() -> int:
 		return -1
 	_shuffle_pos += 1
 	if _shuffle_pos >= _shuffle_order.size():
-		# 一轮放完：随机模式下重洗并从头开始
-		_reshuffle()
+		# 一轮放完：随机模式下重洗并从头开始（队首避开刚播完这首）
+		_reshuffle(playlist_index)
 		_shuffle_pos = 0 if not _shuffle_order.is_empty() else -1
 	if _shuffle_pos < 0 or _shuffle_pos >= _shuffle_order.size():
 		return -1
@@ -316,6 +512,10 @@ func _ready() -> void:
 		EvtBus.settings_changed.connect(_on_settings_changed)
 		# 监听配置变更信号（新增，用于应对直接配置文件修改）
 		EvtBus.config_changed.connect(_on_config_changed)
+	# 播放列表是「当前播放」的唯一事实来源：任何变更都落盘，跨重启由 restore_playlist 读回。
+	# 不再另设一份 keys 副本与 playlist 同步——那层同步正是 bug 温床。
+	playlist_changed.connect(_on_playlist_changed_persist)
+	playlist_index_changed.connect(func(_i: int): PlaylistMGR.save(self))
 
 ## 重新检测蓝牙输出并应用对应延迟预设。
 ## 蓝牙状态变化时（仅 Windows）重建音频桥，使输出跟随新的系统默认设备。
@@ -330,8 +530,14 @@ func refresh_audio_delay() -> void:
 		GLogger.info("Audio output changed (bluetooth=%s), switching delay preset" % str(is_bt), "MidiPlaybackManager")
 		# WASAPI 流绑定打开设备时的端点，需重建音频桥才跟随新默认设备。
 		# Android 的 AAudio 独占模式 + 蓝牙初始化有风险，不重建（开局前已连蓝牙的场景初始即走蓝牙端点）。
-		if OS.get_name() == "Windows" and midi_player != null:
+		# 只在设备真的变化时重建。FOCUS_IN（媒体浮层夺焦后还焦、系统弹窗等）也会走到
+		# 这里，而设备并未变——无条件重建会销毁正在渲染的 miniaudio 设备，把 play()
+		# 打断，表现为「点了播放没反应」。重建后恢复播放。
+		if OS.get_name() == "Windows" and midi_player != null and state_changed:
+			var was_playing := is_playing
 			midi_player.recreate_audio_output()
+			if was_playing and current_midi_data != null:
+				play()
 	_apply_delay_preset()
 
 ## 按当前输出类型读取并应用延迟预设（蓝牙 → audio_playback_delay_bt，否则 audio_playback_delay）
@@ -1413,9 +1619,15 @@ func set_vocal_volume_db(volume_db: float) -> void:
 	var backend = _get_active_backend()
 	if backend != null:
 		backend.set_vocal_volume(db_to_linear(volume_db))
-		GLogger.info("Set vocal volume to %.2f dB" % volume_db, "MidiPlaybackManager")
 	else:
 		push_error("[MidiPlaybackManager] AudioManager not available")
+	_vocal_volume_db = volume_db
+	GLogger.info("Set vocal volume to %.2f dB" % volume_db, "MidiPlaybackManager")
+
+## 读取人声音量（dB），供 UI 回填滑条位置
+func get_vocal_volume_db() -> float:
+	return _vocal_volume_db
+
 
 ## ========== (Track, Channel) 静音接口 ==========
 

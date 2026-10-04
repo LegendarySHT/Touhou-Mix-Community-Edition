@@ -350,33 +350,63 @@ public partial class MeltySynthPlayer
 			}
 		}
 
-		/// <summary>
-		/// 人声跟随 MIDI 回绕重播。在音频回调内调用（无锁、无分配）。
-		/// 未加载人声时 IsVocalFinished 为 false，不会误触发。
-		/// </summary>
-		public void RestartVocalOnLoopWrap()
-		{
-			if (!_vocalLoopEnabled || _sequencer == null)
-			{
-				return;
-			}
-		double nowMs = _sequencer.RenderedPosition.TotalMilliseconds;
-		if (double.IsNaN(nowMs))
-		{
-			return;
-		}
-		if (_lastLoopPositionMs >= 0.0 && nowMs < _lastLoopPositionMs - 100.0)
-		{
-			// 无条件从头重播，不看 IsVocalFinished()。
-			// 人声自然结束是靠 ring 缓冲排空才置 vocalEndReached，而 MIDI 回绕发生在
-			// 音频回调里，那一刻 ring 可能还剩数据 → 判定为「未结束」而跳过重启，
-			// 于是第二遍循环人声缺失。ma_bridge_vocal_play 在已结束时会自行 seek 到 0，
-			// 因此这里重复 seek + play 是幂等的。
-			SeekVocal(0.0);
-			PlayVocal();
-		}
-		_lastLoopPositionMs = nowMs;
-		}
+/// <summary>
+/// 人声跟随 MIDI 回绕重播。在音频回调内调用，但【只置标志】不做实际 seek。
+///
+/// 不能在音频回调里调 SeekVocal：它会走到原生 vocal_stop_producer → ma_thread_wait
+/// （pthread_join）。人声播完后 producer 线程已自然退出，而 vocalProducerRunning
+/// 仍为 1，此时 join 一个已结束的线程会让音频回调线程死锁——表现为第二遍循环完全
+/// 无声（音频钟卡死），随后主线程再触碰同一把锁则整个游戏卡住。
+/// 真正的人声重启交给 ApplyPendingVocalRestart()，在主线程执行。
+/// </summary>
+public void RestartVocalOnLoopWrap()
+{
+	if (!_vocalLoopEnabled || _sequencer == null)
+	{
+		return;
+	}
+	double nowMs = _sequencer.RenderedPosition.TotalMilliseconds;
+	if (double.IsNaN(nowMs))
+	{
+		return;
+	}
+	if (_lastLoopPositionMs >= 0.0 && nowMs < _lastLoopPositionMs - 100.0)
+	{
+		// 无条件请求从头重播，不看 IsVocalFinished()：
+		// 人声自然结束要等 ring 缓冲排空才置 vocalEndReached，而 MIDI 回绕发生在
+		// 音频回调里，那一刻 ring 可能还剩数据 → 判定为「未结束」而跳过重启，
+		// 于是第二遍循环人声缺失。
+		_vocalRestartRequested = true;
+	}
+	_lastLoopPositionMs = nowMs;
+}
+
+/// 由主线程（_Process）调用：消费回调置起的标志，执行真正的人声 seek + 播放。
+public void ApplyPendingVocalRestart()
+{
+	if (!_vocalRestartRequested)
+	{
+		return;
+	}
+	_vocalRestartRequested = false;
+	if (_sequencer == null)
+	{
+		return;
+	}
+	double nowMs = _sequencer.RenderedPosition.TotalMilliseconds;
+	if (double.IsNaN(nowMs) || nowMs < 0.0)
+	{
+		nowMs = 0.0;
+	}
+	// 用 MIDI 的当前位置而非固定 0：回绕后 currentTime 已被重置到回绕点，所以它就是
+	//「距回绕点过了多久」。主线程可能因页面切换/动画/load_midi 被阻塞若干帧，期间音频
+	// 线程仍在推进 MIDI；若固定 seek 到 0，人声会落后这段卡顿时长而与 MIDI 错位。
+	SeekVocal(nowMs);
+	PlayVocal();
+}
+
+// 音频回调只写此标志，主线程读并清
+private volatile bool _vocalRestartRequested = false;
 
 		// 后台 seek：Godot 主循环挂起时 _Process 不再处理 _pendingSeekMs，
 		// 故由音频线程消费。_seekTargetMs 为 NaN 表示无待处理请求。

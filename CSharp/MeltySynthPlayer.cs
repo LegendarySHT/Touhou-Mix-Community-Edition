@@ -546,6 +546,11 @@ public partial class MeltySynthPlayer : Node
 		}
 
 		_audioOutput?.Update();
+		// 回绕后的人声重启：音频回调只置标志，真正的 seek（含原生线程 join）必须在主线程做
+		if (_audioOutput is MiniaudioAudioOutputBridge maRestart)
+		{
+			maRestart.ApplyPendingVocalRestart();
+		}
 
 		if (_audioOutput is MiniaudioAudioOutputBridge maBridge && maBridge.IsVocalFinished())
 		{

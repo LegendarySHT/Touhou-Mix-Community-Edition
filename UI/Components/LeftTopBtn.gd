@@ -63,7 +63,7 @@ func _update_lag_display(state: int = -1, latency_ms: int = -1) -> void:
 func _on_state_change(_old_state, new_state: UIStateManager.UIState):
 	if new_state in [ui.UIState.SETTINGS_VIEW]:
 		switch_display(ShowStat.TO_DELVIEW)
-	elif new_state in [ui.UIState.STORE_VIEW, ui.UIState.PLAY_VIEW, ui.UIState.CHARA_VIEW, ui.UIState.PROFILE_VIEW]:
+	elif new_state in [ui.UIState.STORE_VIEW, ui.UIState.PLAY_VIEW, ui.UIState.CHARA_VIEW, ui.UIState.PROFILE_VIEW, ui.UIState.MUSIC_PLAYER_VIEW]:
 		switch_display(ShowStat.NONE)
 	elif new_state in [ui.UIState.SCORE_VIEW]:
 		switch_display(ShowStat.RETRY_BTN)

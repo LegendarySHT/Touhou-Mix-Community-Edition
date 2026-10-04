@@ -949,6 +949,7 @@ public partial class ChartDb : Node
 
     // ============ 导航位置记录（meta 集合，随 DB 读取，与谱面数据同源同生命周期） ============
     private const string NavMetaId = "navigation";
+    private const string PlaylistMetaId = "playlist";
 
     /// 保存导航位置记录（全量写 {album_id, song_id, midi_id}；空串 = 未设置）
     /// 记录不参与 schema 迁移（meta 集合不被 drop），专辑/歌曲被删后由恢复方校验并清除
@@ -986,6 +987,71 @@ public partial class ChartDb : Node
             result["song_id"] = d.TryGetValue("song_id", out var s) && s.IsString ? s.AsString : "";
             result["midi_id"] = d.TryGetValue("midi_id", out var m) && m.IsString ? m.AsString : "";
             return result;
+        }
+    }
+
+    /// <summary>
+    /// 读取持久化的播放列表。只存 chart_key（不存 MidiData 全量），启动时由
+    /// PlaylistManager 水合为 MidiData。
+    ///
+    /// ⚠ 依赖 meta 集合不被重建清除：本文件在 schema 版本不匹配时会重建数据库，
+    /// 当时的 DropCollection 只针对 charts / albums / songs，meta 不在其中。
+    /// 若将来有人在此处新增 _db.DropCollection("meta")，播放列表会被静默清空。
+    /// </summary>
+    public Godot.Collections.Dictionary GetPlaylist()
+    {
+        var result = new Godot.Collections.Dictionary
+        {
+            ["keys"] = new Godot.Collections.Array(),
+            ["index"] = 0,
+            ["repeat_mode"] = 0,
+            ["source_fav_id"] = "",
+        };
+        if (!IsOpen()) return result;
+        lock (_lock)
+        {
+            var d = _meta.FindById(PlaylistMetaId);
+            if (d == null) return result;
+            if (d.TryGetValue("keys", out var k) && k.IsArray)
+            {
+                var arr = new Godot.Collections.Array();
+                foreach (var item in k.AsArray)
+                {
+                    if (item.IsString) arr.Add(item.AsString);
+                }
+                result["keys"] = arr;
+            }
+            result["index"] = d.TryGetValue("index", out var i) && i.IsNumber ? i.AsInt32 : 0;
+            result["repeat_mode"] = d.TryGetValue("repeat_mode", out var r) && r.IsNumber ? r.AsInt32 : 0;
+            result["source_fav_id"] =
+                d.TryGetValue("source_fav_id", out var f) && f.IsString ? f.AsString : "";
+            return result;
+        }
+    }
+
+    /// <summary>保存播放列表到 meta 集合（覆盖式写入）。</summary>
+    public void SavePlaylist(Godot.Collections.Array keys, int index, int repeatMode, string sourceFavId)
+    {
+        if (!IsOpen()) return;
+        lock (_lock)
+        {
+            var arr = new BsonArray();
+            foreach (var item in keys)
+            {
+                if (item.VariantType == Variant.Type.String || item.VariantType == Variant.Type.StringName)
+                {
+                    arr.Add(item.AsString());
+                }
+            }
+            var bd = new BsonDocument
+            {
+                ["_id"] = PlaylistMetaId,
+                ["keys"] = arr,
+                ["index"] = index,
+                ["repeat_mode"] = repeatMode,
+                ["source_fav_id"] = sourceFavId ?? "",
+            };
+            _meta.Upsert(bd);
         }
     }
 

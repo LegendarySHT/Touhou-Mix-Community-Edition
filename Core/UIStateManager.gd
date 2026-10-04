@@ -18,6 +18,7 @@ enum UIState {
 	SCORE_VIEW = 61,	 # 结算界面
 	CHARA_VIEW = 7,		 # 选角色界面
 	PROFILE_VIEW = 8,	 # 个人资料界面
+	MUSIC_PLAYER_VIEW = 9, # 音乐播放器界面
 }
 
 ## 当前UI状态（启动时为 NONE，数据就绪后通过 change_state 进入真实视图）
@@ -46,6 +47,7 @@ const LAZY_VIEW_PATHS := {
 	UIState.PLAY_VIEW: "res://UI/Views/PlayView/PlayView.tscn",
 	UIState.SCORE_VIEW: "res://UI/Views/ScoreView/ScoreView.tscn",
 	UIState.CHARA_VIEW: "res://UI/Views/CharaView/CharaView.tscn",
+	UIState.MUSIC_PLAYER_VIEW: "res://UI/Views/MusicPlayerView/MusicPlayerView.tscn",
 }
 
 ## 视图父节点路径（与 Main.tscn 结构对应）
@@ -57,6 +59,7 @@ const LAZY_VIEW_PARENTS := {
 	UIState.PLAY_VIEW: PathRegistry.MAIN,
 	UIState.SCORE_VIEW: PathRegistry.MAIN,
 	UIState.CHARA_VIEW: PathRegistry.MAIN,
+	UIState.MUSIC_PLAYER_VIEW: PathRegistry.MAIN,
 }
 
 ## 已加载的懒加载视图实例 {UIState: Node}
@@ -294,6 +297,8 @@ func get_state_name(state: UIState) -> String:
 			return "CHARA_VIEW"
 		UIState.PROFILE_VIEW:
 			return "PROFILE_VIEW"
+		UIState.MUSIC_PLAYER_VIEW:
+			return "MUSIC_PLAYER_VIEW"
 		_:
 			return "UNKNOWN_STATE"
 
