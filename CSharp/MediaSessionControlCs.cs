@@ -94,7 +94,10 @@ public partial class MediaSessionControlCs : Node
 	}
 
 	/// <summary>向系统下发播放状态与元数据。由 SystemMediaSession 调用。</summary>
-	public void UpdateState(bool playing, double positionMs, double durationMs, string title, string album,
+	// 方法名用 snake_case：Godot C# 没有 PascalCase→snake_case 的映射（无 MethodName
+	// attribute），方法按 C# 名原样暴露。两侧后端契约靠这个名字对齐（Java 侧同为
+	// snake_case）；写成 PascalCase 会让 GDScript 静默失败（Nonexistent function）。
+	public void update_state(bool playing, double positionMs, double durationMs, string title, string album,
 		byte[] coverPng)
 	{
 		if (_smtc == null)
@@ -189,7 +192,7 @@ public partial class MediaSessionControlCs : Node
 	}
 
 	/// <summary>隐藏媒体卡片（页面注销时调用）</summary>
-	public void Clear()
+	public void clear()
 	{
 		if (_smtc == null)
 		{
@@ -209,10 +212,21 @@ public partial class MediaSessionControlCs : Node
 		}
 	}
 
+	[DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+	private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+
 	private bool TryInit()
 	{
 		try
 		{
+			// Godot 在窗口创建之后才调 SetCurrentProcessExplicitAppUserModelID
+			// （display_server_windows.cpp: 主窗口 CreateWindowEx 在前，设置 AUMID 在后），
+			// 于是 HWND 创建时没有应用身份，系统媒体浮层显示「未知应用」且不路由媒体按键。
+			// 这里补设一次，让 shell 之后按 AUMID 关联该窗口。
+			string aumid = "TouhouMix.TouhouMixCommunityEdition";
+			int aum = SetCurrentProcessExplicitAppUserModelID(aumid);
+			GD.Print($"[MediaSessionControlCs] AUMID set ({aumid}) hr={aum}");
+
 			IntPtr hwnd = (IntPtr)DisplayServer.WindowGetNativeHandle(
 				DisplayServer.HandleType.WindowHandle,
 				(int)DisplayServer.MainWindowId);

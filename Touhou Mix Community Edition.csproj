@@ -14,6 +14,17 @@
     <PackageReference Include="LiteDB" Version="5.0.21" />
     <PackageReference Include="OpenccNetLib" Version="1.6.1" />
   </ItemGroup>
+  <ItemGroup Condition=" '$(GodotTargetPlatform)' != 'android' ">
+    <!-- windows10 TFM 隐式引用的 microsoft.windows.sdk.net.ref 只作为「引用程序集」参与编译，
+         其 lib/net8.0/ 下的 Microsoft.Windows.SDK.NET.dll 与 WinRT.Runtime.dll 是 CsWinRT
+         运行时实现。标准 SDK 会自动复制，但 Godot.NET.Sdk 接管了输出逻辑，导致运行时
+         FileNotFoundException。该包类型为 DotnetPlatform，不能用 PackageReference 显式引用
+         （NU1213），故直接按路径复制。 -->
+    <None Include="$(NuGetPackageRoot)microsoft.windows.sdk.net.ref/10.0.19041.57/lib/net8.0/Microsoft.Windows.SDK.NET.dll"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(NuGetPackageRoot)microsoft.windows.sdk.net.ref/10.0.19041.57/lib/net8.0/WinRT.Runtime.dll"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
   <ItemGroup>
     <!-- Windows SMTC 桥接依赖 CsWinRT（仅 windows10 TFM 具备），Android 侧用
          Java MediaSessionControl 插件实现，故不编译此文件。它不是 autoload，

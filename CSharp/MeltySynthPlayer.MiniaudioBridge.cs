@@ -360,16 +360,18 @@ public partial class MeltySynthPlayer
 			{
 				return;
 			}
-			double nowMs = _sequencer.RenderedPosition.TotalMilliseconds;
-			if (_lastLoopPositionMs >= 0.0 && nowMs < _lastLoopPositionMs - 100.0)
-			{
-				if (IsVocalFinished())
-				{
-					SeekVocal(0.0);
-					PlayVocal();
-				}
-			}
-			_lastLoopPositionMs = nowMs;
+		double nowMs = _sequencer.RenderedPosition.TotalMilliseconds;
+		if (_lastLoopPositionMs >= 0.0 && nowMs < _lastLoopPositionMs - 100.0)
+		{
+			// 无条件从头重播，不看 IsVocalFinished()。
+			// 人声自然结束是靠 ring 缓冲排空才置 vocalEndReached，而 MIDI 回绕发生在
+			// 音频回调里，那一刻 ring 可能还剩数据 → 判定为「未结束」而跳过重启，
+			// 于是第二遍循环人声缺失。ma_bridge_vocal_play 在已结束时会自行 seek 到 0，
+			// 因此这里重复 seek + play 是幂等的。
+			SeekVocal(0.0);
+			PlayVocal();
+		}
+		_lastLoopPositionMs = nowMs;
 		}
 
 		// 后台 seek：Godot 主循环挂起时 _Process 不再处理 _pendingSeekMs，
