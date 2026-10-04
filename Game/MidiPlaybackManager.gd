@@ -618,7 +618,14 @@ func _process(_delta: float) -> void:
 		# 人声已自然结束时必须在这里显式重新定位并启动，否则只能靠 UI 开关恢复。
 		if get_loop():
 			GLogger.info("[DIAG] loop wrap detected: %.0f -> %.0f ms" % [_last_raw_midi_position_ms, raw_midi_position_ms], "MidiPlaybackManager")
-			_restart_vocal_for_current_position()
+			# 回绕点即"播完"判定点：列表里还有下一首就走换曲逻辑（与手动上下首同一条路），
+			# 只在真没有下一首（单曲循环 / 列表尾）时才原地重播当前曲。
+			# loop=true 时 sequencer 在音频层自己回绕、midi_finished 永不发出，
+			# 所以列表前进只能挂在这个检测点上。
+			if playlist.size() > 1 and repeat_mode != RepeatMode.REPEAT_ONE and play_next(false):
+				GLogger.info("Loop point advanced to next song (playlist mode)", "MidiPlaybackManager")
+			else:
+				_restart_vocal_for_current_position()
 		_last_raw_midi_position_ms = raw_midi_position_ms
 	else:
 		_last_raw_midi_position_ms = raw_midi_position_ms
@@ -708,6 +715,10 @@ func load_midi(midi_data: MidiData) -> bool:
 	if midi_data == null:
 		push_error("MidiData is null")
 		return false
+	# 人声路径修复：MidiData.vocal_file_path 可能是 DB 配置里存的旧绝对路径
+	# （谱面库搬家后失效）。TrackView 有同款修复，但播放列表换曲不经过 TrackView，
+	# 所以统一在加载前修一次（resolve_vocal_path 内部会校验存在性并回填）。
+	VocalTrackController.resolve_vocal_path(midi_data)
 
 	# 加载新曲前先停止当前播放（幂等）：
 	# TrackView 循环播放中直接进入 PlayView 时，后端 sequencer/playing 状态可能残留
