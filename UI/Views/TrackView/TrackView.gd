@@ -776,7 +776,6 @@ func _set_display_current_time(current_ms: float) -> void:
 		current_time.text = _format_time(current_ms)
 
 func _process(delta: float) -> void:
-	_process_focus_out_check()
 	if midi_playback_manager.is_playing:
 		var current_position = midi_playback_manager.position_ms
 
@@ -823,30 +822,16 @@ func _notification(what: int) -> void:
 	# 节点初始化早期也会收到这些通知，此时 @onready 成员尚未赋值，访问会中断 autoload 初始化
 	if midi_playback_manager == null or ui_stat_mgr == null or master_note_displayer == null:
 		return
-	# 切后台（Android 主循环挂起）与回前台都要重置循环检测基准
+	# 只在 Android 切后台时停显示：该平台主循环随渲染线程挂起，_process 不再运行。
+	# 桌面端不因失焦停——系统媒体浮层/音量面板弹出同样夺走焦点（且浮层存活期间焦点
+	# 不会回到游戏），按失焦判断会把画面停住，看起来像卡死。桌面端同时运行其他程序
+	# 是常态，失焦不代表该停。
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		_set_note_displayers_process(false)
-	elif what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
-		# 桌面上呼出系统媒体浮层也会夺走焦点，若立即停显示会让画面看起来卡死。
-		# 延迟一帧复查：焦点已回来（浮层关闭）则什么都不做，仍在前台则继续显示。
-		_focus_out_pending = true
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
-		_focus_out_pending = false
 		_on_focus_regained()
 		if ui_stat_mgr.current_state == work_state and midi_playback_manager.is_playing:
 			_set_note_displayers_process(true)
-
-## 失焦待确认：仅当下一帧仍未回到前台，才认为切到别的应用而停显示
-var _focus_out_pending: bool = false
-
-func _process_focus_out_check() -> void:
-	if not _focus_out_pending:
-		return
-	_focus_out_pending = false
-	if DisplayServer.window_is_focused(DisplayServer.MAIN_WINDOW_ID):
-		return  # 系统浮层关闭后焦点已还回，画面本就正常
-	if midi_playback_manager != null and midi_playback_manager.is_playing:
-		_set_note_displayers_process(false)
 
 func _gui_input(event: InputEvent) -> void:
 	super._gui_input(event)
