@@ -29,18 +29,31 @@ func _ready() -> void:
 	pressed.connect(_on_pressed)
 	if _remove_btn != null:
 		_remove_btn.pressed.connect(func(): remove_requested.emit(index))
+	# 拖动把手是 STOP（点它不触发"播放该首"），把它的拖拽事件转交给列表处理；
+	# 拖拽状态存在列表上，所以调序引起的整表重建不会把拖动中断。
+	if _drag_btn != null:
+		_drag_btn.gui_input.connect(_on_drag_btn_input)
 	gui_input.connect(_on_row_input)
+
+## 转交拖动把手的按下/松开给列表：位移由列表按鼠标位置轮询现算（调序会重建行、
+## 释放把手节点，焦点会丢，所以不依赖把手收到 motion/release）。
+func _on_drag_btn_input(event: InputEvent) -> void:
+	var list := get_parent() as PlaylistList
+	if list == null:
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if mb.pressed:
+			list.begin_handle_drag(index)
+		else:
+			list.end_handle_drag()
 
 ## 面板隐藏/列表重建后放弃当前点击追踪，避免隐藏后仍处理残留事件
 func cancel_drag() -> void:
 	_row_pressing = false
 	_row_accum = 0.0
-
-## 拖动把手的矩形（相对本行），供列表判断按下是否落在把手上
-func get_handle_rect() -> Rect2:
-	if _drag_btn == null:
-		return Rect2()
-	return Rect2(_drag_btn.position, _drag_btn.size)
 
 ## current=true 时按钮处于按下态（由页面按 playlist_index 同步）
 func setup_with(p_midi: MidiData, idx: int, current: bool, animate_in: bool = false) -> void:

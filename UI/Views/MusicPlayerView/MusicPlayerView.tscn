@@ -457,13 +457,12 @@ text = "清空"
 [node name="PlScroll" type="ScrollContainer" parent="PlaylistPanel/PlColumn" unique_id=800511286]
 layout_mode = 2
 size_flags_vertical = 3
-mouse_filter = 2
 horizontal_scroll_mode = 0
+vertical_scroll_mode = 3
 
 [node name="PlList" type="VBoxContainer" parent="PlaylistPanel/PlColumn/PlScroll" unique_id=1597765906]
 layout_mode = 2
 size_flags_horizontal = 3
-mouse_filter = 0
 theme_override_constants/separation = 4
 script = ExtResource("7_ia34b")
 

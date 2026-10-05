@@ -340,7 +340,8 @@ func remove_from_playlist(index: int) -> void:
 	playlist_changed.emit()
 	playlist_index_changed.emit(playlist_index)
 
-## 调整列表中两项的顺序
+## 调整列表中两项的顺序。同时把播放下标一起挪位，保证"正在播放"仍指着同一首
+## （否则移动它 / 把别的歌插到它前面之后，下标停在原位，面板高亮就跟丢乱套了）。
 func move_in_playlist(from_idx: int, to_idx: int) -> void:
 	if from_idx < 0 or from_idx >= playlist.size():
 		return
@@ -349,10 +350,21 @@ func move_in_playlist(from_idx: int, to_idx: int) -> void:
 		return
 	_mark_user_edited()
 	var item: MidiData = playlist[from_idx]
+	var cur := playlist_index
 	playlist.remove_at(from_idx)
 	playlist.insert(to, item)
+	if cur >= 0:
+		if from_idx == cur:
+			cur = to                      # 播的就是被拖的那首 → 跟到新位置
+		else:
+			if from_idx < cur:
+				cur -= 1                  # 移除点在它前面 → 左移一位
+			if to <= cur:
+				cur += 1                  # 插入点在它前面 → 右移一位
+		playlist_index = cur
 	_reshuffle()
 	playlist_changed.emit()
+	playlist_index_changed.emit(playlist_index)
 
 ## 清空列表
 func clear_playlist() -> void:

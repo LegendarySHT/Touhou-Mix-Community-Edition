@@ -155,14 +155,10 @@ func _on_progress_drag_ended(value_changed: bool) -> void:
 ## 幂等，且需在 _ready 之后再跑一遍——懒加载视图 add_child 后才进入树，_ready
 ## 可能晚于 state_changed，那时机 @onready 尚未赋值、_on_ui_state_changed 会静默失效。
 func _activate_page() -> void:
-	# register_view 只需一次（_ready 与 state_changed 两处都会调到这里）；
-	# 但列表同步必须每次进页面都重跑——曲库/收藏夹改过列表后返回本页时，
-	# mgr.playlist 若不同步，play_next 会直接返回 false（上下首像坏了）。
-	if not _activated:
-		_activated = true
-		# 接管系统媒体控制：不注册则 has_view() 为 false，命令会被
-		# SystemMediaSession 直接丢弃，媒体卡片也不显示
-		MediaSess.register_view(self)
+	# 每次进页面都要重新注册：离开本页时 _on_ui_state_changed 会 unregister_view，
+	# 不重新注册则 has_view() 为 false，系统媒体卡片不显示、媒体命令被直接丢弃。
+	# register_view 自身幂等（同一视图重复调用直接返回），不必再自己判断。
+	MediaSess.register_view(self)
 	var mgr := MidiPlaybackManager.instance
 	if mgr != null:
 		# 本页的页面级播放模式 = 单曲文件循环（从演奏/TrackView 过来都要纠正回来）。
@@ -188,9 +184,6 @@ func _activate_page() -> void:
 	# 排序本身异步，deferred 摊开开销。
 	_ensure_library_pool.call_deferred()
 	_request_sort.call_deferred()
-
-## 页面已激活（避免重复注册 / 重复起播）
-var _activated: bool = false
 
 ## 接入主题色：页面背景 / 底栏 / 播放列表面板 / 曲库内容面板。
 ## tscn 里的颜色只是占位，运行时以主题 token 为准。
@@ -943,6 +936,7 @@ func _stop_all_pl_dragging() -> void:
 	_stop_pl_fling()
 	if not is_instance_valid(_pl_list):
 		return
+	_pl_list.end_handle_drag()   # 拖拽状态在列表上，面板收起时一并收尾
 	for c in _pl_list.get_children():
 		var item := c as PlaylistItem
 		if item != null:
