@@ -67,7 +67,6 @@ func _ready() -> void:
 	apply_theme()
 	_pl_scroll.get_v_scroll_bar().value_changed.connect(_on_scroll_moved)
 	_pl_scroll.resized.connect(_on_pl_scroll_resized)
-	_reshuffle_btn.pressed.connect(_on_reshuffle_pressed)
 	var mgr := MidiPlaybackManager.instance
 	if mgr != null:
 		mgr.playlist_index_changed.connect(_refresh_playlist_highlight)

@@ -492,6 +492,11 @@ func _on_track_enable_toggled(is_checked: bool, track_index: int, channel: int) 
 	# 更新指定(track, channel)启用状态
 	current_midi_data.set_track_channel_enabled(track_index, channel, is_checked)
 
+	# 启用状态同步到合成器：禁用的通道运行时静音（此前只影响音符显示，
+	# 播放不跟随；编辑立即生效，播放器页承接同一后端状态）
+	if midi_playback_manager != null:
+		midi_playback_manager.set_track_channel_mute_runtime(track_index, channel, not is_checked)
+
 	# 同步主音符显示器（按 selected_track_configs 过滤音符可见性）
 	if master_note_displayer:
 		master_note_displayer.sync_from_midi_data(current_midi_data)
@@ -962,13 +967,15 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 	if old_state == work_state and new_state != UIStateManager.UIState.MUSIC_PLAYER_VIEW:
 		# 去播放器页不算退出播放（那边是同一首歌的另一种视图），保留会话；
 		# 否则 unregister_view 会 stop()，刚切过去的歌会被停掉再重播。
+		# 去设置页同理要先 pause：unregister_view 对 is_playing 会话会 stop()，
+		# 把 sequencer 连同位置一起清掉，返回后 resume 变成静音冻结。
+		if new_state == ui_stat_mgr.UIState.SETTINGS_VIEW and midi_playback_manager:
+			midi_playback_manager.pause()
 		MediaSess.unregister_view(self)
 		if midi_playback_manager:
 			if new_state == ui_stat_mgr.UIState.MIDI_VIEW:
 				midi_playback_manager.stop()
 				_cleanup()
-			elif new_state == ui_stat_mgr.UIState.SETTINGS_VIEW:
-				midi_playback_manager.pause()
 
 		_set_note_displayers_process(false)
 		# 收起主面板的展开状态

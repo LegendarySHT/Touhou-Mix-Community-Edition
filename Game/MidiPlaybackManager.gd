@@ -147,12 +147,14 @@ var repeat_mode: int = RepeatMode.SEQUENTIAL
 ## 随机模式 = 直接把 playlist 本体打乱（播放顺序 = 列表顺序 = 面板显示顺序）。
 ## 打乱只在两个时机发生：「打乱列表」按钮、新会话进入（set_playlist/恢复/页外媒体上下首）；
 ## 切换播放模式是纯标记，不重排列表。
-## 播放历史栈（存 playlist 元素引用，重排/增删后按引用回查索引，不失效）。
-## previous = 历史栈回退；next 优先按序重放"未来"，空了才按列表次序前进。
-## 常见播放器语义（Spotify 式）：回退后按 next 走重放栈，跳任意歌则作废"未来"。
-var _play_history: Array[MidiData] = []
-var _play_future: Array[MidiData] = []
-const PLAY_HISTORY_MAX := 100
+## prev/next 为纯列表下标导航（含 REPEAT_ALL 回绕），没有独立的播放历史栈
+## ——两种模式下"正在播的歌在列表里的位置"都是确定的，上一首/下一首就是下标 ±1
+## 两份排列快照（存歌曲引用）：随机/顺序模式各自记住自己的列表排列，
+## 切换模式 = 在两份排列间交换，当前曲跟随到新位置。
+## 随机排列只在「生成时机」重新打乱：本会话首次切到随机、「打乱列表」按钮、新会话进入；
+## 快照里没有的新增歌在恢复时按引用调和接到尾部、被删的歌自动落空
+var _seq_order: Array[MidiData] = []
+var _shuf_order: Array[MidiData] = []
 ## 播放模式（随机/顺序开关）持久化到用户配置
 const REPEAT_CFG_SECTION := "Playback"
 const REPEAT_CFG_KEY := "repeat_mode"
@@ -223,31 +225,28 @@ func ensure_user_playlist() -> void:
 	session_is_single = false
 
 ## 播放器页之外经媒体控件上/下一首进入用户列表会话：从头播第一首。
-## 随机模式下这是新会话进入 → 先打乱一次再从头播。
+## 随机模式下这是新会话进入 → 记下顺序排列（若还没记），列表已是随机序不再重洗。
 ## 播放器页内的上下首走 play_next/play_previous 的常规语义，不经过这里
 func enter_user_playlist_from_head() -> bool:
 	if playlist.is_empty():
 		return false
 	PlaylistMGR.persist_enabled = true
 	session_is_single = false
-	if repeat_mode == RepeatMode.SHUFFLE:
-		_shuffle_whole_list()
-		playlist_index = 0
-	_play_history.clear()
-	_play_future.clear()
-	_play_index(0, false)
+	if repeat_mode == RepeatMode.SHUFFLE and _seq_order.is_empty():
+		_seq_order = playlist.duplicate()
+	play_playlist_index(0)
 	return true
 
-## 设置播放列表（会重置索引，不自动播放）。
-## 随机模式下整表打乱并从头播（新会话/每次启动重新洗，start_index 不参与）
+## 设置播放列表（会重置索引，不自动播放）。整表替换 = 全新会话：
+## 两份排列快照作废；随机模式下快照顺序排列、生成随机排列并从头播
 func set_playlist(items: Array[MidiData], start_index: int = 0) -> void:
 	playlist = items.duplicate()
 	playlist_index = -1 if playlist.is_empty() else clampi(start_index, 0, playlist.size() - 1)
-	# 列表整体替换 = 切换列表：历史/重放栈全部作废
-	_play_history.clear()
-	_play_future.clear()
+	_seq_order.clear()
+	_shuf_order.clear()
 	if repeat_mode == RepeatMode.SHUFFLE and not playlist.is_empty():
-		_shuffle_whole_list()
+		_seq_order = playlist.duplicate()
+		_playlist_become_shuffled()
 		playlist_index = 0
 	playlist_changed.emit()
 
@@ -276,12 +275,13 @@ func restore_playlist() -> void:
 	# 恢复出的是磁盘上的正式列表，属于「要记住」的会话
 	PlaylistMGR.persist_enabled = true
 	session_is_single = false
-		playlist = head
-		playlist_index = clampi(int(res["start"]), 0, playlist.size() - 1)
-		# 随机模式：每次启动重新洗、从头播（顺序模式保留磁盘顺序与进度）
-		if repeat_mode == RepeatMode.SHUFFLE and not playlist.is_empty():
-				_shuffle_whole_list()
-				playlist_index = 0
+	playlist = head
+	playlist_index = clampi(int(res["start"]), 0, playlist.size() - 1)
+	# 随机模式：每次启动重新洗、从头播（顺序模式保留磁盘顺序与进度）
+	if repeat_mode == RepeatMode.SHUFFLE and not playlist.is_empty():
+		_seq_order = playlist.duplicate()
+		_playlist_become_shuffled()
+		playlist_index = 0
 	# 先记头部快照再发信号：否则 playlist_changed 会走到落盘，把磁盘上的完整列表
 	# 覆盖成这个「头部窗口」（saved_index 靠尾时可能只剩 1 首，等同被清空）
 	_restored_head = head
@@ -364,20 +364,30 @@ func insert_next_in_playlist(data: MidiData) -> bool:
 	playlist_changed.emit()
 	return true
 
-## 从列表中移除指定下标。被移除的歌同时从历史/重放栈里清掉
-## （栈存引用不存下标，删除后条目只会被懒惰跳过；这里精准清掉更干净）
+## 从列表中移除指定下标。被移除的歌同时从两份排列快照里清掉。
+## 移除的是正在播的歌：切到接管其位置的那首继续播（末首被移除则退到新的末首），
+## 列表被移空则停止播放
 func remove_from_playlist(index: int) -> void:
 	if index < 0 or index >= playlist.size():
 		return
 	_mark_user_edited()
-		var removed: MidiData = playlist[index]
-		playlist.remove_at(index)
-		_play_history.erase(removed)
-		_play_future.erase(removed)
+	var removed: MidiData = playlist[index]
+	var was_current := index == playlist_index
+	playlist.remove_at(index)
+	_seq_order.erase(removed)
+	_shuf_order.erase(removed)
+	if was_current:
+		playlist_changed.emit()
+		if playlist.is_empty():
+			playlist_index = -1
+			stop()
+		else:
+			play_playlist_index(clampi(index, 0, playlist.size() - 1))
+	else:
 		if playlist_index >= playlist.size():
-		playlist_index = playlist.size() - 1
-	playlist_changed.emit()
-	playlist_index_changed.emit(playlist_index)
+			playlist_index = playlist.size() - 1
+		playlist_changed.emit()
+		playlist_index_changed.emit(playlist_index)
 
 ## 调整列表中两项的顺序。同时把播放下标一起挪位，保证"正在播放"仍指着同一首
 ## （否则移动它 / 把别的歌插到它前面之后，下标停在原位，面板高亮就跟丢乱套了）。
@@ -401,6 +411,9 @@ func move_in_playlist(from_idx: int, to_idx: int) -> void:
 			if to <= cur:
 				cur += 1                  # 插入点在它前面 → 右移一位
 		playlist_index = cur
+	# 随机模式下拖拽 = 编辑随机排列本身，快照跟着刷新（顺序快照在下次进入随机时重拍）
+	if repeat_mode == RepeatMode.SHUFFLE:
+		_shuf_order = playlist.duplicate()
 	playlist_changed.emit()
 	playlist_index_changed.emit(playlist_index)
 
@@ -409,24 +422,39 @@ func clear_playlist() -> void:
 	_mark_user_edited()
 	playlist.clear()
 	playlist_index = -1
-		# 列表清空 = 全部歌曲都不在了，历史/重放栈一并作废
-		_play_history.clear()
-		_play_future.clear()
-		playlist_changed.emit()
+	_seq_order.clear()
+	_shuf_order.clear()
+	playlist_changed.emit()
 
 ## 列表是否为空
 func has_playlist() -> bool:
 	return not playlist.is_empty()
 
-## 切换播放模式。持久化到用户配置。
-## 切到随机：列表本体打乱一次，只打乱当前曲之后的部分（之前的顺序 = 已播历史，保留）；
-## 切换播放模式（纯标记：不打乱列表——打乱只由「打乱列表」按钮或新会话触发）。
-## 持久化到用户配置
+## 切换播放模式 = 在两份排列快照间交换显示与播放顺序（当前曲跟随到新位置）。
+## 随机排列不会重新打乱——只在生成时机（首次切到随机/「打乱列表」按钮/新会话）生成；
+## 顺序排列在每次进入随机时按当前列表快照。模式标记持久化到用户配置
 func set_repeat_mode(mode: int) -> void:
 	if mode == repeat_mode:
 		return
+	var was := repeat_mode
 	repeat_mode = mode
+	if playlist.is_empty():
+		repeat_mode_changed.emit(mode)
+		_schedule_repeat_save()
+		return
+	if mode == RepeatMode.SHUFFLE:
+		# 进入随机：按当前列表快照顺序排列（供切回时还原），
+		# 已有随机排列就恢复它（只换排列不打乱），没有才现场生成
+		_seq_order = playlist.duplicate()
+		if _shuf_order.is_empty():
+			_playlist_become_shuffled()
+		else:
+			_playlist_apply_arrangement(_shuf_order)
+	elif was == RepeatMode.SHUFFLE:
+		# 切回顺序：还原顺序排列
+		_playlist_apply_arrangement(_seq_order)
 	repeat_mode_changed.emit(mode)
+	playlist_changed.emit()
 	if ConfigManager.instance != null:
 		ConfigManager.instance.set_value(REPEAT_CFG_SECTION, REPEAT_CFG_KEY, mode)
 		# 落盘防抖：save_config 是同步整文件写（目录检查+打开+序列化 ~9ms），
@@ -473,12 +501,13 @@ func _load_repeat_mode() -> void:
 	var saved := ConfigManager.instance.get_int(REPEAT_CFG_SECTION, REPEAT_CFG_KEY, repeat_mode)
 	if saved == repeat_mode:
 		return
-		repeat_mode = saved
-		if saved == RepeatMode.SHUFFLE and not playlist.is_empty():
-				# 启动重洗（每次启动重新打乱并从头播）
-				_shuffle_whole_list()
-				playlist_index = 0
-		repeat_mode_changed.emit(saved)
+	repeat_mode = saved
+	if saved == RepeatMode.SHUFFLE and not playlist.is_empty():
+		# 启动重洗：快照恢复出的顺序排列，列表换成随机排列并从头播
+		_seq_order = playlist.duplicate()
+		_playlist_become_shuffled()
+		playlist_index = 0
+	repeat_mode_changed.emit(saved)
 
 ## 统一处理系统媒体控件与页面按钮下发的播放命令。
 ##
@@ -534,17 +563,8 @@ func handle_media_command(action: String, position_ms: float = -1.0) -> bool:
 ## 跳转到列表中的指定曲目并播放。index 越界时自动夹取。
 ## 所有换曲（手动上下首 / 播完自动前进 / 点歌单 / 选收藏夹）的必经点
 func play_playlist_index(index: int) -> void:
-	_play_index(index, true)
-
-func _play_index(index: int, record_history: bool, keep_future: bool = false) -> void:
 	if playlist.is_empty():
 		return
-	if record_history and playlist_index >= 0 and playlist_index < playlist.size():
-		_play_history.append(playlist[playlist_index])
-		if _play_history.size() > PLAY_HISTORY_MAX:
-			_play_history.pop_front()
-		if not keep_future:
-			_play_future.clear()   # 主动跳到新歌后，"未来"作废
 	playlist_index = clampi(index, 0, playlist.size() - 1)
 	playlist_index_changed.emit(playlist_index)
 	var data: MidiData = playlist[playlist_index]
@@ -565,23 +585,14 @@ func play_next(user_initiated: bool = true) -> bool:
 		seek(0.0)
 		play()
 		return true
-	# 先按序重放"未来"（之前回退过的），空了才按列表次序前进。
-	# 自动前进（播完）不消费"未来"，避免挂机把重放栈偷偷放完
-	if user_initiated:
-		while not _play_future.is_empty():
-			var data: MidiData = _play_future.pop_back()
-			var idx := playlist.find(data)
-			if idx >= 0:
-				_play_index(idx, true, true)
-				return true
 	var next := _next_index()
 	if next < 0:
 		return false
-	_play_index(next, true, true)
+	play_playlist_index(next)
 	return true
 
 ## 上一首。距开头不足 3 秒时回到上一首，否则回到本曲开头（常见播放器语义）。
-## 按历史栈回退：随机模式下列表即播放顺序，历史栈额外覆盖"点过任意歌"的回溯
+## 纯列表下标导航：两种模式下"上一首"就是列表里当前曲的前一项
 func play_previous() -> bool:
 	if playlist.is_empty():
 		return false
@@ -589,30 +600,16 @@ func play_previous() -> bool:
 	if pos > 3000.0:
 		seek(0.0)
 		return true
-	while not _play_history.is_empty():
-		var data: MidiData = _play_history.pop_back()
-		var idx := playlist.find(data)
-		if idx >= 0 and idx != playlist_index:
-			if playlist_index >= 0 and playlist_index < playlist.size():
-				_play_future.append(playlist[playlist_index])
-			_play_index(idx, false)   # 当前曲已进"未来"栈，不重复记录
-			return true
 	play_playlist_index(maxi(playlist_index - 1, 0))
 	return true
 
 ## 当前是否还有下一首（用于禁用媒体控件的"下一首"按钮）
 func has_next() -> bool:
-	if playlist.is_empty():
-		return false
-	if not _play_future.is_empty():
-		return true
-	return _next_index() >= 0
+	return not playlist.is_empty() and _next_index() >= 0
 
 ## 当前是否还有上一首
 func has_previous() -> bool:
-	if playlist.is_empty():
-		return false
-	return not _play_history.is_empty() or playlist_index > 0
+	return not playlist.is_empty() and playlist_index > 0
 
 ## 下一首索引（顺序 = 列表次序；随机模式下列表本身就是打乱后的顺序）。
 ## 到末尾且非列表循环时返回 -1
@@ -625,15 +622,14 @@ func _next_index() -> int:
 		return 0
 	return -1
 
-## 「打乱列表」按钮 / 新会话随机起播：整表打乱并从头播。全新收听会话——历史/重放栈清空
+## 「打乱列表」按钮：重新生成随机排列（_shuf_order 快照同步更新，_seq_order 不动——
+## 切回顺序仍是原顺序）并从头播
 func shuffle_playlist_from_head() -> bool:
 	if playlist.is_empty():
 		return false
-	_shuffle_whole_list()
+	_playlist_become_shuffled()
 	playlist_index = 0
-	_play_history.clear()
-	_play_future.clear()
-	_play_index(0, false)
+	play_playlist_index(0)
 	playlist_changed.emit()
 	return true
 
@@ -642,6 +638,33 @@ func _shuffle_whole_list() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(str(get_instance_id()) + str(Time.get_ticks_usec()))
 	_shuffle_slice(0, playlist.size() - 1, rng)
+
+## 生成新的随机排列（Fisher-Yates）并记录到 _shuf_order 快照，当前曲跟随到新位置
+func _playlist_become_shuffled() -> void:
+	var cur: MidiData = null
+	if playlist_index >= 0 and playlist_index < playlist.size():
+		cur = playlist[playlist_index]
+	_shuffle_whole_list()
+	_shuf_order = playlist.duplicate()
+	playlist_index = playlist.find(cur) if cur != null else -1
+
+## 把列表切换为给定排列快照（引用调和：快照里没有的新增歌接到尾部、
+## 已被删除的歌自动落空），当前曲跟随到新位置。快照为空时列表保持原状
+func _playlist_apply_arrangement(arrangement: Array[MidiData]) -> void:
+	var cur: MidiData = null
+	if playlist_index >= 0 and playlist_index < playlist.size():
+		cur = playlist[playlist_index]
+	var arranged: Array[MidiData] = []
+	var kept := {}
+	for m in arrangement:
+		if m != null and playlist.has(m):
+			arranged.append(m)
+			kept[m] = true
+	for m in playlist:
+		if not kept.has(m):
+			arranged.append(m)
+	playlist = arranged
+	playlist_index = arranged.find(cur) if cur != null else -1
 
 func _shuffle_slice(from: int, to: int, rng: RandomNumberGenerator) -> void:
 	for i in range(to, from, -1):

@@ -1912,9 +1912,6 @@ public partial class MeltySynthPlayer : Node
 		}
 		if (_midiFile != null && _sequencer != null)
 		{
-			// 线程模型：同 pause()，Resume 重设墙钟锚点，必须与回调渲染互斥
-			WithSynthLock(() => _sequencer.Resume());
-
 			// 【处理 pre-roll 模式】如果在 pre-roll 中，继续等待跨越零点
 			if (_currentOffsetMs < 0.0)
 			{
@@ -1922,6 +1919,23 @@ public partial class MeltySynthPlayer : Node
 				playing = true;
 				return true;  // 不启动 AudioStreamPlayer，等待跨越零点
 			}
+
+			// 线程模型：同 pause()，Resume 重设墙钟锚点，必须与回调渲染互斥
+			WithSynthLock(() =>
+			{
+				if (!_sequencerStarted)
+				{
+					// 音源重载后新 sequencer 从未 Play 过：Resume() 是空操作，
+					// 位置/渲染钟全部静止（进度条冻结、MIDI 静音），必须先启动
+					_sequencer.Play(_midiFile, loop);
+					_sequencerStarted = true;
+					ApplyInstrumentOverridesToSynth();
+				}
+				else
+				{
+					_sequencer.Resume();
+				}
+			});
 
 			playing = true;
 			_audioOutput?.Play();

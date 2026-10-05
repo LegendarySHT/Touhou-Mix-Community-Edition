@@ -252,13 +252,14 @@ var _entry_pending: bool = false
 ## 进入页面时确保在播。列表本体由 MidiPlaybackManager 持有（唯一事实来源），
 ## 跨重启由 PlaylistMGR 落盘 / restore_playlist 读回，这里不再做第二份副本的同步。
 ## 判据只看 is_playing：stop() 不清 current_midi_data，用它判断会永远不重播。
+## 随机重排只发生在初次进入（列表从盘恢复）与「打乱列表」按钮，返回本页不重洗。
 func _ensure_playing(mgr) -> void:
 	# 要用用户播放列表(A)时先确保它就绪：内存为空先读盘恢复，仍为空则借单曲槽那首(B)。
 	# 正常通道（演奏/试听/媒体播种）只写单曲槽、不碰 A，所以这里必须自己确保 A 可用；
 	# 为此本页的播放动作天然就是"开始播放 A"，与用户从 TrackView 试听过来不冲突。
 	if mgr.playlist.is_empty() or not PlaylistMGR.persist_enabled:
 		mgr.ensure_user_playlist()
-		mgr.align_index_to_current()
+	mgr.align_index_to_current()
 	if mgr.is_playing:
 		return
 	if mgr.playlist.is_empty():
@@ -282,6 +283,20 @@ func _apply_stage_mode() -> void:
 
 func _on_back_pressed() -> void:
 	UiStatMGR.go_back_to(UIStateManager.UIState.ALBUM_VIEW)
+
+## 去音轨编辑页：把当前播放的 MIDI 整给 TrackView（当前没有在播的歌则不响应）
+func _on_track_view_pressed() -> void:
+	var mgr := MidiPlaybackManager.instance
+	var midi: MidiData = mgr.current_midi_data if mgr != null else null
+	if midi == null:
+		return
+	if midi.chart_key.is_empty() and not midi.id.is_empty():
+		# 投影来源的 MidiData 可能没带规范键，按 id 补一次水合
+		var m: MidiData = DataMGR.get_midi_by_id(midi.id)
+		if m != null:
+			midi = m
+	UiStatMGR.change_state(UIStateManager.UIState.TRACK_VIEW)
+	EvtBus.enter_track_view_with.emit.call_deferred(midi)
 
 func _on_prev_pressed() -> void:
 	var mgr := MidiPlaybackManager.instance
