@@ -2,8 +2,8 @@
 ## 附加到 Label 节点上即可自动启用超长单行文本的来回滚动效果（marquee）。
 ##
 ## 原理：
-##   继承 Label，把引擎绘制的文字颜色改为透明（引擎 C++ 绘制无法拦截，
-##   故用 theme override 让引擎文本不可见），自己用 draw_string 绘制文本。
+##   继承 Label，实际文本存在 _text、引擎侧 text 恒为空（Label 一个字形都不画、
+##   不占绘制调用），自己用 draw_string 绘制文本。
 ##   裁剪窗口 = 节点自身矩形（静止），滚动偏移作用在文本绘制坐标上，
 ##   因此滚动时能看到被裁剪掉的内容，无需外层 clip Control，单节点即可。
 ##
@@ -18,14 +18,6 @@
 ##   - 仅支持单行文本（不处理 autowrap / 富文本 / 省略号 / RTL）
 ##   - 需在场景中给 Label 固定宽度或 expand（本脚本不因文本撑大节点）
 extends Label
-
-## 滚动到端点后的停留时长
-const PAUSE_DURATION := 1.0
-
-## 滚动速度（像素/秒）：长文本与短文本统一像素速度，单程时长按滚动距离换算
-@export var scroll_speed := 60.0
-## 滚动缓动曲线：SINE 端点减速最温和，QUAD/CUBIC/QUART 端点减速逐级更明显
-@export var transition: Tween.TransitionType = Tween.TRANS_QUAD
 
 ## 自绘文字颜色（默认取 theme 的 font_color，可被场景 theme override 覆盖）
 @export var text_color: Color = Color(1, 1, 1, 1)
@@ -46,25 +38,35 @@ var _locked_text_color: Color = Color(1, 1, 1, 1)
 
 ## 当前滚动偏移（像素，负值向左）
 var _scroll_offset := 0.0
+## 实际文本内容存在这里；引擎侧 text 恒为空，让 Label 一个字形都不画
+## （原先只把 font_color 染透明，引擎仍提交全部字形，白占一次绘制调用和一份图元）
+var _text := ""
 ## 实际文本宽度（get_string_size），用于判断是否溢出
 var _text_width := 0.0
-var _tween: Tween = null
 var _resized_callable: Callable
-## 文本溢出但在视口外：标_pending，等首次绘制时再补建 tween
-var _scroll_pending := false
-## 文本是否溢出（与 tween 是否已建无关）：溢出时按滚动模式左对齐，
-## 不能用 _tween 判定——视口外尚未建 tween 时会误落到 alignment 分支，滚入视口时位置跳一下
+## 文本是否溢出：溢出时按滚动模式左对齐
 var _overflow := false
 
 
 ## 设置滚动文本并自动重算（外部必须用此函数，勿直接赋 label.text）
 func set_scroll_text(v: String) -> void:
-	super.set_text(v)
+	_text = v
+	super.set_text("")
+	_measure_and_scroll()
+
+
+## 外部绕过 set_scroll_text 直接赋 .text 的自愈：收编进 _text 并清空引擎文本
+func _absorb_engine_text() -> void:
+	if text.is_empty() or text == _text:
+		return
+	_text = text
+	super.set_text("")
 	_measure_and_scroll()
 
 
 ## 重算滚动（字号/尺寸变化后调用，重新测宽并启停滚动）
 func refresh() -> void:
+	_absorb_engine_text()
 	_measure_and_scroll()
 
 
@@ -85,15 +87,7 @@ func _ready() -> void:
 	# 注册为主题应用者：外观/主题色切换时重新解析文字色（否则自绘文字会停留在旧颜色）
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
-	set_process(false)
 	call_deferred("_measure_and_scroll")
-
-
-## pending 补建轮询：首次绘制可能发生在自身位于视口外时（如父层滑入动画期间），
-## 之后位移不触发重绘，NOTIFICATION_DRAW 不会再来，必须轮询等真正进视口
-func _process(_delta: float) -> void:
-	if _scroll_pending and _is_in_viewport():
-		_start_scroll_tween()
 
 
 ## 主题刷新回调：重新解析文字颜色并重绘
@@ -122,7 +116,7 @@ func _exit_tree() -> void:
 		ThemeMGR.unregister_theme_applier(self)
 	if _resized_callable.is_valid() and resized.is_connected(_resized_callable):
 		resized.disconnect(_resized_callable)
-	_kill_tween()
+	TextScrollMGR.unregister(self)
 
 
 ## 尺寸变化时重算滚动
@@ -136,59 +130,31 @@ func _notification(what: int) -> void:
 		# 静止裁剪窗口 = 节点自身矩形
 		RenderingServer.canvas_item_set_clip(get_canvas_item(), true)
 		_draw_scroll_text()
-		# 首次真正进入视口时补建滚动 tween（_draw_scroll_text 会读 _tween 判定对齐，故放在其后）
-		if _scroll_pending and _is_in_viewport():
-			_start_scroll_tween()
 
 
-## 测量文本宽度并启动/停止滚动
+## 测量文本宽度并更新滚动注册
 func _measure_and_scroll() -> void:
-	_kill_tween()
+	_absorb_engine_text()
 	_scroll_offset = 0.0
-	_scroll_pending = false
-
 	var font := get_theme_font("font")
 	var font_size := get_theme_font_size("font_size")
-	_text_width = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	_text_width = font.get_string_size(_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 
 	# 文字未溢出（含两端填充）：不滚动，避免刚好能塞下却顶着左边
 	if _text_width + 2 * end_padding <= size.x:
 		_overflow = false
-		set_process(false)
+		TextScrollMGR.unregister(self)
 		queue_redraw()
 		return
 
 	_overflow = true
-
-	# 文字溢出，但当前不在视口内：先不建 tween（长列表里绝大多数 label 都在视口外，
-	# 每条 tween 都是常驻内存 + 每帧回调）。等真正进视口时由 _process 轮询或首次绘制补建。
-	if not _is_in_viewport():
-		_scroll_pending = true
-		set_process(true)
-		return
-
-	_start_scroll_tween()
-
-
-## 启动来回滚动 tween（调用方须已确认文本溢出且本节点在视口内）
-func _start_scroll_tween() -> void:
-	_scroll_pending = false
-	set_process(false)
-	# 滚动范围含 2*end_padding：起始文本左边留 end_padding，终点文本右边留 end_padding，两端对称
+	# 起点和终点各留 end_padding，避免文字贴边
 	var max_offset := _text_width - size.x + 2 * end_padding
-	# 单程时长按滚动距离换算，保证不同长度文本像素速度一致
-	var duration := max_offset / scroll_speed
-	var tween := AniMGR.create_managed_tween(self).set_loops()
-	tween.set_ease(Tween.EASE_IN_OUT).set_trans(transition)
-	tween.tween_method(_set_scroll_offset, 0.0, -max_offset, duration)
-	tween.tween_interval(PAUSE_DURATION)
-	tween.tween_method(_set_scroll_offset, -max_offset, 0.0, duration)
-	tween.tween_interval(PAUSE_DURATION)
-	_tween = tween
+	TextScrollMGR.register(self, max_offset)
 
 
-## tween 回调：更新滚动偏移并重绘（仅当本节点位于视口内才重绘，视口外节点省去绘制开销）
-func _set_scroll_offset(offset: float) -> void:
+## 应用统一时钟计算出的偏移；视口外仅更新状态，不触发绘制
+func apply_scroll_offset(offset: float) -> void:
 	_scroll_offset = offset
 	if _is_in_viewport():
 		queue_redraw()
@@ -203,6 +169,9 @@ func _is_in_viewport() -> bool:
 
 ## 自绘单行文本（含滚动偏移、阴影、描边）
 func _draw_scroll_text() -> void:
+	_absorb_engine_text()
+	if _text.is_empty():
+		return
 	var font := get_theme_font("font")
 	var font_size := get_theme_font_size("font_size")
 
@@ -217,9 +186,7 @@ func _draw_scroll_text() -> void:
 			top = size.y - font_h
 	var base_y := top + ascent
 
-	# 水平起点：溢出（滚动模式）时左对齐 + 起始留空隙（默认左对齐会贴左边，这里空出左侧）；
-	# 非溢出时按 horizontal_alignment 对齐。用 _overflow 而非 _tween 判定，
-	# 视口外尚未建 tween 时也须保持同一画法，避免滚入视口时位置跳一下
+	# 水平起点：溢出（滚动模式）时左对齐并留出起始空隙，非溢出时按原对齐方式绘制
 	var x := 0.0
 	if _overflow:
 		x = end_padding
@@ -236,18 +203,11 @@ func _draw_scroll_text() -> void:
 
 	# 先画阴影（偏移重绘一层）
 	if shadow_color.a > 0.0:
-		draw_string(font, pos + shadow_offset, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, shadow_color)
+		draw_string(font, pos + shadow_offset, _text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, shadow_color)
 
 	# 再画描边
 	if outline_size > 0:
-		draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_size, outline_color)
+		draw_string_outline(font, pos, _text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_size, outline_color)
 
 	# 最后画主文本
-	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)
-
-
-## 清理当前滚动 tween 并复位
-func _kill_tween() -> void:
-	if _tween != null and _tween.is_valid():
-		_tween.kill()
-	_tween = null
+	draw_string(font, pos, _text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, text_color)

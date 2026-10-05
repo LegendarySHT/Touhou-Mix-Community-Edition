@@ -17,11 +17,13 @@ signal picked(fav_id: String)
 func open(pending: bool) -> void:
 	$FpColumn/FpTitle.text = "选择收藏夹" if pending else "选择歌单"
 	visible = true
+	TextScrollMGR.resume_page(self)
 	_shader.visible = true
 	_rebuild()
 
 func close() -> void:
 	visible = false
+	TextScrollMGR.suspend_page(self)
 	_shader.visible = false
 
 func _ready() -> void:
@@ -30,6 +32,7 @@ func _ready() -> void:
 	EvtBus.favorite_list_created.connect(_rebuild)
 	EvtBus.favorite_list_deleted.connect(_rebuild)
 	visible = false
+	TextScrollMGR.suspend_page(self)
 
 func _rebuild() -> void:
 	if not visible:

@@ -78,6 +78,8 @@ func _ready() -> void:
 		# 打乱按钮只在随机模式下显示（顺序/循环模式下没有意义）
 		mgr.repeat_mode_changed.connect(_on_repeat_mode_changed)
 		_reshuffle_btn.visible = mgr.repeat_mode == RepeatMode.SHUFFLE
+	if not visible:
+		TextScrollMGR.suspend_page(self)
 
 ## 打乱按钮跟随播放模式显隐
 func _on_repeat_mode_changed(_mode: int) -> void:
@@ -154,6 +156,7 @@ func _on_pl_scroll_resized() -> void:
 
 func open() -> void:
 	visible = true
+	TextScrollMGR.resume_page(self)
 	_rebuild_fav_select()
 	_rebuild_playlist_list()
 	# 从右侧滑入。走 AnimationManager 统一管理 tween，避免快速连点时叠加冲突
@@ -168,6 +171,7 @@ func close() -> void:
 	# 正在被拖动的项会继续收 gui_input，先停掉再隐藏
 	_stop_all_dragging()
 	visible = false
+	TextScrollMGR.suspend_page(self)
 
 # ── 行池 ──────────────────────────────────────────────
 

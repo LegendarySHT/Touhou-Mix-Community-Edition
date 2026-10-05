@@ -274,8 +274,10 @@ func switch_page(direction: int = 0):
 	if direction == -1:
 		op = false
 		delete_page.visible = true
+		TextScrollMGR.resume_page(delete_page)
 	else:
 		setting_page.visible = true
+		TextScrollMGR.resume_page(setting_page)
 
 	var wid = setting_page.size.x + 600
 	ani.animate_position(setting_page, Vector2(wid * 1 if not op else 0, 0), 0.5, "SV_PAGE_SW_1")
@@ -283,6 +285,10 @@ func switch_page(direction: int = 0):
 
 	setting_page.visible = op
 	delete_page.visible = not op
+	if op:
+		TextScrollMGR.suspend_page(delete_page)
+	else:
+		TextScrollMGR.suspend_page(setting_page)
 	# DelView 生命周期钩子：进入时触发懒加载构建，返回设置主页时保留节点
 	if op:
 		delete_page.on_exited_to_setting_list()
@@ -294,7 +300,9 @@ func has_pending_changes() -> bool:
 
 func switch_page_instant() -> void:
 	setting_page.visible = true
+	TextScrollMGR.resume_page(setting_page)
 	delete_page.visible = false
+	TextScrollMGR.suspend_page(delete_page)
 	delete_page.on_exited_to_setting_list()
 
 ## 返回处理：DelView 子页面可见时先切回设置主页（Esc / Android 返回键调用）

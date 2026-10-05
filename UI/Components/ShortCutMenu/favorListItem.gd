@@ -195,9 +195,8 @@ func _confirm_rename() -> void:
 	if not new_name.is_empty() and new_name != _name_full_text:
 		favor_item_renamed.emit(favorite_id, new_name)
 	else:
-		# 恢复显示并重启滚动
-		_name_full_text = name_label.text
-		name_label.set_scroll_text(name_label.text)
+		# 恢复显示并重启滚动（标签实际文本存于 TextScrollHelper，引擎 text 恒为空，取绑定时的值）
+		name_label.set_scroll_text(_name_full_text)
 	_finalizing_rename = false
 
 

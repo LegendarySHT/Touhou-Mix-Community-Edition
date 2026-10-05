@@ -58,6 +58,8 @@ func _ready() -> void:
 	ThemeMGR.register_theme_applier(self)
 	apply_theme()
 	EvtBus.sort_finished.connect(_on_library_items_ready)
+	if not visible:
+		TextScrollMGR.suspend_page(self)
 
 func apply_theme() -> void:
 	if ThemeMGR == null:
@@ -86,6 +88,7 @@ func open() -> void:
 	_reconcile_library_pool.call_deferred(false)
 
 	visible = true
+	TextScrollMGR.resume_page(self)
 	offset_transform_enabled = true
 	offset_transform_position_ratio = Vector2(0, 1.0)
 	offset_transform_position = Vector2.ZERO
@@ -107,6 +110,7 @@ func _animate_closed() -> void:
 	if _open:
 		return
 	visible = false
+	TextScrollMGR.suspend_page(self)
 
 ## 节点池：卡片挂在覆盖层上（机制同 SortedMidiView——只固定数量的卡片，
 ## 滚动时换绑数据），这样才能池化复用而不是每首歌一个节点。
