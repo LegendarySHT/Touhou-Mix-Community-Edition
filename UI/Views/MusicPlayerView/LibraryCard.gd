@@ -3,13 +3,10 @@ extends PanelContainer
 
 const COVER_ITEM_PREFIX := "music_player_card_"
 
-## 本卡片对应的谱面。列表项是 ChartDB 的轻量投影（Dictionary），MidiData 按需惰性水合
-var midi: MidiData = null
-var item_index: int = -1
 ## 数据索引（排序结果数组下标），供页面做节点池窗口对齐
+var item_index: int = -1
 var data_index: int = -1
 
-var _cover_loaded: bool = false
 var _cover_version: int = 0
 
 @onready var _cover: TextureRect = $HBox/Cover
@@ -50,10 +47,8 @@ func setup_with(p_item: Dictionary, idx: int, animate_in: bool = false) -> void:
 		modulate.a = 0.0
 		AniMGR.animate_fade_in(self, 0.22, "libcard_%d" % get_instance_id())
 	item = p_item
-	midi = null
 	item_index = idx
 	data_index = idx
-	_cover_loaded = false
 	if not _has_ready:
 		return   # 节点还没进树，等 _ready 里补刷
 	_apply_item()
@@ -61,23 +56,17 @@ func setup_with(p_item: Dictionary, idx: int, animate_in: bool = false) -> void:
 func _ready_apply() -> void:
 	_apply_item()
 
-## 把 item 的内容刷到界面。文本必须走 set_scroll_text（节点池换绑后才会重算滚动），
-## 字段映射同 PlayView：专辑/曲名/歌手/Midi名/Midi作者
+## 把 item 的内容刷到界面。文本必须走 set_scroll_text（节点池换绑后才会重算滚动）；
+## 五个字段全部取自 ChartDb.ListItemDict 投影（绑定零 DB 查询），映射同 PlayView
 func _apply_item() -> void:
-	var m := ensure_midi(item)
-	if m != null:
-		_album.set_scroll_text(m.album_name if not m.album_name.is_empty() else m.artist_name)
-		_song.set_scroll_text(m.song_name)
-		_artist.set_scroll_text(m.author_name if not m.author_name.is_empty() else "Unknown")
-		_midi_name.set_scroll_text(m.name)
-		_midi_author.set_scroll_text(m.artist_name)
-	else:
-		# 水合失败退回投影字段（仅含 Midi 名/作者）
-		_album.set_scroll_text("")
-		_song.set_scroll_text("")
-		_artist.set_scroll_text("")
-		_midi_name.set_scroll_text(String(item.get("name", "")))
-		_midi_author.set_scroll_text(String(item.get("artist_name", "")))
+	var album := String(item.get("album_name", ""))
+	var song := String(item.get("song_name", ""))
+	var author := String(item.get("author_name", ""))
+	_album.set_scroll_text(album if not album.is_empty() else String(item.get("artist_name", "")))
+	_song.set_scroll_text(song if not song.is_empty() else String(item.get("name", "")))
+	_artist.set_scroll_text(author if not author.is_empty() else "Unknown")
+	_midi_name.set_scroll_text(String(item.get("name", "")))
+	_midi_author.set_scroll_text(String(item.get("artist_name", "")))
 	_cover.texture = null
 	var cover_path := _cover_path_of(item)
 	if cover_path.is_empty():
@@ -90,17 +79,6 @@ func _apply_item() -> void:
 	CoverLoader.request_load(COVER_ITEM_PREFIX + str(get_instance_id()), cover_path,
 		func(_p: String, tex: Texture2D, _v: int): if ver == _cover_version: _cover.texture = tex)
 
-## 惰性水合：投影只有 Midi 名/作者/封面字段，其余信息按需查 DataManager（内部有缓存）
-func ensure_midi(item: Dictionary) -> MidiData:
-	if midi != null:
-		return midi
-	var key := String(item.get("key", ""))
-	if key.is_empty():
-		key = String(item.get("id", ""))
-	if not key.is_empty():
-		midi = DataMGR.get_midi_by_id(key)
-	return midi
-
 ## 封面：投影已带 file_hash / coverHash，直接走 FileSystemManager 的按 id 取图
 func _cover_path_of(item: Dictionary) -> String:
 	var fs_mgr := FileSystemManager.instance
@@ -109,26 +87,8 @@ func _cover_path_of(item: Dictionary) -> String:
 	return fs_mgr.get_cover_path_by_ids(String(item.get("file_hash", "")),
 		String(item.get("id", "")))
 
-## 封面异步加载：网格同时可能有几十张卡，务必走 CoverLoader 而非同步读盘
-func start_cover_load() -> void:
-	if _cover_loaded or midi == null:
-		return
-	_cover_loaded = true
-	var fs_mgr := FileSystemManager.instance
-	if fs_mgr == null:
-		return
-	CoverLoader.request_load(COVER_ITEM_PREFIX + str(get_instance_id()),
-		fs_mgr.get_cover_path_by_midiData(midi), _on_cover_loaded)
-
-func _on_cover_loaded(_path: String, tex: Texture2D, version: int) -> void:
-	# 版本过期说明期间已重新绑定到别的曲子，丢弃本次结果
-	if version != _cover_version:
-		return
-	_cover.texture = tex
-
 func _exit_tree() -> void:
-	if _cover_loaded:
-		CoverLoader.cancel(COVER_ITEM_PREFIX + str(get_instance_id()))
+	CoverLoader.cancel(COVER_ITEM_PREFIX + str(get_instance_id()))
 
 func _on_fav_pressed() -> void:
 	add_to_favorite_requested.emit(item)

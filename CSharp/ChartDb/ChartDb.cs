@@ -850,6 +850,9 @@ public partial class ChartDb : Node
         item["key"] = d["_id"].AsString;
         item["name"] = BsonConvert.GetStr(d, "name");
         item["artist_name"] = BsonConvert.GetStr(d, "artist_name");
+        item["author_name"] = BsonConvert.GetStr(d, "author_name");
+        item["song_name"] = BsonConvert.GetStr(d, "song_name");
+        item["album_name"] = BsonConvert.GetStr(d, "album_name");
         item["status"] = BsonConvert.GetStr(d, "status", "PENDING");
         item["download_count"] = BsonConvert.GetLong(d, "download_count");
         item["trial_count"] = BsonConvert.GetLong(d, "trial_count");

@@ -65,11 +65,12 @@ var soundfonts_index: Dictionary = {}
 ## 背景图索引 {background_name: String(path)}
 var backgrounds_index: Dictionary = {}
 
-## 封面纹理弱引用缓存 {cover_path: WeakRef}
-## 用 WeakRef 而非强引用：列表项释放 cover_texture.texture=null 后，
-## Texture 引用计数归零自动 GC，缓存中的 WeakRef 随之失效，下次重新加载
-## 多列表项共享同一 Texture 时，只要任一项仍引用，WeakRef 即有效（命中缓存零开销）
-## WeakRef 失效时 load_cover_with_cache 会自动 erase 条目，Dictionary 不会无限增长
+## 封面纹理缓存上限：滚动回看不重新读盘的窗口大小，超出按最久未用淘汰
+const COVER_TEXTURE_CACHE_MAX := 64
+
+## 封面纹理强引用 LRU 缓存 {cover_path: Texture2D}，上限 COVER_TEXTURE_CACHE_MAX
+## 旧 WeakRef 方案下滚出窗口的卡片一释放纹理就被 GC，快速滚动滚回必然重新读盘解码；
+## 强引用 + 容量上限后，近期看过的封面直接命中，超出上限才淘汰最早的
 var _cover_texture_cache: Dictionary = {}
 
 ## coverHash → 稳定封面缓存键路径
@@ -1924,39 +1925,32 @@ func get_cover_path_by_midiData(midi: MidiData) -> String:
 		return DEFAULT_COVER_PATH
 	return get_cover_path_by_ids(midi.file_hash, midi.id)
 
-## 主线程查 WeakRef 缓存，命中返回 Texture，未命中返回 null
+## 主线程查 LRU 缓存，命中返回 Texture 并刷新使用顺序，未命中返回 null
 ## 供 CoverListItemBase 在入队异步加载前先查缓存
 func get_cached_cover_texture(path: String) -> Texture2D:
-	if _cover_texture_cache.has(path):
-		var weak := _cover_texture_cache[path] as WeakRef
-		if weak:
-			var cached = weak.get_ref()
-			if cached and is_instance_valid(cached):
-				return cached
-		# WeakRef 失效：清理缓存条目
-		_cover_texture_cache.erase(path)
-	return null
+	if not _cover_texture_cache.has(path):
+		return null
+	var cached: Texture2D = _cover_texture_cache[path]
+	# LRU 触碰：erase + 重插移到队尾（Dictionary 保持插入序，队首即最久未用）
+	_cover_texture_cache.erase(path)
+	_cover_texture_cache[path] = cached
+	return cached
 
-## 主线程写入 WeakRef 缓存（供 CoverLoader 回调调用）
-## 不持有强引用，Texture 随列表项引用计数归零自动 GC
+## 主线程写入 LRU 缓存（供 CoverLoader 回调调用），超出上限淘汰队首（最久未用）
 func _cache_cover_texture(path: String, tex: Texture2D) -> void:
-	if tex:
-		_cover_texture_cache[path] = weakref(tex)
-
-## 带弱引用缓存的封面纹理加载
-## 同 path 多次调用：若上次加载的 Texture 仍被列表项引用（WeakRef 有效），直接返回，零读盘开销
-## 若 Texture 已被 GC（所有列表项都释放了），WeakRef 失效，重新从磁盘加载并清理失效条目
-func load_cover_with_cache(path: String) -> Texture2D:
-	# 命中缓存：通过 WeakRef 取回 Texture
+	if tex == null:
+		return
 	if _cover_texture_cache.has(path):
-		var weak := _cover_texture_cache[path] as WeakRef
-		if weak:
-			var cached = weak.get_ref()
-			if cached and is_instance_valid(cached):
-				# WeakRef 仍有效（有列表项引用此 Texture）：直接返回
-				return cached
-		# WeakRef 失效（Texture 已被 GC）：清理缓存条目
 		_cover_texture_cache.erase(path)
+	_cover_texture_cache[path] = tex
+	while _cover_texture_cache.size() > COVER_TEXTURE_CACHE_MAX:
+		_cover_texture_cache.erase(_cover_texture_cache.keys()[0])
+
+## 带缓存的封面纹理加载（同步）
+func load_cover_with_cache(path: String) -> Texture2D:
+	var cached := get_cached_cover_texture(path)
+	if cached:
+		return cached
 
 	var texture: Texture2D = null
 	# 区分 res:// 和 user:// 路径
@@ -1974,12 +1968,10 @@ func load_cover_with_cache(path: String) -> Texture2D:
 			return load_cover_with_cache(DEFAULT_COVER_PATH)
 
 	if texture:
-		# 缓存 WeakRef：不持有强引用，Texture 随列表项引用计数归零自动 GC
-		_cover_texture_cache[path] = weakref(texture)
+		_cache_cover_texture(path, texture)
 	return texture
 
 ## 清除封面纹理缓存（封面文件更新后调用）
-## 注：WeakRef 方案下，Texture 生命周期由列表项引用计数决定，此方法仅清空 Dictionary 条目
 func clear_cover_cache() -> void:
 	_cover_texture_cache.clear()
 	_cover_hash_to_path.clear()
