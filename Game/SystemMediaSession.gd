@@ -34,6 +34,8 @@ var _last_pushed_position_ms: float = -1.0
 var _last_pushed_playing: bool = false
 ## 位置推送节流累计时间
 var _position_accum: float = 0.0
+## 后端命令轮询节流累计时间
+var _poll_accum: float = 0.0
 ## 封面：按路径缓存 PNG 字节（读盘 + PNG 编码较慢，只在换曲时重算）。
 ## 必须限量：单张无损 PNG 约 0.5-1.5MB，无上限会让常驻内存随听歌数线性膨胀（实测 native heap 上百 MB）。
 const COVER_CACHE_MAX := 6
@@ -48,6 +50,8 @@ var _meta_song: MidiData = null
 var _meta_cached: Dictionary = {}
 ## 位置推送节流间隔（秒）。系统侧按 playback_rate 自行外推，无需高频刷新
 const POSITION_PUSH_INTERVAL: float = 0.5
+## 后端命令轮询间隔（秒）。命令是低频事件，每帧轮询会白白 marshal 一个数组
+const COMMAND_POLL_INTERVAL: float = 0.05
 
 func _ready() -> void:
 	add_to_group("singleton")
@@ -156,7 +160,10 @@ func _process(delta: float) -> void:
 			_on_backend_ready()
 		return
 
-	_poll_backend_command()
+	_poll_accum += delta
+	if _poll_accum >= COMMAND_POLL_INTERVAL:
+		_poll_accum = 0.0
+		_poll_backend_command()
 
 	# 后台时 Godot 主循环暂停（Android 渲染线程被挂起），_process 不运行；
 	# 此时系统侧按 playback_rate 外推位置，返回前台后此处补一次校正。

@@ -1220,30 +1220,6 @@ func _trim_parsed_notes_cache() -> void:
 			return a.notes_parsed_at < b.notes_parsed_at)
 		for i in range(entries.size() - PARSED_NOTES_CACHE_MAX):
 			entries[i].clear_parsed_notes()
-	_mem_diag()
-
-## 临时诊断：把 Godot 账本（静态内存/纹理）与系统 RSS 的差额拆开看。用完即删。
-func _mem_diag() -> void:
-	var mb := 1048576.0
-	var soa_notes := 0
-	var soa_count := 0
-	for m in DataMGR.midis.values():
-		if m is MidiData and m.has_notes():
-			soa_count += 1
-			soa_notes += m.notes_soa.size()
-	var managed := {}
-	if midi_player != null and midi_player.has_method("get_memory_diag"):
-		managed = midi_player.get_memory_diag()
-	GLogger.info("[MemDiag] static=%.0fMB tex=%.0fMB vid=%.0fMB | managed live=%.0fMB heap=%.0fMB frag=%.0fMB | soa=%d首/%d音符(~%.0fMB) midis=%d" % [
-		Performance.get_monitor(Performance.MEMORY_STATIC) / mb,
-		Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / mb,
-		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / mb,
-		float(managed.get("managed_live", 0)) / mb,
-		float(managed.get("managed_heap", 0)) / mb,
-		float(managed.get("managed_frag", 0)) / mb,
-		soa_count, soa_notes, soa_notes * 28.0 / mb,
-		DataMGR.midis.size(),
-	], "MidiPlaybackManager")
 
 ## 预载人声到 miniaudio 后端（原生解码线程异步填充环形缓冲，不阻塞主线程）
 func _preload_vocal_async() -> void:
@@ -1443,7 +1419,7 @@ func get_loop() -> bool:
 		return backend.get_loop()
 	return false
 
-## 听歌降耗档：把音频 period 提到 512（听歌无所谓延迟，回合延迟更省电）。
+## 听歌降耗档：把音频缓冲切到省电档（Android 上 period 4096×3，听歌无所谓延迟，缓冲拉长更省电）。
 ## 只在播放器页面听歌时开启，打歌/音轨用回 256 保持低延迟。
 func set_listening_profile(enabled: bool) -> void:
 	var backend = _get_active_backend()
@@ -1523,28 +1499,23 @@ func calculate_tick_from_position_with_bpm_timeline(target_time_ms: float, timeb
 		var seconds_per_tick: float = 60.0 / (120.0 * timebase)  # 默认120 BPM
 		return target_time_ms / 1000.0 / seconds_per_tick
 	
-	# 遍历BPM时间线找到目标时间所在的段
-	for i in range(bpm_timeline.size()):
-		var entry = bpm_timeline[i]
-		var entry_tick = entry["tick"]
-		var entry_time_ms = entry["time_ms"]
-		
-		# 确定下一个BPM变化
-		var next_entry = null
-		if i + 1 < bpm_timeline.size():
-			next_entry = bpm_timeline[i + 1]
-		
-		if next_entry == null or target_time_ms <= next_entry["time_ms"]:
-			# 目标时间在这个BPM段内
-			var bpm = entry["bpm"]
-			var time_in_segment = target_time_ms - entry_time_ms
-			var ms_per_tick = (60000.0 / bpm) / timebase
-			var tick_offset = time_in_segment / ms_per_tick
-			
-			return entry_tick + tick_offset
-	
-	# 不应该到达这里，返回最后的tick
-	return bpm_timeline[-1]["tick"]
+	# 二分定位所在 BPM 段（time_ms 升序）
+	var lo := 0
+	var hi := bpm_timeline.size() - 1
+	var seg := 0
+	while lo <= hi:
+		var mid := (lo + hi) >> 1
+		if float(bpm_timeline[mid]["time_ms"]) <= target_time_ms:
+			seg = mid
+			lo = mid + 1
+		else:
+			hi = mid - 1
+
+	# 目标时间落在该段内；超出末段时取末段，与线性扫的收尾行为一致
+	var entry = bpm_timeline[seg]
+	var time_in_segment = target_time_ms - entry["time_ms"]
+	var ms_per_tick = (60000.0 / entry["bpm"]) / timebase
+	return entry["tick"] + time_in_segment / ms_per_tick
 
 ## 设置选中的轨道和通道（支持新格式）
 ## 接受 Array[Dictionary] 格式: [{"track": int, "channel": int}, ...]

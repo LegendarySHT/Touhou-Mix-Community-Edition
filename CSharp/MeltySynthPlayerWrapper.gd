@@ -34,7 +34,7 @@ func _on_soundfont_changed(path: String) -> void:
 func set_max_polyphony(value: int) -> void:
 	max_polyphony = value
 
-## 听歌降耗档：把音频 period 提到 512（听歌无所谓延迟，回合延迟更省电）。
+## 听歌降耗档：把音频缓冲切到省电档（Android period 4096×3，听歌无所谓延迟，缓冲拉长更省电）。
 ## 仅供播放器页面听歌开启；打歌/音轨用回 256 保持低延迟。
 func set_listening_profile(enabled: bool) -> void:
 	if meltysynth_player != null and meltysynth_player.has_method("set_listening_profile"):

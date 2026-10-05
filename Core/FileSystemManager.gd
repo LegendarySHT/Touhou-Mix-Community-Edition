@@ -66,7 +66,8 @@ var soundfonts_index: Dictionary = {}
 var backgrounds_index: Dictionary = {}
 
 ## 封面纹理缓存上限：滚动回看不重新读盘的窗口大小，超出按最久未用淘汰
-const COVER_TEXTURE_CACHE_MAX := 64
+## 单张封面 512~600px RGBA8 约 1MB，上限 64 时纹理可占 60MB+（实测纹理总量 92MB 的大头）
+const COVER_TEXTURE_CACHE_MAX := 24
 
 ## 封面纹理强引用 LRU 缓存 {cover_path: Texture2D}，上限 COVER_TEXTURE_CACHE_MAX
 ## 旧 WeakRef 方案下滚出窗口的卡片一释放纹理就被 GC，快速滚动滚回必然重新读盘解码；

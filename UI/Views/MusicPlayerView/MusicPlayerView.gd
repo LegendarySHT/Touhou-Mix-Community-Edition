@@ -53,6 +53,8 @@ var _progress_dragging: bool = false
 
 func _ready() -> void:
 	UiStatMGR.state_changed.connect(_on_ui_state_changed)
+	# _process 只在播放器页启用，进入/离开由 state_changed 驱动，避免常驻每帧空转
+	set_process(false)
 	ThemeMGR.register_theme_applier(self)
 	apply_theme()
 
@@ -101,7 +103,8 @@ func _on_ui_state_changed(_old: int, new: int) -> void:
 	if new == WORK_STATE:
 		_activate_page()
 	elif _old == WORK_STATE:
-		# 离开本页恢复默认帧率（0 = vsync 主导），去 TrackView/打歌等页面不受 30/60 限制
+		# 离开本页停掉每帧进度刷新，并恢复默认帧率（0 = vsync 主导）
+		set_process(false)
 		Engine.max_fps = 0
 		var mgr := MidiPlaybackManager.instance
 		if mgr != null:
@@ -145,6 +148,7 @@ func _on_progress_drag_ended(value_changed: bool) -> void:
 ## 幂等，且需在 _ready 之后再跑一遍——懒加载视图 add_child 后才进入树，_ready
 ## 可能晚于 state_changed，那时机 @onready 尚未赋值、_on_ui_state_changed 会静默失效。
 func _activate_page() -> void:
+	set_process(true)
 	# 每次进页面都要重新注册：离开本页时 _on_ui_state_changed 会 unregister_view，
 	# 不重新注册则 has_view() 为 false，系统媒体卡片不显示、媒体命令被直接丢弃。
 	# register_view 自身幂等（同一视图重复调用直接返回），不必再自己判断。
@@ -155,7 +159,7 @@ func _activate_page() -> void:
 		# 这不是"起一次会话"，所以不走 start_session：那会重设用户播放列表(A)，
 		# 而这里只需要改当前曲的循环标志。
 		mgr.set_loop(true)
-		# 听歌降耗档：本页只听歌，period 提到 512（延迟无所谓，回合更省电）
+		# 听歌降耗档：本页只听歌，缓冲拉到 4096×3（延迟无所谓，回调率更低更省电）
 		mgr.set_listening_profile(true)
 		_ensure_playing(mgr)
 	# 从其它页面返回本页时复位全部开关：面板/模式是子页状态，不跨页面保留。

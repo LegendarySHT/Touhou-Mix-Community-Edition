@@ -504,9 +504,17 @@ func get_skin_textures(skin_name: String) -> Dictionary:
 					var texture = ImageTexture.create_from_image(image)
 					result[texture_key] = texture
 
-	# 缓存结果（非空时）
+	# 缓存结果（非空时）。单套皮肤贴图 10 张 600x450 RGBA8 ≈ 10.8MB，
+	# 而这套缓存只进不出（clear_skin_cache 无调用点），皮肤预览多翻几套就能堆到几十 MB。
+	# 只留最近两套（当前使用 + 正在预览的那套），其余释放。
 	if not result.is_empty():
 		_skin_textures_cache[skin_name] = result
+		while _skin_textures_cache.size() > 2:
+			var oldest: String = ""
+			for k in _skin_textures_cache:
+				oldest = k
+				break
+			_skin_textures_cache.erase(oldest)
 
 	return result
 

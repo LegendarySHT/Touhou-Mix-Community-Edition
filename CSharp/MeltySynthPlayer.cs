@@ -128,10 +128,15 @@ public partial class MeltySynthPlayer : Node
 	private Synthesizer _autoSynth;        // 原有：用于MIDI自动播放（就是 _synth）
 	private bool _useSeparateSynthForManual = true;  // 启用独立合成器
 
-	// 听歌降耗档：只切音频 period（听歌无所谓延迟，回合延迟反而更省电）。
+	// 听歌降耗档：加大音频缓冲（听歌无所谓延迟，缓冲拉长反而更省电）。
 	// 不用复音上限——密集谱面会提前偷音，听感代价太大。
 	private const int GameplayPeriodFrames = 256;
-	private const int ListeningPeriodFrames = 512;
+	private const int GameplayPeriodCount = 2;
+	// 听歌档 4096 帧/回调（48k ≈ 85ms）×3 周期 ≈ 256ms 缓冲，回调率降到 ~12Hz。
+	// 请求的 framesPerDataCallback 远超 AAudio MMAP 低延迟路径的窗口，设备自然落到
+	// 深缓冲路径，无需另外关低延迟标志。
+	private const int ListeningPeriodFrames = 4096;
+	private const int ListeningPeriodCount = 3;
 	private bool _listeningProfile = false;
 	private bool _preferNativeSequencerSeek = true;
 
@@ -141,6 +146,7 @@ public partial class MeltySynthPlayer : Node
 
 	// 当前请求与已创建设备使用的 period 帧数
 	private int _desiredBufferFrames = GameplayPeriodFrames;
+	private int _desiredPeriodCount = GameplayPeriodCount;
 	private int _activeAudioPeriodFrames = 0;
 
 	// 跟踪已应用通道状态到手动合成器的虚拟通道，避免每次触发音符重复设置
@@ -368,9 +374,9 @@ public partial class MeltySynthPlayer : Node
 
 		// _decodeFrames 初始设为 period, Initialize 后会根据 actualPeriod 上调
 		maBridge.SetDecodeFrames((int)maPeriod);
-		maBridge.SetPeriodSize(maPeriod, 2);
+		maBridge.SetPeriodSize(maPeriod, (uint)_desiredPeriodCount);
 
-		GD.Print($"[MeltySynthPlayer] Creating miniaudio bridge: decode={maPeriod}f, period=({maPeriod},2), os={osName}, exclusive={(osName == "Windows" ? (System.Environment.GetEnvironmentVariable("MINIAUDIO_EXCLUSIVE") == "1" ? "yes" : "no") : "n/a")}");
+		GD.Print($"[MeltySynthPlayer] Creating miniaudio bridge: decode={maPeriod}f, period=({maPeriod},{_desiredPeriodCount}), os={osName}, exclusive={(osName == "Windows" ? (System.Environment.GetEnvironmentVariable("MINIAUDIO_EXCLUSIVE") == "1" ? "yes" : "no") : "n/a")}");
 		return maBridge;
 	}
 
@@ -1178,7 +1184,8 @@ public partial class MeltySynthPlayer : Node
 	}
 
 
-	// period 跟随听歌档即时切换：只在页面进出时调用（播放器页 512、其余 256），
+	// period 跟随听歌档即时切换：只在页面进出时调用（仅 Android 播放器页切到 4096×3，
+	// 打歌/音轨等其余场景维持原有 256×2）。
 	// 换来的是"绝大多数时间保持低延迟高功耗档"。代价是页面切换时一次设备重建。
 	private void ApplyAudioPeriodForProfile()
 	{
@@ -1188,14 +1195,15 @@ public partial class MeltySynthPlayer : Node
 		}
 		var targetPeriod = _listeningProfile ? ListeningPeriodFrames : GameplayPeriodFrames;
 		_desiredBufferFrames = targetPeriod;
+		_desiredPeriodCount = _listeningProfile ? ListeningPeriodCount : GameplayPeriodCount;
 		if (_audioOutput == null || _activeAudioPeriodFrames == targetPeriod)
 		{
 			return;
 		}
-		GD.Print($"[MeltySynthPlayer] Switching audio period for profile: {_activeAudioPeriodFrames}→{targetPeriod}");
+		GD.Print($"[MeltySynthPlayer] Switching audio period for profile: {_activeAudioPeriodFrames}→{targetPeriod}×{_desiredPeriodCount}");
 		RecreateAudioOutputBridge();
 	}
-	
+
 	// Getter methods for compatibility
 	public string get_soundfont() => _soundfont;
 	public string get_file() => _file;

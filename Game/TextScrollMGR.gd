@@ -15,6 +15,9 @@ var _offset_ratio := 0.0
 
 
 func _process(delta: float) -> void:
+	# 无活跃滚动项时不必推进相位（页面隐藏后其项目已从活跃集移除）
+	if _active_items.is_empty():
+		return
 	var travel := maxf(travel_duration, 0.001)
 	var pause := maxf(endpoint_pause_duration, 0.0)
 	var cycle_duration := 2.0 * (travel + pause)
