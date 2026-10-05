@@ -187,7 +187,7 @@ func apply_theme() -> void:
 		var lsb := lib.get_theme_stylebox("panel") as StyleBoxFlat
 		if lsb != null:
 			lsb.bg_color = ThemeMGR.get_color("surface", lsb.bg_color)
-	_refresh_panel_btn_tint()
+	_apply_icon_tints()
 
 ## 入场/出场动画。由 AnimationManager 转调（契约：ani_comp.call("animate", [ani_in])），
 ## 模式同 ScoreView.animate()——分段动画写在页面自己脚本里，管理器只负责转发与
@@ -353,13 +353,36 @@ func _on_playlist_toggled(on: bool) -> void:
 		_close_playlist_panel()
 	_refresh_panel_btn_tint()
 
-func _refresh_panel_btn_tint() -> void:
-	var on := Color.WHITE
+## 图标贴图是白色描线，浅色模式下会消失在浅底上，需按主题翻成常规文字色
+func _icon_color() -> Color:
+	if ThemeMGR == null:
+		return Color.WHITE
+	return ThemeMGR.get_color("text_primary", Color.WHITE)
+
+## TextureButton 没有 icon_*_color 主题项（只有 StyleBox），贴图不会被主题染色，
+## 只能逐节点 self_modulate 接入主题。曲库搜索框的放大镜是 TextureRect，同理。
+func _apply_icon_tints() -> void:
+	var normal := _icon_color()
+	var dim := normal
 	if ThemeMGR != null:
-		on = ThemeMGR.get_color("primary", Color.WHITE)
+		dim = ThemeMGR.get_color("text_dim", normal)
+	for b in [_back_btn, _stage_switch_btn, _prev_btn, _play_pause_btn, _next_btn, _repeat_btn]:
+		if b != null:
+			b.self_modulate = normal
+	if _equalizer_btn != null:
+		_equalizer_btn.self_modulate = dim
+	if _search_icon != null:
+		_search_icon.self_modulate = normal
+	_refresh_panel_btn_tint()
+
+func _refresh_panel_btn_tint() -> void:
+	var off := _icon_color()
+	var on := off
+	if ThemeMGR != null:
+		on = ThemeMGR.get_color("primary", off)
 	for b in [_volume_btn, _library_btn, _playlist_btn]:
 		if b != null:
-			b.self_modulate = on if b.button_pressed else Color.WHITE
+			b.self_modulate = on if b.button_pressed else off
 
 func _on_midi_volume_changed(value: float) -> void:
 	var mgr := MidiPlaybackManager.instance
@@ -403,6 +426,7 @@ var _lib_direction: int = SortingEngine.SortDirection.ASCENDING
 
 @onready var _library_layer: Control = $LibraryLayer
 @onready var _search_edit: LineEdit = $LibraryLayer/SearchRow/SearchEdit
+@onready var _search_icon: TextureRect = $LibraryLayer/SearchRow/SearchEdit/SearchBtn
 @onready var _filter_status_btn: Button = $LibraryLayer/SearchRow/FilterStatusBtn
 @onready var _filter_data_btn: Button = $LibraryLayer/SearchRow/FilterDataBtn
 @onready var _sort_order_btn: Button = $LibraryLayer/SearchRow/SortOrderBtn

@@ -25,6 +25,7 @@ theme_override_constants/separation = 8
 custom_minimum_size = Vector2(35, 0)
 layout_mode = 2
 size_flags_horizontal = 0
+size_flags_vertical = 4
 theme_override_font_sizes/font_size = 32
 text = "≡"
 
@@ -39,5 +40,6 @@ script = ExtResource("2_3hfq4")
 [node name="RemoveBtn" type="Button" parent="HBox" unique_id=2014382139]
 custom_minimum_size = Vector2(40, 0)
 layout_mode = 2
+size_flags_vertical = 4
 theme_override_font_sizes/font_size = 30
 text = "✕"

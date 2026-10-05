@@ -763,7 +763,6 @@ func _set_display_current_time(current_ms: float) -> void:
 		current_time.text = _format_time(current_ms)
 
 func _process(delta: float) -> void:
-	_process_focus_lost()
 	if midi_playback_manager.is_playing:
 		var current_position = midi_playback_manager.position_ms
 
@@ -816,36 +815,10 @@ func _notification(what: int) -> void:
 	# 是常态，失焦不代表该停。
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		_set_note_displayers_process(false)
-	elif what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
-		# 失焦不等于切走：系统媒体浮层/音量面板会临时夺焦（PC 上同时跑多程序是常态，
-		# 那样就停显示看起来像卡死）。延迟确认：焦点回来就什么都不做，
-		# 仍未回来才认为用户真切到别的应用。
-		_focus_lost_pending = true
-		_focus_lost_frames = 0
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
-		_focus_lost_pending = false
 		_on_focus_regained()
 		if ui_stat_mgr.current_state == work_state and midi_playback_manager.is_playing:
 			_set_note_displayers_process(true)
-
-## 失焦延迟确认：连续 N 帧仍未回到前台，才认为用户真切走，停掉音符显示。
-## 系统媒体浮层/音量面板夺焦后很快就会还焦，此时画面照常刷新。
-const FOCUS_LOST_CONFIRM_FRAMES := 12
-
-var _focus_lost_pending: bool = false
-var _focus_lost_frames: int = 0
-
-func _process_focus_lost() -> void:
-	if not _focus_lost_pending:
-		return
-	_focus_lost_frames += 1
-	if _focus_lost_frames < FOCUS_LOST_CONFIRM_FRAMES:
-		return
-	_focus_lost_pending = false
-	if DisplayServer.window_is_focused(DisplayServer.MAIN_WINDOW_ID):
-		return
-	if midi_playback_manager != null and midi_playback_manager.is_playing:
-		_set_note_displayers_process(false)
 
 func _gui_input(event: InputEvent) -> void:
 	super._gui_input(event)

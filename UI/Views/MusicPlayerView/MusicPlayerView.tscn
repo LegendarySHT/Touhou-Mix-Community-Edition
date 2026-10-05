@@ -76,15 +76,11 @@ region = Rect2(240, 0, 80, 80)
 atlas = ExtResource("4_wihuv")
 region = Rect2(320, 0, 80, 80)
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_sy7yx"]
+
 [sub_resource type="AtlasTexture" id="AtlasTexture_p3d4u"]
 atlas = ExtResource("2_ny7ko")
 region = Rect2(320, 240, 80, 80)
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_df07l"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_61gxp"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_dvno7"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_m2n2l"]
 atlas = ExtResource("8_hk5dp")
@@ -463,7 +459,7 @@ vertical_scroll_mode = 3
 [node name="PlList" type="VBoxContainer" parent="PlaylistPanel/PlColumn/PlScroll" unique_id=1597765906]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 4
+theme_override_constants/separation = 5
 script = ExtResource("7_ia34b")
 
 [node name="PlEmpty" type="Label" parent="PlaylistPanel/PlColumn/PlScroll/PlList" unique_id=1811985564]
@@ -494,6 +490,7 @@ offset_right = -30.0
 grow_horizontal = 2
 grow_vertical = 2
 size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxEmpty_sy7yx")
 
 [node name="LibraryOverlay" type="Control" parent="LibraryLayer/Content" unique_id=950609886]
 clip_contents = true
@@ -542,9 +539,6 @@ stretch_mode = 5
 [node name="FilterStatusBtn" type="Button" parent="LibraryLayer/SearchRow" unique_id=2099732262]
 custom_minimum_size = Vector2(80, 80)
 layout_mode = 2
-theme_override_styles/normal = SubResource("StyleBoxEmpty_df07l")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_61gxp")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_dvno7")
 icon = SubResource("AtlasTexture_m2n2l")
 icon_alignment = 1
 expand_icon = true
@@ -552,9 +546,6 @@ expand_icon = true
 [node name="FilterDataBtn" type="Button" parent="LibraryLayer/SearchRow" unique_id=1254180135]
 custom_minimum_size = Vector2(80, 80)
 layout_mode = 2
-theme_override_styles/normal = SubResource("StyleBoxEmpty_df07l")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_61gxp")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_dvno7")
 icon = SubResource("AtlasTexture_qukpt")
 icon_alignment = 1
 expand_icon = true
@@ -562,9 +553,6 @@ expand_icon = true
 [node name="SortOrderBtn" type="Button" parent="LibraryLayer/SearchRow" unique_id=1881687940]
 custom_minimum_size = Vector2(80, 80)
 layout_mode = 2
-theme_override_styles/normal = SubResource("StyleBoxEmpty_df07l")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_61gxp")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_dvno7")
 icon = SubResource("AtlasTexture_3iebj")
 icon_alignment = 1
 expand_icon = true
@@ -573,11 +561,13 @@ expand_icon = true
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 size_flags_horizontal = 10
+theme_override_font_sizes/font_size = 42
 text = "全部加入播放列表"
 
 [node name="BatchFavBtn" type="Button" parent="LibraryLayer/SearchRow" unique_id=1419214387]
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
+theme_override_font_sizes/font_size = 42
 text = "全部加入收藏夹"
 
 [node name="FavoritePicker" type="Panel" parent="." unique_id=1122668452]
