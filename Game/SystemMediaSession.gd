@@ -280,10 +280,17 @@ func _on_backend_command(action: String, position_ms: float) -> void:
 		# 此时正在播的多半是正常通道的单曲槽(B)，切歌就等于"开始播放 A"，与进入播放页一致。
 		if action == "next" or action == "prev":
 			mgr.ensure_user_playlist()
+		# 全部命令统一由中心执行器处理：seek/play/pause/stop/toggle 不依赖当前页面是谁
+		# （此前只有订阅了 command_received 的 TrackView 会处理，播放器页拖卡片进度条
+		# 一类命令会被静默丢弃）。
 		var consumed := mgr.handle_media_command(action, position_ms)
 		# 上下首但确实无歌可切：把当前这首作为单曲槽起点
 		if not consumed and (action == "next" or action == "prev"):
-			_ensure_playlist_has_current()
+			if has_view():
+				_ensure_playlist_has_current()
+			else:
+				if not mgr.enter_user_playlist_from_head():
+					_ensure_playlist_has_current()
 	# 上下首一律进播放器页——这是该页面的入口语义，与歌单是否为空无关。
 	# 之前只在歌单为空时跳转，导致退出播放器页后在 TrackView 点上下首
 	# 会按列表切歌却留在原页面。

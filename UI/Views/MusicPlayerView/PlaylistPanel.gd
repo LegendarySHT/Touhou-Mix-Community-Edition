@@ -10,6 +10,8 @@ signal favorite_requested(midis: Array)
 const ITEM_SCRIPT := preload("res://UI/Views/MusicPlayerView/PlaylistItem.gd")
 const LIST_SCRIPT := preload("res://UI/Views/MusicPlayerView/PlaylistList.gd")
 const PL_ITEM_SCENE := preload("res://UI/Views/MusicPlayerView/PlaylistItem.tscn")
+## 播放方式枚举直接引用 manager 的，避免两处字面量漂移
+const RepeatMode := MidiPlaybackManager.RepeatMode
 
 ## 行对象池（照曲库的池化思路）：只保留「视窗 ± margin」的行节点，滚动时换绑数据。
 ## 行高一致，PlList 里用上下两个 spacer 撑出滚动总高，池行夹在中间占住可视窗口的位置
@@ -20,6 +22,7 @@ const POOL_MAX_ROWS := 64
 @onready var _pl_empty: Label = $PlColumn/PlScroll/PlList/PlEmpty
 @onready var _fav_select_btn: OptionButton = $PlColumn/PlCtrl/FavSelectBtn
 @onready var _pl_scroll: ScrollContainer = $PlColumn/PlScroll
+@onready var _reshuffle_btn: Button = $PlColumn/PlTitle/ReshuffleBtn
 
 ## 播放列表拖动滚动（仅桌面补足）：ScrollContainer 的拖拽滚动只在触屏平台生效，
 ## 桌面没有，所以在视图里补一份，手感同曲库（1:1 跟手 + 松手惯性）。
@@ -38,6 +41,19 @@ var _pl_flinging: bool = false
 ## 面板每次打开都调 _rebuild_playlist_list，列表没变时靠它跳过全量重建
 var _pl_last_sig: PackedInt64Array = PackedInt64Array()
 
+## 当前歌跟随：面板打开且用户无操作时，定期把视图滚到当前歌（不在可视区才滚）。
+## 滚动带动画；动画期间 scrollbar 的 value_changed 不算用户操作
+const FOLLOW_CHECK_INTERVAL := 3.0
+const FOLLOW_IDLE_MS := 10000
+const FOLLOW_SCROLL_MIN := 0.25
+const FOLLOW_SCROLL_MAX := 0.8
+const FOLLOW_SCROLL_SPEED := 3000.0   # px/s，换算动画时长用
+var _follow_accum: float = 0.0
+var _last_user_scroll_ms: int = 0
+var _follow_tween: Tween = null
+## 程序化滚动标志：置位期间 scrollbar 的 value_changed 不算用户操作
+var _auto_scrolling: bool = false
+
 ## 行池状态。行高在建池时实测一次（行 + separation），窗口 = [first, first+行数)
 var _row_stride_px: float = 0.0
 var _top_spacer: Control = null
@@ -51,11 +67,28 @@ func _ready() -> void:
 	apply_theme()
 	_pl_scroll.get_v_scroll_bar().value_changed.connect(_on_scroll_moved)
 	_pl_scroll.resized.connect(_on_pl_scroll_resized)
+	_reshuffle_btn.pressed.connect(_on_reshuffle_pressed)
 	var mgr := MidiPlaybackManager.instance
 	if mgr != null:
 		mgr.playlist_index_changed.connect(_refresh_playlist_highlight)
 		# 列表被手动改动 → 歌单选择框复位（视图常驻，绑一次即可）
 		mgr.playlist_user_edited.connect(_rebuild_fav_select)
+		# 列表本体变化（打乱、增删）→ 行池内容强制重绑
+		mgr.playlist_changed.connect(_on_playlist_list_changed)
+		# 打乱按钮只在随机模式下显示（顺序/循环模式下没有意义）
+		mgr.repeat_mode_changed.connect(_on_repeat_mode_changed)
+		_reshuffle_btn.visible = mgr.repeat_mode == RepeatMode.SHUFFLE
+
+## 打乱按钮跟随播放模式显隐
+func _on_repeat_mode_changed(_mode: int) -> void:
+	var mgr := MidiPlaybackManager.instance
+	_reshuffle_btn.visible = mgr != null and mgr.repeat_mode == RepeatMode.SHUFFLE
+
+## 「打乱列表」：整表打乱并从头播（manager 侧清空历史/重放栈，全新收听会话）
+func _on_reshuffle_pressed() -> void:
+	var mgr := MidiPlaybackManager.instance
+	if mgr != null:
+		mgr.shuffle_playlist_from_head()
 
 func apply_theme() -> void:
 	if ThemeMGR == null:
@@ -69,8 +102,50 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 	_step_pl_scroll(delta)
+	_follow_accum += delta
+	if _follow_accum >= FOLLOW_CHECK_INTERVAL:
+		_follow_accum = 0.0
+		_follow_current_song_if_needed()
+
+## 面板打开且用户 4 秒内没碰过滚动，当前歌不在可视区时滚到居中
+func _follow_current_song_if_needed() -> void:
+	if _pl_dragging or _pl_flinging or _row_stride_px <= 0.0:
+		return
+	if Time.get_ticks_msec() - _last_user_scroll_ms < FOLLOW_IDLE_MS:
+		return
+	var mgr := MidiPlaybackManager.instance
+	if mgr == null:
+		return
+	var idx := mgr.playlist_index
+	if idx < 0 or idx >= _playlist_total:
+		return
+	var top := float(idx) * _row_stride_px
+	var view_h := _pl_scroll.size.y
+	var scroll := float(_pl_scroll.scroll_vertical)
+	# 已完整可见（含一点余量）就不动
+	if top >= scroll and top + _row_stride_px <= scroll + view_h:
+		return
+	var bar := _pl_scroll.get_v_scroll_bar()
+	var target := clampf(top - (view_h - _row_stride_px) * 0.5, 0.0, maxf(bar.max_value - bar.page, 0.0))
+	# 带动画滚过去；动画期间 _auto_scrolling 保持置位
+	_kill_follow_tween()
+	_auto_scrolling = true
+	var dist := absf(target - float(_pl_scroll.scroll_vertical))
+	var dur := clampf(dist / FOLLOW_SCROLL_SPEED, FOLLOW_SCROLL_MIN, FOLLOW_SCROLL_MAX)
+	_follow_tween = AniMGR.create_managed_tween(_pl_scroll, "PlFollowScroll")
+	_follow_tween.tween_property(_pl_scroll, "scroll_vertical", int(round(target)), dur) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_follow_tween.finished.connect(func(): _auto_scrolling = false)
+
+func _kill_follow_tween() -> void:
+	if _follow_tween != null and _follow_tween.is_valid():
+		_follow_tween.kill()
+	_auto_scrolling = false
 
 func _on_scroll_moved(_value: float) -> void:
+	# 程序化滚动不算用户操作，否则跟随会被自己的滚动一直续期
+	if not _auto_scrolling:
+		_last_user_scroll_ms = Time.get_ticks_msec()
 	_sync_row_window()
 
 func _on_pl_scroll_resized() -> void:
@@ -200,8 +275,16 @@ func _rebuild_playlist_list() -> void:
 	_pl_empty.visible = midis.is_empty()
 	_sync_row_window(true)
 
+## 列表本体变化（切随机/顺序重排、外部增删）→ 强制重绑池行内容
+func _on_playlist_list_changed() -> void:
+	if not visible:
+		return
+	_sync_row_window(true)
+	_refresh_playlist_highlight()
+
+## 直连 playlist_index_changed（信号带索引参数，这里不用它，自行读 manager 的当前值）。
+## 面板未打开时行池内容仍是旧的，打开时 open() 会全量重绑
 func _refresh_playlist_highlight(_changed_index: int = -1) -> void:
-	# 直连 playlist_index_changed（信号带索引参数，这里不用它，自行读 manager 的当前值）。
 	# 面板未打开时行池内容仍是旧的，打开时 open() 会全量重绑
 	if not visible:
 		return
@@ -215,6 +298,9 @@ func _refresh_playlist_highlight(_changed_index: int = -1) -> void:
 		item.is_current = is_cur
 		if item.button_pressed != is_cur:
 			item.set_pressed_no_signal(is_cur)
+	# 切歌信号直达这里：空闲状态下立即跟随新歌（内部自检空闲/拖拽/可见性），
+	# 不空闲则由 _process 的周期检查兜底
+	_follow_current_song_if_needed()
 
 # ── 行操作回调 ────────────────────────────────────────
 
@@ -306,6 +392,12 @@ func _on_fav_select_selected(idx: int) -> void:
 # ── 桌面拖动滚动 ──────────────────────────────────────
 
 func _on_pl_scroll_gui_input(event: InputEvent) -> void:
+	# 只把「按下去」类操作当作用户滚动（悬停/划过不算），否则跟随永远不会触发。
+	# 用户按下即打断跟随动画，避免和手抢滚动条
+	if event is InputEventMouseButton:
+		_last_user_scroll_ms = Time.get_ticks_msec()
+		if event.pressed:
+			_kill_follow_tween()
 	if DisplayServer.is_touchscreen_available():
 		return
 	if event is InputEventMouseButton:

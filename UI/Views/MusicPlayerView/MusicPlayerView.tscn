@@ -18,6 +18,10 @@
 atlas = ExtResource("2_ny7ko")
 region = Rect2(160, 160, 80, 80)
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_df07l"]
+atlas = ExtResource("4_wihuv")
+region = Rect2(160, 0, 80, 80)
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_j02sm"]
 bg_color = Color(0.07284262, 0.072842635, 0.072842576, 1)
 border_width_left = 2
@@ -120,12 +124,27 @@ color = Color(0.09, 0.09, 0.12, 1)
 
 [node name="BackBtn" type="TextureButton" parent="." unique_id=373800642]
 custom_minimum_size = Vector2(72, 48)
-layout_mode = 0
-offset_left = 25.0
+layout_mode = 1
+anchors_preset = -1
+offset_left = 30.0
 offset_top = 20.0
 offset_right = 97.0
 offset_bottom = 76.0
 texture_normal = SubResource("AtlasTexture_3y6u5")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="TrackViewBtn" type="TextureButton" parent="." unique_id=1998922489]
+custom_minimum_size = Vector2(72, 48)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_top = 20.0
+offset_right = -30.0
+offset_bottom = 76.0
+grow_horizontal = 0
+texture_normal = SubResource("AtlasTexture_df07l")
 ignore_texture_size = true
 stretch_mode = 5
 
@@ -430,9 +449,23 @@ mouse_filter = 2
 theme_override_constants/separation = 8
 
 [node name="PlTitle" type="Label" parent="PlaylistPanel/PlColumn" unique_id=1202559830]
+custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 text = "播放列表"
 horizontal_alignment = 1
+
+[node name="ReshuffleBtn" type="Button" parent="PlaylistPanel/PlColumn/PlTitle" unique_id=1303006732]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -8.0
+grow_horizontal = 0
+grow_vertical = 2
+theme_override_font_sizes/font_size = 25
+text = "打乱列表"
 
 [node name="PlCtrl" type="HBoxContainer" parent="PlaylistPanel/PlColumn" unique_id=785455701]
 layout_mode = 2
@@ -645,6 +678,7 @@ text = "还没有收藏夹"
 horizontal_alignment = 1
 
 [connection signal="pressed" from="BackBtn" to="." method="_on_back_pressed" flags=3]
+[connection signal="pressed" from="TrackViewBtn" to="." method="_on_track_view_pressed" flags=3]
 [connection signal="drag_ended" from="MainColumn/BottomBar/Progress" to="." method="_on_progress_drag_ended" flags=3]
 [connection signal="pressed" from="MainColumn/BottomBar/CenterBtns/PrevBtn" to="." method="_on_prev_pressed" flags=3]
 [connection signal="toggled" from="MainColumn/BottomBar/CenterBtns/PlayPauseBtn" to="." method="_on_play_pause_toggled" flags=3]
@@ -656,6 +690,7 @@ horizontal_alignment = 1
 [connection signal="toggled" from="MainColumn/BottomBar/RightBts/LibraryBtn" to="." method="_on_library_toggled" flags=3]
 [connection signal="toggled" from="MainColumn/BottomBar/RightBts/PlaylistBtn" to="." method="_on_playlist_toggled" flags=3]
 [connection signal="pressed" from="MainColumn/BottomBar/RightBts/StageSwitchBtn" to="." method="_on_stage_switch_pressed" flags=3]
+[connection signal="pressed" from="PlaylistPanel/PlColumn/PlTitle/ReshuffleBtn" to="PlaylistPanel" method="_on_reshuffle_pressed" flags=3]
 [connection signal="item_selected" from="PlaylistPanel/PlColumn/PlCtrl/FavSelectBtn" to="PlaylistPanel" method="_on_fav_select_selected" flags=3]
 [connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrl/PlAddFavBtn" to="PlaylistPanel" method="_on_pl_add_fav_pressed" flags=3]
 [connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrl/PlClearBtn" to="PlaylistPanel" method="_on_pl_clear_pressed" flags=3]

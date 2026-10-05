@@ -117,6 +117,32 @@ func save(mgr) -> void:
 		if m is MidiData:
 			keys.append(_key_of(m))
 	ChartDB.SavePlaylist(keys, saved_index, saved_repeat_mode, source_fav_id)
+	# 键集合没变、只是顺序变了（打乱/调序）→ 按新顺序重排已有水合结果。
+	# 顺序变化会让 _hydrated_keys 失配触发整表重水合（每键一次 DB 查找），
+	# 但 get_midi_by_id 返回的是同一批缓存对象，重排引用即可，一次 DB 都不用查
+	if not _hydrating and _hydrate_from >= _hydrated_keys.size() \
+			and keys.size() == _hydrated_keys.size():
+		var by_key := {}
+		for i in _hydrated_keys.size():
+			by_key[_hydrated_keys[i]] = _hydrated[i]
+		var reordered: Array[MidiData] = []
+		reordered.resize(keys.size())
+		var src: Array[int] = []
+		src.resize(keys.size())
+		var all_present := true
+		for i in keys.size():
+			var m: MidiData = by_key.get(keys[i])
+			if m == null:
+				all_present = false
+				break
+			reordered[i] = m
+			src[i] = i
+		if all_present:
+			_hydrated = reordered
+			_hydrated_src = src
+			_hydrated_keys = keys
+			_saved_keys = keys
+			return
 	_saved_keys = keys
 	_start_hydration()
 
