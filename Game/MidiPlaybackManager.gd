@@ -148,6 +148,71 @@ var repeat_mode: int = RepeatMode.SEQUENTIAL
 var _shuffle_order: Array[int] = []
 var _shuffle_pos: int = 0
 
+## 正常通道的单曲槽（演奏 / 音轨试听 / 媒体控件播种）。**永不落盘，且不触碰用户播放列表**，
+## 所以试听不会打乱面板里的列表；播放器页在用户列表为空且无落盘记录时回退借它那一首。
+var session_single: Array[MidiData] = []
+## 当前会话是否来自单曲槽(B)。为 true 时「播完/回绕」一律原地重播，
+## 绝不推进用户播放列表(A)——否则 TrackView 试听单曲会被 A 的下一首顶掉。
+var session_is_single: bool = false
+
+## 播完/回绕时是否该推进用户播放列表：单曲槽会话永不推进；
+## 用户列表多于一首且非单曲循环才前进。
+func _should_advance_on_end() -> bool:
+	if session_is_single:
+		return false
+	return playlist.size() > 1 and repeat_mode != RepeatMode.REPEAT_ONE
+
+## 统一的「这次要播什么」入口：设列表 + 设当前曲的文件级循环 + 指定写到哪个槽。
+## persist=true  → 写用户播放列表（面板展示 / 编辑 / 落盘都作用于它），本次会话要落盘；
+## persist=false → 只写单曲槽（正常通道），用户播放列表原样不动、也不落盘。
+## 只设列表不起播：是否立刻播放由调用方决定。
+func start_session(items: Array[MidiData], start_index: int = 0, persist: bool = true,
+		loop_file: bool = false) -> void:
+	set_loop(loop_file)
+	if persist:
+		PlaylistMGR.persist_enabled = true
+		session_is_single = false
+		set_playlist(items, start_index)
+		return
+	# 正常通道：不碰 playlist / playlist_index，也不落盘
+	PlaylistMGR.persist_enabled = false
+	session_is_single = true
+	session_single = []
+	if not items.is_empty():
+		session_single.append(items[0])
+
+## 用户播放列表为空且无落盘记录时，把单曲槽那首借用过来当当前列表。
+## 只改内存、仍不落盘；用户一旦编辑列表，_mark_user_edited 会把它转为可落盘。
+func adopt_single_into_playlist() -> bool:
+	if not playlist.is_empty() or session_single.is_empty():
+		return false
+	session_is_single = false
+	set_playlist(session_single, 0)
+	return true
+
+## 离开播放器页：活动会话交还给单曲槽(B)，把当前曲放进去。
+## A 的内容留在内存（下次进页面还在），只是不再是"当前会话"——这样之后播完/回绕
+## 不会再去推进 A，与"进页面才开始播 A"的门闩语义对称。
+func end_user_session() -> void:
+	if session_is_single or current_midi_data == null:
+		return
+	session_is_single = true
+	session_single = []
+	session_single.append(current_midi_data)
+	PlaylistMGR.persist_enabled = false
+
+## 确保用户播放列表已就绪：内存为空先读回磁盘；仍为空则借用单曲槽那一首。
+## 播放器页进入、系统媒体上下首都走这里，保证"要用 A 时 A 一定是可用的"。
+func ensure_user_playlist() -> void:
+	if playlist.is_empty():
+		restore_playlist()
+	if playlist.is_empty():
+		adopt_single_into_playlist()   # 借来的单曲先不落盘，等用户编辑再转正式
+		return
+	# A 已是正式内容（读盘恢复 / 用户选自收藏夹）→ 允许落盘
+	PlaylistMGR.persist_enabled = true
+	session_is_single = false
+
 ## 设置播放列表（会重置索引，不自动播放）
 func set_playlist(items: Array[MidiData], start_index: int = 0) -> void:
 	playlist = items.duplicate()
@@ -160,7 +225,6 @@ func _on_playlist_changed_persist() -> void:
 	# 恢复中的头部快照：期间落盘会拿半截列表覆盖全表，必须等回填
 	if not _restored_head.is_empty():
 		if playlist == _restored_head:
-			GLogger.info("[PlaylistDiag] persist 跳过：恢复中头部快照 size=%d" % playlist.size(), "PlaylistMGR")
 			return
 		_restored_head = []  # 期间用户改过列表，放弃回填，恢复正常落盘
 	PlaylistMGR.save(self)
@@ -176,12 +240,11 @@ var _restored_head: Array[MidiData] = []
 func restore_playlist() -> void:
 	var res := PlaylistMGR.load_midis(RESTORE_HEAD_COUNT)
 	var head: Array[MidiData] = res["midis"]
-	GLogger.info("[PlaylistDiag] restore 头部 size=%d start=%d hydrating=%s" % [
-		head.size(), int(res["start"]), str(PlaylistMGR.is_hydrating())], "PlaylistMGR")
 	if head.is_empty():
 		return
-	# 恢复出的是磁盘上的正式列表，不再是「临时单曲」，解除标记（否则 size<=1 时仍跳过落盘）
-	PlaylistMGR.transient_single = false
+	# 恢复出的是磁盘上的正式列表，属于「要记住」的会话
+	PlaylistMGR.persist_enabled = true
+	session_is_single = false
 	playlist = head
 	playlist_index = clampi(int(res["start"]), 0, playlist.size() - 1)
 	_shuffle_pos = _shuffle_pos_of(playlist_index)
@@ -239,8 +302,14 @@ func play_by_key(chart_key: String) -> bool:
 	play_playlist_index(playlist.size() - 1)
 	return true
 
+## 用户手动改过列表 → 本次会话转为要落盘：临时列表一旦被编辑就该被记住
+## （对应旧实现里"单曲临时态一旦列表变长就恢复正常落盘"的行为）
+func _mark_user_edited() -> void:
+	PlaylistMGR.persist_enabled = true
+
 ## 向列表尾部追加
 func append_to_playlist(items: Array[MidiData]) -> void:
+	_mark_user_edited()
 	for item in items:
 		playlist.append(item)
 	_reshuffle()
@@ -250,6 +319,7 @@ func append_to_playlist(items: Array[MidiData]) -> void:
 func insert_next_in_playlist(data: MidiData) -> bool:
 	if data == null or playlist.has(data):
 		return false
+	_mark_user_edited()
 	var at := mini(playlist_index + 1, playlist.size())
 	playlist.insert(at, data)
 	if playlist_index >= at:
@@ -262,6 +332,7 @@ func insert_next_in_playlist(data: MidiData) -> bool:
 func remove_from_playlist(index: int) -> void:
 	if index < 0 or index >= playlist.size():
 		return
+	_mark_user_edited()
 	playlist.remove_at(index)
 	if playlist_index >= playlist.size():
 		playlist_index = playlist.size() - 1
@@ -276,6 +347,7 @@ func move_in_playlist(from_idx: int, to_idx: int) -> void:
 	var to := clampi(to_idx, 0, playlist.size() - 1)
 	if from_idx == to:
 		return
+	_mark_user_edited()
 	var item: MidiData = playlist[from_idx]
 	playlist.remove_at(from_idx)
 	playlist.insert(to, item)
@@ -284,6 +356,7 @@ func move_in_playlist(from_idx: int, to_idx: int) -> void:
 
 ## 清空列表
 func clear_playlist() -> void:
+	_mark_user_edited()
 	playlist.clear()
 	playlist_index = -1
 	_shuffle_order.clear()
@@ -319,7 +392,7 @@ func cycle_repeat_mode() -> void:
 func get_track_end_action() -> int:
 	if not is_playing or not get_loop():
 		return 0
-	if playlist.size() > 1 and repeat_mode != RepeatMode.REPEAT_ONE:
+	if _should_advance_on_end():
 		return 2 if _next_index() >= 0 else 1
 	return 1
 
@@ -361,8 +434,8 @@ func handle_media_command(action: String, position_ms: float = -1.0) -> bool:
 		"track_end":
 			# 系统侧墙钟检测到循环回绕时补发的命令（后台主循环停摆，_process 的
 			# 回绕检测不运行）。判定规则与 _process 的回绕点一致：
-			# 列表还有下一首就走换曲，单曲循环 / 单曲列表只重启人声。
-			if playlist.size() > 1 and repeat_mode != RepeatMode.REPEAT_ONE:
+			# 用户列表还有下一首就走换曲，单曲槽会话 / 单曲循环只重启人声。
+			if _should_advance_on_end():
 				return play_next(false)
 			_restart_vocal_for_current_position()
 		"repeat":
@@ -618,11 +691,11 @@ func _process(_delta: float) -> void:
 		# 人声已自然结束时必须在这里显式重新定位并启动，否则只能靠 UI 开关恢复。
 		if get_loop():
 			GLogger.info("[DIAG] loop wrap detected: %.0f -> %.0f ms" % [_last_raw_midi_position_ms, raw_midi_position_ms], "MidiPlaybackManager")
-			# 回绕点即"播完"判定点：列表里还有下一首就走换曲逻辑（与手动上下首同一条路），
-			# 只在真没有下一首（单曲循环 / 列表尾）时才原地重播当前曲。
+			# 回绕点即"播完"判定点：用户列表里还有下一首就走换曲逻辑（与手动上下首同一条路），
+			# 单曲槽会话（TrackView 试听等）或没有再下一首时才原地重播当前曲。
 			# loop=true 时 sequencer 在音频层自己回绕、midi_finished 永不发出，
 			# 所以列表前进只能挂在这个检测点上。
-			if playlist.size() > 1 and repeat_mode != RepeatMode.REPEAT_ONE and play_next(false):
+			if _should_advance_on_end() and play_next(false):
 				GLogger.info("Loop point advanced to next song (playlist mode)", "MidiPlaybackManager")
 			else:
 				_restart_vocal_for_current_position()

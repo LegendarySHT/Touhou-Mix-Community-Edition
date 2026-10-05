@@ -119,6 +119,10 @@ func _on_ui_state_changed(_old: int, new: int) -> void:
 		# 离开本页才注销。跳去 TrackView（点歌单上的曲子去音轨编辑）是同一首歌的
 		# 另一种视图，不算退出播放，故保留会话。
 		MediaSess.unregister_view(self)
+		# 注销会停止播放；同时把活动会话交还给单曲槽(B)，A 只在本页期间活动
+		var mgr := MidiPlaybackManager.instance
+		if mgr != null:
+			mgr.end_user_session()
 
 func _process(delta: float) -> void:
 	_refresh_progress()
@@ -161,7 +165,9 @@ func _activate_page() -> void:
 		MediaSess.register_view(self)
 	var mgr := MidiPlaybackManager.instance
 	if mgr != null:
-		# 播放器默认单曲循环；从 TrackView 跳来时那边已设过，这里再设一次无害
+		# 本页的页面级播放模式 = 单曲文件循环（从演奏/TrackView 过来都要纠正回来）。
+		# 这不是"起一次会话"，所以不走 start_session：那会重设用户播放列表(A)，
+		# 而这里只需要改当前曲的循环标志。
 		mgr.set_loop(true)
 		_ensure_playing(mgr)
 	# 从其它页面返回本页时收起曲库与列表面板：本页是「播放页」，
@@ -284,11 +290,11 @@ var _entry_pending: bool = false
 ## 跨重启由 PlaylistMGR 落盘 / restore_playlist 读回，这里不再做第二份副本的同步。
 ## 判据只看 is_playing：stop() 不清 current_midi_data，用它判断会永远不重播。
 func _ensure_playing(mgr) -> void:
-	# 列表为空、或当前只是「从 TrackView 过来的临时单曲」时，先尝试读回磁盘上保存的列表：
-	# 否则从 TrackView 进本页时 is_playing 已经为真，恢复永远不会触发（已存列表读不回来），
-	# 而临时单曲在 size<=1 时又不落盘，最终表现为"播放列表没持久化"。
-	if mgr.playlist.is_empty() or PlaylistMGR.transient_single:
-		mgr.restore_playlist()
+	# 要用用户播放列表(A)时先确保它就绪：内存为空先读盘恢复，仍为空则借单曲槽那首(B)。
+	# 正常通道（演奏/试听/媒体播种）只写单曲槽、不碰 A，所以这里必须自己确保 A 可用；
+	# 为此本页的播放动作天然就是"开始播放 A"，与用户从 TrackView 试听过来不冲突。
+	if mgr.playlist.is_empty() or not PlaylistMGR.persist_enabled:
+		mgr.ensure_user_playlist()
 		mgr.align_index_to_current()
 	if mgr.is_playing:
 		return
@@ -981,9 +987,8 @@ func _on_fav_select_selected(idx: int) -> void:
 				list.append(m)
 		if list.is_empty():
 			return
-		mgr.set_playlist(list, 0)
-		PlaylistMGR.transient_single = false
-		# 切换歌单后从第一首重新播放
+		# 选歌单是「要记住」的会话（persist=true），随后从第一首播放
+		mgr.start_session(list, 0, true)
 		mgr.play_playlist_index(0)
 	_rebuild_playlist_list()
 

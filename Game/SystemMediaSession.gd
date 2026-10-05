@@ -252,8 +252,8 @@ func _navigate_to_player() -> void:
 	UiStatMGR.change_state(UIStateManager.UIState.MUSIC_PLAYER_VIEW, false)
 	GLogger.info("Navigated to music player view", "SystemMediaSession")
 
-## 播放列表为空时，把当前正在播放的曲子作为单元素列表。
-## 区分"用户还没配列表"与"列表播到尾"：后者由 has_next() 为 false 表达，不走这里。
+## 用户播放列表(A)为空时，把当前正在播放的曲子写进「正常通道的单曲槽」(B) 当起点。
+## 只写 B、不落盘、不碰 A：区分"用户还没配列表"与"列表播到尾"（后者由 has_next() 为 false 表达）。
 func _ensure_playlist_has_current() -> void:
 	var mgr := MidiPlaybackManager.instance
 	if mgr == null or mgr.current_midi_data == null:
@@ -264,9 +264,8 @@ func _ensure_playlist_has_current() -> void:
 	var key := data.chart_key if not data.chart_key.is_empty() else data.id
 	if key.is_empty():
 		return
-	# 列表本体只在 manager 一处；单曲是临时状态，标记后不落盘，避免下次恢复成旧曲
-	PlaylistMGR.transient_single = true
-	mgr.set_playlist([data] as Array[MidiData], 0)
+	# 正常播放场景：只把当前曲设为"现在要播什么"，不落盘、不改循环
+	mgr.start_session([data] as Array[MidiData], 0, false)
 	GLogger.info("Playlist seeded with current song: %s" % data.name, "SystemMediaSession")
 
 func _on_backend_command(action: String, position_ms: float) -> void:
@@ -277,8 +276,12 @@ func _on_backend_command(action: String, position_ms: float) -> void:
 		return
 	var mgr := MidiPlaybackManager.instance
 	if mgr != null:
+		# 上下首按「用户播放列表」(A) 走：先确保 A 就绪（内存空则读盘恢复，仍空则借单曲槽那首）。
+		# 此时正在播的多半是正常通道的单曲槽(B)，切歌就等于"开始播放 A"，与进入播放页一致。
+		if action == "next" or action == "prev":
+			mgr.ensure_user_playlist()
 		var consumed := mgr.handle_media_command(action, position_ms)
-		# 上下首但歌单为空（无法切歌）：把当前这首作为起点
+		# 上下首但确实无歌可切：把当前这首作为单曲槽起点
 		if not consumed and (action == "next" or action == "prev"):
 			_ensure_playlist_has_current()
 	# 上下首一律进播放器页——这是该页面的入口语义，与歌单是否为空无关。

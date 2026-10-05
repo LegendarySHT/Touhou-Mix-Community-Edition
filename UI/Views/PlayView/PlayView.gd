@@ -544,8 +544,8 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	# 加载 MIDI（此时已命中解析缓存，仅做配置应用 + 后端加载）
 	_load_and_convert_midi_notes(midi)
 
-	# 确保游戏模式下不循环播放
-	playback_mgr.set_loop(false)
+	# 演奏：写「正常通道的单曲槽」(不落盘、不碰用户播放列表) + 关闭文件级循环
+	playback_mgr.start_session([midi] as Array[MidiData], 0, false, false)
 
 	# 新增：从配置读取演奏模式
 	var performing_mode = ConfigManager.instance.get_int("Playback", "performing_mode", 1)

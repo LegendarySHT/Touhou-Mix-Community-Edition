@@ -21,9 +21,10 @@ var saved_repeat_mode: int = 0
 ## 当前列表来源的收藏夹 id；用户手动增删后置空（面板显示"未选择歌单"）
 var source_fav_id: String = ""
 
-## 列表是从 TrackView 的当前单曲临时生成的（SystemMediaSession 处播种）。
-## 该状态下不写盘，直到用户往里加歌或切换收藏夹。
-var transient_single: bool = false
+## 本次会话是否允许落盘。由统一入口 MidiPlaybackManager.start_session(persist) 设置：
+## 「正常播放场景」（如媒体控件把当前曲设为列表）传 false——那只表达"现在要播什么"，
+## 不该覆盖用户存的列表；进播放器页恢复、选收藏夹等要记住的场景传 true。
+var persist_enabled: bool = true
 
 ## 全表水合完成（midis 与 _saved_keys 顺序一致，已剔除失效项）
 signal hydration_finished(midis: Array[MidiData])
@@ -102,26 +103,19 @@ func _process(_delta: float) -> void:
 func save(mgr) -> void:
 	ensure_loaded()
 	if not _loaded:
-		GLogger.info("[PlaylistDiag] save 跳过：meta 未成功载入（避免用空列表覆盖磁盘）", "PlaylistMGR")
+		# 未成功载入过就不写，避免用空列表覆盖磁盘
 		return
 	if mgr == null or ChartDB == null or not ChartDB.IsOpen():
-		GLogger.info("[PlaylistDiag] save 跳过：mgr/db 不可用 db_open=%s" % [ChartDB != null and ChartDB.IsOpen()], "PlaylistMGR")
 		return
-	# 「从 TrackView 过来的单曲」是临时状态，不落盘：否则下次从 TrackView 进播放器
-	# 会恢复成上一首的单曲列表，而不是当前正在播的那首。
-	if transient_single and mgr.playlist.size() <= 1:
-		GLogger.info("[PlaylistDiag] save 跳过：单曲临时态 size=%d" % mgr.playlist.size(), "PlaylistMGR")
+	# 「正常播放场景」的临时列表不落盘：否则下次恢复成"上次随手播的那首"，覆盖用户的列表
+	if not persist_enabled:
 		return
-	if mgr.playlist.size() > 1:
-		transient_single = false
 	saved_index = mgr.playlist_index
 	saved_repeat_mode = mgr.repeat_mode
 	var keys: Array[String] = []
 	for m in mgr.playlist:
 		if m is MidiData:
 			keys.append(_key_of(m))
-	GLogger.info("[PlaylistDiag] save 写入 keys=%d index=%d fav=%s" % [
-		keys.size(), saved_index, source_fav_id], "PlaylistMGR")
 	ChartDB.SavePlaylist(keys, saved_index, saved_repeat_mode, source_fav_id)
 	_saved_keys = keys
 	_start_hydration()
@@ -174,8 +168,6 @@ var _saved_keys: Array[String] = []
 func load_midis(head_count: int = 16) -> Dictionary:
 	ensure_loaded()
 	var n := _saved_keys.size()
-	GLogger.info("[PlaylistDiag] load_midis 请求：saved=%d hydrating=%s from=%d saved_index=%d" % [
-		n, str(_hydrating), _hydrate_from, saved_index], "PlaylistMGR")
 	if n == 0:
 		return {"midis": [] as Array[MidiData], "start": 0}
 	var start := clampi(saved_index, 0, n - 1)

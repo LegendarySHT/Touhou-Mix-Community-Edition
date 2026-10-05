@@ -251,8 +251,12 @@ func _process(_delta):
 	# 单帧一次重绘：master 自身 + 每个子 displayer（子绘制用自身几何，读共享 ct）
 	if _draw_node and on_screen:
 		_draw_node.queue_redraw()
-	for key in _child_by_key:
-		var child: NoteDisplayer = _child_by_key[key]
+	for key in _child_by_key.keys():
+		var child_candidate = _child_by_key[key]
+		if not is_instance_valid(child_candidate):
+			_child_by_key.erase(key)   # 子 displayer 已随轨道行重建被释放
+			continue
+		var child: NoteDisplayer = child_candidate
 		if child._draw_node and child._draw_node.is_visible_in_tree() \
 				and child.flow_area.get_global_rect().intersects(child.get_viewport_rect()):
 			child._draw_node.queue_redraw()
