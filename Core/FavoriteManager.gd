@@ -174,7 +174,11 @@ func rename_favorite(fav_id: String, new_name: String) -> void:
 
 ## 添加 MIDI 到收藏夹
 func add_midi_to_favorite(fav_id: String, midi: MidiData) -> void:
-	var chart_id := _get_chart_id(midi)
+	add_id_to_favorite(fav_id, chart_id_of(midi))
+
+
+## 按 chart_id 直加（列表投影只有 id，免水合 MidiData）。去重，加入才落盘
+func add_id_to_favorite(fav_id: String, chart_id: String) -> void:
 	for fav in favorites:
 		if fav.id == fav_id:
 			if not chart_id in fav.midi_ids:
@@ -184,9 +188,28 @@ func add_midi_to_favorite(fav_id: String, midi: MidiData) -> void:
 			return
 
 
+## 批量按 chart_id 加收藏：整体去重、只落盘一次、发一次 favorites_updated
+## （favorite_midi_changed 的监听方是整表刷新型，逐条发会让它们重建 N 遍）
+func add_ids_to_favorite(fav_id: String, chart_ids: Array) -> void:
+	for fav in favorites:
+		if fav.id != fav_id:
+			continue
+		var added := false
+		for cid in chart_ids:
+			var cid_s := str(cid)
+			if cid_s.is_empty() or cid_s in fav.midi_ids:
+				continue
+			fav.midi_ids.append(cid_s)
+			added = true
+		if added:
+			_save_favorites()
+			EvtBus.favorites_updated.emit()
+		return
+
+
 ## 从收藏夹移除 MIDI
 func remove_midi_from_favorite(fav_id: String, midi: MidiData) -> void:
-	var chart_id := _get_chart_id(midi)
+	var chart_id := chart_id_of(midi)
 	for fav in favorites:
 		if fav.id == fav_id:
 			fav.midi_ids.erase(chart_id)
@@ -197,7 +220,7 @@ func remove_midi_from_favorite(fav_id: String, midi: MidiData) -> void:
 
 ## 检查 MIDI 是否在收藏夹中
 func is_midi_in_favorite(fav_id: String, midi: MidiData) -> bool:
-	var chart_id := _get_chart_id(midi)
+	var chart_id := chart_id_of(midi)
 	for fav in favorites:
 		if fav.id == fav_id:
 			return chart_id in fav.midi_ids
@@ -229,8 +252,8 @@ func get_midis_of_favorite(fav_id: String) -> Array[MidiData]:
 
 # ========== 内部工具 ==========
 
-func _get_chart_id(midi: MidiData) -> String:
-	# 规范键（folder_name）优先，其次 file_hash，最后 id（TMX-020）
+## MidiData → 收藏条目 id（规范键 folder_name 优先，其次 file_hash，最后 id，TMX-020）
+func chart_id_of(midi: MidiData) -> String:
 	return midi.chart_key if not midi.chart_key.is_empty() \
 		else (midi.file_hash if not midi.file_hash.is_empty() else midi.id)
 

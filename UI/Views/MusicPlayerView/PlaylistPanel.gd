@@ -240,10 +240,16 @@ func _on_pl_activated(idx: int) -> void:
 
 func _on_pl_add_fav_pressed() -> void:
 	var mgr := MidiPlaybackManager.instance
-	var midis: Array = mgr.playlist if mgr != null else ([] as Array[MidiData])
-	if midis.is_empty():
+	if mgr == null:
 		return
-	favorite_requested.emit(midis)
+	# 播放列表项都是已水合的 MidiData，转 chart_id 上报（收藏夹按 id 存储）
+	var ids: Array = []
+	for m in mgr.playlist:
+		if m != null:
+			ids.append(FavoriteManager.instance.chart_id_of(m))
+	if ids.is_empty():
+		return
+	favorite_requested.emit(ids)
 
 func _on_pl_clear_pressed() -> void:
 	var mgr := MidiPlaybackManager.instance

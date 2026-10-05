@@ -383,7 +383,10 @@ func _on_card_add(item: Dictionary) -> void:
 		mgr.append_to_playlist([data] as Array[MidiData])
 
 func _on_card_favorite(item: Dictionary) -> void:
-	favorite_requested.emit([DataMGR.get_midi_by_id(_key_of(item))])
+	var k := _key_of(item)
+	if k.is_empty():
+		return
+	favorite_requested.emit([k])
 
 func _on_batch_add_pressed() -> void:
 	var mgr := MidiPlaybackManager.instance
@@ -397,7 +400,13 @@ func _on_batch_add_pressed() -> void:
 		mgr.append_to_playlist(add)
 
 func _on_batch_fav_pressed() -> void:
-	var midis := _visible_library_midis()
-	if midis.is_empty():
+	# 投影里就有 key（= chart_id），直接收集，零 DB 查询
+	var ids: Array = []
+	for it in _lib_items:
+		if it is Dictionary:
+			var k := _key_of(it)
+			if not k.is_empty():
+				ids.append(k)
+	if ids.is_empty():
 		return
-	favorite_requested.emit(midis)
+	favorite_requested.emit(ids)

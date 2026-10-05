@@ -410,14 +410,14 @@ func _main_slide_in() -> void:
 
 var _pending_fav_midis: Array = []
 
+## 收到的是 chart_id 列表（曲库投影的 key / 播放列表项的 chart_id），选择收藏夹后批量入
 func _on_favorite_requested(midis: Array) -> void:
 	_pending_fav_midis = midis
 	_fav_picker.open(true)
 
 func _on_favorite_picked(fav_id: String) -> void:
-	for m in _pending_fav_midis:
-		if m is MidiData:
-			FavoriteManager.instance.add_midi_to_favorite(fav_id, m)
+	if not _pending_fav_midis.is_empty():
+		FavoriteManager.instance.add_ids_to_favorite(fav_id, _pending_fav_midis)
 	_pending_fav_midis = []
 
 # ── 状态刷新 ──────────────────────────────────────────
