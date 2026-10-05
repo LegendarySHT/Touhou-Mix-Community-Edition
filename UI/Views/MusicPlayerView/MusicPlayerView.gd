@@ -47,34 +47,9 @@ func _ready() -> void:
 	ThemeMGR.register_theme_applier(self)
 	apply_theme()
 
-	_back_btn.pressed.connect(_on_back_pressed)
 	if _progress != null:
 		_progress.drag_started.connect(func(): _progress_dragging = true)
-		_progress.drag_ended.connect(_on_progress_drag_ended)
-	_stage_switch_btn.pressed.connect(_on_stage_switch_pressed)
-	_prev_btn.pressed.connect(_on_prev_pressed)
-	_play_pause_btn.toggled.connect(_on_play_pause_toggled)
-	_next_btn.pressed.connect(_on_next_pressed)
-	_repeat_btn.toggled.connect(_on_repeat_toggled)
-	# 三个面板按钮的 toggle 状态即面板开关：按下态同时点亮主题强调色
-	_volume_btn.toggled.connect(_on_volume_toggled)
-	_library_btn.toggled.connect(_on_library_toggled)
-	_playlist_btn.toggled.connect(_on_playlist_toggled)
-	_search_edit.text_changed.connect(_on_search_changed)
-	_filter_status_btn.pressed.connect(_on_filter_status_pressed)
-	_filter_data_btn.pressed.connect(_on_filter_data_pressed)
-	_sort_order_btn.pressed.connect(_on_sort_order_pressed)
-	_batch_add_btn.pressed.connect(_on_batch_add_pressed)
-	_batch_fav_btn.pressed.connect(_on_batch_fav_pressed)
 	EvtBus.sort_finished.connect(_on_library_items_ready)
-	_fav_picker.picked.connect(_on_favorite_picked)
-	_pl_add_fav_btn.pressed.connect(_on_pl_add_fav_pressed)
-	_pl_clear_btn.pressed.connect(_on_pl_clear_pressed)
-	_pl_scroll.gui_input.connect(_on_pl_scroll_gui_input)
-	_pl_list.move_requested.connect(_on_pl_move)
-	_fav_select_btn.item_selected.connect(_on_fav_select_selected)
-	_midi_vol_slider.value_changed.connect(_on_midi_volume_changed)
-	_vocal_vol_slider.value_changed.connect(_on_vocal_volume_changed)
 
 	var mgr := MidiPlaybackManager.instance
 	if mgr != null:
