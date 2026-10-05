@@ -83,6 +83,8 @@ func _ready() -> void:
 		mgr.playback_state_changed.connect(_on_playback_state_changed)
 		mgr.repeat_mode_changed.connect(_on_repeat_mode_changed)
 		mgr.playlist_index_changed.connect(_on_playlist_index_changed)
+		# 列表被手动改动 → 歌单选择框复位（视图常驻，绑一次即可）
+		mgr.playlist_user_edited.connect(_on_playlist_user_edited)
 		_midi_vol_slider.value = mgr.get_effective_midi_volume(-1.0)
 		_vocal_vol_slider.value = mgr.get_vocal_volume_db()
 
@@ -963,28 +965,32 @@ func _rebuild_fav_select() -> void:
 
 func _on_fav_select_selected(idx: int) -> void:
 	var fav_id := str(_fav_select_btn.get_item_metadata(idx))
+	var mgr := MidiPlaybackManager.instance
+	if mgr == null:
+		return
 	if fav_id.is_empty():
+		# 「未选择歌单」：只解除关联，不动列表内容
 		PlaylistMGR.source_fav_id = ""
-	else:
-		var mgr := MidiPlaybackManager.instance
-		if mgr == null:
-			return
-		# 用收藏夹自身的歌曲替换播放列表（不是读回上次存的 keys——那样等于没替换）
-		var keys := PlaylistMGR.keys_of_favorite(fav_id)
-		PlaylistMGR.source_fav_id = fav_id
-		if keys.is_empty():
-			return
-		var list: Array[MidiData] = []
-		for k in keys:
-			var m: MidiData = DataMGR.get_midi_by_id(str(k))
-			if m != null:
-				list.append(m)
-		if list.is_empty():
-			return
-		# 选歌单是「要记住」的会话（persist=true），随后从第一首播放
-		mgr.start_session(list, 0, true)
+		return
+	# 选中收藏夹 = 用它整表替换当前播放列表（空收藏夹即替换为空列表）
+	var keys := PlaylistMGR.keys_of_favorite(fav_id)
+	PlaylistMGR.source_fav_id = fav_id
+	var list: Array[MidiData] = []
+	for k in keys:
+		var m: MidiData = DataMGR.get_midi_by_id(str(k))
+		if m != null:
+			list.append(m)
+	# 选歌单是「要记住」的会话（persist=true），并按本页页面级模式开文件循环
+	# （loop_file=true）——播完的推进挂在这个回绕点上，非空则从第一首起播
+	mgr.start_session(list, 0, true, true)
+	if not list.is_empty():
 		mgr.play_playlist_index(0)
+	_rebuild_fav_select()
 	_rebuild_playlist_list()
+
+## 列表被手动改动（增/删/移/清空）→ 选择框复位回"未选择歌单"，避免歧义
+func _on_playlist_user_edited() -> void:
+	_rebuild_fav_select()
 
 func _rebuild_playlist_list() -> void:
 	for c in _pl_list.get_children():

@@ -302,10 +302,16 @@ func play_by_key(chart_key: String) -> bool:
 	play_playlist_index(playlist.size() - 1)
 	return true
 
+## 用户手动改过列表（增/删/移/清空）→ 通知面板把"歌单选择"复位，
+## 并解除收藏夹关联：列表内容已不再等同于那个歌单，继续显示会造成歧义。
+signal playlist_user_edited
+
 ## 用户手动改过列表 → 本次会话转为要落盘：临时列表一旦被编辑就该被记住
 ## （对应旧实现里"单曲临时态一旦列表变长就恢复正常落盘"的行为）
 func _mark_user_edited() -> void:
 	PlaylistMGR.persist_enabled = true
+	PlaylistMGR.source_fav_id = ""
+	playlist_user_edited.emit()
 
 ## 向列表尾部追加
 func append_to_playlist(items: Array[MidiData]) -> void:
