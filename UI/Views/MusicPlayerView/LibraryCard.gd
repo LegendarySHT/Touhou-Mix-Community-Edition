@@ -80,12 +80,12 @@ func _apply_item() -> void:
 		func(_p: String, tex: Texture2D, _v: int): if ver == _cover_version: _cover.texture = tex)
 
 ## 封面：投影已带 file_hash / coverHash，直接走 FileSystemManager 的按 id 取图
-func _cover_path_of(item: Dictionary) -> String:
+func _cover_path_of(midi_item: Dictionary) -> String:
 	var fs_mgr := FileSystemManager.instance
 	if fs_mgr == null:
 		return ""
-	return fs_mgr.get_cover_path_by_ids(String(item.get("file_hash", "")),
-		String(item.get("id", "")))
+	return fs_mgr.get_cover_path_by_ids(String(midi_item.get("file_hash", "")),
+		String(midi_item.get("id", "")))
 
 func _exit_tree() -> void:
 	CoverLoader.cancel(COVER_ITEM_PREFIX + str(get_instance_id()))

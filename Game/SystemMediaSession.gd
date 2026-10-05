@@ -34,10 +34,18 @@ var _last_pushed_position_ms: float = -1.0
 var _last_pushed_playing: bool = false
 ## 位置推送节流累计时间
 var _position_accum: float = 0.0
-## 封面：按路径缓存 PNG 字节（读盘 + PNG 编码较慢，只在换曲时重算）
+## 封面：按路径缓存 PNG 字节（读盘 + PNG 编码较慢，只在换曲时重算）。
+## 必须限量：单张无损 PNG 约 0.5-1.5MB，无上限会让常驻内存随听歌数线性膨胀（实测 native heap 上百 MB）。
+const COVER_CACHE_MAX := 6
 var _cover_png_cache: Dictionary = {}
+var _cover_png_lru: Array[String] = []
 var _cover_png_path: String = ""
 var _cover_png: PackedByteArray = PackedByteArray()
+## 元数据缓存（曲名/专辑/封面路径），按当前歌曲引用失效。
+## push_state 每 0.5s 跑一次，而 _resolve_cover_path 含 C# DB 查询 + 磁盘 stat（~3ms），
+## 元数据只在换歌时才变，不能每次推送都重查
+var _meta_song: MidiData = null
+var _meta_cached: Dictionary = {}
 ## 位置推送节流间隔（秒）。系统侧按 playback_rate 自行外推，无需高频刷新
 const POSITION_PUSH_INTERVAL: float = 0.5
 
@@ -120,10 +128,13 @@ func push_state(force: bool = false) -> void:
 		return
 	_last_pushed_playing = playing
 	_last_pushed_position_ms = mgr.position_ms
-	var meta := _build_metadata()
-	_ensure_cover_loaded(meta["cover_path"])
+	# 元数据只在换歌时重建（DB 查询 + 封面 stat ~3ms，位置推送每 0.5s 一次不能每次都查）
+	if mgr.current_midi_data != _meta_song or _meta_cached.is_empty():
+		_meta_song = mgr.current_midi_data
+		_meta_cached = _build_metadata()
+	_ensure_cover_loaded(_meta_cached["cover_path"])
 	_backend.update_state(playing, mgr.position_ms, mgr.get_backend_duration_ms(),
-		meta["title"], meta["album"], _cover_png, mgr.get_track_end_action())
+		_meta_cached["title"], _meta_cached["album"], _cover_png, mgr.get_track_end_action())
 
 func _process(delta: float) -> void:
 	# MidiPlaybackManager 由 Main 在 autoload 之后创建，_ready 时可能尚未实例化，
@@ -190,6 +201,8 @@ func _ensure_cover_loaded(path: String) -> void:
 	if _cover_png_cache.has(path):
 		_cover_png = _cover_png_cache[path]
 		_cover_png_path = path
+		_cover_png_lru.erase(path)
+		_cover_png_lru.append(path)
 		return
 	_load_cover_bytes(path)
 
@@ -209,9 +222,18 @@ func _load_cover_bytes(path: String) -> void:
 		if img.is_compressed():
 			img.decompress()
 		bytes = img.save_png_to_buffer()
-	_cover_png_cache[path] = bytes
+	_cache_cover_bytes(path, bytes)
 	_cover_png = bytes
 	_cover_png_path = path
+
+## 写入封面缓存并维持 LRU：超出上限时淘汰最久未用的一张
+func _cache_cover_bytes(path: String, bytes: PackedByteArray) -> void:
+	if _cover_png_cache.has(path):
+		_cover_png_cache.erase(path)
+	_cover_png_cache[path] = bytes
+	_cover_png_lru.append(path)
+	while _cover_png_lru.size() > COVER_CACHE_MAX:
+		_cover_png_cache.erase(_cover_png_lru.pop_front())
 
 func _globalize_path(path: String) -> String:
 	if path.begins_with("user://") or path.begins_with("res://"):

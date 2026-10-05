@@ -51,8 +51,6 @@ var _open: bool = false
 @onready var _filter_status_btn: Button = $SearchRow/FilterStatusBtn
 @onready var _filter_data_btn: Button = $SearchRow/FilterDataBtn
 @onready var _sort_order_btn: Button = $SearchRow/SortOrderBtn
-@onready var _batch_add_btn: Button = $SearchRow/BatchAddBtn
-@onready var _batch_fav_btn: Button = $SearchRow/BatchFavBtn
 @onready var _library_empty: Label = $Content/LibraryEmpty
 @onready var _lib_overlay: Control = $Content/LibraryOverlay
 

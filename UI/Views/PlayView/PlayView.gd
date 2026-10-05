@@ -511,6 +511,9 @@ func _auto_pause_on_background(reason: String) -> void:
 
 func _prepare_game(midi:MidiData = current_midi) -> void:
 	_game_generation += 1
+	# 打歌要低延迟：强制关掉听歌降耗档（可能从播放器页带着 512 进来）
+	if playback_mgr != null:
+		playback_mgr.set_listening_profile(false)
 	current_midi = midi
 	play_result = ScoreView.ScoreData.new()
 	_is_finishing_game = false

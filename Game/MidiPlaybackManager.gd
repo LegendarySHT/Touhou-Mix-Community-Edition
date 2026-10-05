@@ -513,7 +513,7 @@ func _load_repeat_mode() -> void:
 ##
 ## 命令执行刻意放在这里而非各页面：这样页面切换、后台、失焦都不影响播放控制，
 ## 页面只需订阅状态信号刷新界面。返回 true 表示命令已被消费。
-func handle_media_command(action: String, position_ms: float = -1.0) -> bool:
+func handle_media_command(action: String, pos_ms: float = -1.0) -> bool:
 	match action:
 		"play":
 			# play 键语义为"确保在播放"，已在播则不重复触发
@@ -533,9 +533,9 @@ func handle_media_command(action: String, position_ms: float = -1.0) -> bool:
 		"stop":
 			stop()
 		"seek":
-			if position_ms < 0.0:
+			if pos_ms < 0.0:
 				return false
-			seek(position_ms)
+			seek(pos_ms)
 		"next":
 			if playlist.is_empty():
 				return false
@@ -1188,6 +1188,8 @@ func preparse_midi_async(midi_data: MidiData) -> bool:
 	cached_track_channel_instruments = result_wrapper["instruments"]
 	midi_data.track_channel_instruments = cached_track_channel_instruments.duplicate()
 
+	_trim_parsed_notes_cache()
+
 	# SOA 来源数组已按 start_tick 升序排序，无需重复排序
 
 	# 标记完成并移除在途记录（等待方在 while 循环里以 has() 守卫，erase 后立即退出循环）
@@ -1201,6 +1203,47 @@ func preparse_midi_async(midi_data: MidiData) -> bool:
 		midi_data.runtime_track_channel_notes.size()
 	], "MidiPlaybackManager")
 	return true
+
+## 解析结果（SOA，约 28 字节/音符，大谱面数 MB）限量驻留。
+## 浏览列表时每个滚入视野的项都会预解析，而清理只挂在"选中切换"上，
+## 只滚动不点选的歌曲会永久滞留（实测 native heap 数百 MB）。
+## 按最近构建时间淘汰：重解析很快，只留最近 2 首（当前 + 上一首）+ 正在播放的那首。
+const PARSED_NOTES_CACHE_MAX := 2
+
+func _trim_parsed_notes_cache() -> void:
+	var entries: Array[MidiData] = []
+	for m in DataMGR.midis.values():
+		if m is MidiData and m != current_midi_data and m.has_notes():
+			entries.append(m)
+	if entries.size() > PARSED_NOTES_CACHE_MAX:
+		entries.sort_custom(func(a: MidiData, b: MidiData) -> bool:
+			return a.notes_parsed_at < b.notes_parsed_at)
+		for i in range(entries.size() - PARSED_NOTES_CACHE_MAX):
+			entries[i].clear_parsed_notes()
+	_mem_diag()
+
+## 临时诊断：把 Godot 账本（静态内存/纹理）与系统 RSS 的差额拆开看。用完即删。
+func _mem_diag() -> void:
+	var mb := 1048576.0
+	var soa_notes := 0
+	var soa_count := 0
+	for m in DataMGR.midis.values():
+		if m is MidiData and m.has_notes():
+			soa_count += 1
+			soa_notes += m.notes_soa.size()
+	var managed := {}
+	if midi_player != null and midi_player.has_method("get_memory_diag"):
+		managed = midi_player.get_memory_diag()
+	GLogger.info("[MemDiag] static=%.0fMB tex=%.0fMB vid=%.0fMB | managed live=%.0fMB heap=%.0fMB frag=%.0fMB | soa=%d首/%d音符(~%.0fMB) midis=%d" % [
+		Performance.get_monitor(Performance.MEMORY_STATIC) / mb,
+		Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / mb,
+		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / mb,
+		float(managed.get("managed_live", 0)) / mb,
+		float(managed.get("managed_heap", 0)) / mb,
+		float(managed.get("managed_frag", 0)) / mb,
+		soa_count, soa_notes, soa_notes * 28.0 / mb,
+		DataMGR.midis.size(),
+	], "MidiPlaybackManager")
 
 ## 预载人声到 miniaudio 后端（原生解码线程异步填充环形缓冲，不阻塞主线程）
 func _preload_vocal_async() -> void:
@@ -1399,6 +1442,13 @@ func get_loop() -> bool:
 	if backend != null:
 		return backend.get_loop()
 	return false
+
+## 听歌降耗档：把音频 period 提到 512（听歌无所谓延迟，回合延迟更省电）。
+## 只在播放器页面听歌时开启，打歌/音轨用回 256 保持低延迟。
+func set_listening_profile(enabled: bool) -> void:
+	var backend = _get_active_backend()
+	if backend != null:
+		backend.set_listening_profile(enabled)
 
 ## 跳转到指定位置
 ## position: 位置（毫秒）

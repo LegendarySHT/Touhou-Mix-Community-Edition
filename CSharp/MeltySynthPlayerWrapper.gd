@@ -34,6 +34,12 @@ func _on_soundfont_changed(path: String) -> void:
 func set_max_polyphony(value: int) -> void:
 	max_polyphony = value
 
+## 听歌降耗档：把音频 period 提到 512（听歌无所谓延迟，回合延迟更省电）。
+## 仅供播放器页面听歌开启；打歌/音轨用回 256 保持低延迟。
+func set_listening_profile(enabled: bool) -> void:
+	if meltysynth_player != null and meltysynth_player.has_method("set_listening_profile"):
+		meltysynth_player.call("set_listening_profile", enabled)
+
 func _on_vocal_finished() -> void:
 	vocal_finished.emit()
 	# 尽管 meltysynth_player 是 C# 对象，我们可以通过 call() 和方法名称与之交互

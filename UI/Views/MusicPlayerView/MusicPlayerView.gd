@@ -100,14 +100,20 @@ func _on_repeat_mode_changed(_mode: int) -> void:
 func _on_ui_state_changed(_old: int, new: int) -> void:
 	if new == WORK_STATE:
 		_activate_page()
-	elif _old == WORK_STATE and new != UIStateManager.UIState.TRACK_VIEW:
-		# 离开本页才注销。跳去 TrackView（点歌单上的曲子去音轨编辑）是同一首歌的
-		# 另一种视图，不算退出播放，故保留会话。
-		MediaSess.unregister_view(self)
-		# 注销会停止播放；同时把活动会话交还给单曲槽(B)，A 只在本页期间活动
+	elif _old == WORK_STATE:
+		# 离开本页恢复默认帧率（0 = vsync 主导），去 TrackView/打歌等页面不受 30/60 限制
+		Engine.max_fps = 0
 		var mgr := MidiPlaybackManager.instance
 		if mgr != null:
-			mgr.end_user_session()
+			# 听歌降耗档只在本页有效：离开即恢复低延迟档（period 256）
+			mgr.set_listening_profile(false)
+		# 跳去 TrackView（点歌单上的曲子去音轨编辑）是同一首歌的另一种视图，
+		# 不算退出播放，故保留会话；其余出口注销并交还会话。
+		if new != UIStateManager.UIState.TRACK_VIEW:
+			MediaSess.unregister_view(self)
+			# 注销会停止播放；同时把活动会话交还给单曲槽(B)，A 只在本页期间活动
+			if mgr != null:
+				mgr.end_user_session()
 
 func _process(_delta: float) -> void:
 	_refresh_progress()
@@ -149,6 +155,8 @@ func _activate_page() -> void:
 		# 这不是"起一次会话"，所以不走 start_session：那会重设用户播放列表(A)，
 		# 而这里只需要改当前曲的循环标志。
 		mgr.set_loop(true)
+		# 听歌降耗档：本页只听歌，period 提到 512（延迟无所谓，回合更省电）
+		mgr.set_listening_profile(true)
 		_ensure_playing(mgr)
 	# 从其它页面返回本页时复位全部开关：面板/模式是子页状态，不跨页面保留。
 	# 曲库/播放列表/音量连 toggled，取消按下即收起；StageSwitchBtn 连的是 pressed，
@@ -249,6 +257,10 @@ func _animate_staged_in(staged: Dictionary) -> void:
 ## 入场进行中（用于中途退出时打断）
 var _entry_pending: bool = false
 
+## 播放器页帧率上限：封面态 30 / 可视化态 60（见 _apply_stage_mode）
+const FPS_COVER_MODE := 30
+const FPS_STAGE_MODE := 60
+
 ## 进入页面时确保在播。列表本体由 MidiPlaybackManager 持有（唯一事实来源），
 ## 跨重启由 PlaylistMGR 落盘 / restore_playlist 读回，这里不再做第二份副本的同步。
 ## 判据只看 is_playing：stop() 不清 current_midi_data，用它判断会永远不重播。
@@ -275,9 +287,14 @@ func _on_stage_switch_pressed() -> void:
 
 ## 舞台模式由 StageSwitchBtn 的 button_pressed 表达：未按下=封面，按下=可视化。
 ## 按钮是 toggle_mode，两态贴图（texture_normal / texture_pressed）已由 tscn 给好。
+## 帧率随内容定：封面态近乎静态 30fps 足够（高刷设备上省一半以上渲染功耗），
+## 可视化态音符跟拍滚动保 60；离开本页时恢复 0 交还 vsync 主导。
 func _apply_stage_mode() -> void:
 	_cover_view.visible = not _stage_switch_btn.button_pressed
 	_note_roll.visible = _stage_switch_btn.button_pressed
+	# 本页未激活（预加载等场景）时不抢全局帧率，交给 _activate_page 在入场时设置
+	if is_inside_tree() and is_visible_in_tree():
+		Engine.max_fps = FPS_STAGE_MODE if _stage_switch_btn.button_pressed else FPS_COVER_MODE
 
 # ── 底部控制 ──────────────────────────────────────────
 

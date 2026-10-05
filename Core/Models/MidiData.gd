@@ -113,6 +113,11 @@ var parsed_notes: Array = []
 ## Android 大谱面内存优化：22w 音符 = 6 个 PackedInt32Array，而非 22w NoteEvent 对象
 var notes_soa: NoteSoa = null
 
+## notes_soa 的最近构建时刻（毫秒）。浏览列表时每个可见项都会预解析，
+## 而清理只挂在"选中切换"上，只滚动不点选的歌曲会永久滞留；
+## MidiPlaybackManager 据此按最近使用顺序淘汰（见 _trim_parsed_notes_cache）
+var notes_parsed_at: int = 0
+
 ## 缓存的 track_infos（运行时缓存，不持久化；与 notes_soa 同生命周期）
 ## 用于 retry 场景跳过重复的 MIDI 解析
 var _runtime_track_infos: Array = []
@@ -502,6 +507,7 @@ func get_enabled_note_indices(enabled_pairs: Dictionary) -> Array:
 ## 这是 SOA 唯一的构建时机——"读取 MIDI 一次建好，其余地方等解析完毕直接取用"。
 func set_parsed_soa(parse_result: Dictionary) -> void:
 	notes_soa = NoteSoa.from_result(parse_result)
+	notes_parsed_at = Time.get_ticks_msec()
 	# 轨道-通道分组与 SOA 同步构建（来源数组已按 start_tick 升序，逐元素追加即有序）
 	runtime_track_channel_notes = notes_soa.grouped_indices()
 	# 启用音符缓存随 SOA 重置失效（重新解析即重新缓存）：

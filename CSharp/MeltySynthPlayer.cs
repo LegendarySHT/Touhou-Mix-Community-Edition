@@ -120,19 +120,28 @@ public partial class MeltySynthPlayer : Node
 	private readonly ManualNoteFilterRegistry _manualFilterRegistry = new ManualNoteFilterRegistry();
 	private readonly ConcurrentDictionary<int, byte> _mutedVirtualChannels = new ConcurrentDictionary<int, byte>();
 	private bool _vocalFinishedSignaled = false;
+	private string _loadedVocalFilePath = "";
+	private float _vocalVolumeLinear = 1.0f;
 
 	// ============ 选项 A：独立合成器用于低延迟手动音符 ============
 	private Synthesizer _manualSynth;      // 专用于手动触发的音符
 	private Synthesizer _autoSynth;        // 原有：用于MIDI自动播放（就是 _synth）
 	private bool _useSeparateSynthForManual = true;  // 启用独立合成器
+
+	// 听歌降耗档：只切音频 period（听歌无所谓延迟，回合延迟反而更省电）。
+	// 不用复音上限——密集谱面会提前偷音，听感代价太大。
+	private const int GameplayPeriodFrames = 256;
+	private const int ListeningPeriodFrames = 512;
+	private bool _listeningProfile = false;
 	private bool _preferNativeSequencerSeek = true;
 
 	// 系统时钟模式请求状态（配置来源 Playback/use_system_stopwatch）。
 	// sequencer 在 soundfont / 采样率重建时会重新创建，创建点按本字段恢复模式，避免被静默重置为关闭。
 	private bool _systemClockRequested = false;
 
-	// 用户配置的音频缓冲区大小（帧），对齐到2的幂
-	private int _desiredBufferFrames = 1024;  // 默认1024帧，与稳定工作的旧版本一致
+	// 当前请求与已创建设备使用的 period 帧数
+	private int _desiredBufferFrames = GameplayPeriodFrames;
+	private int _activeAudioPeriodFrames = 0;
 
 	// 跟踪已应用通道状态到手动合成器的虚拟通道，避免每次触发音符重复设置
 	private readonly ConcurrentDictionary<int, byte> _channelStateAppliedToManual = new ConcurrentDictionary<int, byte>();
@@ -173,6 +182,13 @@ public partial class MeltySynthPlayer : Node
 		if (_audioOutput == null) return;
 		if (!_audioOutput.IsPlaying)
 			_audioOutput.Play();
+	}
+
+	private void PrepareAudioOutputForPlaybackStart()
+	{
+		// 兜底：中断恢复等路径重建设备后可能带着旧 period，起播前对齐当前档位
+		ApplyAudioPeriodForProfile();
+		EnsureAudioInitialized();
 	}
 
 	// 【并发修复】MidiFileSequencer/Synthesizer 非线程安全：音频回调在 _synthLock 内执行
@@ -294,7 +310,25 @@ public partial class MeltySynthPlayer : Node
 		}
 
 		_audioOutput = bridge;
+		_activeAudioPeriodFrames = ResolveAudioPeriodFrames(OS.GetName());
+		if (bridge is MiniaudioAudioOutputBridge initializedBridge)
+		{
+			initializedBridge.SetVocalLoopEnabled(loop);
+		}
 		GD.Print("[MeltySynthPlayer] Audio bridge initialized with synthesizers preset");
+	}
+
+	private int ResolveAudioPeriodFrames(string osName)
+	{
+		if (osName == "Windows")
+		{
+			return System.Environment.GetEnvironmentVariable("MINIAUDIO_EXCLUSIVE") == "1" ? 128 : 256;
+		}
+		if (osName == "Android")
+		{
+			return _desiredBufferFrames;
+		}
+		return Math.Min(_desiredBufferFrames, 256);
 	}
 
 	private IAudioOutputBridge CreateAudioOutputBridge(bool useDeviceNativeRate)
@@ -303,7 +337,6 @@ public partial class MeltySynthPlayer : Node
 		var maBridge = new MiniaudioAudioOutputBridge(0);
 
 		var osName = OS.GetName();
-		uint maPeriod;
 
 		if (osName == "Windows")
 		{
@@ -319,21 +352,14 @@ public partial class MeltySynthPlayer : Node
 			maBridge.SetBackend(MiniaudioNative.Backend.Wasapi);
 			bool useExclusive = System.Environment.GetEnvironmentVariable("MINIAUDIO_EXCLUSIVE") == "1";
 			maBridge.SetWASAPIExclusive(useExclusive);
-			// 注意: Windows 下 period 固定为 256/128（共享/独占），有意忽略
-			// set_audio_buffer_frames(_desiredBufferFrames)：共享模式 WASAPI 对
-			// 更小 period 支持不稳定，且当前无任何 UI 暴露该设置（TMX-041 结论）。
-			maPeriod = useExclusive ? 128u : 256u;
 		}
 		else if (osName == "Android")
 		{
 			maBridge.SetBackend(MiniaudioNative.Backend.Aaudio);
 			maBridge.SetAAudioExclusive(true);
-			maPeriod = (uint)Math.Min(_desiredBufferFrames, 256);
 		}
-		else
-		{
-			maPeriod = (uint)Math.Min(_desiredBufferFrames, 256);
-		}
+
+		var maPeriod = (uint)ResolveAudioPeriodFrames(osName);
 
 		if (useDeviceNativeRate)
 		{
@@ -346,6 +372,60 @@ public partial class MeltySynthPlayer : Node
 
 		GD.Print($"[MeltySynthPlayer] Creating miniaudio bridge: decode={maPeriod}f, period=({maPeriod},2), os={osName}, exclusive={(osName == "Windows" ? (System.Environment.GetEnvironmentVariable("MINIAUDIO_EXCLUSIVE") == "1" ? "yes" : "no") : "n/a")}");
 		return maBridge;
+	}
+
+	private void RecreateAudioOutputBridge()
+	{
+		if (_audioOutput == null)
+		{
+			EnsureAudioInitialized();
+			return;
+		}
+
+		var wasPlaying = _audioOutput.IsPlaying;
+		var wasVocalPlaying = _audioOutput.IsVocalPlaying();
+		var vocalPositionMs = _audioOutput.GetVocalPositionMs();
+
+		_audioOutput.Dispose();
+		_audioOutput = null;
+		_activeAudioPeriodFrames = 0;
+		EnsureAudioInitialized();
+		if (_audioOutput == null)
+		{
+			return;
+		}
+
+		if (_sequencer != null && _autoSynth != null)
+		{
+			_audioOutput.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
+			_audioOutput.SetVolume(_volumeLinear);
+		}
+
+		var vocalRestored = false;
+		if (!string.IsNullOrEmpty(_loadedVocalFilePath))
+		{
+			_audioOutput.SetVocalVolume(_vocalVolumeLinear);
+			vocalRestored = _audioOutput.LoadVocalFile(_loadedVocalFilePath);
+			if (vocalRestored)
+			{
+				_audioOutput.SeekVocal(Math.Max(0.0, vocalPositionMs));
+				_vocalFinishedSignaled = false;
+				GD.Print($"[MeltySynthPlayer] Vocal restored after audio bridge recreation: {vocalPositionMs:F1}ms");
+			}
+			else
+			{
+				GD.PrintErr($"[MeltySynthPlayer] Failed to restore vocal after audio bridge recreation: {_loadedVocalFilePath}");
+			}
+		}
+
+		if (wasPlaying)
+		{
+			_audioOutput.Play();
+		}
+		if (wasVocalPlaying && vocalRestored)
+		{
+			_audioOutput.PlayVocal();
+		}
 	}
 
 	/// <summary>
@@ -362,7 +442,8 @@ public partial class MeltySynthPlayer : Node
 		else aligned = 2048;
 		
 		// 检查缓冲区大小是否真的改变了
-		if (_desiredBufferFrames == aligned)
+		if (_desiredBufferFrames == aligned &&
+			(_audioOutput == null || _activeAudioPeriodFrames == ResolveAudioPeriodFrames(OS.GetName())))
 		{
 			GD.Print($"[MeltySynthPlayer] Audio buffer frames already set to {aligned}, skipping reinitialization");
 			return;
@@ -371,41 +452,14 @@ public partial class MeltySynthPlayer : Node
 		_desiredBufferFrames = aligned;
 		GD.Print($"[MeltySynthPlayer] Audio buffer frames: requested={frames}, aligned={aligned}");
 
-		// 重新创建音频桥以应用新的缓冲区大小
 		if (_audioOutput != null)
 		{
 			GD.Print($"[MeltySynthPlayer] Recreating audio bridge with new buffer size: {aligned} frames");
-			
-			// 保存当前播放状态
-			bool wasPlaying = _audioOutput.IsPlaying;
-			
-			// 【关键修复】先销毁旧音频桥，停止其音频回调
-			// 否则旧桥的 PCM 回调仍在音频线程运行，与新桥共享_sequencer
-			// 两个桥各自有独立的 _synthLock，无法保护共享合成器，导致竞态条件
-			_audioOutput.Dispose();
-			_audioOutput = null;
-			
-			// 重新初始化音频桥（会使用新的 _desiredBufferFrames）
-			EnsureAudioInitialized();
-			
-			// 恢复合成器引用
-			if (_sequencer != null && _autoSynth != null)
-			{
-				_audioOutput.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
-				_audioOutput.SetVolume(_volumeLinear);
-				GD.Print("[MeltySynthPlayer] Synthesizers restored after audio bridge recreation");
-			}
-			
-			// 如果之前在播放，恢复播放
-			if (wasPlaying && _audioOutput != null)
-			{
-				_audioOutput.Play();
-				GD.Print("[MeltySynthPlayer] Playback resumed after audio bridge recreation");
-			}
+			RecreateAudioOutputBridge();
 		}
 		else
 		{
-			GD.Print($"[MeltySynthPlayer] Audio bridge not yet created, new buffer size will be applied on next initialization");
+			GD.Print("[MeltySynthPlayer] Audio bridge not yet created, new buffer size will be applied on next initialization");
 		}
 	}
 
@@ -431,34 +485,12 @@ public partial class MeltySynthPlayer : Node
 		}
 
 		GD.Print("[MeltySynthPlayer] Recreating audio output device to follow system default endpoint");
-		bool wasPlaying = _audioOutput.IsPlaying;
-
-		// 先销毁旧音频桥，停止其音频回调（与 set_audio_buffer_frames 相同的竞态防护）
-		_audioOutput.Dispose();
-		_audioOutput = null;
-
-		// 重新初始化（使用当前系统默认设备；内部已含合成器重绑）
-		EnsureAudioInitialized();
-
-		// 恢复合成器引用（EnsureAudioInitialized 已重绑，此处冗余加固保持与既有路径一致）
-		if (_audioOutput != null && _sequencer != null && _autoSynth != null)
-		{
-			_audioOutput.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
-			_audioOutput.SetVolume(_volumeLinear);
-		}
-
-		// 如果之前在播放，恢复播放
-		if (wasPlaying && _audioOutput != null)
-		{
-			_audioOutput.Play();
-			GD.Print("[MeltySynthPlayer] Playback resumed after audio output recreation");
-		}
+		RecreateAudioOutputBridge();
 	}
 
 	/// <summary>
 	/// 中断恢复：音频被系统打断（如来电/切后台）后，安卓 AAudio 被系统夺走音频焦点，
 	/// 仅 ma_device_stop/start 无法重新申请到会话，必须整桥销毁重建才能恢复声音。
-	/// 重建会保留 sequencer 位置与合成器音源，但原生人声解码器会丢失（由 MidiPlaybackManager 重新加载）。
 	/// </summary>
 	public void recover_audio_output()
 	{
@@ -828,7 +860,7 @@ public partial class MeltySynthPlayer : Node
 	/// <summary>开始播放。返回 true 表示已真正启动，false 表示音源未就绪、已推迟到加载完成后续播。</summary>
 	public bool play()
 	{
-		EnsureAudioInitialized();
+		PrepareAudioOutputForPlaybackStart();
 		GD.Print($"[MeltySynthPlayer] play() called - _midiFile={_midiFile != null}, _sequencerStarted={_sequencerStarted}, _audioOutput={( _audioOutput != null ? "OK" : "NULL" )}, _synth={(_synth != null ? "OK" : "NULL")}, _autoSynth={(_autoSynth != null ? "OK" : "NULL")}");
 		if (_sequencer == null)
 		{
@@ -946,6 +978,14 @@ public partial class MeltySynthPlayer : Node
 			return;
 		}
 
+		// 暂停时设备已停，音频线程不再跑，交给它的 seek 不会被消费，主线程必须自己落一次。
+		// 下面仍照常排队：device 再次启动后回调会再落一次同目标（幂等），
+		// 覆盖"先 seek 再 play()"——Play() 会把位置清回 0，只靠本次直落会丢失目标。
+		if (_audioOutput is MiniaudioAudioOutputBridge maStopped && !maStopped.IsPlaying)
+		{
+			WithSynthLock(() => _sequencer.Seek(TimeSpan.FromMilliseconds(positionMs)));
+		}
+
 		// 非负 seek 下沉到音频线程：后台时 _Process 停摆，只有音频线程仍在跑。
 		// 前台也走同一路径，保证两条路径行为一致（不会重复 seek）。
 		if (_audioOutput is MiniaudioAudioOutputBridge ma)
@@ -1011,12 +1051,19 @@ public partial class MeltySynthPlayer : Node
 		EnsureAudioInitialized();
 		if (_audioOutput == null) return false;
 		_vocalFinishedSignaled = false;
-		return _audioOutput.LoadVocalFile(path);
+		var loaded = _audioOutput.LoadVocalFile(path);
+		_loadedVocalFilePath = loaded ? path : "";
+		if (loaded)
+		{
+			_audioOutput.SetVocalVolume(_vocalVolumeLinear);
+		}
+		return loaded;
 	}
 
 	public void unload_vocal()
 	{
 		_vocalFinishedSignaled = false;
+		_loadedVocalFilePath = "";
 		_audioOutput?.UnloadVocal();
 	}
 
@@ -1059,7 +1106,8 @@ public partial class MeltySynthPlayer : Node
 
 	public void set_vocal_volume(double volumeLinear)
 	{
-		_audioOutput?.SetVocalVolume((float)volumeLinear);
+		_vocalVolumeLinear = (float)volumeLinear;
+		_audioOutput?.SetVocalVolume(_vocalVolumeLinear);
 	}
 
 	public double get_vocal_position_ms()
@@ -1120,6 +1168,32 @@ public partial class MeltySynthPlayer : Node
 	public bool get_loop()
 	{
 		return loop;
+	}
+
+	/// <summary>听歌降耗档：把音频 period 切到省电档（页面进出时即时切换）。</summary>
+	public void set_listening_profile(bool enabled)
+	{
+		_listeningProfile = enabled;
+		ApplyAudioPeriodForProfile();
+	}
+
+
+	// period 跟随听歌档即时切换：只在页面进出时调用（播放器页 512、其余 256），
+	// 换来的是"绝大多数时间保持低延迟高功耗档"。代价是页面切换时一次设备重建。
+	private void ApplyAudioPeriodForProfile()
+	{
+		if (OS.GetName() != "Android")
+		{
+			return;
+		}
+		var targetPeriod = _listeningProfile ? ListeningPeriodFrames : GameplayPeriodFrames;
+		_desiredBufferFrames = targetPeriod;
+		if (_audioOutput == null || _activeAudioPeriodFrames == targetPeriod)
+		{
+			return;
+		}
+		GD.Print($"[MeltySynthPlayer] Switching audio period for profile: {_activeAudioPeriodFrames}→{targetPeriod}");
+		RecreateAudioOutputBridge();
 	}
 	
 	// Getter methods for compatibility
@@ -1886,6 +1960,9 @@ public partial class MeltySynthPlayer : Node
 					_manualSynth.NoteOffAll(false);
 			});
 		}
+		// 暂停时停掉设备：否则回调仍以约 187 次/秒渲染静音，后台停留时是纯发热。
+		// ma_bridge_stop 会等待回调完成，必须在 _synthLock 之外调用（同 stop()）。
+		_audioOutput?.Stop();
 		// GD.Print($"[MeltySynthPlayer] pause() called - _currentOffsetMs={_currentOffsetMs}, _sequencerStarted={_sequencerStarted}");
 		// 保持 sequencer 状态，不重置位置
 
@@ -1908,8 +1985,9 @@ public partial class MeltySynthPlayer : Node
 			GD.Print("[MeltySynthPlayer] SoundFont still loading/switching, deferring resume() until finalized");
 			_pendingPlayAfterLoad = true;
 			playing = true;
-						return false;
+			return false;
 		}
+		PrepareAudioOutputForPlaybackStart();
 		if (_midiFile != null && _sequencer != null)
 		{
 			// 【处理 pre-roll 模式】如果在 pre-roll 中，继续等待跨越零点

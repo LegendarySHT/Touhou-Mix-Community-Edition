@@ -16,7 +16,8 @@ const RepeatMode := MidiPlaybackManager.RepeatMode
 ## 行对象池（照曲库的池化思路）：只保留「视窗 ± margin」的行节点，滚动时换绑数据。
 ## 行高一致，PlList 里用上下两个 spacer 撑出滚动总高，池行夹在中间占住可视窗口的位置
 const POOL_MARGIN_ROWS := 3
-const POOL_MAX_ROWS := 64
+## 页面一次能显示 ~15 行，池 = 可见 + margin 就够；上限只防窗口异常大时无节制膨胀
+const POOL_MAX_ROWS := 24
 
 @onready var _pl_list: LIST_SCRIPT = $PlColumn/PlScroll/PlList
 @onready var _pl_empty: Label = $PlColumn/PlScroll/PlList/PlEmpty
@@ -196,7 +197,7 @@ func _make_spacer() -> Control:
 	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return sp
 
-## 池行数不足视窗时补建（窗口拉伸/首建）。补行后把底 spacer 挪回末尾
+## 池行数对齐视窗（窗口拉伸/首建补行、缩小裁行）。补行后把底 spacer 挪回末尾
 func _grow_row_pool() -> void:
 	if _row_stride_px <= 0.0:
 		return
@@ -209,11 +210,19 @@ func _grow_row_pool() -> void:
 		item.remove_requested.connect(_on_pl_remove)
 		item.activated.connect(_on_pl_activated)
 		_pool_rows.append(item)
+	while _pool_rows.size() > need:
+		var row: ITEM_SCRIPT = _pool_rows.pop_back()
+		_pl_list.remove_child(row)
+		row.queue_free()
+	_window_first = -1   # 池成员变了，下轮同步强制重算窗口
 	if _bottom_spacer != null:
 		_pl_list.move_child(_bottom_spacer, _pl_list.get_child_count() - 1)
 
 ## 把池行对准当前滚动窗口：更新 spacer 高度 + 换绑窗口内行。
-## 已绑同一条目的行直接跳过（文字测宽是重绑的大头）
+## 已绑同一条目的行直接跳过（文字测宽是重绑的大头）。
+## 显示与绑定是两回事：池可能大于视窗（POOL_MAX 上限/历史超长窗口建大过），
+## 只有真正落在滚动视窗 ±margin 的行才 visible——可视区外的行不参与绘制，
+## 否则长歌名的字形（阴影+描边+填充三遍）会把图元数顶上去
 func _sync_row_window(force: bool = false) -> void:
 	if _row_stride_px <= 0.0:
 		return
@@ -224,17 +233,18 @@ func _sync_row_window(force: bool = false) -> void:
 	if total > _pool_rows.size():
 		first = clampi(int(_pl_scroll.scroll_vertical / _row_stride_px) - POOL_MARGIN_ROWS,
 			0, total - _pool_rows.size())
-	if not force and first == _window_first:
-		return
-	_window_first = first
-	if _top_spacer != null:
-		_top_spacer.custom_minimum_size.y = float(first) * _row_stride_px
-	if _bottom_spacer != null:
-		_bottom_spacer.custom_minimum_size.y = float(maxi(total - first - _pool_rows.size(), 0)) * _row_stride_px
+	if first != _window_first:
+		_window_first = first
+		if _top_spacer != null:
+			_top_spacer.custom_minimum_size.y = float(first) * _row_stride_px
+		if _bottom_spacer != null:
+			_bottom_spacer.custom_minimum_size.y = float(maxi(total - first - _pool_rows.size(), 0)) * _row_stride_px
+	var vis_first := int(floor(_pl_scroll.scroll_vertical / _row_stride_px)) - POOL_MARGIN_ROWS
+	var vis_last := int(ceil((_pl_scroll.scroll_vertical + _pl_scroll.size.y) / _row_stride_px)) + POOL_MARGIN_ROWS
 	for k in _pool_rows.size():
 		var item: ITEM_SCRIPT = _pool_rows[k]
 		var idx := first + k
-		if idx >= total:
+		if idx >= total or idx < vis_first or idx > vis_last:
 			item.visible = false
 			continue
 		item.visible = true

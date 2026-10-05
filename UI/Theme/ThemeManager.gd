@@ -547,6 +547,12 @@ func _set_theme_stylebox(theme: Theme, tmp: Theme, type: String, state: String, 
 		(dup as StyleBoxFlat).bg_color = bg
 		(dup as StyleBoxFlat).border_color = border
 		(dup as StyleBoxFlat).shadow_color = shadow
+		# AA 圆角框的图元数随 corner_detail 线性增长：默认 12 段时单框 ~300 图元，
+		# 列表行一屏 3 按钮 × 17 行就是 ~1.6 万。按圆角半径取 3~8 段，AA 下小圆角视觉无差
+		var flat := dup as StyleBoxFlat
+		var r := maxi(flat.corner_radius_top_left, maxi(flat.corner_radius_top_right,
+			maxi(flat.corner_radius_bottom_right, flat.corner_radius_bottom_left)))
+		flat.corner_detail = clampi(int(r / 3.0), 3, 8)
 	elif dup is StyleBoxHighlightGradient:
 		dup.bg_color = bg
 		dup.border_color = border
