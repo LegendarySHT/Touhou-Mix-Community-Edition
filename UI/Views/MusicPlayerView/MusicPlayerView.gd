@@ -143,13 +143,12 @@ func _activate_page() -> void:
 		# 而这里只需要改当前曲的循环标志。
 		mgr.set_loop(true)
 		_ensure_playing(mgr)
-	# 从其它页面返回本页时收起曲库与列表面板：本页是「播放页」，
-	# 子页状态不应跨页面保留。
-	if _library_open:
-		_force_close_library()
-	# 面板收起统一走按钮状态（toggled 回调负责实际收起）
-	_playlist_btn.button_pressed = false
-	_volume_btn.button_pressed = false
+	# 从其它页面返回本页时复位全部开关：面板/模式是子页状态，不跨页面保留。
+	# 曲库/播放列表/音量连 toggled，取消按下即收起；StageSwitchBtn 连的是 pressed，
+	# 程序化取消按下不触发，由下方 _apply_stage_mode 同步视图。
+	for b in [_library_btn, _playlist_btn, _volume_btn, _stage_switch_btn]:
+		if b != null and b.button_pressed:
+			b.button_pressed = false
 	_refresh_panel_btn_tint()
 	_refresh_song_info()
 	_refresh_cover()
@@ -203,7 +202,7 @@ func animate(ani_in: bool = true) -> void:
 	if _entry_pending:
 		return   # 入场进行中，忽略重复触发
 	_entry_pending = true
-	# 复位整页状态（上次退出可能已缩放淡出；曲库收起时 ratio 停在 -1）
+	# 复位整页状态（上次退出可能已缩放淡出）
 	visible = true
 	modulate.a = 1.0
 	offset_transform_position = Vector2.ZERO
@@ -490,22 +489,6 @@ func _animate_library_closed() -> void:
 		return
 	if _library_layer != null:
 		_library_layer.visible = false
-
-## 立即收起曲库（不走下沉动画），用于重新进入本页时复位
-func _force_close_library() -> void:
-	_library_open = false
-	if _library_btn != null:
-		_library_btn.button_pressed = false
-	if _library_layer == null:
-		return
-	_library_layer.visible = false
-	_library_layer.offset_transform_enabled = true
-	_library_layer.offset_transform_position_ratio = Vector2(0, 1.0)
-	_library_layer.offset_transform_position = Vector2.ZERO
-	# 主页面一并复位（ratio 归 -1 即完全出屏，offset 归零）
-	_main_column.offset_transform_enabled = true
-	_main_column.offset_transform_position_ratio = Vector2(0, -1.0)
-	_main_column.offset_transform_position = Vector2.ZERO
 
 var _library_open: bool = false
 
@@ -991,14 +974,31 @@ func _on_fav_select_selected(idx: int) -> void:
 func _on_playlist_user_edited() -> void:
 	_rebuild_fav_select()
 
+## 上次构建播放列表时的内容签名（各 MidiData 的 instance id 序列）。
+## 面板每次打开都调 _rebuild_playlist_list，列表没变时靠它跳过全量重建
+var _pl_last_sig: PackedInt64Array = PackedInt64Array()
+
+func _playlist_sig(midis: Array[MidiData]) -> PackedInt64Array:
+	var sig := PackedInt64Array()
+	sig.resize(midis.size())
+	for i in midis.size():
+		sig[i] = midis[i].get_instance_id() if midis[i] != null else 0
+	return sig
+
 func _rebuild_playlist_list() -> void:
-	for c in _pl_list.get_children():
-		if c != _pl_empty:
-			c.queue_free()
 	var mgr := MidiPlaybackManager.instance
 	var current_idx: int = mgr.playlist_index if mgr != null else -1
 	# 列表以 manager 为唯一事实来源（改收藏夹/增删时 manager 已同步）
 	var midis: Array[MidiData] = mgr.playlist if mgr != null else [] as Array[MidiData]
+	var sig := _playlist_sig(midis)
+	if sig == _pl_last_sig:
+		# 内容没变：行节点全部复用，只同步高亮
+		_refresh_playlist_highlight()
+		return
+	_pl_last_sig = sig
+	for c in _pl_list.get_children():
+		if c != _pl_empty:
+			c.queue_free()
 	_pl_empty.visible = midis.is_empty()
 	for i in midis.size():
 		var item: PlaylistItem = PL_ITEM_SCENE.instantiate()
@@ -1130,8 +1130,13 @@ func _refresh_playlist_highlight() -> void:
 	var cur := _current_playlist_index()
 	for c in _pl_list.get_children():
 		var item := c as PlaylistItem
-		if item != null:
-			item.setup_with(item.midi, item.index, item.index == cur)
+		if item == null:
+			continue
+		# 行内容没变，只切高亮；走 setup_with 会触发每行 set_scroll_text 重新测宽
+		var is_cur := item.index == cur
+		item.is_current = is_cur
+		if item.button_pressed != is_cur:
+			item.set_pressed_no_signal(is_cur)
 
 func _current_playlist_index() -> int:
 	var mgr := MidiPlaybackManager.instance

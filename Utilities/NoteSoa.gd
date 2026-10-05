@@ -97,11 +97,46 @@ func duration(i: int) -> float:
 func end_tick(i: int) -> float:
 	return float(_start_ticks[i] + _durations[i])
 
+## 第一个 start_tick >= tick 的音符索引（_start_ticks 已升序，二分定位窗口起点）
+func first_index_from_start_tick(tick: float) -> int:
+	if _start_ticks.is_empty():
+		return 0
+	return _start_ticks.bsearch(int(tick), true)
+
+## 全曲最大音符时长（tick）。窗口起点需回溯这么多，才不会漏掉"起始在窗口之前、
+## 尾部仍落在窗口内"的长音符
+func max_duration_ticks() -> int:
+	var m := 0
+	for i in _durations.size():
+		var d := _durations[i]
+		if d > m:
+			m = d
+	return m
+
 func start_tick_ms(i: int) -> float:
 	return _tick_to_ms(float(_start_ticks[i]))
 
 func end_tick_ms(i: int) -> float:
 	return _tick_to_ms(float(_start_ticks[i] + _durations[i]))
+
+## ms → tick：与 start_tick_ms / end_tick_ms 共用同一 _bpm_lookup，保证互为逆映射
+func ms_to_tick(ms: float) -> float:
+	if _bpm_lookup.is_empty():
+		return ms * float(_timebase) / (60000.0 / 120.0)
+	var n: int = _bpm_lookup.size()
+	var first = _bpm_lookup[0]
+	if ms <= first[2]:
+		return first[0] + (ms - first[2]) * float(_timebase) * first[1] / 60000.0
+	var lo: int = 0
+	var hi: int = n - 1
+	while lo < hi:
+		var mid: int = (lo + hi + 1) >> 1
+		if _bpm_lookup[mid][2] <= ms:
+			lo = mid
+		else:
+			hi = mid - 1
+	var entry = _bpm_lookup[lo]
+	return entry[0] + (ms - entry[2]) * float(_timebase) * entry[1] / 60000.0
 
 ## ===================== tick → ms（BPM 感知） =====================
 
