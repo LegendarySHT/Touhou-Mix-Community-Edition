@@ -85,7 +85,15 @@ func _ready() -> void:
 	# 注册为主题应用者：外观/主题色切换时重新解析文字色（否则自绘文字会停留在旧颜色）
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
+	set_process(false)
 	call_deferred("_measure_and_scroll")
+
+
+## pending 补建轮询：首次绘制可能发生在自身位于视口外时（如父层滑入动画期间），
+## 之后位移不触发重绘，NOTIFICATION_DRAW 不会再来，必须轮询等真正进视口
+func _process(_delta: float) -> void:
+	if _scroll_pending and _is_in_viewport():
+		_start_scroll_tween()
 
 
 ## 主题刷新回调：重新解析文字颜色并重绘
@@ -146,15 +154,17 @@ func _measure_and_scroll() -> void:
 	# 文字未溢出（含两端填充）：不滚动，避免刚好能塞下却顶着左边
 	if _text_width + 2 * end_padding <= size.x:
 		_overflow = false
+		set_process(false)
 		queue_redraw()
 		return
 
 	_overflow = true
 
 	# 文字溢出，但当前不在视口内：先不建 tween（长列表里绝大多数 label 都在视口外，
-	# 每条 tween 都是常驻内存 + 每帧回调）。等首次真正绘制时再补建。
+	# 每条 tween 都是常驻内存 + 每帧回调）。等真正进视口时由 _process 轮询或首次绘制补建。
 	if not _is_in_viewport():
 		_scroll_pending = true
+		set_process(true)
 		return
 
 	_start_scroll_tween()
@@ -163,6 +173,7 @@ func _measure_and_scroll() -> void:
 ## 启动来回滚动 tween（调用方须已确认文本溢出且本节点在视口内）
 func _start_scroll_tween() -> void:
 	_scroll_pending = false
+	set_process(false)
 	# 滚动范围含 2*end_padding：起始文本左边留 end_padding，终点文本右边留 end_padding，两端对称
 	var max_offset := _text_width - size.x + 2 * end_padding
 	# 单程时长按滚动距离换算，保证不同长度文本像素速度一致
