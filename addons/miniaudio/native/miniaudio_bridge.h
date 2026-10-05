@@ -190,6 +190,12 @@ MA_BRIDGE_API int ma_bridge_vocal_is_finished(void* pBridge);
 // Number of callback underruns (diagnostics; 0 is healthy).
 MA_BRIDGE_API uint32_t ma_bridge_vocal_get_underrun_count(void* pBridge);
 
+// 欠载期间设备已推进、但未混音的人声帧数（累加；用于观察漂移量是否被即时修正）。
+MA_BRIDGE_API uint64_t ma_bridge_vocal_get_underrun_frames(void* pBridge);
+
+// 待从 ring 丢弃以追平设备时钟的帧数（诊断；理想稳态为 0）。
+MA_BRIDGE_API uint32_t ma_bridge_vocal_get_catchup_frames(void* pBridge);
+
 // Discard the next N frames from the ring without mixing them. Used to keep
 // vocal aligned with MIDI post-seek silence.
 MA_BRIDGE_API ma_bridge_result ma_bridge_vocal_skip_frames(void* pBridge, uint32_t frames);

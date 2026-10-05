@@ -467,6 +467,20 @@ private volatile bool _vocalRestartRequested = false;
 					: 0u;
 			}
 
+			public ulong GetVocalUnderrunFrames()
+			{
+				return _bridgeHandle != IntPtr.Zero
+					? MiniaudioNative.ma_bridge_vocal_get_underrun_frames(_bridgeHandle)
+					: 0ul;
+			}
+
+			public uint GetVocalCatchupFrames()
+			{
+				return _bridgeHandle != IntPtr.Zero
+					? MiniaudioNative.ma_bridge_vocal_get_catchup_frames(_bridgeHandle)
+					: 0u;
+			}
+
 			// ====================================================================
 			// Initialize
 			// ====================================================================

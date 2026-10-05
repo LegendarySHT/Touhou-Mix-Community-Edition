@@ -308,6 +308,12 @@ namespace TouhouMix.Midi
         internal static extern uint ma_bridge_vocal_get_underrun_count(IntPtr pBridge);
 
         [DllImport("miniaudio_bridge", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern ulong ma_bridge_vocal_get_underrun_frames(IntPtr pBridge);
+
+        [DllImport("miniaudio_bridge", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern uint ma_bridge_vocal_get_catchup_frames(IntPtr pBridge);
+
+        [DllImport("miniaudio_bridge", CallingConvention = CallingConvention.Cdecl)]
         internal static extern Result ma_bridge_vocal_skip_frames(IntPtr pBridge, uint frames);
 
         [DllImport("miniaudio_bridge", CallingConvention = CallingConvention.Cdecl)]

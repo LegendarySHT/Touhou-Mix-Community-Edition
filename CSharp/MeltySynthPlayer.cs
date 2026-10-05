@@ -522,6 +522,8 @@ public partial class MeltySynthPlayer : Node
 			result["perf_slow_callbacks"] = maBridge.PerfSlowCallbacks;
 			result["perf_slow_ratio"] = maBridge.PerfSlowRatio;
 			result["vocal_underrun_count"] = (int)maBridge.GetVocalUnderrunCount();
+			result["vocal_underrun_frames"] = (long)maBridge.GetVocalUnderrunFrames();
+			result["vocal_catchup_frames"] = (int)maBridge.GetVocalCatchupFrames();
 			result["extrapolation_ms"] = maBridge.GetExtrapolationMs();
 		}
 		return result;
@@ -728,6 +730,9 @@ public partial class MeltySynthPlayer : Node
 		// 用于区分"回绕成功"与"卡在末尾不再推进"。只在接近曲尾时输出。
 		_tickLoopTailDiag();
 
+		// [诊断] 人声欠载/追平观测：计数变化时打一条，观察漂移是否被即时修正。
+		_tickVocalDriftDiag();
+
 		// 直接在回调中合成，主循环只需要确保播放已启动
 		RequestAudioOutputPlay();
 	}
@@ -756,6 +761,23 @@ public partial class MeltySynthPlayer : Node
 		}
 		GD.Print($"[MeltySynthPlayer][DIAG] TAIL pos={posMs:F0}/{durMs:F0}ms loop={loop} " +
 			$"endOfSeq={_sequencer.EndOfSequence} paused={_sequencer.IsPaused} playing={playing}");
+	}
+
+	// [诊断] 人声欠载/追平观测
+	private ulong _lastVocalUnderrunFrames = 0;
+
+	private void _tickVocalDriftDiag()
+	{
+		if (_audioOutput is MiniaudioAudioOutputBridge ma)
+		{
+			ulong underrunFrames = ma.GetVocalUnderrunFrames();
+			if (underrunFrames != _lastVocalUnderrunFrames)
+			{
+				_lastVocalUnderrunFrames = underrunFrames;
+				GD.Print($"[MeltySynthPlayer][DIAG] VOCAL underrun_frames={underrunFrames} " +
+					$"catchup_frames={ma.GetVocalCatchupFrames()} underruns={ma.GetVocalUnderrunCount()}");
+			}
+		}
 	}
 
 	// [诊断] 音频推进看门狗

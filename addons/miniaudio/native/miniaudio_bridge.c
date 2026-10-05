@@ -60,6 +60,9 @@ typedef struct {
     ma_uint32      vocalReadIndex;
     ma_uint32      vocalWriteIndex;
     volatile ma_uint64 vocalConsumedFrames; /* frames consumed by device callback */
+    volatile ma_uint64 vocalUnderrunFrames; /* 欠载期间设备已推进、但未混音的帧数，计入人声位置 */
+    volatile ma_uint32 vocalCatchupFrames;  /* 欠载后需从 ring 丢弃以追平内容位置的帧数 */
+    volatile int      vocalMixStarted;      /* 已开始混音：启动期解码填充不算欠载 */
     volatile ma_uint32 vocalSkipFrames;     /* frames to discard before mixing */
     volatile int   vocalPlaying;
     volatile int   vocalLoaded;
@@ -349,8 +352,42 @@ static void vocal_mix(ma_bridge* p, float* pOutput, ma_uint32 frameCount)
         return;
     }
 
+    /* 自然结束：解码已到末尾且 ring 已排空。放在最前面判定，避免欠载追平
+     * （Phase 0 的提前 return）把结束判定饿死，导致人声「在播但不发声」永不收尾。 */
+    if (p->vocalDecoderEof && p->vocalReadIndex == p->vocalWriteIndex) {
+        p->vocalEndReached = 1;
+        p->vocalPlaying = 0;
+        return;
+    }
+
     float volume = p->vocalVolume;
     ma_uint32 outPos = 0;
+
+    /* Phase 0: 欠载追平。欠载期间设备时钟已推进、ring 里却没有人声内容，
+     * 这部分已由 vocalUnderrunFrames 计入位置；此处把随后补上的「迟到」内容帧
+     * 直接丢弃，使混音内容重新对齐设备时钟。丢弃不推进 vocalConsumedFrames，
+     * 否则会二次计位置。ring 尚未补上时本次保持静音，且不重复计欠载（避免正反馈）。 */
+    if (p->vocalCatchupFrames > 0) {
+        while (p->vocalCatchupFrames > 0) {
+            ma_uint32 r, w, avail, n;
+            ma_spinlock_lock(&p->vocalLock);
+            r = p->vocalReadIndex;
+            w = p->vocalWriteIndex;
+            ma_spinlock_unlock(&p->vocalLock);
+            avail = (w - r) & p->vocalRingMask;
+            if (avail == 0) {
+                break;
+            }
+            n = avail < p->vocalCatchupFrames ? avail : p->vocalCatchupFrames;
+            ma_spinlock_lock(&p->vocalLock);
+            p->vocalReadIndex = (r + n) & p->vocalRingMask;
+            p->vocalCatchupFrames -= n;
+            ma_spinlock_unlock(&p->vocalLock);
+        }
+        if (p->vocalCatchupFrames > 0) {
+            return;
+        }
+    }
 
     /* Phase 1: discard frames that belong to MIDI post-seek silence. */
     while (outPos < frameCount && p->vocalSkipFrames > 0) {
@@ -393,6 +430,14 @@ static void vocal_mix(ma_bridge* p, float* pOutput, ma_uint32 frameCount)
         avail = (w - r) & p->vocalRingMask;
         if (avail == 0) {
             p->vocalUnderrunCount++;
+            /* 设备时钟仍在推进、人声无内容：位置按设备计时（欠载帧计入），
+             * 内容欠账交给 Phase 0 在后续回调里丢弃追平。启动期解码填充
+             * 尚未混过任何帧，不计欠载，避免误丢人声开头的有效内容。 */
+            if (p->vocalMixStarted) {
+                ma_uint32 missing = frameCount - outPos;
+                p->vocalUnderrunFrames += missing;
+                p->vocalCatchupFrames += missing;
+            }
             break;
         }
         n = avail;
@@ -410,6 +455,7 @@ static void vocal_mix(ma_bridge* p, float* pOutput, ma_uint32 frameCount)
         p->vocalReadIndex = (r + n) & p->vocalRingMask;
         p->vocalConsumedFrames += n;
         ma_spinlock_unlock(&p->vocalLock);
+        p->vocalMixStarted = 1;
         outPos += n;
     }
 
@@ -869,6 +915,9 @@ ma_bridge_result ma_bridge_vocal_load(void* pBridge, const char* pFilePath)
     p->vocalReadIndex = 0;
     p->vocalWriteIndex = 0;
     p->vocalConsumedFrames = 0;
+    p->vocalUnderrunFrames = 0;
+    p->vocalCatchupFrames = 0;
+    p->vocalMixStarted = 0;
     p->vocalSkipFrames = 0;
     p->vocalPlaying = 0;
     p->vocalEndReached = 0;
@@ -933,6 +982,9 @@ ma_bridge_result ma_bridge_vocal_stop(void* pBridge)
     p->vocalReadIndex = 0;
     p->vocalWriteIndex = 0;
     p->vocalConsumedFrames = 0;
+    p->vocalUnderrunFrames = 0;
+    p->vocalCatchupFrames = 0;
+    p->vocalMixStarted = 0;
     p->vocalSkipFrames = 0;
     p->vocalEndReached = 0;
     p->vocalDecoderEof = 0;
@@ -977,6 +1029,9 @@ ma_bridge_result ma_bridge_vocal_seek(void* pBridge, uint64_t frameIndex)
     p->vocalReadIndex = 0;
     p->vocalWriteIndex = 0;
     p->vocalConsumedFrames = frameIndex;
+    p->vocalUnderrunFrames = 0;
+    p->vocalCatchupFrames = 0;
+    p->vocalMixStarted = 0;
     p->vocalSkipFrames = 0;
     p->vocalEndReached = 0;
     p->vocalDecoderEof = 0;
@@ -1008,7 +1063,9 @@ double ma_bridge_vocal_get_position_ms(void* pBridge)
     if (p == NULL || !p->vocalLoaded || p->vocalSampleRate == 0) {
         return 0.0;
     }
-    return (double)p->vocalConsumedFrames * 1000.0 / (double)p->vocalSampleRate;
+    /* 位置按设备时钟计时：已混音帧 + 欠载期间设备推进但未混音的帧。
+     * 只用已混音帧会让欠载变成位置上的永久落后（人声钟越跑越慢）。 */
+    return (double)(p->vocalConsumedFrames + p->vocalUnderrunFrames) * 1000.0 / (double)p->vocalSampleRate;
 }
 
 int64_t ma_bridge_vocal_get_length_ms(void* pBridge)
@@ -1046,6 +1103,24 @@ uint32_t ma_bridge_vocal_get_underrun_count(void* pBridge)
         return 0;
     }
     return p->vocalUnderrunCount;
+}
+
+uint64_t ma_bridge_vocal_get_underrun_frames(void* pBridge)
+{
+    ma_bridge* p = (ma_bridge*)pBridge;
+    if (p == NULL || !p->vocalLoaded) {
+        return 0;
+    }
+    return p->vocalUnderrunFrames;
+}
+
+uint32_t ma_bridge_vocal_get_catchup_frames(void* pBridge)
+{
+    ma_bridge* p = (ma_bridge*)pBridge;
+    if (p == NULL || !p->vocalLoaded) {
+        return 0;
+    }
+    return p->vocalCatchupFrames;
 }
 
 ma_bridge_result ma_bridge_vocal_skip_frames(void* pBridge, uint32_t frames)
