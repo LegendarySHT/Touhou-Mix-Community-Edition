@@ -55,6 +55,9 @@ region = Rect2(160, 80, 80, 80)
 atlas = ExtResource("4_wihuv")
 region = Rect2(240, 80, 80, 80)
 
+[sub_resource type="ButtonGroup" id="ButtonGroup_0c546"]
+allow_unpress = true
+
 [sub_resource type="AtlasTexture" id="AtlasTexture_j02sm"]
 atlas = ExtResource("2_ny7ko")
 region = Rect2(0, 160, 80, 80)
@@ -324,6 +327,7 @@ custom_minimum_size = Vector2(60, 60)
 layout_mode = 2
 size_flags_vertical = 4
 toggle_mode = true
+button_group = SubResource("ButtonGroup_0c546")
 texture_normal = SubResource("AtlasTexture_j02sm")
 ignore_texture_size = true
 stretch_mode = 5
@@ -369,6 +373,7 @@ size_flags_vertical = 4
 tooltip_text = "均衡器暂不可用：音频不经 Godot 总线输出"
 disabled = true
 toggle_mode = true
+button_group = SubResource("ButtonGroup_0c546")
 texture_normal = SubResource("AtlasTexture_1pkam")
 
 [node name="LibraryBtn" type="TextureButton" parent="MainColumn/BottomBar/RightBts" unique_id=1668560734]
@@ -376,6 +381,7 @@ custom_minimum_size = Vector2(60, 60)
 layout_mode = 2
 size_flags_vertical = 4
 toggle_mode = true
+button_group = SubResource("ButtonGroup_0c546")
 texture_normal = SubResource("AtlasTexture_ng81m")
 
 [node name="PlaylistBtn" type="TextureButton" parent="MainColumn/BottomBar/RightBts" unique_id=449875309]
@@ -383,6 +389,7 @@ custom_minimum_size = Vector2(60, 60)
 layout_mode = 2
 size_flags_vertical = 4
 toggle_mode = true
+button_group = SubResource("ButtonGroup_0c546")
 texture_normal = SubResource("AtlasTexture_7fsko")
 
 [node name="StageSwitchBtn" type="TextureButton" parent="MainColumn/BottomBar/RightBts" unique_id=232124583]
@@ -577,11 +584,21 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 42
 text = "全部加入收藏夹"
 
+[node name="PopupWindowShader" type="ColorRect" parent="." unique_id=845565788]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.72)
+
 [node name="FavoritePicker" type="Panel" parent="." unique_id=1122668452]
 visible = false
-custom_minimum_size = Vector2(500, 600)
+custom_minimum_size = Vector2(700, 600)
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = -1
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
@@ -589,7 +606,7 @@ anchor_bottom = 0.5
 offset_left = -220.0
 offset_top = -240.0
 offset_right = 220.0
-offset_bottom = 240.0
+offset_bottom = 150.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("3_favpick")
@@ -599,13 +616,13 @@ layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 10.0
+offset_left = 15.0
 offset_top = 15.0
-offset_right = -10.0
+offset_right = -15.0
 offset_bottom = -10.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 20
 
 [node name="FpTitle" type="Label" parent="FavoritePicker/FpColumn" unique_id=1030998383]
 layout_mode = 2
@@ -626,10 +643,6 @@ theme_override_constants/separation = 4
 layout_mode = 2
 text = "还没有收藏夹"
 horizontal_alignment = 1
-
-[node name="FpCloseBtn" type="Button" parent="FavoritePicker/FpColumn" unique_id=287698142]
-layout_mode = 2
-text = "取消"
 
 [connection signal="pressed" from="BackBtn" to="." method="_on_back_pressed" flags=3]
 [connection signal="drag_ended" from="MainColumn/BottomBar/Progress" to="." method="_on_progress_drag_ended" flags=3]
@@ -654,4 +667,5 @@ text = "取消"
 [connection signal="pressed" from="LibraryLayer/SearchRow/SortOrderBtn" to="LibraryLayer" method="_on_sort_order_pressed" flags=3]
 [connection signal="pressed" from="LibraryLayer/SearchRow/BatchAddBtn" to="LibraryLayer" method="_on_batch_add_pressed" flags=3]
 [connection signal="pressed" from="LibraryLayer/SearchRow/BatchFavBtn" to="LibraryLayer" method="_on_batch_fav_pressed" flags=3]
+[connection signal="gui_input" from="PopupWindowShader" to="FavoritePicker" method="_on_shader_gui_input"]
 [connection signal="picked" from="FavoritePicker" to="." method="_on_favorite_picked" flags=3]

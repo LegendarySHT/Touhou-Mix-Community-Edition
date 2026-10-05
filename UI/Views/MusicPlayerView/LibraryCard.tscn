@@ -46,13 +46,6 @@ size_flags_horizontal = 3
 size_flags_vertical = 4
 theme_override_constants/separation = 2
 
-[node name="Album" type="Label" parent="HBox/Info" unique_id=752232329]
-layout_mode = 2
-mouse_filter = 1
-text = "专辑"
-clip_text = true
-script = ExtResource("2_slpyo")
-
 [node name="Song" type="Label" parent="HBox/Info" unique_id=1309462093]
 layout_mode = 2
 mouse_filter = 1
@@ -64,6 +57,13 @@ script = ExtResource("2_slpyo")
 layout_mode = 2
 mouse_filter = 1
 text = "歌手"
+clip_text = true
+script = ExtResource("2_slpyo")
+
+[node name="Album" type="Label" parent="HBox/Info" unique_id=752232329]
+layout_mode = 2
+mouse_filter = 1
+text = "专辑"
 clip_text = true
 script = ExtResource("2_slpyo")
 
