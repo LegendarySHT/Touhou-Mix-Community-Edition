@@ -1,4 +1,4 @@
-class_name PlaylistList extends VBoxContainer
+extends VBoxContainer
 
 ## 播放列表的列表容器：项的排序拖拽在这里统一处理。
 ##
@@ -7,10 +7,17 @@ class_name PlaylistList extends VBoxContainer
 ## 只有按在行的拖动把手（DragBtn，已设 IGNORE 透传）上才进入调序；
 ## 其余位置不拦截，事件继续冒泡给上层 ScrollContainer 滚列表。
 
+## 行脚本（preload 比对代替全局类名，避免类缓存问题）
+const ITEM_SCRIPT := preload("res://UI/Views/MusicPlayerView/PlaylistItem.gd")
+
 signal move_requested(from_index: int, to_index: int)
 
 ## 位移超过此值才判定为拖动
 const DRAG_THRESHOLD := 8.0
+
+## 数据集总条目数（面板在换绑时写入）。行是池化的，children 数 ≠ 列表长度，
+## 调序目标的钳制必须用它
+var total_count: int = 0
 
 var _dragging: bool = false
 var _from_index: int = -1
@@ -19,6 +26,20 @@ var _from_index: int = -1
 ## 事件不再保证送达；轮询才是稳的。
 var _drag_start_y: float = 0.0
 var _accum: float = 0.0
+
+func _ready() -> void:
+	# 行是动态重建的，进树时把它的拖拽请求接过来（PlEmpty 无该信号，自动跳过）
+	child_entered_tree.connect(_on_child_entered)
+
+func _on_child_entered(child: Node) -> void:
+	if child.has_signal("drag_requested"):
+		child.drag_requested.connect(_on_item_drag)
+
+func _on_item_drag(idx: int, begin: bool) -> void:
+	if begin:
+		begin_handle_drag(idx)
+	else:
+		end_handle_drag()
 
 ## 由行内的拖动把手转发按下/松开（把手是 STOP：点它不会触发"播放该首"）。
 ## 拖拽状态存在列表上，所以整表重建（调序会重建）也不会丢。
@@ -53,7 +74,7 @@ func _move_by_drag() -> void:
 	var stride := _row_stride()
 	if stride <= 0.0:
 		return
-	var to := clampi(_from_index + int(round(_accum / stride)), 0, _item_count() - 1)
+	var to := clampi(_from_index + int(round(_accum / stride)), 0, total_count - 1)
 	if to == _from_index:
 		return
 	var from := _from_index
@@ -61,17 +82,11 @@ func _move_by_drag() -> void:
 	_from_index = to
 	move_requested.emit(from, to)
 
-## 行步进 = 项高 + 容器 separation
+## 行步进 = 项高 + 容器 separation（行是池化的，只看可见的已绑行；spacer 无脚本自动跳过）
 func _row_stride() -> float:
 	for c in get_children():
-		var item := c as PlaylistItem
-		if item != null:
-			return maxf(item.size.y + float(get_theme_constant("separation")), 1.0)
+		if c.get_script() == ITEM_SCRIPT:
+			var item := c as Control
+			if item.visible and item.size.y > 0.0:
+				return maxf(item.size.y + float(get_theme_constant("separation")), 1.0)
 	return 1.0
-
-func _item_count() -> int:
-	var n := 0
-	for c in get_children():
-		if c is PlaylistItem:
-			n += 1
-	return n

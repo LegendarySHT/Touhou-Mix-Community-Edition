@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://cu4fctgl1c76n" path="res://UI/Views/MusicPlayerView/MusicPlayerView.gd" id="1_main"]
 [ext_resource type="Script" uid="uid://cbh87b36twohc" path="res://UI/Views/MusicPlayerView/NoteRollView.gd" id="2_noteroll"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="2_ny7ko"]
+[ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="3_df07l"]
 [ext_resource type="Script" uid="uid://ck64tyl2tgn3n" path="res://UI/Views/MusicPlayerView/FavoritePicker.gd" id="3_favpick"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="4_omuun"]
 [ext_resource type="Script" uid="uid://ceef0gfqu0lbm" path="res://UI/Views/MusicPlayerView/LibraryOverlay.gd" id="4_ovl"]
@@ -10,6 +11,8 @@
 [ext_resource type="Texture2D" uid="uid://cug51b3m7pnnr" path="res://Resources/icon/instruments_icon.png" id="5_omuun"]
 [ext_resource type="Script" uid="uid://dkr4cp4lsqqll" path="res://UI/Views/MusicPlayerView/PlaylistList.gd" id="7_ia34b"]
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="8_hk5dp"]
+[ext_resource type="Script" uid="uid://bqw00goy8jtgl" path="res://UI/Views/MusicPlayerView/PlaylistPanel.gd" id="20_panel"]
+[ext_resource type="Script" uid="uid://383ky61cyn11" path="res://UI/Views/MusicPlayerView/LibraryLayer.gd" id="21_lib"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_3y6u5"]
 atlas = ExtResource("2_ny7ko")
@@ -174,6 +177,8 @@ layout_mode = 2
 mouse_filter = 2
 expand_mode = 1
 stretch_mode = 6
+script = ExtResource("3_df07l")
+corner_radius = 20.0
 
 [node name="NoteRollView" type="Control" parent="MainColumn/Stage" unique_id=250907908]
 visible = false
@@ -402,6 +407,7 @@ grow_vertical = 2
 offset_transform_enabled = true
 offset_transform_visual_only = false
 mouse_filter = 2
+script = ExtResource("20_panel")
 
 [node name="PlColumn" type="VBoxContainer" parent="PlaylistPanel" unique_id=1948461757]
 layout_mode = 1
@@ -478,6 +484,7 @@ offset_top = 180.0
 offset_right = -25.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("21_lib")
 
 [node name="Content" type="PanelContainer" parent="LibraryLayer" unique_id=1726261784]
 layout_mode = 1
@@ -636,15 +643,15 @@ text = "取消"
 [connection signal="toggled" from="MainColumn/BottomBar/RightBts/LibraryBtn" to="." method="_on_library_toggled" flags=3]
 [connection signal="toggled" from="MainColumn/BottomBar/RightBts/PlaylistBtn" to="." method="_on_playlist_toggled" flags=3]
 [connection signal="pressed" from="MainColumn/BottomBar/RightBts/StageSwitchBtn" to="." method="_on_stage_switch_pressed" flags=3]
-[connection signal="item_selected" from="PlaylistPanel/PlColumn/PlCtrl/FavSelectBtn" to="." method="_on_fav_select_selected" flags=3]
-[connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrl/PlAddFavBtn" to="." method="_on_pl_add_fav_pressed" flags=3]
-[connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrl/PlClearBtn" to="." method="_on_pl_clear_pressed" flags=3]
-[connection signal="gui_input" from="PlaylistPanel/PlColumn/PlScroll" to="." method="_on_pl_scroll_gui_input" flags=3]
-[connection signal="move_requested" from="PlaylistPanel/PlColumn/PlScroll/PlList" to="." method="_on_pl_move" flags=3]
-[connection signal="text_changed" from="LibraryLayer/SearchRow/SearchEdit" to="." method="_on_search_changed" flags=3]
-[connection signal="pressed" from="LibraryLayer/SearchRow/FilterStatusBtn" to="." method="_on_filter_status_pressed" flags=3]
-[connection signal="pressed" from="LibraryLayer/SearchRow/FilterDataBtn" to="." method="_on_filter_data_pressed" flags=3]
-[connection signal="pressed" from="LibraryLayer/SearchRow/SortOrderBtn" to="." method="_on_sort_order_pressed" flags=3]
-[connection signal="pressed" from="LibraryLayer/SearchRow/BatchAddBtn" to="." method="_on_batch_add_pressed" flags=3]
-[connection signal="pressed" from="LibraryLayer/SearchRow/BatchFavBtn" to="." method="_on_batch_fav_pressed" flags=3]
+[connection signal="item_selected" from="PlaylistPanel/PlColumn/PlCtrl/FavSelectBtn" to="PlaylistPanel" method="_on_fav_select_selected" flags=3]
+[connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrl/PlAddFavBtn" to="PlaylistPanel" method="_on_pl_add_fav_pressed" flags=3]
+[connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrl/PlClearBtn" to="PlaylistPanel" method="_on_pl_clear_pressed" flags=3]
+[connection signal="gui_input" from="PlaylistPanel/PlColumn/PlScroll" to="PlaylistPanel" method="_on_pl_scroll_gui_input" flags=3]
+[connection signal="move_requested" from="PlaylistPanel/PlColumn/PlScroll/PlList" to="PlaylistPanel" method="_on_pl_move" flags=3]
+[connection signal="text_changed" from="LibraryLayer/SearchRow/SearchEdit" to="LibraryLayer" method="_on_search_changed" flags=3]
+[connection signal="pressed" from="LibraryLayer/SearchRow/FilterStatusBtn" to="LibraryLayer" method="_on_filter_status_pressed" flags=3]
+[connection signal="pressed" from="LibraryLayer/SearchRow/FilterDataBtn" to="LibraryLayer" method="_on_filter_data_pressed" flags=3]
+[connection signal="pressed" from="LibraryLayer/SearchRow/SortOrderBtn" to="LibraryLayer" method="_on_sort_order_pressed" flags=3]
+[connection signal="pressed" from="LibraryLayer/SearchRow/BatchAddBtn" to="LibraryLayer" method="_on_batch_add_pressed" flags=3]
+[connection signal="pressed" from="LibraryLayer/SearchRow/BatchFavBtn" to="LibraryLayer" method="_on_batch_fav_pressed" flags=3]
 [connection signal="picked" from="FavoritePicker" to="." method="_on_favorite_picked" flags=3]

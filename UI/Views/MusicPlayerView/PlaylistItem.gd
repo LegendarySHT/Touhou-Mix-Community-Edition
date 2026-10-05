@@ -1,12 +1,14 @@
-class_name PlaylistItem extends Button
+extends Button
 
-## 播放列表中的一行：点击播放 + 移除；排序拖拽由列表容器 PlaylistList 统一处理
+## 播放列表中的一行：点击播放 + 移除；排序拖拽由列表容器统一处理
 ##
-## 本体是 Button（toggle_mode）：点击 = 播放该首，button_pressed 由页面按 playlist_index 同步。
+## 本体是 Button（toggle_mode）：点击 = 播放该首，button_pressed 由面板按 playlist_index 同步。
 ## 本体设 PASS，行内拖动不吞事件，会冒泡给上层（列表 → ScrollContainer）去滚列表。
 
 signal remove_requested(index: int)
 signal activated(index: int)
+## 拖动把手按下/松开。调序状态存在列表容器上，行只上报请求
+signal drag_requested(index: int, begin: bool)
 
 ## 位移超过此值才算拖动，否则视为点击
 const DRAG_THRESHOLD := 8.0
@@ -29,33 +31,27 @@ func _ready() -> void:
 	pressed.connect(_on_pressed)
 	if _remove_btn != null:
 		_remove_btn.pressed.connect(func(): remove_requested.emit(index))
-	# 拖动把手是 STOP（点它不触发"播放该首"），把它的拖拽事件转交给列表处理；
+	# 拖动把手是 STOP（点它不触发"播放该首"），把它的拖拽事件转交列表处理；
 	# 拖拽状态存在列表上，所以调序引起的整表重建不会把拖动中断。
 	if _drag_btn != null:
 		_drag_btn.gui_input.connect(_on_drag_btn_input)
 	gui_input.connect(_on_row_input)
 
 ## 转交拖动把手的按下/松开给列表：位移由列表按鼠标位置轮询现算（调序会重建行、
-## 释放把手节点，焦点会丢，所以不依赖把手收到 motion/release）。
+## 释放把手节点，焦点会丢，所以不依赖把手收到 motion/release）
 func _on_drag_btn_input(event: InputEvent) -> void:
-	var list := get_parent() as PlaylistList
-	if list == null:
-		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index != MOUSE_BUTTON_LEFT:
 			return
-		if mb.pressed:
-			list.begin_handle_drag(index)
-		else:
-			list.end_handle_drag()
+		drag_requested.emit(index, mb.pressed)
 
 ## 面板隐藏/列表重建后放弃当前点击追踪，避免隐藏后仍处理残留事件
 func cancel_drag() -> void:
 	_row_pressing = false
 	_row_accum = 0.0
 
-## current=true 时按钮处于按下态（由页面按 playlist_index 同步）
+## current=true 时按钮处于按下态（由面板按 playlist_index 同步）
 func setup_with(p_midi: MidiData, idx: int, current: bool, animate_in: bool = false) -> void:
 	midi = p_midi
 	index = idx

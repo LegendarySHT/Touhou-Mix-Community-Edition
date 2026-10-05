@@ -1,0 +1,357 @@
+extends Panel
+## 播放列表面板：从 MusicPlayerView 拆出的全部播放列表逻辑——
+## 行池滚动换绑、高亮同步、收藏夹选择、行内删除/调序、桌面滚动物理、
+## 面板开合动画。行节点的排序拖拽在 PlList（列表容器）上。
+
+## 收藏选择器在页面级（曲库批量收藏共用），面板只上报要收藏的曲目
+signal favorite_requested(midis: Array)
+
+## preload 常量做类型标注，不依赖全局类缓存
+const ITEM_SCRIPT := preload("res://UI/Views/MusicPlayerView/PlaylistItem.gd")
+const LIST_SCRIPT := preload("res://UI/Views/MusicPlayerView/PlaylistList.gd")
+const PL_ITEM_SCENE := preload("res://UI/Views/MusicPlayerView/PlaylistItem.tscn")
+
+## 行对象池（照曲库的池化思路）：只保留「视窗 ± margin」的行节点，滚动时换绑数据。
+## 行高一致，PlList 里用上下两个 spacer 撑出滚动总高，池行夹在中间占住可视窗口的位置
+const POOL_MARGIN_ROWS := 3
+const POOL_MAX_ROWS := 64
+
+@onready var _pl_list: LIST_SCRIPT = $PlColumn/PlScroll/PlList
+@onready var _pl_empty: Label = $PlColumn/PlScroll/PlList/PlEmpty
+@onready var _fav_select_btn: OptionButton = $PlColumn/PlCtrl/FavSelectBtn
+@onready var _pl_scroll: ScrollContainer = $PlColumn/PlScroll
+
+## 播放列表拖动滚动（仅桌面补足）：ScrollContainer 的拖拽滚动只在触屏平台生效，
+## 桌面没有，所以在视图里补一份，手感同曲库（1:1 跟手 + 松手惯性）。
+## 触屏平台直接放行，交给 ScrollContainer 原生拖拽，避免两套同时推动。
+const PL_FLING_DECAY := 1000.0
+const PL_SAMPLE_WINDOW := 0.1
+
+var _pl_dragging: bool = false
+var _pl_accum: float = 0.0
+var _pl_sample_accum: float = 0.0
+var _pl_sample_time: float = 0.0
+var _pl_fling: float = 0.0
+var _pl_flinging: bool = false
+
+## 上次构建播放列表时的内容签名（各 MidiData 的 instance id 序列）。
+## 面板每次打开都调 _rebuild_playlist_list，列表没变时靠它跳过全量重建
+var _pl_last_sig: PackedInt64Array = PackedInt64Array()
+
+## 行池状态。行高在建池时实测一次（行 + separation），窗口 = [first, first+行数)
+var _row_stride_px: float = 0.0
+var _top_spacer: Control = null
+var _bottom_spacer: Control = null
+var _pool_rows: Array = []
+var _window_first: int = 0
+var _playlist_total: int = 0
+
+func _ready() -> void:
+	ThemeMGR.register_theme_applier(self)
+	apply_theme()
+	_pl_scroll.get_v_scroll_bar().value_changed.connect(_on_scroll_moved)
+	_pl_scroll.resized.connect(_on_pl_scroll_resized)
+	var mgr := MidiPlaybackManager.instance
+	if mgr != null:
+		mgr.playlist_index_changed.connect(_refresh_playlist_highlight)
+		# 列表被手动改动 → 歌单选择框复位（视图常驻，绑一次即可）
+		mgr.playlist_user_edited.connect(_rebuild_fav_select)
+
+func apply_theme() -> void:
+	if ThemeMGR == null:
+		return
+	var sb := get_theme_stylebox("panel") as StyleBoxFlat
+	if sb != null:
+		sb.bg_color = ThemeMGR.get_color("surface", sb.bg_color)
+		sb.border_color = ThemeMGR.get_color("border_soft", sb.border_color)
+
+func _process(delta: float) -> void:
+	if not visible:
+		return
+	_step_pl_scroll(delta)
+
+func _on_scroll_moved(_value: float) -> void:
+	_sync_row_window()
+
+func _on_pl_scroll_resized() -> void:
+	_grow_row_pool()
+	_sync_row_window()
+
+func open() -> void:
+	visible = true
+	_rebuild_fav_select()
+	_rebuild_playlist_list()
+	# 从右侧滑入。走 AnimationManager 统一管理 tween，避免快速连点时叠加冲突
+	offset_transform_position.x = get_viewport_rect().size.x
+	AniMGR.animate_offset_to(self, Vector2.ZERO, 0.25, "PlaylistPanelIn")
+
+func close() -> void:
+	if not visible:
+		return
+	AniMGR.animate_offset_to(self, Vector2(get_viewport_rect().size.x, 0), 0.2, "PlaylistPanelOut")
+	await get_tree().create_timer(0.2).timeout
+	# 正在被拖动的项会继续收 gui_input，先停掉再隐藏
+	_stop_all_dragging()
+	visible = false
+
+# ── 行池 ──────────────────────────────────────────────
+
+## 建池：实测行高 → 按视窗行数建池行 + 上下 spacer。行高拿不到（首帧未布局）返回 false
+func _ensure_row_pool() -> bool:
+	if _row_stride_px > 0.0:
+		return true
+	if _pl_scroll.size.y <= 0.0:
+		return false
+	var sample: ITEM_SCRIPT = PL_ITEM_SCENE.instantiate()
+	_pl_list.add_child(sample)
+	var row_h := sample.get_combined_minimum_size().y
+	_pl_list.remove_child(sample)
+	sample.queue_free()
+	if row_h <= 0.0:
+		return false
+	_row_stride_px = row_h + float(_pl_list.get_theme_constant("separation"))
+	_top_spacer = _make_spacer()
+	_pl_list.add_child(_top_spacer)
+	_grow_row_pool()
+	_bottom_spacer = _make_spacer()
+	_pl_list.add_child(_bottom_spacer)
+	return true
+
+func _make_spacer() -> Control:
+	var sp := Control.new()
+	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return sp
+
+## 池行数不足视窗时补建（窗口拉伸/首建）。补行后把底 spacer 挪回末尾
+func _grow_row_pool() -> void:
+	if _row_stride_px <= 0.0:
+		return
+	var need := int(ceil(_pl_scroll.size.y / _row_stride_px)) + 1 + POOL_MARGIN_ROWS * 2
+	need = clampi(need, 1, POOL_MAX_ROWS)
+	while _pool_rows.size() < need:
+		var item: ITEM_SCRIPT = PL_ITEM_SCENE.instantiate()
+		item.visible = false
+		_pl_list.add_child(item)
+		item.remove_requested.connect(_on_pl_remove)
+		item.activated.connect(_on_pl_activated)
+		_pool_rows.append(item)
+	if _bottom_spacer != null:
+		_pl_list.move_child(_bottom_spacer, _pl_list.get_child_count() - 1)
+
+## 把池行对准当前滚动窗口：更新 spacer 高度 + 换绑窗口内行。
+## 已绑同一条目的行直接跳过（文字测宽是重绑的大头）
+func _sync_row_window(force: bool = false) -> void:
+	if _row_stride_px <= 0.0:
+		return
+	var mgr := MidiPlaybackManager.instance
+	var total: int = mgr.playlist.size() if mgr != null else 0
+	var cur: int = mgr.playlist_index if mgr != null else -1
+	var first := 0
+	if total > _pool_rows.size():
+		first = clampi(int(_pl_scroll.scroll_vertical / _row_stride_px) - POOL_MARGIN_ROWS,
+			0, total - _pool_rows.size())
+	if not force and first == _window_first:
+		return
+	_window_first = first
+	if _top_spacer != null:
+		_top_spacer.custom_minimum_size.y = float(first) * _row_stride_px
+	if _bottom_spacer != null:
+		_bottom_spacer.custom_minimum_size.y = float(maxi(total - first - _pool_rows.size(), 0)) * _row_stride_px
+	for k in _pool_rows.size():
+		var item: ITEM_SCRIPT = _pool_rows[k]
+		var idx := first + k
+		if idx >= total:
+			item.visible = false
+			continue
+		item.visible = true
+		if not force and item.index == idx:
+			continue
+		var data: MidiData = mgr.playlist[idx]
+		item.setup_with(data, idx, idx == cur)
+
+# ── 列表重建 ──────────────────────────────────────────
+
+func _playlist_sig(midis: Array[MidiData]) -> PackedInt64Array:
+	var sig := PackedInt64Array()
+	sig.resize(midis.size())
+	for i in midis.size():
+		sig[i] = midis[i].get_instance_id() if midis[i] != null else 0
+	return sig
+
+func _rebuild_playlist_list() -> void:
+	var mgr := MidiPlaybackManager.instance
+	# 列表以 manager 为唯一事实来源（改收藏夹/增删时 manager 已同步）
+	var midis: Array[MidiData] = mgr.playlist if mgr != null else [] as Array[MidiData]
+	var sig := _playlist_sig(midis)
+	# 内容没变且池已就绪才走复用；池未建（首次打开当帧 PlScroll 尚未布局，建池失败
+	# 走 deferred 重试）时必须放行，否则重试被这里挡死，面板永远空白
+	if sig == _pl_last_sig and _row_stride_px > 0.0:
+		# 内容没变：行节点全部复用，只同步高亮 + 窗口
+		_refresh_playlist_highlight()
+		_sync_row_window()
+		return
+	_pl_last_sig = sig
+	if not _ensure_row_pool():
+		# 行高还没量出来（首帧未布局），下一帧再试
+		_rebuild_playlist_list.call_deferred()
+		return
+	_playlist_total = midis.size()
+	_pl_list.total_count = midis.size()
+	_pl_empty.visible = midis.is_empty()
+	_sync_row_window(true)
+
+func _refresh_playlist_highlight(_changed_index: int = -1) -> void:
+	# 直连 playlist_index_changed（信号带索引参数，这里不用它，自行读 manager 的当前值）。
+	# 面板未打开时行池内容仍是旧的，打开时 open() 会全量重绑
+	if not visible:
+		return
+	var mgr := MidiPlaybackManager.instance
+	var cur: int = mgr.playlist_index if mgr != null else -1
+	for item in _pool_rows:
+		if not item.visible:
+			continue
+		# 行内容没变，只切高亮；走 setup_with 会触发 set_scroll_text 重新测宽
+		var is_cur: bool = item.index == cur
+		item.is_current = is_cur
+		if item.button_pressed != is_cur:
+			item.set_pressed_no_signal(is_cur)
+
+# ── 行操作回调 ────────────────────────────────────────
+
+## 注意：下面是 PlaylistItem 信号的回调。immediate 重建会 queue_free「正在处理
+## 输入事件的那个节点」，其后续语句访问已释放的 self 而崩溃，故一律 call_deferred。
+func _on_pl_remove(idx: int) -> void:
+	var mgr := MidiPlaybackManager.instance
+	if mgr != null:
+		mgr.remove_from_playlist(idx)
+	_rebuild_playlist_list.call_deferred()
+
+func _on_pl_move(from_idx: int, to_idx: int) -> void:
+	var mgr := MidiPlaybackManager.instance
+	if mgr != null:
+		mgr.move_in_playlist(from_idx, to_idx)
+	_rebuild_playlist_list.call_deferred()
+
+func _on_pl_activated(idx: int) -> void:
+	var mgr := MidiPlaybackManager.instance
+	if mgr != null:
+		mgr.play_playlist_index(idx)
+	_rebuild_playlist_list.call_deferred()
+
+func _on_pl_add_fav_pressed() -> void:
+	var mgr := MidiPlaybackManager.instance
+	var midis: Array = mgr.playlist if mgr != null else ([] as Array[MidiData])
+	if midis.is_empty():
+		return
+	favorite_requested.emit(midis)
+
+func _on_pl_clear_pressed() -> void:
+	var mgr := MidiPlaybackManager.instance
+	if mgr != null:
+		mgr.clear_playlist()
+	_rebuild_playlist_list()
+
+# ── 收藏夹下拉 ────────────────────────────────────────
+
+## 收藏夹下拉：首项为「未选择歌单」
+func _rebuild_fav_select() -> void:
+	_fav_select_btn.clear()
+	_fav_select_btn.add_item("未选择歌单")
+	_fav_select_btn.set_item_metadata(0, "")
+	var fav_mgr := FavoriteManager.instance
+	if fav_mgr != null:
+		for f in fav_mgr.favorites:
+			_fav_select_btn.add_item(f.name)
+			_fav_select_btn.set_item_metadata(_fav_select_btn.item_count - 1, f.id)
+	# 恢复当前选择
+	if PlaylistMGR.source_fav_id.is_empty():
+		_fav_select_btn.select(0)
+	else:
+		for i in _fav_select_btn.item_count:
+			if str(_fav_select_btn.get_item_metadata(i)) == PlaylistMGR.source_fav_id:
+				_fav_select_btn.select(i)
+				break
+
+func _on_fav_select_selected(idx: int) -> void:
+	var fav_id := str(_fav_select_btn.get_item_metadata(idx))
+	var mgr := MidiPlaybackManager.instance
+	if mgr == null:
+		return
+	if fav_id.is_empty():
+		# 「未选择歌单」：只解除关联，不动列表内容
+		PlaylistMGR.source_fav_id = ""
+		return
+	# 选中收藏夹 = 用它整表替换当前播放列表（空收藏夹即替换为空列表）
+	var keys := PlaylistMGR.keys_of_favorite(fav_id)
+	PlaylistMGR.source_fav_id = fav_id
+	var list: Array[MidiData] = []
+	for k in keys:
+		var m: MidiData = DataMGR.get_midi_by_id(str(k))
+		if m != null:
+			list.append(m)
+	# 选歌单是「要记住」的会话（persist=true），并按本页页面级模式开文件循环
+	# （loop_file=true）——播完的推进挂在这个回绕点上，非空则从第一首起播
+	mgr.start_session(list, 0, true, true)
+	if not list.is_empty():
+		mgr.play_playlist_index(0)
+	_rebuild_fav_select()
+	_rebuild_playlist_list()
+
+# ── 桌面拖动滚动 ──────────────────────────────────────
+
+func _on_pl_scroll_gui_input(event: InputEvent) -> void:
+	if DisplayServer.is_touchscreen_available():
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if mb.pressed:
+			_stop_pl_fling()
+			_pl_dragging = true
+			_pl_accum = 0.0
+			_pl_sample_accum = 0.0
+			_pl_sample_time = 0.0
+		else:
+			_pl_dragging = false
+			# 用最后一段采样窗口补全速度（快速轻扫也拿到惯性）
+			if _pl_sample_time > 0.0:
+				_pl_fling = (_pl_accum - _pl_sample_accum) / maxf(_pl_sample_time, 0.001)
+			_pl_flinging = absf(_pl_fling) > 1.0
+	elif event is InputEventMouseMotion and _pl_dragging:
+		var dy := (event as InputEventMouseMotion).relative.y
+		_pl_accum += dy
+		_scroll_pl(dy)
+
+func _step_pl_scroll(delta: float) -> void:
+	if _pl_dragging:
+		_pl_sample_time += delta
+		if _pl_sample_time >= PL_SAMPLE_WINDOW:
+			_pl_fling = (_pl_accum - _pl_sample_accum) / _pl_sample_time
+			_pl_sample_accum = _pl_accum
+			_pl_sample_time = 0.0
+		return
+	if not _pl_flinging:
+		return
+	var prev := _pl_scroll.scroll_vertical
+	_scroll_pl(_pl_fling * delta)
+	var s := 1.0 if _pl_fling >= 0.0 else -1.0
+	_pl_fling = s * maxf(0.0, absf(_pl_fling) - PL_FLING_DECAY * delta)
+	if _pl_fling == 0.0 or _pl_scroll.scroll_vertical == prev:
+		_stop_pl_fling()
+
+func _stop_pl_fling() -> void:
+	_pl_fling = 0.0
+	_pl_flinging = false
+
+## 滚动由 ScrollContainer 自身的取值范围钳制，越界自然停下
+func _scroll_pl(delta_px: float) -> void:
+	_pl_scroll.scroll_vertical = int(round(float(_pl_scroll.scroll_vertical) - delta_px))
+
+## 停掉所有播放列表项的拖动状态：隐藏后它们仍可能收到残留的鼠标事件
+func _stop_all_dragging() -> void:
+	_pl_dragging = false
+	_stop_pl_fling()
+	_pl_list.end_handle_drag()   # 拖拽状态在列表上，面板收起时一并收尾
+	for item in _pool_rows:
+		item.cancel_drag()
