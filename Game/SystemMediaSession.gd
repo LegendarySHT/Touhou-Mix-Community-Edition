@@ -338,8 +338,8 @@ func _ensure_backend() -> bool:
 		return true
 	match OS.get_name():
 		"Android":
-			# Java GodotPlugin，由 addons/media_session 的导出插件注入 manifest meta-data 注册
-			_backend = Engine.get_singleton("MediaSessionControl")
+			# Java GodotPlugin，由 addons/android_bridge 的导出插件注入 manifest meta-data 注册
+			_backend = Engine.get_singleton("AndroidBridge")
 		"Windows":
 			# 非 autoload：Android 目标不编译该 C# 文件（无 CsWinRT），故按需实例化
 			var script: Script = load("res://CSharp/MediaSessionControlCs.cs")

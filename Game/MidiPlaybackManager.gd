@@ -79,6 +79,31 @@ var _audio_delay_ms: float = 0.0
 var _delay_using_bt: bool = false
 ## 是否已完成首次蓝牙状态检测（首次不触发音频桥重建：桥初始化时已用当前默认设备）
 var _bt_state_initialized: bool = false
+## 播放中的蓝牙输出轮询间隔（秒），仅在平台没有事件订阅时作为兜底使用
+const BT_POLL_INTERVAL_SEC := 5.0
+var _bt_poll_accum: float = 0.0
+
+## 回绕判定容差：上一帧需已贴近曲尾（毫秒）
+const WRAP_TAIL_TOLERANCE_MS := 3000.0
+## 回绕判定的最小回退幅度（毫秒）；小于此值一律视为音频钟抖动/重锚，不是回绕
+const WRAP_MIN_BACK_MS := 1000.0
+
+## 是否发生整曲回绕。
+## 只按"位置回退"判定会被各种小幅回跳骗到：蓝牙输出下音频钟会重锚、延迟预设切换、
+## 输出桥重建等都会造成百毫秒级回退（日志实测 161~208ms），误判一次就会切歌/重启人声，
+## 表现为"播放乱了、和音轨页对不上"。故要求同时满足：上一帧贴近曲尾 + 明显回退；
+## 带 LoopStart 的谱面回绕点可能早于文件末尾，用"回退超过半曲"兜住
+func _is_playback_wrapped(raw_ms: float) -> bool:
+	if _last_raw_midi_position_ms < 0.0:
+		return false
+	var back := _last_raw_midi_position_ms - raw_ms
+	var dur := get_backend_duration_ms()
+	if dur <= 0.0:
+		# 时长未知：退回纯幅度判据，阈值放大到抖动不可能达到的量级
+		return back >= WRAP_MIN_BACK_MS * 5.0
+	if _last_raw_midi_position_ms >= dur - WRAP_TAIL_TOLERANCE_MS:
+		return back >= WRAP_MIN_BACK_MS
+	return back >= dur * 0.5
 
 ## 上次同步检查时的MIDI位置（毫秒）
 var last_sync_check_pos_ms: float = 0.0
@@ -693,6 +718,10 @@ func _ready() -> void:
 
 	# 加载音频校准延迟（按当前输出是否蓝牙选择对应预设）
 	refresh_audio_delay()
+	# 输出设备变化（蓝牙/有线插拔）由 AudioBtDetector 事件驱动：有事件订阅时立刻切换预设，
+	# 息屏/后台也不会漏；无事件能力的平台仍靠焦点回归 + 播放中的兜底轮询
+	if not AudioBtDetector.output_changed.is_connected(refresh_audio_delay):
+		AudioBtDetector.output_changed.connect(refresh_audio_delay)
 	
 	# 监听设置改变信号（用于动态切换MIDI后端和音源）
 	if EvtBus:
@@ -704,23 +733,26 @@ func _ready() -> void:
 	playlist_changed.connect(_on_playlist_changed_persist)
 	playlist_index_changed.connect(func(_i: int): PlaylistMGR.save(self))
 
-## 重新检测蓝牙输出并应用对应延迟预设。
-## 蓝牙状态变化时（仅 Windows）重建音频桥，使输出跟随新的系统默认设备。
-## 刷新时点：启动、应用焦点回归（Main._notification）、打开延迟校准窗口。
+## 刷新输出类型与对应延迟预设。
+## 触发时点：启动、应用焦点回归、打开延迟校准窗，以及播放中的周期性轮询
+## （息屏/后台没有焦点事件，中途连上或断开蓝牙只能靠轮询发现；不切换的话
+## 进度条/音符可视化会与蓝牙输出的实际声音错位）。
+## 状态未变时直接返回：不重读配置也不刷日志，轮询可高频调用。
 func refresh_audio_delay() -> void:
 	var is_bt := AudioBtDetector.is_bluetooth_output(true)
-	var state_changed := is_bt != _delay_using_bt
 	var first_check := not _bt_state_initialized
+	if not first_check and is_bt == _delay_using_bt:
+		return
 	_bt_state_initialized = true
 	_delay_using_bt = is_bt
-	if state_changed and not first_check:
+	if not first_check:
 		GLogger.info("Audio output changed (bluetooth=%s), switching delay preset" % str(is_bt), "MidiPlaybackManager")
 		# WASAPI 流绑定打开设备时的端点，需重建音频桥才跟随新默认设备。
 		# Android 的 AAudio 独占模式 + 蓝牙初始化有风险，不重建（开局前已连蓝牙的场景初始即走蓝牙端点）。
 		# 只在设备真的变化时重建。FOCUS_IN（媒体浮层夺焦后还焦、系统弹窗等）也会走到
 		# 这里，而设备并未变——无条件重建会销毁正在渲染的 miniaudio 设备，把 play()
 		# 打断，表现为「点了播放没反应」。重建后恢复播放。
-		if OS.get_name() == "Windows" and midi_player != null and state_changed:
+		if OS.get_name() == "Windows" and midi_player != null:
 			var was_playing := is_playing
 			midi_player.recreate_audio_output()
 			if was_playing and current_midi_data != null:
@@ -786,10 +818,19 @@ func _on_settings_changed(setting_name: String, value: Variant) -> void:
 		GLogger.info("Soundfont reloaded successfully", "MidiPlaybackManager")
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var backend = _get_active_backend()
 	if not is_playing or backend == null:
 		return
+
+	# 蓝牙输出轮询兜底：Android 正常由 Java AudioDeviceCallback 事件驱动（见 AudioBtDetector），
+	# 仅在事件通路不可用（插件未注册/旧版本）时轮询。Windows 的检测要起 MTA 线程，不轮询，
+	# 靠焦点回归刷新。没有这条兜底的话息屏中途连蓝牙不会被发现，延迟不切换、进度/可视化错位
+	if OS.get_name() == "Android" and not AudioBtDetector.has_output_listener():
+		_bt_poll_accum += delta
+		if _bt_poll_accum >= BT_POLL_INTERVAL_SEC:
+			_bt_poll_accum = 0.0
+			refresh_audio_delay()
 
 	# MeltySynth 后端：使用毫秒位置（叠加音频校准延迟，见 _audio_delay_ms）
 	position_ms = backend.get_position_ms() - _audio_delay_ms
@@ -800,7 +841,7 @@ func _process(_delta: float) -> void:
 	var raw_midi_position_ms: float = get_raw_position_ms()
 	if raw_midi_position_ms < 0.0:
 		_last_raw_midi_position_ms = -1.0
-	elif _last_raw_midi_position_ms >= 0.0 and raw_midi_position_ms < _last_raw_midi_position_ms - 100.0:
+	elif _is_playback_wrapped(raw_midi_position_ms):
 		# MeltySynth 在 loop=true 时只回绕 sequencer，不发 finished 信号。
 		# 人声已自然结束时必须在这里显式重新定位并启动，否则只能靠 UI 开关恢复。
 		if get_loop():
@@ -1431,10 +1472,25 @@ func get_loop() -> bool:
 
 ## 听歌降耗档：把音频缓冲切到省电档（Android 上 period 4096×3，听歌无所谓延迟，缓冲拉长更省电）。
 ## 只在播放器页面听歌时开启，打歌/音轨用回 256 保持低延迟。
+## 档位真的变化时 C# 侧会重建输出桥（见 ApplyAudioPeriodForProfile）：桥重建后
+## sequencer 的输出被打断，而 is_playing 仍为 true —— 不同步恢复就表现为
+## "回到播放器页 MIDI 不响"（页面侧 _ensure_playing 看到 is_playing 会直接跳过）
+var _listening_profile_applied: bool = false
+
 func set_listening_profile(enabled: bool) -> void:
+	if enabled == _listening_profile_applied:
+		return
+	_listening_profile_applied = enabled
 	var backend = _get_active_backend()
-	if backend != null:
-		backend.set_listening_profile(enabled)
+	if backend == null:
+		return
+	var was_playing := is_playing
+	backend.set_listening_profile(enabled)
+	if was_playing and current_midi_data != null:
+		# 桥重建后原生人声解码器失效，置位让 play() 重新预载人声
+		_vocal_initialized = false
+		reset_sync_state()
+		play()
 
 ## 跳转到指定位置
 ## position: 位置（毫秒）

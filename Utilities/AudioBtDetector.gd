@@ -13,11 +13,17 @@ extends Node
 ## 检测结果缓存有效期（秒）；关键时点（焦点回归/开局/开窗）用 force_refresh 绕过
 const CACHE_TTL_SEC: float = 5.0
 
+## 输出设备变化（蓝牙/有线插拔）。平台有事件订阅时（Android: Java AudioDeviceCallback）
+## 由事件触发；无事件能力的平台由消费方兜底轮询（见 has_output_listener）
+signal output_changed
+
 # ===== 缓存状态 =====
 var _cached_is_bt: bool = false
 var _cached_source: String = "none"
 var _cached_name: String = ""
 var _last_check_ms: float = -1000000.0
+## 是否已建立平台事件订阅（已建立则消费方无需轮询）
+var _event_listener_ready: bool = false
 
 ## 当前是否使用蓝牙输出音频
 func is_bluetooth_output(force_refresh: bool = false) -> bool:
@@ -44,6 +50,8 @@ func get_status_text() -> String:
 # ===== 内部实现 =====
 
 func _ensure_detection(force: bool) -> void:
+	if not _event_listener_ready:
+		_ensure_event_listener()
 	var now := float(Time.get_ticks_msec())
 	if not force and (now - _last_check_ms) < CACHE_TTL_SEC * 1000.0:
 		return
@@ -52,12 +60,42 @@ func _ensure_detection(force: bool) -> void:
 	# GDScript 无 try/catch：检测函数内部任何调用失败会中断并返回 null，此处兜住
 	if result == null or not (result is Dictionary):
 		result = {"is_bt": false, "source": "detect_error", "name": ""}
+	var prev_is_bt := _cached_is_bt
+	var prev_source := _cached_source
 	_cached_is_bt = bool(result.get("is_bt", false))
 	_cached_source = String(result.get("source", "unknown"))
 	_cached_name = String(result.get("name", ""))
-	# 诊断日志：print 直达 Android logcat（筛 "AudioBtDetector" 即可定位失败环节）
-	print("[AudioBtDetector] detect: source=%s is_bt=%s name=%s" % [
-		_cached_source, str(_cached_is_bt), _cached_name])
+	# 诊断日志：print 直达 Android logcat（筛 "AudioBtDetector" 即可定位失败环节）。
+	# 只在结果变化时打印：播放中会周期性检测，每次打印会刷屏
+	if _cached_is_bt != prev_is_bt or _cached_source != prev_source:
+		print("[AudioBtDetector] detect: source=%s is_bt=%s name=%s" % [
+			_cached_source, str(_cached_is_bt), _cached_name])
+
+## 尝试建立平台事件订阅，成功后消费方无需轮询。
+## 目前仅 Android：addons/android_bridge 模块的 audio_output_changed（Java AudioDeviceCallback）。
+## 插件由引擎在渲染线程异步注册，故每次检测前重试一次；插件缺失/旧版本时保持轮询兜底。
+func _ensure_event_listener() -> void:
+	if _event_listener_ready or OS.get_name() != "Android":
+		return
+	var plugin = Engine.get_singleton("AndroidBridge")
+	# 以信号是否存在判断插件能力：Java 插件对象的 has_method 恒为 false，不能用
+	if plugin == null or not plugin.has_signal("audio_output_changed"):
+		return
+	if not plugin.audio_output_changed.is_connected(_on_output_changed):
+		plugin.audio_output_changed.connect(_on_output_changed)
+	# Java 方法可直接调用（GodotPlugin 的 @UsedByGodot 方法已绑定）
+	plugin.register_audio_device_listener()
+	_event_listener_ready = true
+	print("[AudioBtDetector] audio device callback subscribed")
+
+## 输出设备变化：作废缓存并广播，消费方据此立刻重算延迟预设
+func _on_output_changed() -> void:
+	_last_check_ms = -1000000.0
+	output_changed.emit()
+
+## 是否已建立平台事件订阅（已建立则消费方不必轮询）
+func has_output_listener() -> bool:
+	return _event_listener_ready
 
 func _detect() -> Variant:
 	var os_name := OS.get_name()

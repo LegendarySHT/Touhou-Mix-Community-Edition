@@ -52,7 +52,7 @@ project/assembly_name="Touhou Mix Community Edition"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/miniaudio/plugin.cfg", "res://addons/android_runtime_inject/plugin.cfg", "res://addons/media_session/plugin.cfg")
+enabled=PackedStringArray("res://addons/miniaudio/plugin.cfg", "res://addons/android_runtime_inject/plugin.cfg", "res://addons/android_bridge/plugin.cfg")
 
 [gui]
 

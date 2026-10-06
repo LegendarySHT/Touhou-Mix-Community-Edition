@@ -33,19 +33,19 @@ public class MediaSessionService extends Service {
 	@Override
 	public void onCreate() {
 		super.onCreate();
-		MediaSessionControl.attachService(this);
+		AndroidBridge.attachService(this);
 	}
 
 	@Override
 	public int onStartCommand(@Nullable Intent intent, int flags, int startId) {
 		// 5 秒时限内进入前台，先用占位通知（真实曲目/封面由插件侧随后提交）
-		if (!foreground && !startInForeground(MediaSessionControl.buildPlaceholderNotification(this))) {
+		if (!foreground && !startInForeground(AndroidBridge.buildPlaceholderNotification(this))) {
 			// 进入前台被拒：结束服务，避免超过 5 秒时限抛 RemoteServiceException
 			stopSelf();
 			return START_NOT_STICKY;
 		}
 		// 插件持有最新播放状态与封面，由它刷新为真实通知内容
-		MediaSessionControl.onServiceReady(this);
+		AndroidBridge.onServiceReady(this);
 		// 不自动重建：重建会丢失播放状态，由 GDScript 侧重新注册时再拉起
 		return START_NOT_STICKY;
 	}
@@ -54,10 +54,10 @@ public class MediaSessionService extends Service {
 	private boolean startInForeground(Notification notification) {
 		try {
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-				startForeground(MediaSessionControl.NOTIFICATION_ID, notification,
+				startForeground(AndroidBridge.NOTIFICATION_ID, notification,
 						android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
 			} else {
-				startForeground(MediaSessionControl.NOTIFICATION_ID, notification);
+				startForeground(AndroidBridge.NOTIFICATION_ID, notification);
 			}
 			foreground = true;
 			return true;
@@ -75,7 +75,7 @@ public class MediaSessionService extends Service {
 		NotificationManager manager =
 				(NotificationManager) getSystemService(NOTIFICATION_SERVICE);
 		if (manager != null) {
-			manager.notify(MediaSessionControl.NOTIFICATION_ID, notification);
+			manager.notify(AndroidBridge.NOTIFICATION_ID, notification);
 		}
 	}
 
@@ -94,7 +94,7 @@ public class MediaSessionService extends Service {
 
 	@Override
 	public void onDestroy() {
-		MediaSessionControl.attachService(null);
+		AndroidBridge.attachService(null);
 		super.onDestroy();
 	}
 

@@ -6,6 +6,9 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioDeviceCallback;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
@@ -26,37 +29,47 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 系统媒体会话（Android）。
+ * Android 侧 Godot 插件总入口（模块 addons/android_bridge）。
  *
- * 音频由 miniaudio 原生设备直接输出，不经过 Godot AudioServer，引擎侧无任何媒体
- * 集成，需自行挂 MediaSession 才能出现在通知栏/锁屏媒体控制中，并接收系统媒体键。
+ * 本模块承载「需要随导出注入的 Android Java 代码」：addons/android_bridge/android/ 下的
+ * 所有 .java 会在导出时被同步进 gradle 工程（见 android_export_plugin.gd），新增 Android
+ * 能力直接往该目录加文件即可，不必新建插件模块。
+ *
+ * 当前能力：
+ *   1) 系统媒体会话：音频由 miniaudio 原生设备直接输出、不经过 Godot AudioServer，
+ *      引擎侧无媒体集成，需自行挂 MediaSession 才能出现在通知栏/锁屏媒体控制中，
+ *      并接收系统媒体键；配套 MediaSessionService 前台服务保后台播放。
+ *   2) 音频输出设备变化监听：蓝牙/有线插拔时发出 audio_output_changed，
+ *      上层据此立刻重算音频延迟预设（息屏时没有焦点事件，事件驱动才不会漏）。
  *
  * 与 GDScript 侧 Game/SystemMediaSession.gd 的契约：
  *   signal command_received(String action, double position_ms)
+ *   signal audio_output_changed()
  *   update_state(boolean playing, double position_ms, double duration_ms,
- *                String title, String album, byte[] cover_png)
+ *                String title, String album, byte[] cover_png, int end_action)
  *   clear()
  *
- * 切后台后 Godot 主循环随渲染线程挂起而停止，_process 不再运行；此时位置由系统按
- * playback_rate 外推，返回前台后 GDScript 侧 push_state 校正。系统下发的命令经
- * emitSignal 仍会送达（渲染线程暂停前会先排空事件队列），故后台仍可暂停/续播。
+ * 系统下发的命令经 emitSignal 送达（Java 侧在 UI 线程 emit，GDScript 可直接连）。
  */
-public class MediaSessionControl extends GodotPlugin {
+public class AndroidBridge extends GodotPlugin {
 
-	private static final String TAG = "MediaSessionControl";
+	private static final String TAG = "AndroidBridge";
 
 	private static final String CHANNEL_ID = "media_playback";
 	static final int NOTIFICATION_ID = 0x7A3;
 
 	private static final SignalInfo COMMAND_RECEIVED =
 			new SignalInfo("command_received", String.class, Double.class);
+	/** 音频输出设备增删（蓝牙/有线插拔）：上层据此立刻重算延迟预设，无需轮询 */
+	private static final SignalInfo AUDIO_OUTPUT_CHANGED =
+			new SignalInfo("audio_output_changed");
 
 	@Nullable
 	private MediaSession session;
 
 	/** 插件实例。服务的静态 attach 可能早于插件注册，故缓存待认领 */
 	@Nullable
-	private static MediaSessionControl s_instance;
+	private static AndroidBridge s_instance;
 	@Nullable
 	private static MediaSessionService s_pending_service;
 	/** 上次提交给前台服务的通知内容标识，内容不变则不重复提交 */
@@ -88,14 +101,14 @@ public class MediaSessionControl extends GodotPlugin {
 	/** [诊断] 前台服务启动失败原因，供 GDScript 侧查询 */
 	private String lastFgsError = "";
 
-	public MediaSessionControl(@NonNull Godot godot) {
+	public AndroidBridge(@NonNull Godot godot) {
 		super(godot);
 	}
 
 	@NonNull
 	@Override
 	public String getPluginName() {
-		return "MediaSessionControl";
+		return "AndroidBridge";
 	}
 
 	@NonNull
@@ -103,7 +116,47 @@ public class MediaSessionControl extends GodotPlugin {
 	public Set<SignalInfo> getPluginSignals() {
 		Set<SignalInfo> signals = new HashSet<>();
 		signals.add(COMMAND_RECEIVED);
+		signals.add(AUDIO_OUTPUT_CHANGED);
 		return signals;
+	}
+
+	/** 是否已订阅输出设备变化（重复调用幂等；GDScript 侧以「信号已连接」判断事件通路可用） */
+	private boolean audioDeviceCallbackRegistered = false;
+
+	/**
+	 * 订阅音频输出设备增删（蓝牙/有线插拔）。上层收到 audio_output_changed 后立刻
+	 * 重算延迟预设，避免息屏/后台时靠轮询才发现输出变了。
+	 */
+	@UsedByGodot
+	public void register_audio_device_listener() {
+		if (audioDeviceCallbackRegistered) {
+			return;
+		}
+		Context context = getContext();
+		if (context == null) {
+			return;
+		}
+		AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+		if (audioManager == null) {
+			return;
+		}
+		try {
+			audioManager.registerAudioDeviceCallback(new AudioDeviceCallback() {
+				@Override
+				public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+					emitSignal(AUDIO_OUTPUT_CHANGED);
+				}
+
+				@Override
+				public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
+					emitSignal(AUDIO_OUTPUT_CHANGED);
+				}
+			}, new Handler(Looper.getMainLooper()));
+			audioDeviceCallbackRegistered = true;
+			Log.i(TAG, "Audio device callback registered");
+		} catch (Exception e) {
+			Log.w(TAG, "registerAudioDeviceCallback failed: " + e.getMessage());
+		}
 	}
 
 	/**
@@ -121,7 +174,7 @@ public class MediaSessionControl extends GodotPlugin {
 	 * 服务早于插件就绪时先挂起，待会话建立后补认领。
 	 */
 	public static void attachService(@Nullable MediaSessionService svc) {
-		MediaSessionControl plugin = s_instance;
+		AndroidBridge plugin = s_instance;
 		if (plugin == null) {
 			s_pending_service = svc;
 			return;
@@ -137,7 +190,7 @@ public class MediaSessionControl extends GodotPlugin {
 	 * 结束服务撤掉占位通知（插件就绪后播放时会重新拉起）。
 	 */
 	static void onServiceReady(MediaSessionService svc) {
-		MediaSessionControl plugin = s_instance;
+		AndroidBridge plugin = s_instance;
 		if (plugin == null) {
 			svc.stopSelf();
 			return;
