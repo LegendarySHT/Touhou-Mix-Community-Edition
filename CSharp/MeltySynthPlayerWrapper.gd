@@ -21,6 +21,12 @@ func _ready() -> void:
 		meltysynth_player.connect("vocal_finished", Callable(self, "_on_vocal_finished"))
 	if meltysynth_player != null and meltysynth_player.has_signal("soundfont_changed"):
 		meltysynth_player.connect("soundfont_changed", Callable(self, "_on_soundfont_changed"))
+	if meltysynth_player != null and meltysynth_player.has_signal("loop_wrapped"):
+		meltysynth_player.connect("loop_wrapped", Callable(self, "_on_loop_wrapped"))
+
+## 转发 C# 曲终/回绕信号，供 MidiPlaybackManager 推进播放列表
+func _on_loop_wrapped() -> void:
+	loop_wrapped.emit()
 
 ## 转发 C# 自然结束信号，供 MidiPlaybackManager.midi_finished → PlayView 结算
 func _on_finished() -> void:
@@ -33,12 +39,6 @@ func _on_soundfont_changed(path: String) -> void:
 ## 设置最大复音数（走属性 setter，由其驱动 C# 调用统一生效）
 func set_max_polyphony(value: int) -> void:
 	max_polyphony = value
-
-## 听歌降耗档：把音频缓冲切到省电档（Android period 4096×3，听歌无所谓延迟，缓冲拉长更省电）。
-## 仅供播放器页面听歌开启；打歌/音轨用回 256 保持低延迟。
-func set_listening_profile(enabled: bool) -> void:
-	if meltysynth_player != null and meltysynth_player.has_method("set_listening_profile"):
-		meltysynth_player.call("set_listening_profile", enabled)
 
 func _on_vocal_finished() -> void:
 	vocal_finished.emit()
@@ -312,6 +312,19 @@ func get_vocal_length_ms() -> float:
 		return -1.0
 	var result = meltysynth_player.call("get_vocal_length_ms")
 	return result if result is float else -1.0
+
+## 人声是否已就绪（原生解码缓冲已跟上，可用于起播后对齐）
+func is_vocal_ready() -> bool:
+	if meltysynth_player == null:
+		return true
+	var result = meltysynth_player.call("is_vocal_ready")
+	return bool(result)
+
+## 起播后补一次与拖动等价的原地 seek（后端按音频帧数计时，后台起播也生效）
+func request_startup_align() -> void:
+	if meltysynth_player == null:
+		return
+	meltysynth_player.call("request_startup_align")
 
 func is_vocal_playing() -> bool:
 	if meltysynth_player == null:

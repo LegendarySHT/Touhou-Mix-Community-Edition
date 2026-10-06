@@ -186,6 +186,25 @@ public partial class KeySequenceCore : RefCounted
         GenerateAll();
     }
 
+    /// <summary>
+    /// 从 MidiCore 的解析缓存直读 SOA 生成（worker 线程调用）。
+    /// 免去把 6 条 PackedInt32Array 从 GDScript 拷进来再拷回去。返回 false 表示缓存缺失。
+    /// </summary>
+    public bool RunGenerateGatherFromPath(string path, int[] enabledIdx)
+    {
+        var core = MidiCore.Instance;
+        if (core == null || string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+        if (!core.TryGetSoa(path, out var st, out var du, out var pt, out var ve, out var tr, out var ch))
+        {
+            return false;
+        }
+        RunGenerateGather(st, du, pt, ve, tr, ch, enabledIdx);
+        return true;
+    }
+
     // ========== 流式生成（worker 线程逐窗口调用）==========
     public void SetInput(int[] startTick, int[] durTick,
         int[] pitch, int[] velocity,

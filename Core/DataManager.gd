@@ -93,14 +93,18 @@ func _ensure_midi(chart_key: String) -> MidiData:
 		return null
 
 	var midi := MidiData.new()
-	midi.from_json(json_data)
+	midi.from_json(json_data, chart_key)
 	if midi.id.is_empty():
 		return null
 	midi.chart_key = chart_key  # 规范键（folder_name）随对象携带，跨模块 ID 传递统一使用（TMX-020）
 
-	# 初始化人声配置：仅对未保存过 vocal_enabled 配置的新 MIDI 生效，已保存的配置尊重用户选择
-	var runtime_config: Variant = json_data.get("_runtime", {})
-	var has_saved_vocal_enabled = runtime_config is Dictionary and runtime_config.has("vocal_enabled")
+	# 初始化人声配置：仅对未保存过 vocal_enabled 配置的新 MIDI 生效，已保存的配置尊重用户选择。
+	#
+	# 守卫是【键存在性】检查而非值检查：用户显式禁用过的谱面，其 _runtime 里存着
+	# vocal_enabled=false，若改成"值为 false 就重新判定"，会把用户的禁用悄悄重置。
+	# 配置从 MidiCore（权威）读，与播放侧/后台换曲同源。
+	var runtime_cfg: Variant = MidiCore.GetConfig(chart_key) if MidiCore != null else null
+	var has_saved_vocal_enabled = runtime_cfg is Dictionary and (runtime_cfg as Dictionary).has("vocal_enabled")
 	if not has_saved_vocal_enabled:
 		var audio_path: String = ChartDB.GetAudioPath(chart_key)
 		if not audio_path.is_empty() and FileAccess.file_exists(audio_path):

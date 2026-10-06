@@ -107,12 +107,11 @@ func _on_ui_state_changed(_old: int, new: int) -> void:
 		set_process(false)
 		Engine.max_fps = 0
 		var mgr := MidiPlaybackManager.instance
-		if mgr != null:
-			# 听歌降耗档只在本页有效：离开即恢复低延迟档（period 256）
-			mgr.set_listening_profile(false)
-		# 跳去 TrackView（点歌单上的曲子去音轨编辑）是同一首歌的另一种视图，
-		# 不算退出播放，故保留会话；其余出口注销并交还会话。
-		if new != UIStateManager.UIState.TRACK_VIEW:
+		# 去 TrackView（同一首歌的另一种视图）与设置页都保留媒体会话：
+		# unregister_view 会 clear() 通知并 stop() 播放，切回来又要重建 —— 表现为
+		# 通知闪一下、歌曲被停掉再重播。其余出口才注销并交还会话。
+		if new != UIStateManager.UIState.TRACK_VIEW \
+				and new != UIStateManager.UIState.SETTINGS_VIEW:
 			MediaSess.unregister_view(self)
 			# 注销会停止播放；同时把活动会话交还给单曲槽(B)，A 只在本页期间活动
 			if mgr != null:
@@ -155,12 +154,15 @@ func _activate_page() -> void:
 	MediaSess.register_view(self)
 	var mgr := MidiPlaybackManager.instance
 	if mgr != null:
-		# 本页的页面级播放模式 = 单曲文件循环（从演奏/TrackView 过来都要纠正回来）。
-		# 这不是"起一次会话"，所以不走 start_session：那会重设用户播放列表(A)，
-		# 而这里只需要改当前曲的循环标志。
+		# 本页的页面级播放模式 = 单曲文件循环（从演奏/TrackView 过来都要纠正回来）：
+		# 让音频在文件末尾继续流，换曲判定挂在这个回绕点上。不走 start_session——
+		# 那会重设用户播放列表(A)，而这里只需要改当前曲的循环标志。
+		# 注：关掉它（loop=false）会让 sequencer 停在末尾后无人接续（媒体卡片仍按
+		# 在播外推，出现"进度条自己回到开头但没有声音"），故不采用
 		mgr.set_loop(true)
-		# 听歌降耗档：本页只听歌，缓冲拉到 4096×3（延迟无所谓，回调率更低更省电）
-		mgr.set_listening_profile(true)
+		# 熄屏/深后台期间 C# 可能已自行切到下一首（纯音频）：先对账把显示/配置补齐，
+		# 再决定是否起播（对账后 current_midi_data 才与 C# 当前曲一致）
+		mgr.reconcile_current_song()
 		_ensure_playing(mgr)
 	# 从其它页面返回本页时复位全部开关：面板/模式是子页状态，不跨页面保留。
 	# 曲库/播放列表/音量连 toggled，取消按下即收起；StageSwitchBtn 连的是 pressed，
@@ -172,6 +174,11 @@ func _activate_page() -> void:
 	_refresh_song_info()
 	_refresh_cover()
 	_apply_stage_mode()
+	# 回页面/回前台时复位进度条：拖动若被切后台打断会残留 _progress_dragging，
+	# 之后 _refresh_progress 会一直提前返回（条冻结、而时长文案另算会显得"数字在走"）。
+	# 这里强制收尾并重算量程，保证两者同源同步。
+	_progress_dragging = false
+	_sync_progress_range()
 	if mgr != null:
 		_note_roll_view.bind(mgr.current_midi_data)
 	# 预载曲库（池子 + 首次排序），逻辑在 LibraryLayer
@@ -265,22 +272,25 @@ var _entry_pending: bool = false
 const FPS_COVER_MODE := 30
 const FPS_STAGE_MODE := 60
 
-## 进入页面时确保在播。列表本体由 MidiPlaybackManager 持有（唯一事实来源），
-## 跨重启由 PlaylistMGR 落盘 / restore_playlist 读回，这里不再做第二份副本的同步。
+## 进入页面时确保在播。列表权威在 C# MidiCore（唯一事实来源），
+## 跨重启由 MidiCore 落盘 / restore_playlist 读回，这里不再做第二份副本的同步。
 ## 判据只看 is_playing：stop() 不清 current_midi_data，用它判断会永远不重播。
 ## 随机重排只发生在初次进入（列表从盘恢复）与「打乱列表」按钮，返回本页不重洗。
 func _ensure_playing(mgr) -> void:
-	# 要用用户播放列表(A)时先确保它就绪：内存为空先读盘恢复，仍为空则借单曲槽那首(B)。
+	# 要用用户播放列表(A)时先确保它就绪：C# 侧为空先读盘恢复，仍为空则借单曲槽那首(B)。
 	# 正常通道（演奏/试听/媒体播种）只写单曲槽、不碰 A，所以这里必须自己确保 A 可用；
 	# 为此本页的播放动作天然就是"开始播放 A"，与用户从 TrackView 试听过来不冲突。
-	if mgr.playlist.is_empty() or not PlaylistMGR.persist_enabled:
+	if MidiCore.GetCount() == 0 or not MidiCore.IsPersistEnabled():
 		mgr.ensure_user_playlist()
+	# 本页 = 用户播放列表(A)会话：显式清掉可能残留的单曲槽标记，
+	# 否则 A 有内容也会被当作单曲槽而"播完不推进"
+	mgr.begin_user_session()
 	mgr.align_index_to_current()
 	if mgr.is_playing:
 		return
-	if mgr.playlist.is_empty():
+	if MidiCore.GetCount() == 0:
 		return
-	# restore 已把 playlist_index 对准 saved 位置；已恢复列表则从当前索引续播
+	# restore 已把索引对准 saved 位置；已恢复列表则从当前索引续播
 	mgr.play_playlist_index(mgr.playlist_index)
 
 

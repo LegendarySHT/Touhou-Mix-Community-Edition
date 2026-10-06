@@ -350,6 +350,70 @@ public partial class MeltySynthPlayer
 			}
 		}
 
+		/// <summary>
+		/// 人声相对 MIDI 的起点偏移（毫秒），来自 runtime 配置 vocal_offset_ms。
+		/// MIDI 位置小于它时人声保持静音，等 MIDI 走到该点再放行——
+		/// 与前台 _sync_vocal_with_midi 的 expected_vocal_position < 0 分支同语义。
+		/// volatile 不支持 double（C# 不做 64 位原子），故用整型微秒存、锁保护读写。
+		/// </summary>
+		private long _vocalOffsetUs = 0;
+		private readonly object _vocalOffsetLock = new object();
+
+		/// <summary>
+		/// 偏移门控是否已放行（起播过一次）。换曲时复位。
+		/// 用它而不是"当前是否在播"来判定首次放行：暂停态下 IsVocalPlaying 为 false，
+		/// 但那不代表还没到偏移点。
+		/// </summary>
+		private volatile bool _vocalOffsetGatePassed = true;
+
+		public void SetVocalOffsetMs(double offsetMs)
+		{
+			double clamped = double.IsNaN(offsetMs) || offsetMs < 0.0 ? 0.0 : offsetMs;
+			lock (_vocalOffsetLock)
+			{
+				_vocalOffsetUs = (long)(clamped * 1000.0);
+			}
+		}
+
+		public double GetVocalOffsetMs()
+		{
+			lock (_vocalOffsetLock)
+			{
+				return _vocalOffsetUs / 1000.0;
+			}
+		}
+
+		/// <summary>换曲：偏移门回到「未放行」，由新曲的起播重新走一遍</summary>
+		public void ResetVocalOffsetGate()
+		{
+			_vocalOffsetGatePassed = GetVocalOffsetMs() <= 0.0;
+		}
+
+		/// <summary>
+		/// 偏移门控，在音频回调内执行（与 RestartVocalOnLoopWrap 同一时序）。
+		/// 后台主循环停摆时前台 _sync_vocal_with_midi 不运行，故必须在这里判定：
+		/// MIDI 未到 vocal_offset_ms 就把人声按住不放，否则熄屏期间人声整首提前。
+		/// 只用 ma_bridge_vocal_pause/play（改 vocalPlaying 标志），不动解码器位置。
+		/// </summary>
+		private void TickVocalOffsetGateInCallback()
+		{
+			if (_vocalOffsetGatePassed || !_vocalLoaded || _sequencer == null)
+			{
+				return;
+			}
+			// 回调里不取锁（避免与 vocalLock 形成嵌套）：偏移值用 Volatile.Read 读，
+			// 它保证可见性且不阻塞；写入侧频率极低（换曲时一次），读到的旧值最多
+			// 导致本帧晚放行一帧，下一帧即生效。
+			double offsetMs = Volatile.Read(ref _vocalOffsetUs) / 1000.0;
+			double nowMs = _sequencer.RenderedPosition.TotalMilliseconds;
+			if (double.IsNaN(nowMs) || nowMs < offsetMs)
+			{
+				return;
+			}
+			_vocalOffsetGatePassed = true;
+			PlayVocal();
+		}
+
 /// <summary>
 /// 人声跟随 MIDI 回绕重播。在音频回调内调用，但【只置标志】不做实际 seek。
 ///
@@ -377,8 +441,44 @@ public void RestartVocalOnLoopWrap()
 		// 音频回调里，那一刻 ring 可能还剩数据 → 判定为「未结束」而跳过重启，
 		// 于是第二遍循环人声缺失。
 		_vocalRestartRequested = true;
+		// 曲终/回绕的统一检测点：主线程据此推进播放列表（或原地重播）。
+		// 放在音频回调里是因为熄屏/深后台时 Godot 主循环与 _Process 都不运行。
+		_loopWrapDetected = true;
 	}
 	_lastLoopPositionMs = nowMs;
+}
+
+// 音频回调只写此标志，主线程读并清（上层据此推进播放列表）。volatile：跨线程可见性
+private volatile bool _loopWrapDetected = false;
+
+/// <summary>消费"已回绕"标志（一次性）。返回 true 表示自上次消费后发生过回绕。</summary>
+public bool ConsumeLoopWrapDetected()
+{
+	if (!_loopWrapDetected)
+	{
+		return false;
+	}
+	_loopWrapDetected = false;
+	return true;
+}
+
+/// <summary>只窥视"已回绕"标志，不消费。</summary>
+/// <remarks>
+/// 后台推进线程必须先用它判断，换曲真正落地后才 Consume：
+/// 中途任何一步失败（列表状态不对 / ChartDb 未就绪 / 文件缺失）都要把标志留着，
+/// 否则主循环停摆期间无人接手，表现为"曲终后一直原地循环、不切歌"。
+/// </remarks>
+public bool HasLoopWrapDetected => _loopWrapDetected;
+
+/// <summary>
+/// 换曲时重置回绕基准。新曲起始位置远小于旧曲（尤其带 LoopStart、回绕点在数十秒处时），
+/// 不重置会被当成"又回绕了一次"，导致连续切歌。flag 一并清掉。
+/// </summary>
+public void ResetLoopWrapBaseline()
+{
+	_lastLoopPositionMs = -1.0;
+	_loopWrapDetected = false;
+	_vocalRestartRequested = false;
 }
 
 /// 由主线程（_Process）调用：消费回调置起的标志，执行真正的人声 seek + 播放。
@@ -412,12 +512,56 @@ private volatile bool _vocalRestartRequested = false;
 		// 故由音频线程消费。_seekTargetMs 为 NaN 表示无待处理请求。
 		private volatile bool _hasPendingSeek = false;
 		private double _seekTargetMs = double.NaN;
+		// 上次排队的 seek 是否已被音频线程落盘。主线程据此判断判定钟重锚能否信任
+		// seek 目标位置：未落盘时渲染钟还是旧值，必须用目标位置；已落盘则以真实渲染钟
+		// 为准——后台挂起期间的陈旧目标会让进度条自走到满而音频早已在别处。
+		private volatile bool _seekApplied = false;
 
 		/// <summary>请求在音频线程内执行 seek（后台可用）</summary>
 		public void RequestSeek(double positionMs)
 		{
+			_seekApplied = false;
 			_seekTargetMs = positionMs;
 			_hasPendingSeek = true;
+		}
+
+		/// <summary>上次排队的 seek 是否已被音频线程落盘</summary>
+		public bool IsSeekApplied => _seekApplied;
+
+		/// <summary>起播对齐延时（秒）：等播放真正滚动起来再做，避开起播时的缓冲填充/欠载过渡态</summary>
+		private const double StartupAlignDelaySec = 0.4;
+		/// <summary>起播对齐待计的已渲染帧数（0=无请求）</summary>
+		private long _startupAlignPendingFrames = 0;
+		private volatile bool _startupAlignRequested = false;
+
+		/// <summary>
+		/// 起播后补一次"与拖动进度条等价"的原地 seek：拖动路径会走 MIDI seek
+		/// （跳过 seek 静音帧 + 人声重定位），实测该状态才是听觉对齐的。
+		/// 按帧数计时而非 GDScript 侧计时：切后台后 Godot 主循环停摆，
+		/// GDScript 的 _process / Timer 都不再运行，只有音频回调照常推进。
+		/// </summary>
+		public void RequestStartupAlign()
+		{
+			_startupAlignPendingFrames = (long)(_sampleRate * StartupAlignDelaySec);
+			_startupAlignRequested = _startupAlignPendingFrames > 0;
+		}
+
+		/// <summary>推进起播对齐计时；到点后排队一次原地 seek（同一回调内立即被消费）</summary>
+		private void TickStartupAlignInCallback(int framesRequested)
+		{
+			if (!_startupAlignRequested)
+			{
+				return;
+			}
+			_startupAlignPendingFrames -= framesRequested;
+			if (_startupAlignPendingFrames > 0 || _sequencer == null)
+			{
+				return;
+			}
+			_startupAlignRequested = false;
+			double posMs = _sequencer.RenderedPosition.TotalMilliseconds;
+			GD.Print($"[MeltySynthPlayer] start-up align: in-place seek to {posMs:F0} ms");
+			RequestSeek(posMs);
 		}
 
 		/// <summary>
@@ -435,6 +579,7 @@ private volatile bool _vocalRestartRequested = false;
 		_seekTargetMs = double.NaN;
 		if (_sequencer == null || double.IsNaN(targetMs) || targetMs < 0.0)
 		{
+			_seekApplied = true;   // 请求已消费（无效目标）：不再让上层继续等它
 			return;
 		}
 		// seek 会让渲染钟从大值跳到目标值（例如跳到 0），紧接着的循环回绕检测会把这
@@ -449,6 +594,7 @@ private volatile bool _vocalRestartRequested = false;
 			{
 				// 音频线程内不打印（会争用打印锁拖慢回调）；失败留给主线程的诊断
 			}
+		_seekApplied = true;
 		// 人声定位不在这里做：上层 MidiPlaybackManager.seek() 已按目标位置调用
 		// _seek_vocal_to_midi_position(pos)，这里再拉回 0 会覆盖掉正确结果，
 		// 导致拖动进度条后 MIDI 在新位置、人声却从头播（拖到靠后处即立刻播完）。
@@ -917,10 +1063,12 @@ private volatile bool _vocalRestartRequested = false;
 						MixToOutput(_tempLeft, _tempRight, null, null, framesRequested, scale);
 					}
 
-					// 后台 seek 与 MIDI 回绕后人声重播。此处必须在音频回调内：
-					// Android 切后台后 Godot 主循环挂起，GDScript 与 _Process 均无法执行。
-					ProcessPendingSeekInCallback();
-					RestartVocalOnLoopWrap();
+// 后台 seek 与 MIDI 回绕后人声重播。此处必须在音频回调内：
+                                       // Android 切后台后 Godot 主循环挂起，GDScript 与 _Process 均无法执行。
+                                       TickStartupAlignInCallback(framesRequested);
+                                       ProcessPendingSeekInCallback();
+                                       TickVocalOffsetGateInCallback();
+                                       RestartVocalOnLoopWrap();
 				}
 
 					_lastRenderTimestampTicks = Stopwatch.GetTimestamp();

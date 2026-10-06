@@ -83,30 +83,9 @@ var _bt_state_initialized: bool = false
 const BT_POLL_INTERVAL_SEC := 5.0
 var _bt_poll_accum: float = 0.0
 
-## 回绕判定容差：上一帧需已贴近曲尾（毫秒）
-const WRAP_TAIL_TOLERANCE_MS := 3000.0
-## 回绕判定的最小回退幅度（毫秒）；小于此值一律视为音频钟抖动/重锚，不是回绕
-const WRAP_MIN_BACK_MS := 1000.0
-
-## 是否发生整曲回绕。
-## 只按"位置回退"判定会被各种小幅回跳骗到：蓝牙输出下音频钟会重锚、延迟预设切换、
-## 输出桥重建等都会造成百毫秒级回退（日志实测 161~208ms），误判一次就会切歌/重启人声，
-## 表现为"播放乱了、和音轨页对不上"。故要求同时满足：上一帧贴近曲尾 + 明显回退；
-## 带 LoopStart 的谱面回绕点可能早于文件末尾，用"回退超过半曲"兜住
-func _is_playback_wrapped(raw_ms: float) -> bool:
-	if _last_raw_midi_position_ms < 0.0:
-		return false
-	var back := _last_raw_midi_position_ms - raw_ms
-	var dur := get_backend_duration_ms()
-	if dur <= 0.0:
-		# 时长未知：退回纯幅度判据，阈值放大到抖动不可能达到的量级
-		return back >= WRAP_MIN_BACK_MS * 5.0
-	if _last_raw_midi_position_ms >= dur - WRAP_TAIL_TOLERANCE_MS:
-		return back >= WRAP_MIN_BACK_MS
-	return back >= dur * 0.5
-
 ## 上次同步检查时的MIDI位置（毫秒）
 var last_sync_check_pos_ms: float = 0.0
+
 ## 人声音量（dB），供 UI 回填滑条
 var _vocal_volume_db: float = 0.0
 
@@ -124,10 +103,6 @@ var _is_android: bool = false
 # 使去重逻辑 (基于 judge_time_ms 差值) 失效
 var _realtime_pos_cache: float = 0.0
 var _realtime_pos_cache_frame: int = -1
-
-# 上一帧的 raw MIDI 音频位置，用于检测 TrackView 的循环回绕。
-# -1 表示尚未建立播放位置基线，避免加载新曲时把位置清零误判为循环。
-var _last_raw_midi_position_ms: float = -1.0
 
 ## 信号：MIDI播放完成
 signal midi_finished
@@ -164,39 +139,64 @@ enum RepeatMode {
 signal playlist_index_changed(index: int)
 
 ## ===== 播放列表 =====
-## 由 MidiPlaybackManager 持有，供播放器页与系统媒体控件（上一首/下一首）共用。
-## 存 MidiData 引用而非路径，换曲时直接复用 load_midi 的既有流程。
-var playlist: Array[MidiData] = []
-var playlist_index: int = -1
+## 权威状态（keys 顺序 / 当前索引 / 模式 / 落盘 / 剪枝）在 C# MidiCore；这里只做
+## 「读 key → 水合 MidiData → 起播」与「算好顺序推给 MidiCore」。
+## 列表本体不在 Godot 侧驻留 MidiData 数组，避免大歌单整表水合占内存。
+## 下标经属性透传读取：后台推进改了 C# 索引时，这里读到的也是最新值。
+
+## 当前播放下标（权威在 MidiCore）
+var playlist_index: int:
+	get:
+		return MidiCore.GetIndex() if MidiCore != null else -1
+
+## 播放模式缓存（与 MidiCore 同步；读取频繁，缓存避免反复跨语言调用）
 var repeat_mode: int = RepeatMode.SEQUENTIAL
-## 随机模式 = 直接把 playlist 本体打乱（播放顺序 = 列表顺序 = 面板显示顺序）。
-## 打乱只在两个时机发生：「打乱列表」按钮、新会话进入（set_playlist/恢复/页外媒体上下首）；
-## 切换播放模式是纯标记，不重排列表。
-## prev/next 为纯列表下标导航（含 REPEAT_ALL 回绕），没有独立的播放历史栈
-## ——两种模式下"正在播的歌在列表里的位置"都是确定的，上一首/下一首就是下标 ±1
-## 两份排列快照（存歌曲引用）：随机/顺序模式各自记住自己的列表排列，
+
+## 两份排列快照（存 chart_key）：随机/顺序模式各自记住自己的列表排列，
 ## 切换模式 = 在两份排列间交换，当前曲跟随到新位置。
-## 随机排列只在「生成时机」重新打乱：本会话首次切到随机、「打乱列表」按钮、新会话进入；
-## 快照里没有的新增歌在恢复时按引用调和接到尾部、被删的歌自动落空
-var _seq_order: Array[MidiData] = []
-var _shuf_order: Array[MidiData] = []
+## 随机排列只在「生成时机」重新打乱：本会话首次切到随机、「打乱列表」按钮、新会话进入。
+## 用无类型 Array 承载：keys 来自 C#，避免 typed Array 赋值的运行时校验开销/报错
+var _seq_order: Array = []
+var _shuf_order: Array = []
+
 ## 播放模式（随机/顺序开关）持久化到用户配置
 const REPEAT_CFG_SECTION := "Playback"
 const REPEAT_CFG_KEY := "repeat_mode"
 
-## 正常通道的单曲槽（演奏 / 音轨试听 / 媒体控件播种）。**永不落盘，且不触碰用户播放列表**，
-## 所以试听不会打乱面板里的列表；播放器页在用户列表为空且无落盘记录时回退借它那一首。
-var session_single: Array[MidiData] = []
-## 当前会话是否来自单曲槽(B)。为 true 时「播完/回绕」一律原地重播，
-## 绝不推进用户播放列表(A)——否则 TrackView 试听单曲会被 A 的下一首顶掉。
-var session_is_single: bool = false
+## 当前曲的 chart_key（列表里存的就是它）
+func _current_key() -> String:
+	if current_midi_data == null:
+		return ""
+	return current_midi_data.chart_key if not current_midi_data.chart_key.is_empty() else current_midi_data.id
+
+## MidiData → 列表 key（规范键优先）
+func _key_of(m: MidiData) -> String:
+	if m == null:
+		return ""
+	return m.chart_key if not m.chart_key.is_empty() else m.id
+
+## MidiData 数组 → key 数组（无类型 Array，交给 MidiCore 转换）
+func _keys_of(items: Array) -> Array:
+	var out: Array = []
+	for m in items:
+		if m is MidiData:
+			var k := _key_of(m)
+			if not k.is_empty():
+				out.append(k)
+	return out
 
 ## 播完/回绕时是否该推进用户播放列表：单曲槽会话永不推进；
 ## 用户列表多于一首且非单曲循环才前进。
+## 模式一律以 C# 那份为准（后台推进也是用它决策）：两份读值来源不同（GDScript 读配置、
+## C# 读播放列表 meta），一旦分裂就会"前台按配置切歌、后台只单曲循环"这种行为不一致。
 func _should_advance_on_end() -> bool:
-	if session_is_single:
+	if MidiCore.IsSessionSingle():
 		return false
-	return playlist.size() > 1 and repeat_mode != RepeatMode.REPEAT_ONE
+	var mode_c: int = MidiCore.GetRepeatMode()
+	if mode_c != repeat_mode:
+		GLogger.warning("Repeat mode mismatch: gdscript=%d csharp=%d (以 C# 为准)" % [repeat_mode, mode_c], "MidiPlaybackManager")
+		repeat_mode = mode_c
+	return MidiCore.GetCount() > 1 and mode_c != RepeatMode.REPEAT_ONE
 
 ## 统一的「这次要播什么」入口：设列表 + 设当前曲的文件级循环 + 指定写到哪个槽。
 ## persist=true  → 写用户播放列表（面板展示 / 编辑 / 落盘都作用于它），本次会话要落盘；
@@ -205,157 +205,178 @@ func _should_advance_on_end() -> bool:
 func start_session(items: Array[MidiData], start_index: int = 0, persist: bool = true,
 		loop_file: bool = false) -> void:
 	set_loop(loop_file)
+	var keys := _keys_of(items)
 	if persist:
-		PlaylistMGR.persist_enabled = true
-		session_is_single = false
-		set_playlist(items, start_index)
+		MidiCore.SetPersistEnabled(true)
+		MidiCore.SetSessionSingle(false)
+		set_playlist_keys(keys, start_index)
 		return
-	# 正常通道：不碰 playlist / playlist_index，也不落盘
-	PlaylistMGR.persist_enabled = false
-	session_is_single = true
-	session_single = []
-	if not items.is_empty():
-		session_single.append(items[0])
+	# 正常通道：不碰用户列表，也不落盘；只记单曲槽(B)
+	MidiCore.SetPersistEnabled(false)
+	MidiCore.SetSessionSingle(true)
+	MidiCore.SetSessionKey(keys[0] if not keys.is_empty() else "")
 
 ## 用户播放列表为空且无落盘记录时，把单曲槽那首借用过来当当前列表。
 ## 只改内存、仍不落盘；用户一旦编辑列表，_mark_user_edited 会把它转为可落盘。
 func adopt_single_into_playlist() -> bool:
-	if not playlist.is_empty() or session_single.is_empty():
+	if MidiCore.GetCount() > 0:
 		return false
-	session_is_single = false
-	set_playlist(session_single, 0)
+	var k: String = MidiCore.GetSessionKey()
+	if k.is_empty():
+		return false
+	MidiCore.SetSessionSingle(false)
+	set_playlist_keys([k], 0)
 	return true
 
 ## 离开播放器页：活动会话交还给单曲槽(B)，把当前曲放进去。
-## A 的内容留在内存（下次进页面还在），只是不再是"当前会话"——这样之后播完/回绕
+## A 的内容留在 MidiCore（下次进页面还在），只是不再是"当前会话"——这样之后播完/回绕
 ## 不会再去推进 A，与"进页面才开始播 A"的门闩语义对称。
 func end_user_session() -> void:
-	if session_is_single or current_midi_data == null:
+	if MidiCore.IsSessionSingle() or current_midi_data == null:
 		return
-	session_is_single = true
-	session_single = []
-	session_single.append(current_midi_data)
-	PlaylistMGR.persist_enabled = false
+	MidiCore.SetSessionSingle(true)
+	MidiCore.SetSessionKey(_current_key())
+	MidiCore.SetPersistEnabled(false)
 
-## 确保用户播放列表已就绪：内存为空先读回磁盘；仍为空则借用单曲槽那一首。
+## 确保用户播放列表已就绪：C# 侧为空先读回磁盘；仍为空则借用单曲槽那一首。
 ## 播放器页进入、系统媒体上下首都走这里，保证"要用 A 时 A 一定是可用的"。
 func ensure_user_playlist() -> void:
-	if playlist.is_empty():
+	if MidiCore.GetCount() == 0:
 		restore_playlist()
-	if playlist.is_empty():
+	if MidiCore.GetCount() == 0:
 		adopt_single_into_playlist()   # 借来的单曲先不落盘，等用户编辑再转正式
 		return
 	# A 已是正式内容（读盘恢复 / 用户选自收藏夹）→ 允许落盘
-	PlaylistMGR.persist_enabled = true
-	session_is_single = false
+	MidiCore.SetPersistEnabled(true)
+	MidiCore.SetSessionSingle(false)
 
 ## 播放器页之外经媒体控件上/下一首进入用户列表会话：从头播第一首。
 ## 随机模式下这是新会话进入 → 记下顺序排列（若还没记），列表已是随机序不再重洗。
-## 播放器页内的上下首走 play_next/play_previous 的常规语义，不经过这里
 func enter_user_playlist_from_head() -> bool:
-	if playlist.is_empty():
+	if MidiCore.GetCount() == 0:
 		return false
-	PlaylistMGR.persist_enabled = true
-	session_is_single = false
+	MidiCore.SetPersistEnabled(true)
+	MidiCore.SetSessionSingle(false)
 	if repeat_mode == RepeatMode.SHUFFLE and _seq_order.is_empty():
-		_seq_order = playlist.duplicate()
+		_seq_order = MidiCore.GetKeys()
 	play_playlist_index(0)
 	return true
 
 ## 设置播放列表（会重置索引，不自动播放）。整表替换 = 全新会话：
-## 两份排列快照作废；随机模式下快照顺序排列、生成随机排列并从头播
-func set_playlist(items: Array[MidiData], start_index: int = 0) -> void:
-	playlist = items.duplicate()
-	playlist_index = -1 if playlist.is_empty() else clampi(start_index, 0, playlist.size() - 1)
+## 两份排列快照作废；随机模式下快照顺序排列、生成随机排列并从头播。
+## 顺序/打乱算法留在 GDScript（Godot 管顺序调整），算好后把 keys 推给 MidiCore 持有。
+func set_playlist_keys(keys: Array, start_index: int = 0) -> void:
 	_seq_order.clear()
 	_shuf_order.clear()
-	if repeat_mode == RepeatMode.SHUFFLE and not playlist.is_empty():
-		_seq_order = playlist.duplicate()
-		_playlist_become_shuffled()
-		playlist_index = 0
+	var k: Array = []
+	for s in keys:
+		var ks := str(s)
+		if not ks.is_empty():
+			k.append(ks)
+	if repeat_mode == RepeatMode.SHUFFLE and not k.is_empty():
+		_seq_order = k.duplicate()
+		_shuffle_keys(k)
+		_shuf_order = k.duplicate()
+		MidiCore.SetKeys(k, 0)
+	else:
+		MidiCore.SetKeys(k, start_index)
 	playlist_changed.emit()
 
-## 列表变更 → 落盘
+## 列表变更 → 落盘（受 MidiCore 的 persist 门控）
 func _on_playlist_changed_persist() -> void:
-	# 恢复中的头部快照：期间落盘会拿半截列表覆盖全表，必须等回填
-	if not _restored_head.is_empty():
-		if playlist == _restored_head:
-			return
-		_restored_head = []  # 期间用户改过列表，放弃回填，恢复正常落盘
-	PlaylistMGR.save(self)
+	MidiCore.Save()
 
-## 从存储恢复播放列表（启动 / 播放器页进入时调用）。
-## 只填列表不自动起播——是否播放由调用方决定。
-## 全表水合可能上千项，同步做会卡住调用线程：这里只同步取自 saved_index 起的
-## 头部若干项（起播与面板开头够用），其余由 PlaylistMGR 分帧水合后整体回填。
-const RESTORE_HEAD_COUNT := 16
-## 恢复中的头部快照（回填前禁止落盘半截列表；被改动即放弃回填）
-var _restored_head: Array[MidiData] = []
-
+## 从存储恢复播放列表（启动 / 播放器页进入时调用）。只填列表不自动起播。
+## 权威存储是 ChartDB meta，由 MidiCore 读回并剪枝；这里只处理随机模式的启动重洗。
 func restore_playlist() -> void:
-	var res := PlaylistMGR.load_midis(RESTORE_HEAD_COUNT)
-	var head: Array[MidiData] = res["midis"]
-	if head.is_empty():
+	if not MidiCore.EnsureLoaded():
+		return
+	MidiCore.Prune()
+	if MidiCore.GetCount() == 0:
 		return
 	# 恢复出的是磁盘上的正式列表，属于「要记住」的会话
-	PlaylistMGR.persist_enabled = true
-	session_is_single = false
-	playlist = head
-	playlist_index = clampi(int(res["start"]), 0, playlist.size() - 1)
+	MidiCore.SetPersistEnabled(true)
+	MidiCore.SetSessionSingle(false)
 	# 随机模式：每次启动重新洗、从头播（顺序模式保留磁盘顺序与进度）
-	if repeat_mode == RepeatMode.SHUFFLE and not playlist.is_empty():
-		_seq_order = playlist.duplicate()
-		_playlist_become_shuffled()
-		playlist_index = 0
-	# 先记头部快照再发信号：否则 playlist_changed 会走到落盘，把磁盘上的完整列表
-	# 覆盖成这个「头部窗口」（saved_index 靠尾时可能只剩 1 首，等同被清空）
-	_restored_head = head
+	if repeat_mode == RepeatMode.SHUFFLE:
+		_seq_order = MidiCore.GetKeys()
+		var k: Array = _seq_order.duplicate()
+		_shuffle_keys(k)
+		_shuf_order = k.duplicate()
+		MidiCore.SetKeys(k, 0)
 	playlist_changed.emit()
-	if PlaylistMGR.is_hydrating() \
-			and not PlaylistMGR.hydration_finished.is_connected(_on_playlist_hydrated):
-		PlaylistMGR.hydration_finished.connect(_on_playlist_hydrated)
 
-## 后台全表水合完成：期间用户没改过列表才整体回填
-func _on_playlist_hydrated(full: Array[MidiData]) -> void:
-	var head := _restored_head
-	_restored_head = []
-	if playlist != head:
-		return
-	# 保持当前曲位置：按对象定位，找不到就夹取
-	var idx := clampi(playlist_index, 0, full.size() - 1)
-	if current_midi_data != null:
-		for i in full.size():
-			if full[i] == current_midi_data:
-				idx = i
-				break
-	set_playlist(full, idx)
-
-## 把当前下标对齐到正在播放的曲目（在列表里时）。静默：不发 playlist_index_changed，
-## 因为该信号直连落盘，而恢复期间列表可能只是头部快照，落盘会把全表截断。
+## 把当前下标对齐到正在播放的曲目（在列表里时）。静默：不发 playlist_index_changed。
 func align_index_to_current() -> void:
-	if current_midi_data == null or playlist.is_empty():
+	if current_midi_data == null:
 		return
-	for i in playlist.size():
-		if playlist[i] == current_midi_data:
-			playlist_index = i
-			return
+	var i: int = MidiCore.IndexOf(_current_key())
+	if i >= 0:
+		MidiCore.SetIndex(i)
+
+## 后台推进后回前台对账：C# 在熄屏/深后台已把当前曲换成下一首（纯音频、无音符显示与
+## 轨道配置），这里按 C# 的索引把 SOA/轨道配置/人声/UI 补齐，并定位到后台已播到的位置。
+## 与当前曲一致（前台换曲或未换过）时不动。
+##
+## 判定不依赖 is_playing：后台推进发生后用户可能在熄屏上先按了暂停，等到回前台时
+## 播放态已是 paused，若据此提前 return，current_midi_data 会停在旧曲——之后任何
+## push_state（含暂停那条）都会拿旧曲元数据覆盖系统卡片，表现为"按暂停就退回切歌前"。
+## 改用「本侧已有当前曲（存在会话）」而非「正在播」，并保留原播放态。
+func reconcile_current_song() -> void:
+	# 本侧没有当前曲 = 没有会话，绝不能凭 C# 的键凭空起播
+	if current_midi_data == null:
+		return
+	# 单曲槽会话（TrackView 试听等）从不推进用户列表，C# 也不会在后台切歌：
+	# 此时 MidiCore 的当前键属于用户列表，与正在播的那首无关，绝不能按它"对账"
+	if MidiCore.IsSessionSingle():
+		return
+	var key: String = MidiCore.GetCurrentKey()
+	var cur_key := _current_key()
+	if key.is_empty() or cur_key == key:
+		# 无换曲：后台期间 GDScript 停摆，显示面（歌名/时长量程）可能停在旧态，
+		# 回前台按当前曲刷一次。留一条低噪日志——后台明明换了曲却走到这里，
+		# 就说明 C# 索引没推进（key 仍是旧曲），问题在后台推进而不在显示。
+		GLogger.info("Reconcile: no song change (csharp=%s gd=%s)" % [key, cur_key], "MidiPlaybackManager")
+		transport_changed.emit()
+		return
+	var data: MidiData = DataMGR.get_midi_by_id(key)
+	if data == null:
+		GLogger.warning("Reconcile failed: no MidiData for key=%s" % key, "MidiPlaybackManager")
+		return
+	var live_pos := 0.0
+	if _get_active_backend() != null:
+		live_pos = maxf(0.0, get_raw_position_ms())
+	# 走与手动"下一首"完全相同的换曲路径（play_playlist_index → load_midi → play →
+	# current_song_changed），保证 current_midi_data / 信号 / 后端三者一致；
+	# 结束后再按原播放态恢复，熄屏期间按过暂停的不会被这次对账重新起播。
+	var was_playing := is_playing
+	GLogger.info("Reconcile after background advance: %s @ %.0fms (was_playing=%s)" % [key, live_pos, was_playing], "MidiPlaybackManager")
+	play_playlist_index(MidiCore.IndexOf(key))
+	if live_pos > 0.5:
+		seek(live_pos)
+	if not was_playing:
+		pause()
 
 ## 按标识播放：给定 chart_key / id / file_hash 任一别名，命中则在列表中定位并播放。
 ## 返回是否命中。用于「从曲库点歌」「媒体控件换曲」这类只拿到标识的场景。
 func play_by_key(chart_key: String) -> bool:
 	if chart_key.is_empty():
 		return false
-	for i in playlist.size():
-		var m: MidiData = playlist[i]
-		if chart_key == m.chart_key or chart_key == m.id or chart_key == m.file_hash:
-			play_playlist_index(i)
-			return true
-	# 列表里没有：水合后加入并播放
-	var data: MidiData = DataMGR.get_midi_by_id(chart_key)
-	if data == null:
-		return false
-	playlist.append(data)
-	play_playlist_index(playlist.size() - 1)
+	var i: int = MidiCore.IndexOf(chart_key)
+	if i < 0:
+		# 别名（id / file_hash）先解析成规范键再找
+		var resolved := DataMGR.resolve_chart_key(chart_key)
+		if not resolved.is_empty():
+			i = MidiCore.IndexOf(resolved)
+	if i < 0:
+		# 列表里没有：水合后加入并播放
+		var data: MidiData = DataMGR.get_midi_by_id(chart_key)
+		if data == null:
+			return false
+		MidiCore.AppendKey(_key_of(data))
+		playlist_changed.emit()
+		i = MidiCore.GetCount() - 1
+	play_playlist_index(i)
 	return true
 
 ## 用户手动改过列表（增/删/移/清空）→ 通知面板把"歌单选择"复位，
@@ -365,27 +386,26 @@ signal playlist_user_edited
 ## 用户手动改过列表 → 本次会话转为要落盘：临时列表一旦被编辑就该被记住
 ## （对应旧实现里"单曲临时态一旦列表变长就恢复正常落盘"的行为）
 func _mark_user_edited() -> void:
-	PlaylistMGR.persist_enabled = true
-	PlaylistMGR.source_fav_id = ""
+	MidiCore.SetPersistEnabled(true)
+	MidiCore.SetSourceFavId("")
 	playlist_user_edited.emit()
 
-## 向列表尾部追加。随机模式下追加到打乱列表的末尾（行为与顺序模式一致）
+## 向列表尾部追加
 func append_to_playlist(items: Array[MidiData]) -> void:
 	_mark_user_edited()
 	for item in items:
-		playlist.append(item)
+		var k := _key_of(item)
+		if not k.is_empty():
+			MidiCore.AppendKey(k)
 	playlist_changed.emit()
 
 ## 插到当前曲之后（"下一首播放"）。已在列表中则不动。返回是否插入。
-## 随机模式下列表本体即播放顺序，插到当前曲后天然就是"下一首"，无需任何特殊处理
 func insert_next_in_playlist(data: MidiData) -> bool:
-	if data == null or playlist.has(data):
+	var k := _key_of(data)
+	if k.is_empty() or MidiCore.Has(k):
 		return false
 	_mark_user_edited()
-	var at := mini(playlist_index + 1, playlist.size())
-	playlist.insert(at, data)
-	if playlist_index >= at:
-		playlist_index += 1
+	MidiCore.InsertAt(MidiCore.GetIndex() + 1, k)
 	playlist_changed.emit()
 	return true
 
@@ -393,67 +413,79 @@ func insert_next_in_playlist(data: MidiData) -> bool:
 ## 移除的是正在播的歌：切到接管其位置的那首继续播（末首被移除则退到新的末首），
 ## 列表被移空则停止播放
 func remove_from_playlist(index: int) -> void:
-	if index < 0 or index >= playlist.size():
+	if index < 0 or index >= MidiCore.GetCount():
 		return
 	_mark_user_edited()
-	var removed: MidiData = playlist[index]
-	var was_current := index == playlist_index
-	playlist.remove_at(index)
-	_seq_order.erase(removed)
-	_shuf_order.erase(removed)
+	var removed_key: String = MidiCore.GetKeyAt(index)
+	var was_current: bool = index == MidiCore.GetIndex()
+	_seq_order.erase(removed_key)
+	_shuf_order.erase(removed_key)
+	MidiCore.RemoveAt(index)
+	playlist_changed.emit()
 	if was_current:
-		playlist_changed.emit()
-		if playlist.is_empty():
-			playlist_index = -1
+		if MidiCore.GetCount() == 0:
 			stop()
 		else:
-			play_playlist_index(clampi(index, 0, playlist.size() - 1))
+			play_playlist_index(MidiCore.GetIndex())
 	else:
-		if playlist_index >= playlist.size():
-			playlist_index = playlist.size() - 1
-		playlist_changed.emit()
-		playlist_index_changed.emit(playlist_index)
+		playlist_index_changed.emit(MidiCore.GetIndex())
 
-## 调整列表中两项的顺序。同时把播放下标一起挪位，保证"正在播放"仍指着同一首
-## （否则移动它 / 把别的歌插到它前面之后，下标停在原位，面板高亮就跟丢乱套了）。
+## 调整列表中两项的顺序。播放下标在 MidiCore.Move 内一起挪位，保证"正在播放"仍指着同一首。
 func move_in_playlist(from_idx: int, to_idx: int) -> void:
-	if from_idx < 0 or from_idx >= playlist.size():
+	if from_idx < 0 or from_idx >= MidiCore.GetCount():
 		return
-	var to := clampi(to_idx, 0, playlist.size() - 1)
-	if from_idx == to:
+	if from_idx == clampi(to_idx, 0, MidiCore.GetCount() - 1):
 		return
 	_mark_user_edited()
-	var item: MidiData = playlist[from_idx]
-	var cur := playlist_index
-	playlist.remove_at(from_idx)
-	playlist.insert(to, item)
-	if cur >= 0:
-		if from_idx == cur:
-			cur = to                      # 播的就是被拖的那首 → 跟到新位置
-		else:
-			if from_idx < cur:
-				cur -= 1                  # 移除点在它前面 → 左移一位
-			if to <= cur:
-				cur += 1                  # 插入点在它前面 → 右移一位
-		playlist_index = cur
+	MidiCore.Move(from_idx, to_idx)
 	# 随机模式下拖拽 = 编辑随机排列本身，快照跟着刷新（顺序快照在下次进入随机时重拍）
 	if repeat_mode == RepeatMode.SHUFFLE:
-		_shuf_order = playlist.duplicate()
+		_shuf_order = MidiCore.GetKeys()
 	playlist_changed.emit()
-	playlist_index_changed.emit(playlist_index)
+	playlist_index_changed.emit(MidiCore.GetIndex())
 
 ## 清空列表
 func clear_playlist() -> void:
 	_mark_user_edited()
-	playlist.clear()
-	playlist_index = -1
 	_seq_order.clear()
 	_shuf_order.clear()
+	MidiCore.ClearAll()
 	playlist_changed.emit()
 
 ## 列表是否为空
 func has_playlist() -> bool:
-	return not playlist.is_empty()
+	return MidiCore.GetCount() > 0
+
+## 进入播放器页 = 开始播用户播放列表(A)：显式结束单曲槽会话。
+## 否则 A 明明有内容、却仍被当作"单曲槽会话"而永不推进——表现为播完只原地循环不切歌。
+func begin_user_session() -> void:
+	if MidiCore.GetCount() == 0:
+		return
+	MidiCore.SetPersistEnabled(true)
+	MidiCore.SetSessionSingle(false)
+
+## 列表条目数（面板/媒体侧只读投影用）
+func playlist_count() -> int:
+	return MidiCore.GetCount()
+
+## 列表全部 keys（面板重建签名用；轻量字符串数组，不水合 MidiData）
+func playlist_keys() -> Array:
+	return MidiCore.GetKeys()
+
+## 列表是否已含某 key（曲库"加入播放列表"判重）
+func playlist_has_key(chart_key: String) -> bool:
+	return MidiCore.Has(chart_key)
+
+## 列表是否已含某 MidiData（曲库"加入播放列表"判重）
+func playlist_has_midi(m: MidiData) -> bool:
+	return MidiCore.Has(_key_of(m))
+
+## 用 keys 直接开用户列表会话（选收藏夹，免去把整表水合成 MidiData 再起播）
+func start_session_keys(keys: Array, start_index: int = 0, loop_file: bool = false) -> void:
+	set_loop(loop_file)
+	MidiCore.SetPersistEnabled(true)
+	MidiCore.SetSessionSingle(false)
+	set_playlist_keys(keys, start_index)
 
 ## 切换播放模式 = 在两份排列快照间交换显示与播放顺序（当前曲跟随到新位置）。
 ## 随机排列不会重新打乱——只在生成时机（首次切到随机/「打乱列表」按钮/新会话）生成；
@@ -463,21 +495,22 @@ func set_repeat_mode(mode: int) -> void:
 		return
 	var was := repeat_mode
 	repeat_mode = mode
-	if playlist.is_empty():
+	MidiCore.SetRepeatMode(mode)
+	if MidiCore.GetCount() == 0:
 		repeat_mode_changed.emit(mode)
 		_schedule_repeat_save()
 		return
 	if mode == RepeatMode.SHUFFLE:
 		# 进入随机：按当前列表快照顺序排列（供切回时还原），
 		# 已有随机排列就恢复它（只换排列不打乱），没有才现场生成
-		_seq_order = playlist.duplicate()
+		_seq_order = MidiCore.GetKeys()
 		if _shuf_order.is_empty():
-			_playlist_become_shuffled()
+			_become_shuffled()
 		else:
-			_playlist_apply_arrangement(_shuf_order)
+			_apply_arrangement(_shuf_order)
 	elif was == RepeatMode.SHUFFLE:
 		# 切回顺序：还原顺序排列
-		_playlist_apply_arrangement(_seq_order)
+		_apply_arrangement(_seq_order)
 	repeat_mode_changed.emit(mode)
 	playlist_changed.emit()
 	if ConfigManager.instance != null:
@@ -507,31 +540,40 @@ func cycle_repeat_mode() -> void:
 		_:
 			set_repeat_mode(RepeatMode.SHUFFLE)
 
-## 供系统媒体侧声明的"播完行为"：0=无 1=原地重播（重启人声即可） 2=前进下一首。
-## Android 后台主循环停摆、_process 的回绕检测不运行，Java 侧墙钟越过曲长时
-## 按此值补发 track_end 命令。判定规则与 _process 的回绕点保持一致。
-func get_track_end_action() -> int:
-	if not is_playing or not get_loop():
-		return 0
-	if _should_advance_on_end():
-		return 2 if has_next() else 1
-	return 1
+## C# 唯一曲终/回绕检测回调（loop=true 时音频回调检测到 sequencer 回绕）。
+## 回绕点即"播完"判定点：用户列表还有下一首就走换曲逻辑（与手动上下首同一条路），
+## 单曲槽会话（TrackView 试听等）或单曲循环才原地重播当前曲。
+## 检测放音频回调里，因此熄屏/深后台也不会漏（执行仍走 GDScript 的常规范换曲路径）。
+func _on_loop_wrapped() -> void:
+	if not is_playing:
+		return
+	# 每次回绕都留一条（含判定输入）：若曲终后连这条都没有，说明检测根本没触发，
+	# 那问题在"检测/主循环是否在跑"，而不是在推进决策。
+	GLogger.info("Loop wrap: count=%d idx=%d repeat=%d single=%s next=%s" % [
+		MidiCore.GetCount(), MidiCore.GetIndex(), MidiCore.GetRepeatMode(),
+		str(MidiCore.IsSessionSingle()), MidiCore.NextKey()
+	], "MidiPlaybackManager")
+	if _should_advance_on_end() and play_next(false):
+		GLogger.info("Loop point advanced to next song (playlist mode)", "MidiPlaybackManager")
+	else:
+		# 未推进：区分"确实该原地循环(单曲循环/单曲槽)"与"状态不对导致不切歌"
+		GLogger.info("Loop restart (no advance): should_advance=%s" % str(_should_advance_on_end()), "MidiPlaybackManager")
+		_restart_vocal_for_current_position()
 
 ## 从用户配置恢复播放模式。键不存在时保持当前值不动。
-## 刻意不走 set_repeat_mode：那会广播 playlist_changed，而启动时本函数先于
-## 播放列表恢复执行，广播空列表变更会把用户存的单覆盖掉
+## 刻意不走 set_repeat_mode（那会广播 playlist_changed，启动时先于列表恢复执行会把用户存的单覆盖掉）。
+## 随机模式的启动重洗放在 restore_playlist（那时列表才有内容）。
 func _load_repeat_mode() -> void:
 	if ConfigManager.instance == null:
 		return
 	var saved := ConfigManager.instance.get_int(REPEAT_CFG_SECTION, REPEAT_CFG_KEY, repeat_mode)
+	# 无条件推给 C#：C# 启动时会先从播放列表 meta 读回一份 repeat_mode，那份与用户配置
+	# 历史上是分开落盘的，可能不一致。不一致就会出现"前台按配置会切歌、后台（C# 决策）
+	# 只单曲循环"这种前后台行为分裂，所以这里必须覆盖它。
+	MidiCore.SetRepeatMode(saved)
 	if saved == repeat_mode:
 		return
 	repeat_mode = saved
-	if saved == RepeatMode.SHUFFLE and not playlist.is_empty():
-		# 启动重洗：快照恢复出的顺序排列，列表换成随机排列并从头播
-		_seq_order = playlist.duplicate()
-		_playlist_become_shuffled()
-		playlist_index = 0
 	repeat_mode_changed.emit(saved)
 
 ## 统一处理系统媒体控件与页面按钮下发的播放命令。
@@ -562,24 +604,13 @@ func handle_media_command(action: String, pos_ms: float = -1.0) -> bool:
 				return false
 			seek(pos_ms)
 		"next":
-			if playlist.is_empty():
+			if MidiCore.GetCount() == 0:
 				return false
 			return play_next(true)
 		"prev":
-			if playlist.is_empty():
+			if MidiCore.GetCount() == 0:
 				return false
 			return play_previous()
-		"track_end":
-			# 系统侧按墙钟检测到回绕时补发的命令，与 _process 的逐帧回绕检测互为补充
-			# （位置推送每 0.5s 一次，个别回绕可能被逐帧检测漏掉）。
-			# 判定规则与 _process 的回绕点一致：用户列表还有下一首就走换曲，
-			# 单曲槽会话 / 单曲循环只重启人声。
-			# 换曲失败也必须重启人声：否则人声停在曲尾、只剩伴奏原地循环，
-			# 听起来就是"歌曲末尾停住不下一首"
-			if _should_advance_on_end() and play_next(false):
-				transport_changed.emit()
-				return true
-			_restart_vocal_for_current_position()
 		"repeat":
 			cycle_repeat_mode()
 		"shuffle":
@@ -590,114 +621,116 @@ func handle_media_command(action: String, pos_ms: float = -1.0) -> bool:
 	return true
 
 ## 跳转到列表中的指定曲目并播放。index 越界时自动夹取。
-## 所有换曲（手动上下首 / 播完自动前进 / 点歌单 / 选收藏夹）的必经点
+## 所有换曲（手动上下首 / 播完自动前进 / 点歌单 / 选收藏夹）的必经点。
+## 起播必须同步完成（人声周期提前由 start_vocal_playback 内部申请），不能用
+## SceneTree 定时器"等一会再播"——切歌那刻若被切后台/熄屏，主循环停摆会让定时器
+## 烧不到点，表现为"切完歌停在开头、回前台才继续"
 func play_playlist_index(index: int) -> void:
-	if playlist.is_empty():
+	if MidiCore.GetCount() == 0:
 		return
-	playlist_index = clampi(index, 0, playlist.size() - 1)
-	playlist_index_changed.emit(playlist_index)
-	var data: MidiData = playlist[playlist_index]
+	MidiCore.SetIndex(index)
+	var i: int = MidiCore.GetIndex()
+	playlist_index_changed.emit(i)
+	var data: MidiData = DataMGR.get_midi_by_id(MidiCore.GetKeyAt(i))
+	if data == null:
+		return
 	if not load_midi(data):
 		return
 	# 换曲的必经点在此发信号：手动上下首 / 播完自动前进 / 点歌单 都汇到这里，
 	# 页面（歌名/封面/可视化）只订这个信号即可，不必各自监听多条路径
 	current_song_changed.emit(data)
 	play()
+	# 起播后由后端补一次"与拖动进度条等价"的原地 seek（对齐）：
+	# 交给音频回调按帧数计时——后台起播时 Godot 主循环停摆，GDScript 侧等不了
+	var backend := _get_active_backend()
+	if backend != null:
+		backend.request_startup_align()
 
 ## 下一首。user_initiated=true 时不受单曲循环限制
 ## （媒体控件的"下一首"按钮应能跳出单曲循环）
 func play_next(user_initiated: bool = true) -> bool:
-	if playlist.is_empty():
+	if MidiCore.GetCount() == 0:
 		return false
 	# 单曲循环下的自动续播：重播本曲
 	if not user_initiated and repeat_mode == RepeatMode.REPEAT_ONE:
 		seek(0.0)
 		play()
 		return true
-	var next := _next_index()
-	if next < 0:
+	var i: int = MidiCore.IndexOf(MidiCore.NextKey())
+	if i < 0:
 		return false
-	play_playlist_index(next)
+	play_playlist_index(i)
 	return true
 
 ## 上一首。直接切到前一首——不做"距开头不足 3 秒才切歌、否则先回本曲开头"的二次语义
-## （想回开头拖进度条即可）。列表首项的前一首 = 列表末尾，与 _next_index 的末尾回绕对称
+## （想回开头拖进度条即可）。列表首项的前一首 = 列表末尾，与 NextKey 的末尾回绕对称
 func play_previous() -> bool:
-	if playlist.is_empty():
+	if MidiCore.GetCount() == 0:
 		return false
-	var prev := playlist_index - 1
-	if prev < 0:
-		prev = playlist.size() - 1
-	play_playlist_index(prev)
+	var i: int = MidiCore.IndexOf(MidiCore.PrevKey())
+	if i < 0:
+		return false
+	play_playlist_index(i)
 	return true
 
-## 当前是否还有下一首（用于禁用媒体控件的"下一首"按钮）
+## 当前是否还有下一首（末尾一律回绕，故非空列表恒为 true）
 func has_next() -> bool:
-	return not playlist.is_empty() and _next_index() >= 0
+	return MidiCore.GetCount() > 0
 
 ## 当前是否还有上一首（首项会回绕到列表末尾，故非空列表恒为 true）
 func has_previous() -> bool:
-	return not playlist.is_empty()
-
-## 下一首索引（顺序 = 列表次序；随机模式下列表本身就是打乱后的顺序）。
-## 末尾一律回到开头：顺序/列表循环/随机都续播，只有单曲循环走 play_next 的重播分支。
-## 不再有"播完列表末尾停止"——那会让末尾只剩原地重播却连人声都不重启
-func _next_index() -> int:
-	var n := playlist_index + 1
-	if n < playlist.size():
-		return n
-	return 0
+	return MidiCore.GetCount() > 0
 
 ## 「打乱列表」按钮：重新生成随机排列（_shuf_order 快照同步更新，_seq_order 不动——
 ## 切回顺序仍是原顺序）并从头播
 func shuffle_playlist_from_head() -> bool:
-	if playlist.is_empty():
+	if MidiCore.GetCount() == 0:
 		return false
-	_playlist_become_shuffled()
-	playlist_index = 0
+	_become_shuffled()
+	MidiCore.SetIndex(0)
 	play_playlist_index(0)
 	playlist_changed.emit()
 	return true
 
-## 整表 Fisher-Yates 打乱（不按下标播放，调用方自行决定从头播还是继续）
-func _shuffle_whole_list() -> void:
+## 整表 Fisher-Yates 打乱（作用在 key 数组上；顺序算法留在 GDScript）
+func _shuffle_keys(arr: Array) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(str(get_instance_id()) + str(Time.get_ticks_usec()))
-	_shuffle_slice(0, playlist.size() - 1, rng)
+	for i in range(arr.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp = arr[i]
+		arr[i] = arr[j]
+		arr[j] = tmp
 
-## 生成新的随机排列（Fisher-Yates）并记录到 _shuf_order 快照，当前曲跟随到新位置
-func _playlist_become_shuffled() -> void:
-	var cur: MidiData = null
-	if playlist_index >= 0 and playlist_index < playlist.size():
-		cur = playlist[playlist_index]
-	_shuffle_whole_list()
-	_shuf_order = playlist.duplicate()
-	playlist_index = playlist.find(cur) if cur != null else -1
+## 生成新的随机排列并推给 MidiCore，当前曲跟随到新位置
+func _become_shuffled() -> void:
+	var cur: String = MidiCore.GetCurrentKey()
+	var k: Array = MidiCore.GetKeys()
+	_shuffle_keys(k)
+	_shuf_order = k.duplicate()
+	var idx := k.find(cur)
+	MidiCore.SetKeys(k, idx if idx >= 0 else 0)
 
-## 把列表切换为给定排列快照（引用调和：快照里没有的新增歌接到尾部、
-## 已被删除的歌自动落空），当前曲跟随到新位置。快照为空时列表保持原状
-func _playlist_apply_arrangement(arrangement: Array[MidiData]) -> void:
-	var cur: MidiData = null
-	if playlist_index >= 0 and playlist_index < playlist.size():
-		cur = playlist[playlist_index]
-	var arranged: Array[MidiData] = []
-	var kept := {}
-	for m in arrangement:
-		if m != null and playlist.has(m):
-			arranged.append(m)
-			kept[m] = true
-	for m in playlist:
-		if not kept.has(m):
-			arranged.append(m)
-	playlist = arranged
-	playlist_index = arranged.find(cur) if cur != null else -1
-
-func _shuffle_slice(from: int, to: int, rng: RandomNumberGenerator) -> void:
-	for i in range(to, from, -1):
-		var j := rng.randi_range(from, i)
-		var tmp := playlist[i]
-		playlist[i] = playlist[j]
-		playlist[j] = tmp
+## 把列表切换为给定排列快照（key 调和：快照里没有的新增歌接到尾部、
+## 已被删除的歌自动落空），当前曲跟随到新位置
+func _apply_arrangement(arrangement: Array) -> void:
+	var cur: String = MidiCore.GetCurrentKey()
+	var have := {}
+	for k in arrangement:
+		if not k.is_empty():
+			have[k] = true
+	var arranged: Array = []
+	for k in arrangement:
+		if not k.is_empty() and have.has(k):
+			arranged.append(k)
+	var current_keys: Array = MidiCore.GetKeys()
+	for k in current_keys:
+		if not have.has(k):
+			arranged.append(k)
+	var idx := arranged.find(cur)
+	if idx < 0:
+		idx = MidiCore.GetIndex()
+	MidiCore.SetKeys(arranged, idx)
 
 func _ready() -> void:
 	if instance == null:
@@ -728,10 +761,9 @@ func _ready() -> void:
 		EvtBus.settings_changed.connect(_on_settings_changed)
 		# 监听配置变更信号（新增，用于应对直接配置文件修改）
 		EvtBus.config_changed.connect(_on_config_changed)
-	# 播放列表是「当前播放」的唯一事实来源：任何变更都落盘，跨重启由 restore_playlist 读回。
-	# 不再另设一份 keys 副本与 playlist 同步——那层同步正是 bug 温床。
+	# 播放列表权威在 C# MidiCore：变更后落盘，跨重启由 restore_playlist 读回。
 	playlist_changed.connect(_on_playlist_changed_persist)
-	playlist_index_changed.connect(func(_i: int): PlaylistMGR.save(self))
+	playlist_index_changed.connect(func(_i: int): MidiCore.Save())
 
 ## 刷新输出类型与对应延迟预设。
 ## 触发时点：启动、应用焦点回归、打开延迟校准窗，以及播放中的周期性轮询
@@ -838,25 +870,8 @@ func _process(delta: float) -> void:
 	if midi_timebase > 0:
 		position = calculate_tick_from_position_with_bpm_timeline(position_ms, midi_timebase)
 
-	var raw_midi_position_ms: float = get_raw_position_ms()
-	if raw_midi_position_ms < 0.0:
-		_last_raw_midi_position_ms = -1.0
-	elif _is_playback_wrapped(raw_midi_position_ms):
-		# MeltySynth 在 loop=true 时只回绕 sequencer，不发 finished 信号。
-		# 人声已自然结束时必须在这里显式重新定位并启动，否则只能靠 UI 开关恢复。
-		if get_loop():
-			GLogger.info("[DIAG] loop wrap detected: %.0f -> %.0f ms" % [_last_raw_midi_position_ms, raw_midi_position_ms], "MidiPlaybackManager")
-			# 回绕点即"播完"判定点：用户列表里还有下一首就走换曲逻辑（与手动上下首同一条路），
-			# 单曲槽会话（TrackView 试听等）或没有再下一首时才原地重播当前曲。
-			# loop=true 时 sequencer 在音频层自己回绕、midi_finished 永不发出，
-			# 所以列表前进只能挂在这个检测点上。
-			if _should_advance_on_end() and play_next(false):
-				GLogger.info("Loop point advanced to next song (playlist mode)", "MidiPlaybackManager")
-			else:
-				_restart_vocal_for_current_position()
-		_last_raw_midi_position_ms = raw_midi_position_ms
-	else:
-		_last_raw_midi_position_ms = raw_midi_position_ms
+	# 曲终/回绕检测不在这里做：统一由 C# 音频回调检测（loop=true 时 sequencer 自己回绕、
+	# 永不发 finished），经 loop_wrapped 信号回调 _on_loop_wrapped。此处只做位置换算。
 
 	# 调用自动同步逻辑
 	_sync_vocal_with_midi()
@@ -916,26 +931,38 @@ func ensure_track_config_initialized(midi_data: MidiData, notes: Array) -> void:
 		GLogger.info("Initialized selected_track_configs with all (track, channel) pairs for new MIDI", "MidiPlaybackManager")
 
 	midi_data.set_track_config_initialized(true)
-	# 立即持久化到 DB，避免下次启动重复解析简介
-	_save_runtime_config(midi_data)
+	# 立即持久化到 DB，避免下次启动重复解析简介。
+	# 经 MidiCore.EnsureDefaultsOnce：守卫内置在 C# 侧（读 DB 的 _track_config_initialized），
+	# 不依赖内存副本——换一份水合来源守卫就会失效，那正是原先 is_track_config_initialized() 的隐患。
+	# 传完整 export_runtime_config（与原先 _save_runtime_config 写入的内容一致），
+	# 不做字段裁剪：首次初始化时其余字段也需一并落盘（默认值即彼时的内存状态）。
+	var chart_id_cfg = midi_data.file_hash if not midi_data.file_hash.is_empty() else midi_data.id
+	if MidiCore != null and not MidiCore.EnsureDefaultsOnce(chart_id_cfg, midi_data.export_runtime_config()):
+		GLogger.info("[DescParse] defaults already initialized in DB, skipped re-persist: %s" % midi_data.id, "MidiPlaybackManager")
+
+## 从 C# 解析缓存取去重 (track, channel) 对，解码为 [[track, channel], ...]。
+## 过去枚举轨道对要遍历整份 SOA（O(N) + 逐音符字符串格式化），现在由 C# 一次性给出小列表。
+func soa_pairs_of(midi_data: MidiData) -> Array:
+	var out: Array = []
+	if midi_data == null:
+		return out
+	var path := midi_data.midi_file_path
+	if path.is_empty() or not MidiCore.HasParsed(path):
+		return out
+	# C# 返回值在 GDScript 侧是 Variant：先落到显式类型再迭代，避免类型推断/遍历报错
+	var pairs: PackedInt32Array = MidiCore.GetPairs(path)
+	for k in pairs:
+		out.append([k >> 8, k & 0xFF])
+	return out
 
 ## 按启用策略批量设置 (track,channel) 对（SOA 优先，避免批量建对象）
 func _apply_recommended_pairs(midi_data: MidiData, recommended: Array, use_recommendation: bool, notes: Array) -> void:
 	# 注意 MidiData.set_track_channel_enabled 是幂等的（内部去重），重复调用安全
-	if midi_data != null and midi_data.notes_soa != null and midi_data.notes_soa.size() > 0:
-		var soa := midi_data.notes_soa
-		for i in range(soa.size()):
-			var should_enable := true
-			if use_recommendation:
-				should_enable = soa.track(i) in recommended
-			midi_data.set_track_channel_enabled(soa.track(i), soa.channel(i), should_enable)
-		return
-	for note in notes:
-		if note is MidiParser.NoteEvent:
-			var should_enable := true
-			if use_recommendation:
-				should_enable = note.track_index in recommended
-			midi_data.set_track_channel_enabled(note.track_index, note.channel, should_enable)
+	for pair in soa_pairs_of(midi_data):
+		var should_enable := true
+		if use_recommendation:
+			should_enable = pair[0] in recommended
+		midi_data.set_track_channel_enabled(pair[0], pair[1], should_enable)
 
 ## 加载MIDI文件
 ## 返回: success (bool)
@@ -977,37 +1004,41 @@ func load_midi(midi_data: MidiData) -> bool:
 	current_midi_data.midi_file_path = midi_file_path
 	
 	# 解析MIDI文件（带缓存：retry 场景跳过重复解析）
-	var track_infos: Array
-	if midi_data.has_notes() and midi_data.midi_file_path == midi_file_path and not midi_data._runtime_track_infos.is_empty():
+	# 缓存命中的判据是"SOA 已就绪 + 路径一致 + 有过解析标量"（track_count>0）。
+	# 过去还看 _runtime_track_infos 非空，但那份数组已随TrackInfo 一并删除。
+	if midi_data.has_notes() and midi_data.midi_file_path == midi_file_path and midi_data.track_count > 0:
 		# 缓存命中：跳过昂贵的 MIDI 解析
 		current_notes = midi_data.parsed_notes
 		bpm_timeline = midi_data.bpm_timeline.duplicate()
 		midi_timebase = midi_data.midi_timebase
-		track_infos = midi_data._runtime_track_infos
 		duration_ms = midi_data.duration_ms
 		GLogger.info("MIDI parse cache hit, skipping re-parse", "MidiPlaybackManager")
 	else:
-		var parse_result = MidiParser.load_and_parse_midi(midi_file_path)
-		if not parse_result["success"]:
-			push_error("Failed to parse MIDI file: %s" % midi_file_path)
+		# 解析：主体在 C# MidiCore 缓存（按路径幂等），此处只取标量并组装显示侧字段。
+		# 不再经 Utilities/MidiParser.gd 的中间字典（那层只是把 C# 结果重拼一遍）。
+		var pp := _resolve_parse_paths(midi_file_path)
+		if not MidiCore.HasParsed(pp.key):
+			MidiCore.ParseChartFile(pp.read, pp.key)
+		if not MidiCore.HasParsed(pp.key):
+			push_error("Failed to parse MIDI: %s" % midi_file_path)
 			return false
 
 		# 音符数据以 SOA 紧凑数组存储（不 materialize 全量 NoteEvent，20w+ 音符内存优化）
 		# 单一授权点：SOA + 轨道-通道分组一并写入，保证与 notes_soa 强一致
-		current_midi_data.set_parsed_soa(parse_result)
-		bpm_timeline = parse_result.get("bpm_timeline", [])  # 获取BPM时间线
-		midi_timebase = parse_result.get("timebase", 480)  # 保存timebase
-		track_infos = parse_result["track_infos"]
+		bpm_timeline = MidiCore.GetBpmTimeline(pp.key)
+		midi_timebase = MidiCore.GetTimebase(pp.key)
+		current_midi_data.set_parsed_soa(pp.key, midi_timebase, bpm_timeline)
 		current_notes = []  # SOA 路径下不再持有全量对象；消费方按需经 SOA 取
 
-		current_midi_data.track_count = track_infos.size()
-		current_midi_data.duration_ms = parse_result["duration_ms"]
+		current_midi_data.track_count = MidiCore.GetTrackCount(pp.key)
+		current_midi_data.duration_ms = MidiCore.GetDurationMs(pp.key)
 		current_midi_data.bpm_timeline = bpm_timeline.duplicate()
 		current_midi_data.midi_timebase = midi_timebase
-		current_midi_data._runtime_track_infos = track_infos
-		current_midi_data.max_end_tick = float(parse_result.get("max_end_tick", 0))
-		current_midi_data.track_channel_instruments = parse_result.get("track_instruments", {})
-		duration_ms = parse_result["duration_ms"]
+
+		current_midi_data.max_end_tick = MidiCore.GetMaxEndTick(pp.key)
+		current_midi_data.track_channel_instruments = MidiCore.GetTrackInstruments(pp.key)
+		duration_ms = current_midi_data.duration_ms
+
 
 	# 从 C# MidiParserNative 一次性提取的 track_channel_instruments 中复用乐器信息
 	# （C# 解析阶段已完成 control_change/program_change 提取，无需 GDScript 遍历 events）
@@ -1046,29 +1077,11 @@ func load_midi(midi_data: MidiData) -> bool:
 		# 未配置过轨道音量：统一按 TrackView 默认 50% 应用（只改后端，不改 MidiData），
 		# 避免 PlayView（未配置默认 100%）与 TrackView（默认 50%）对同一新曲音量不一致
 		var default_volume := 0.5
-		var seen_pairs := {}
 		var default_count := 0
-		if current_midi_data != null and current_midi_data.notes_soa != null and current_midi_data.notes_soa.size() > 0:
-			# SOA 路径：只枚举 (track,channel) 对，不建全量 NoteEvent
-			var soa := current_midi_data.notes_soa
-			for i in range(soa.size()):
-				var pair_key := "%d_%d" % [soa.track(i), soa.channel(i)]
-				if seen_pairs.has(pair_key):
-					continue
-				seen_pairs[pair_key] = true
-				if backend != null:
-					backend.set_track_channel_volume(soa.track(i), soa.channel(i), default_volume)
-				default_count += 1
-		else:
-			for note in current_notes:
-				if note is MidiParser.NoteEvent:
-					var pair_key := "%d_%d" % [note.track_index, note.channel]
-					if seen_pairs.has(pair_key):
-						continue
-					seen_pairs[pair_key] = true
-					if backend != null:
-						backend.set_track_channel_volume(note.track_index, note.channel, default_volume)
-					default_count += 1
+		for pair in soa_pairs_of(current_midi_data):
+			if backend != null:
+				backend.set_track_channel_volume(pair[0], pair[1], default_volume)
+			default_count += 1
 		if default_count > 0:
 			GLogger.info("Applied %d default track volumes (50%%)" % default_count, "MidiPlaybackManager")
 	
@@ -1090,12 +1103,11 @@ func load_midi(midi_data: MidiData) -> bool:
 		GLogger.info("Applied %d instrument overrides" % midi_data.track_channel_instrument_overrides.size(), "MidiPlaybackManager")
 	
 		# 同步轨道-通道静音状态（清理旧MIDI的残留静音）
-		_apply_mute_state_to_backend(backend)
+	_apply_mute_state_to_backend(backend)
 
-		# 应用随 MIDI 保存的运行时配置（与 PlayView._apply_midi_runtime_config 同语义）：
-		# MIDI 主音量/持久化静音/solo/启用通道门控/人声偏移——播放器页直接起播时
-		# 播放效果与 TrackView 一致（这些此前只在 PlayView/TrackView 各自应用）
-		apply_midi_runtime_config(midi_data)
+	# 应用随 MIDI 保存的运行时配置（主音量/持久化静音/solo/启用通道门控/人声偏移）：
+	# 播放器页直接起播时播放效果与 TrackView 一致（这些此前只在 PlayView/TrackView 各自应用）
+	apply_midi_runtime_config(midi_data)
 	
 	# 应用系统时钟配置（后端实现了 set_use_system_stopwatch 即可）
 	if backend != null:
@@ -1135,49 +1147,22 @@ func unload_midi() -> void:
 	position_ms = 0.0
 	playback_state_changed.emit()
 
-## 将 MIDI 运行时配置保存到 chart_runtime（权威 DB，替代 JSON 写回）
-## 用于首次初始化后立即持久化，避免每次启动重复解析简介
-func _save_runtime_config(midi_data: MidiData) -> void:
-	var chart_id = midi_data.file_hash if not midi_data.file_hash.is_empty() else midi_data.id
-	if ChartDB and ChartDB.IsOpen():
-		var runtime_config = midi_data.export_runtime_config()
-		ChartDB.SaveRuntime(chart_id, runtime_config)
-		GLogger.info("Runtime config persisted to DB for MIDI %s (initialized=true, tracks=%d)" % [midi_data.id, midi_data.selected_track_configs.size()], "MidiPlaybackManager")
-	else:
-		push_error("[MidiPlaybackManager] ChartDB not open, cannot save runtime config for MIDI %s" % midi_data.id)
-
-## 解析中的 MIDI 去重表：midi 实例 -> {"done": bool}
-## MidiListItem 统计 / TrackView / PlayView 可能同时请求同一 MIDI 的解析；
-## 只允许第一个请求方启动 worker，其余请求方等待同一解析完成，
-## 避免对同一文件重复解析（浪费 I/O）或解析结果交错写入
-var _preparse_inflight: Dictionary = {}
-
-## 在 worker 线程中预解析 MIDI，使后续 load_midi() 命中缓存跳过同步解析
-## 同时在 worker 中完成 track_channel_instruments 复用 + runtime_track_channel_notes 分组构建
-## 主线程在 await 期间可继续渲染转场动画，避免首次进入 TrackView 时的解析卡顿
-## 同一 MIDI 多请求方去重：若已有解析在进行（MidiView 统计或另一视图发起的），
-## 本函数直接等待其完成，绝不重复启动解析
-## TrackView._load_midi 在调用 load_midi 之前 await 本方法
-func preparse_midi_async(midi_data: MidiData) -> bool:
+## 预解析 MIDI，使后续 load_midi() 命中缓存跳过同步解析。
+##
+## 同步执行：解析主体是 C# MidiCore.ParseChartFile（纯 .NET、无场景树访问），
+## 主循环没有必须等待的理由。此前用 WorkerThreadPool + `while ... await process_frame`
+## 轮询是因为 GDScript 无法阻塞等待线程——那层等待只是GDScript 的妥协，
+## 解析本身并不需要异步。调用方改为普通调用。
+func ensure_parsed(midi_data: MidiData) -> bool:
 	# 缓存命中检查（与 load_midi 内部条件一致）
 	# 命中缓存时 runtime_track_channel_notes 已由本函数构建，TrackView._build_buckets 可直接复用
-	if midi_data.has_notes() and not midi_data._runtime_track_infos.is_empty():
-		# 缓存命中时也复用已构建的 cached_track_channel_instruments（避免 load_midi 重新提取）
-		# 但 cached_track_channel_instruments 是 MidiPlaybackManager 单实例字段，切换 MIDI 时会被 clear
-		# 此处不做特殊处理：load_midi 内部会判断 cached_track_channel_instruments 是否为空决定是否调用提取
+	if midi_data.has_notes() and midi_data.track_count > 0:
 		# 确保 (track,channel) 索引分组已就绪：某些路径（如 load_midi 直接设置 notes_soa、或复用旧实例）
 		# 可能只重建了 SOA 而未建分组，缺则从 SOA 重建，保证 TrackView._build_buckets 总是能取到数据
 		if midi_data.runtime_track_channel_notes.is_empty() \
 				and midi_data.notes_soa != null and midi_data.notes_soa.size() > 0:
 			midi_data.runtime_track_channel_notes = midi_data.notes_soa.grouped_indices()
 		return true  # 已缓存，无需预解析
-
-	# 同一 MIDI 已有解析在进行：单纯等待其完成（MidiListItem 的统计解析 / TrackView / PlayView 共享一次解析）
-	if _preparse_inflight.has(midi_data):
-		while _preparse_inflight.has(midi_data) and not _preparse_inflight[midi_data].get("done", false):
-			await Engine.get_main_loop().process_frame
-		# 解析完成（成功或失败）；失败时字段仍为空，按失败处理
-		return (midi_data.has_notes() and not midi_data._runtime_track_infos.is_empty())
 
 	var midi_file_path := _locate_midi_file(midi_data)
 	if midi_file_path.is_empty():
@@ -1187,62 +1172,39 @@ func preparse_midi_async(midi_data: MidiData) -> bool:
 	# 预先写入路径，让 load_midi 内部的缓存检查 (midi_data.midi_file_path == midi_file_path) 命中
 	midi_data.midi_file_path = midi_file_path
 
-	# 注册本次解析，后续同 MIDI 请求方走等待分支
-	var inflight_entry := {"done": false}
-	_preparse_inflight[midi_data] = inflight_entry
-
-	# 在 worker 线程中执行 MIDI 解析（C# 纯 .NET + PackedArray marshalling，线程安全）
-	# NoteEvent 重建与 track_channel_notes 分组在主线程完成（避免 worker 创建 66k RefCounted）
-	var result_wrapper := {"parse": null, "instruments": null}
-	var task_id := WorkerThreadPool.add_task(func():
-		var _parse_result: Dictionary = MidiParser.load_and_parse_midi(midi_file_path)
-		result_wrapper["parse"] = _parse_result
-		if _parse_result.get("success", false):
-			# 乐器信息由 C# MidiParserNative 一次性提取，直接复用（小 Dictionary，worker 安全）
-			result_wrapper["instruments"] = _parse_result.get("track_instruments", {})
-	, false, "MIDI Preparse")
-
-	# 主线程轮询任务完成状态，期间继续渲染转场动画（非阻塞）
-	while not WorkerThreadPool.is_task_completed(task_id):
-		await Engine.get_main_loop().process_frame
-
-	# 任务已完成，wait_for_task_completion 仅做线程 join（瞬时返回）
-	WorkerThreadPool.wait_for_task_completion(task_id)
-
-	var parse_result: Dictionary = result_wrapper["parse"]
-	if not parse_result.get("success", false):
-		_preparse_inflight.erase(midi_data)
+	# 解析主体在 C#（按路径幂等，命中即跳过读盘）。
+	# 读路径与缓存键分开：读路径可为 PCK 内 res://Resources 回退，键始终是原路径。
+	var pp := _resolve_parse_paths(midi_file_path)
+	if not MidiCore.HasParsed(pp.key):
+		MidiCore.ParseChartFile(pp.read, pp.key)
+	if not MidiCore.HasParsed(pp.key):
 		push_error("[MidiPlaybackManager] Failed to parse MIDI file: %s" % midi_file_path)
 		return false
 
 	# 音符数据以 SOA 紧凑数组存储（不 materialize 全量 NoteEvent，20w+ 音符内存优化）
 	# 单一授权点：SOA + 轨道-通道分组一并写入，保证与 notes_soa 强一致
-	midi_data.set_parsed_soa(parse_result)
+	var tl: Array = MidiCore.GetBpmTimeline(pp.key)
+	midi_data.set_parsed_soa(pp.key, MidiCore.GetTimebase(pp.key), tl)
 
 	# 写入 midi_data 字段，load_midi 后续会命中缓存跳过同步解析
 	# 与 load_midi 一致：duplicate() 防止后续修改影响原解析结果
-	midi_data.bpm_timeline = parse_result.get("bpm_timeline", []).duplicate()
-	midi_data.midi_timebase = parse_result.get("timebase", 480)
-	midi_data._runtime_track_infos = parse_result["track_infos"]
-	midi_data.track_count = parse_result["track_infos"].size()
-	midi_data.duration_ms = parse_result["duration_ms"]
-	midi_data.max_end_tick = float(parse_result.get("max_end_tick", 0))
+	midi_data.bpm_timeline = tl.duplicate()
+	midi_data.midi_timebase = MidiCore.GetTimebase(pp.key)
 
-	# 复用 worker 中已构建的乐器信息字典（避免 load_midi 重新提取，省 ~5-15ms）
-	# C# MidiParserNative 一次性提取，直接复用
-	cached_track_channel_instruments = result_wrapper["instruments"]
+	midi_data.track_count = MidiCore.GetTrackCount(pp.key)
+	midi_data.duration_ms = MidiCore.GetDurationMs(pp.key)
+	midi_data.max_end_tick = MidiCore.GetMaxEndTick(pp.key)
+
+	# 复用 C# 解析阶段一次性提取的乐器信息（避免 load_midi 重新遍历事件，省 ~5-15ms）
+	cached_track_channel_instruments = MidiCore.GetTrackInstruments(pp.key)
 	midi_data.track_channel_instruments = cached_track_channel_instruments.duplicate()
 
 	_trim_parsed_notes_cache()
 
 	# SOA 来源数组已按 start_tick 升序排序，无需重复排序
 
-	# 标记完成并移除在途记录（等待方在 while 循环里以 has() 守卫，erase 后立即退出循环）
-	inflight_entry["done"] = true
-	_preparse_inflight.erase(midi_data)
-
 	var json_note_count: int = midi_data.notes_soa.size()
-	GLogger.info("MIDI preparse completed (threaded): %d notes, duration=%.0fms, %d (track,channel) groups" % [
+	GLogger.info("MIDI preparse completed: %d notes, duration=%.0fms, %d (track,channel) groups" % [
 		json_note_count,
 		midi_data.duration_ms,
 		midi_data.runtime_track_channel_notes.size()
@@ -1306,8 +1268,6 @@ func recover_audio_output() -> void:
 	if midi_player.has_method("recover_audio_output"):
 		midi_player.call("recover_audio_output")
 		_vocal_initialized = false
-		# 设备重建后原始渲染时钟可能变化，重置 stall 缓存避免误判
-		_last_raw_midi_position_ms = -1.0
 		GLogger.info("Audio output bridge recreated for interruption recovery", "MidiPlaybackManager")
 
 ## 兼容性空流程：原生解码已在 load_midi 预载，无需等待 worker
@@ -1384,7 +1344,6 @@ var _suppress_state_signal: bool = false
 
 ## 停止播放
 func stop() -> void:
-	_last_raw_midi_position_ms = -1.0
 	deferred_play_pending = false
 	deferred_vocal_resync_pending = false
 	var backend = _get_active_backend()
@@ -1470,27 +1429,8 @@ func get_loop() -> bool:
 		return backend.get_loop()
 	return false
 
-## 听歌降耗档：把音频缓冲切到省电档（Android 上 period 4096×3，听歌无所谓延迟，缓冲拉长更省电）。
-## 只在播放器页面听歌时开启，打歌/音轨用回 256 保持低延迟。
-## 档位真的变化时 C# 侧会重建输出桥（见 ApplyAudioPeriodForProfile）：桥重建后
-## sequencer 的输出被打断，而 is_playing 仍为 true —— 不同步恢复就表现为
-## "回到播放器页 MIDI 不响"（页面侧 _ensure_playing 看到 is_playing 会直接跳过）
-var _listening_profile_applied: bool = false
-
-func set_listening_profile(enabled: bool) -> void:
-	if enabled == _listening_profile_applied:
-		return
-	_listening_profile_applied = enabled
-	var backend = _get_active_backend()
-	if backend == null:
-		return
-	var was_playing := is_playing
-	backend.set_listening_profile(enabled)
-	if was_playing and current_midi_data != null:
-		# 桥重建后原生人声解码器失效，置位让 play() 重新预载人声
-		_vocal_initialized = false
-		reset_sync_state()
-		play()
+## 听歌降耗档已移除：它靠页面进出切换音频缓冲，收益可忽略却带来切页重构音频桥、
+## 人声位置读数量化导致持续 seek 等问题。音频 period 固定为低延迟档（256×2）。
 
 ## 跳转到指定位置
 ## position: 位置（毫秒）
@@ -1510,7 +1450,6 @@ func seek(pos: float) -> void:
 	# seek_ms is queued in the C# backend and is applied on its next _Process.
 	# Submit the matching vocal target now instead of reading the still-old MIDI
 	# clock from the caller immediately after seek().
-	_last_raw_midi_position_ms = -1.0
 	last_sync_check_pos_ms = pos
 	_seek_vocal_to_midi_position(pos)
 
@@ -1773,6 +1712,11 @@ func _initialize_meltysynth_backend() -> bool:
 	if wrapper.has_signal("vocal_finished"):
 		wrapper.vocal_finished.connect(_on_vocal_finished)
 		GLogger.info("Connected vocal_finished signal", "MidiPlaybackManager")
+	# C# 唯一曲终/回绕检测：loop=true 时 sequencer 自己回绕、永不发 finished，
+	# 列表前进只能挂在这个信号上
+	if wrapper.has_signal("loop_wrapped"):
+		wrapper.loop_wrapped.connect(_on_loop_wrapped)
+		GLogger.info("Connected loop_wrapped signal", "MidiPlaybackManager")
 
 	# 后台加载完成（含异步预加载）时标记已就绪，play() 不再重复触发加载
 	if wrapper.has_signal("soundfont_changed"):
@@ -1970,23 +1914,6 @@ func unmute_all_channels() -> void:
 	current_midi_data.clear_all_mutes()
 	GLogger.info("All channels unmuted", "MidiPlaybackManager")
 
-## 获取已选中轨道对应的Note
-func get_selected_track_notes() -> Array:
-	if current_midi_data == null:
-		return []
-	# SOA 路径：按 selected_track_indices 从 SOA 按需构建 NoteEvent 子集（不 materialize 全量）
-	if current_midi_data.notes_soa != null and current_midi_data.notes_soa.size() > 0:
-		var soa := current_midi_data.notes_soa
-		var selected := current_midi_data.selected_track_indices
-		var notes: Array = []
-		for i in range(soa.size()):
-			if soa.track(i) in selected:
-				notes.append(soa.note(i))
-		return notes
-	if current_notes.is_empty():
-		return []
-	return MidiParser.extract_notes_by_track(current_notes, current_midi_data.selected_track_indices)
-
 ## 获取可用的乐器预设列表
 func get_presets_list() -> Array:
 	var backend = _get_active_backend()
@@ -2043,21 +1970,29 @@ func _get_default_instrument(channel: int) -> Dictionary:
 		return {"bank": 0, "program": 0}    # Grand Piano
 
 ## 同步轨道-通道静音状态到后端（清理旧MIDI残留）
+##
+## 必须遍历 C# 的 (track,channel) 列表（soa_pairs_of），不能用
+## cached_track_channel_instruments：那个缓存只在解析分支填充，缓存命中分支不填，
+## 而 unload_midi 会 clear()它——于是"解析过→卸载→再加载"后这里遍历空字典、
+## 静音完全不生效。
 func _apply_mute_state_to_backend(backend: MidiPlaybackInterface) -> void:
 	if backend == null:
 		return
-	
-	# 优先使用缓存的(track, channel)映射，确保覆盖所有实际通道
-	for track_idx in cached_track_channel_instruments.keys():
-		var channels = cached_track_channel_instruments[track_idx]
-		for channel in channels.keys():
-			var muted = current_midi_data.get_track_channel_mute(track_idx, channel)
-			backend.set_track_channel_mute(track_idx, channel, muted)
-	
-	GLogger.info("Applied mute state for %d tracks" % cached_track_channel_instruments.size(), "MidiPlaybackManager")
 
-## 应用随 MIDI 保存的运行时配置（与 PlayView._apply_midi_runtime_config 同语义）。
+	# 先清掉上一首残留的静音，再按当前曲目的持久化状态下发
+	var pairs := soa_pairs_of(current_midi_data)
+	for pair in pairs:
+		var muted: bool = current_midi_data.get_track_channel_mute(pair[0], pair[1])
+		backend.set_track_channel_mute(pair[0], pair[1], muted)
+
+	GLogger.info("Applied mute state for %d track-channel pairs" % pairs.size(), "MidiPlaybackManager")
+
+## 应用随 MIDI 保存的运行时配置。
 ## 轨道音量/乐器覆盖已在 load_midi 应用，此处补齐其余项，并新增启用通道门控
+##
+## 唯一权威实现：TrackView / PlayView / MusicPlayerView 三处播放入口都经此下发，
+## 保证同一谱面听感一致（PlayView 曾有一份副本，缺少启用通道门控，会播放
+## TrackView 里已禁用的通道；已删除，统一走这里）。
 func apply_midi_runtime_config(midi_data: MidiData) -> void:
 	if midi_data == null:
 		return
@@ -2077,36 +2012,32 @@ func apply_midi_runtime_config(midi_data: MidiData) -> void:
 	# solo（Additive Solo，与 TrackView._apply_solo_state 一致）：
 	# 独奏轨保持上面的持久化静音状态，非独奏轨运行时静音（不写 MidiData，避免污染持久化配置）
 	if not midi_data.solo_pairs.is_empty():
-		var seen_pairs := {}
-		var soa := midi_data.notes_soa
-		if soa != null and soa.size() > 0:
-			for i in range(soa.size()):
-				var solo_key := "%d:%d" % [soa.track(i), soa.channel(i)]
-				if seen_pairs.has(solo_key):
-					continue
-				seen_pairs[solo_key] = true
-				if not midi_data.solo_pairs.has(solo_key):
-					set_track_channel_mute_runtime(soa.track(i), soa.channel(i), true)
+		for pair in soa_pairs_of(midi_data):
+			if not midi_data.solo_pairs.has("%d:%d" % [pair[0], pair[1]]):
+				set_track_channel_mute_runtime(pair[0], pair[1], true)
 
 	# 启用/禁用通道（TrackView 的音轨启用开关）：未启用的通道运行时静音。
 	# 此前启用状态只影响音符显示，从不进合成器——这里补上音频侧
-	var enable_soa := midi_data.notes_soa
-	if enable_soa != null and enable_soa.size() > 0:
-		var seen_enable := {}
-		for i in range(enable_soa.size()):
-			var pair_key := "%d:%d" % [enable_soa.track(i), enable_soa.channel(i)]
-			if seen_enable.has(pair_key):
-				continue
-			seen_enable[pair_key] = true
-			var t := enable_soa.track(i)
-			var c := enable_soa.channel(i)
-			if not midi_data.is_track_channel_selected(t, c):
-				set_track_channel_mute_runtime(t, c, true)
+	for pair in soa_pairs_of(midi_data):
+		if not midi_data.is_track_channel_selected(pair[0], pair[1]):
+			set_track_channel_mute_runtime(pair[0], pair[1], true)
 
 	# 人声偏移量
 	set_vocal_offset_ms(midi_data.vocal_offset_ms)
 	GLogger.info("MIDI runtime config applied: mute_states=%d, solo_pairs=%d" %
 		[midi_data.track_channel_mute_state.size(), midi_data.solo_pairs.size()], "MidiPlaybackManager")
+
+## 解析用路径：key 始终是原路径（缓存键，后续查询都用它）；
+## read 在谱面目录不可读时回退到 PCK 内 res://Resources 副本。
+func _resolve_parse_paths(path: String) -> Dictionary:
+	if FileAccess.file_exists(path):
+		return {"read": path, "key": path}
+	var files_dir := PathHelper.get_files_dir()
+	if not files_dir.is_empty() and path.begins_with(files_dir):
+		var fb := path.replace(files_dir, "res://Resources/")
+		if FileAccess.file_exists(fb):
+			return {"read": fb, "key": path}
+	return {"read": path, "key": path}
 
 ## 辅助函数：定位MIDI文件路径
 func _locate_midi_file(midi_data: MidiData) -> String:
@@ -2197,67 +2128,16 @@ func _on_backend_soundfont_changed(_path: String) -> void:
 		_settings_reload_pending = false
 		soundfont_reload_completed.emit()
 
-## 获取当前MIDI的轨道信息列表
-func get_track_infos() -> Array:
-	if current_midi_data == null:
-		return []
-	# 优先使用 load_midi() 中已缓存的 _runtime_track_infos，避免重复解析 MIDI 文件
-	# （MIDI 解析是同步文件 I/O + 数据结构构建，开销很大）
-	if not current_midi_data._runtime_track_infos.is_empty():
-		return current_midi_data._runtime_track_infos
-
-	# 回退：缓存缺失时才重新解析
-	var parse_result = MidiParser.load_and_parse_midi(current_midi_data.midi_file_path)
-	if parse_result["success"]:
-		current_midi_data._runtime_track_infos = parse_result["track_infos"]
-		return parse_result["track_infos"]
-
-	return []
+## 获取当前 MIDI 的轨道数量（C# 解析缓存直接给）。
+## 过去这里返回 Array[TrackInfo] 供 UI 取轨道名，但那份name 从未被填充、
+## 恒为 "Track %d"，而消费方 TrackView 自己也用同样的字符串兜底——
+## 故只保留数量，轨道名统一由调用方按 "Track %d" 生成。
+func get_track_count() -> int:
+	if current_midi_data == null or current_midi_data.midi_file_path.is_empty():
+		return 0
+	return MidiCore.GetTrackCount(current_midi_data.midi_file_path)
 
 ## ========== Note分类接口 ==========
-## 将解析的note分为两类：自动播放和手动控制
-## 该方法当前仅为占位，待后续将Touhou Mix原有生成逻辑移植过来
-## @param	all_notes				所有已解析的 NoteEvent 列表
-## @param	manual_track_indices	需要手动控制的轨道索引数组
-## @return 返回 {auto_play_notes: Array[NoteEvent], manual_control_notes: Array[NoteEvent]}
-func classify_notes(all_notes: Array, manual_track_indices: Array[int] = []) -> Dictionary:
-	var result = {
-		"auto_play_notes": [],
-		"manual_control_notes": []
-	}
-	
-	if all_notes.is_empty():
-		return result
-	
-	# 创建manual轨道集合便于快速查询
-	var manual_tracks_set = {}
-	for track_idx in manual_track_indices:
-		manual_tracks_set[track_idx] = true
-	
-	# ========== 预留分类逻辑 ==========
-	# 此处将在后续实现具体的分类算法
-	# 目前暂时将所有note划为自动播放，待游戏逻辑完成后填充
-	#
-	# 当前暂时实现方案：
-	for note in all_notes:
-		if note is MidiParser.NoteEvent:
-			# 检查note的轨道是否在手动控制列表中
-			if note.track_index in manual_tracks_set:
-				# 手动控制音符：播放器端通过 set_manually_controlled_notes 标记跳过自动播放，
-				# 由游戏逻辑直接调用 trigger_note_on/off，无需额外的 Note 子类
-				result["manual_control_notes"].append(note)
-			else:
-				# 自动播放音符
-				result["auto_play_notes"].append(note)
-		else:
-			# 非NoteEvent类型，默认为自动播放
-			result["auto_play_notes"].append(note)
-	
-	GLogger.info("Classified notes: %d auto-play, %d manual-control" % 
-		[result["auto_play_notes"].size(), result["manual_control_notes"].size()], "MidiPlaybackManager")
-	
-	return result
-
 ## 从 KeySequenceCore（ksm 访问器）读取手动控制音符（C# 保存数据，索引指向 enabled 输入数组）
 func set_manual_control_from_core(ksm) -> void:
 	if ksm == null or midi_player == null:
@@ -2596,13 +2476,29 @@ func _sync_vocal_with_midi() -> void:
 	var vocal_position = audio_manager.get_vocal_position()
 	var diff = abs(vocal_position - expected_vocal_position)
 
-	# 如果差值超过阈值，进行同步调整
+	# 只有"误差持续超阈"才纠正，且纠正后冷却一段时间。
+	# 输出缓冲大时（听歌降耗档 4096×3）人声位置读数本身有 ~80ms 量化，单次四五十毫秒的
+	# 误差会一直触发 seek —— 每秒纠正数次，听感就是卡顿并刷满日志。
 	if diff > sync_threshold_ms:
+		_vocal_sync_offense += 1
+	else:
+		_vocal_sync_offense = 0
+	var now_ms := Time.get_ticks_msec()
+	if _vocal_sync_offense >= VOCAL_SYNC_OFFENSE_NEEDED \
+			and now_ms - _last_vocal_sync_ms >= VOCAL_SYNC_COOLDOWN_MS:
 		audio_manager.seek_vocal(expected_vocal_position)
+		_last_vocal_sync_ms = now_ms
+		_vocal_sync_offense = 0
 		GLogger.info("Vocal sync adjusted: diff=%.0f ms, target=%.0f ms" % [diff, expected_vocal_position], "MidiPlaybackManager")
 
 	# 更新上次同步检查的位置
 	last_sync_check_pos_ms = midi_position_ms
+
+## 人声同步节流参数：连续 N 次超阈 + 冷却期内只纠正一次
+const VOCAL_SYNC_OFFENSE_NEEDED := 2
+const VOCAL_SYNC_COOLDOWN_MS := 1500
+var _vocal_sync_offense: int = 0
+var _last_vocal_sync_ms: int = 0
 
 ## 设置音频同步阈值（毫秒）
 func set_sync_threshold(threshold_ms: float) -> void:
@@ -2613,6 +2509,9 @@ func set_sync_threshold(threshold_ms: float) -> void:
 # 而不是等 100ms 间隔过去，避免 MIDI/人声启动延迟差异在前 100ms 内不被纠正
 func reset_sync_state() -> void:
 	last_sync_check_pos_ms = -1000.0
+	# 同步节流状态随新播放清零，避免上一首遗留的计数立刻触发一次 seek
+	_vocal_sync_offense = 0
+	_last_vocal_sync_ms = 0
 
 ## 配置变更回调（新增）
 func _on_config_changed(key: String, section: String, value: Variant) -> void:

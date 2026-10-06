@@ -38,9 +38,13 @@ var _pl_sample_time: float = 0.0
 var _pl_fling: float = 0.0
 var _pl_flinging: bool = false
 
-## 上次构建播放列表时的内容签名（各 MidiData 的 instance id 序列）。
+## 上次构建播放列表时的内容签名（keys 序列）。
 ## 面板每次打开都调 _rebuild_playlist_list，列表没变时靠它跳过全量重建
-var _pl_last_sig: PackedInt64Array = PackedInt64Array()
+var _pl_last_sig: PackedStringArray = PackedStringArray()
+
+## 可见窗口行的 MidiData 缓存：只对可视行按 key 水合，不整表水合（省内存）。
+## 行池有上限，缓存随之有界；超限整体清空，丢的重水合很快。
+var _row_data_cache: Dictionary = {}
 
 ## 当前歌跟随：面板打开且用户无操作时，定期把视图滚到当前歌（不在可视区才滚）。
 ## 滚动带动画；动画期间 scrollbar 的 value_changed 不算用户操作
@@ -231,7 +235,7 @@ func _sync_row_window(force: bool = false) -> void:
 	if _row_stride_px <= 0.0:
 		return
 	var mgr := MidiPlaybackManager.instance
-	var total: int = mgr.playlist.size() if mgr != null else 0
+	var total: int = mgr.playlist_count() if mgr != null else 0
 	var cur: int = mgr.playlist_index if mgr != null else -1
 	var first := 0
 	if total > _pool_rows.size():
@@ -254,23 +258,38 @@ func _sync_row_window(force: bool = false) -> void:
 		item.visible = true
 		if not force and item.index == idx:
 			continue
-		var data: MidiData = mgr.playlist[idx]
+		var data: MidiData = _midi_for_key(MidiCore.GetKeyAt(idx))
 		item.setup_with(data, idx, idx == cur)
 
 # ── 列表重建 ──────────────────────────────────────────
 
-func _playlist_sig(midis: Array[MidiData]) -> PackedInt64Array:
-	var sig := PackedInt64Array()
-	sig.resize(midis.size())
-	for i in midis.size():
-		sig[i] = midis[i].get_instance_id() if midis[i] != null else 0
+## 按 key 取（并缓存）MidiData：只对可视行水合，避免整表水合占内存
+func _midi_for_key(key: String) -> MidiData:
+	if key.is_empty():
+		return null
+	if _row_data_cache.has(key):
+		return _row_data_cache[key]
+	var m: MidiData = DataMGR.get_midi_by_id(key)
+	_row_data_cache[key] = m
+	# 有界：超过池行数两倍就整体清空（丢的重水合很快）
+	if _row_data_cache.size() > POOL_MAX_ROWS * 2:
+		_row_data_cache.clear()
+		_row_data_cache[key] = m
+	return m
+
+func _playlist_sig(keys: Array) -> PackedStringArray:
+	var sig := PackedStringArray()
+	sig.resize(keys.size())
+	for i in keys.size():
+		sig[i] = str(keys[i])
 	return sig
 
 func _rebuild_playlist_list() -> void:
 	var mgr := MidiPlaybackManager.instance
-	# 列表以 manager 为唯一事实来源（改收藏夹/增删时 manager 已同步）
-	var midis: Array[MidiData] = mgr.playlist if mgr != null else [] as Array[MidiData]
-	var sig := _playlist_sig(midis)
+	# 列表以 C# MidiCore 为唯一事实来源（改收藏夹/增删/打乱时 manager 已推过去）；
+	# 这里只读 keys 做签名与总数，不整表水合 MidiData
+	var keys: Array = mgr.playlist_keys() if mgr != null else []
+	var sig := _playlist_sig(keys)
 	# 内容没变且池已就绪才走复用；池未建（首次打开当帧 PlScroll 尚未布局，建池失败
 	# 走 deferred 重试）时必须放行，否则重试被这里挡死，面板永远空白
 	if sig == _pl_last_sig and _row_stride_px > 0.0:
@@ -283,9 +302,9 @@ func _rebuild_playlist_list() -> void:
 		# 行高还没量出来（首帧未布局），下一帧再试
 		_rebuild_playlist_list.call_deferred()
 		return
-	_playlist_total = midis.size()
-	_pl_list.total_count = midis.size()
-	_pl_empty.visible = midis.is_empty()
+	_playlist_total = keys.size()
+	_pl_list.total_count = keys.size()
+	_pl_empty.visible = keys.is_empty()
 	_sync_row_window(true)
 
 ## 列表本体变化（切随机/顺序重排、外部增删）→ 强制重绑池行内容
@@ -341,11 +360,11 @@ func _on_pl_add_fav_pressed() -> void:
 	var mgr := MidiPlaybackManager.instance
 	if mgr == null:
 		return
-	# 播放列表项都是已水合的 MidiData，转 chart_id 上报（收藏夹按 id 存储）
+	# 列表 key 即规范键（folder_name）= 收藏夹条目 id，直接上报，无需水合 MidiData
 	var ids: Array = []
-	for m in mgr.playlist:
-		if m != null:
-			ids.append(FavoriteManager.instance.chart_id_of(m))
+	for k in mgr.playlist_keys():
+		if not k.is_empty():
+			ids.append(k)
 	if ids.is_empty():
 		return
 	favorite_requested.emit(ids)
@@ -369,13 +388,23 @@ func _rebuild_fav_select() -> void:
 			_fav_select_btn.add_item(f.name)
 			_fav_select_btn.set_item_metadata(_fav_select_btn.item_count - 1, f.id)
 	# 恢复当前选择
-	if PlaylistMGR.source_fav_id.is_empty():
+	if MidiCore.GetSourceFavId().is_empty():
 		_fav_select_btn.select(0)
 	else:
 		for i in _fav_select_btn.item_count:
-			if str(_fav_select_btn.get_item_metadata(i)) == PlaylistMGR.source_fav_id:
+			if str(_fav_select_btn.get_item_metadata(i)) == MidiCore.GetSourceFavId():
 				_fav_select_btn.select(i)
 				break
+
+## 收藏夹 → 规范键数组（收藏夹按 chart_id/chart_key 存储，与列表 key 同源）
+func _keys_of_favorite(fav_id: String) -> Array:
+	var fav_mgr := FavoriteManager.instance
+	if fav_mgr == null:
+		return []
+	var out: Array = []
+	for m in fav_mgr.get_midis_of_favorite(fav_id):
+		out.append(fav_mgr.chart_id_of(m))
+	return out
 
 func _on_fav_select_selected(idx: int) -> void:
 	var fav_id := str(_fav_select_btn.get_item_metadata(idx))
@@ -384,20 +413,16 @@ func _on_fav_select_selected(idx: int) -> void:
 		return
 	if fav_id.is_empty():
 		# 「未选择歌单」：只解除关联，不动列表内容
-		PlaylistMGR.source_fav_id = ""
+		MidiCore.SetSourceFavId("")
 		return
 	# 选中收藏夹 = 用它整表替换当前播放列表（空收藏夹即替换为空列表）
-	var keys := PlaylistMGR.keys_of_favorite(fav_id)
-	PlaylistMGR.source_fav_id = fav_id
-	var list: Array[MidiData] = []
-	for k in keys:
-		var m: MidiData = DataMGR.get_midi_by_id(str(k))
-		if m != null:
-			list.append(m)
+	# 直接用 keys 开会话，免去把整表水合成 MidiData（省内存）
+	var keys := _keys_of_favorite(fav_id)
+	MidiCore.SetSourceFavId(fav_id)
 	# 选歌单是「要记住」的会话（persist=true），并按本页页面级模式开文件循环
 	# （loop_file=true）——播完的推进挂在这个回绕点上，非空则从第一首起播
-	mgr.start_session(list, 0, true, true)
-	if not list.is_empty():
+	mgr.start_session_keys(keys, 0, true)
+	if not keys.is_empty():
 		mgr.play_playlist_index(0)
 	_rebuild_fav_select()
 	_rebuild_playlist_list()

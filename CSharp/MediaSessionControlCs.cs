@@ -109,7 +109,7 @@ public partial class MediaSessionControlCs : Node
 	// attribute），方法按 C# 名原样暴露。两侧后端契约靠这个名字对齐（Java 侧同为
 	// snake_case）；写成 PascalCase 会让 GDScript 静默失败（Nonexistent function）。
 	public void update_state(bool playing, double positionMs, double durationMs, string title, string album,
-		byte[] coverPng, int endAction)
+		byte[] coverPng)
 	{
 		if (_smtc == null)
 		{

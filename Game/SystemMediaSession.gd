@@ -6,7 +6,7 @@
 ## 音频完全走 miniaudio 原生设备、不经过 Godot AudioServer，引擎内置的媒体集成
 ## 不可用，各平台需自行实现后端。后端统一契约：
 ##   signal command_received(action: String, position_ms: float)
-##   func update_state(playing, position_ms, duration_ms, title, album, cover_png, end_action)
+##   func update_state(playing, position_ms, duration_ms, title, album, cover_png)
 ##   func clear()
 ## cover_png 为 PNG 字节（封面嵌入 MediaMetadata 需字节流，路径仅平台内部使用）
 ##
@@ -138,7 +138,7 @@ func push_state(force: bool = false) -> void:
 		_meta_cached = _build_metadata()
 	_ensure_cover_loaded(_meta_cached["cover_path"])
 	_backend.update_state(playing, mgr.position_ms, mgr.get_backend_duration_ms(),
-		_meta_cached["title"], _meta_cached["album"], _cover_png, mgr.get_track_end_action())
+		_meta_cached["title"], _meta_cached["album"], _cover_png)
 
 func _process(delta: float) -> void:
 	# MidiPlaybackManager 由 Main 在 autoload 之后创建，_ready 时可能尚未实例化，
@@ -270,14 +270,18 @@ func _poll_backend_command() -> void:
 
 var _poll_warned: bool = false
 
-## 跳转到播放器页。当前在 TrackView 时先一次性退回 AlbumView，避免把 TrackView
-## 留在返回栈里（否则从播放器返回会回到音轨页，语义不对）。
+## 跳转到播放器页。当前在 TrackView 时，只把它从返回栈里摘掉、不切状态：
+## 旧实现用 go_back_to(ALBUM_VIEW) 中转，会触发 TrackView 的注销分支 ——
+## unregister_view 会 clear() 媒体通知并 stop() 播放，切到播放器页又得重建、并把
+## 刚切过去的歌从头重播（日志实测：TrackView→ALBUM_VIEW→MUSIC_PLAYER_VIEW，
+## 中间 "Media session view unregistered (playback stopped)" + 第二次 load_midi/play）。
+## 摘栈同样保证"从播放器返回回到 AlbumView"，但没有那次多余的状态切换。
+## stash=false：不把当前状态压栈，返回键从播放器直接回 AlbumView
 func _navigate_to_player() -> void:
 	if UiStatMGR.current_state == UIStateManager.UIState.MUSIC_PLAYER_VIEW:
 		return
 	if UiStatMGR.current_state == UIStateManager.UIState.TRACK_VIEW:
-		UiStatMGR.go_back_to(UIStateManager.UIState.ALBUM_VIEW)
-	# stash=false：不再把当前页压栈，返回键从播放器直接回 AlbumView
+		UiStatMGR.state_history.erase(UIStateManager.UIState.TRACK_VIEW)
 	UiStatMGR.change_state(UIStateManager.UIState.MUSIC_PLAYER_VIEW, false)
 	GLogger.info("Navigated to music player view", "SystemMediaSession")
 
@@ -287,7 +291,7 @@ func _ensure_playlist_has_current() -> void:
 	var mgr := MidiPlaybackManager.instance
 	if mgr == null or mgr.current_midi_data == null:
 		return
-	if not mgr.playlist.is_empty():
+	if mgr.playlist_count() > 0:
 		return
 	var data: MidiData = mgr.current_midi_data
 	var key := data.chart_key if not data.chart_key.is_empty() else data.id

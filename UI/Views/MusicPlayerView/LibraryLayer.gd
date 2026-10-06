@@ -381,7 +381,7 @@ func _on_card_add(item: Dictionary) -> void:
 	if mgr == null:
 		return
 	var data: MidiData = DataMGR.get_midi_by_id(k)
-	if data != null and not mgr.playlist.has(data):
+	if data != null and not mgr.playlist_has_key(k):
 		mgr.append_to_playlist([data] as Array[MidiData])
 
 func _on_card_favorite(item: Dictionary) -> void:
@@ -396,7 +396,7 @@ func _on_batch_add_pressed() -> void:
 		return
 	var add: Array[MidiData] = []
 	for m in _visible_library_midis():
-		if not mgr.playlist.has(m):
+		if not mgr.playlist_has_midi(m):
 			add.append(m)
 	if not add.is_empty():
 		mgr.append_to_playlist(add)

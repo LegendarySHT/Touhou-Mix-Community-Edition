@@ -2,8 +2,8 @@
 ## 包装 C# MidiParserNative 产出的 6 个并行紧凑数组，作为音符数据的唯一事实来源。
 ## 替代 Array[NoteEvent] 的对象形态：22w 音符 = 22w 个 NoteEvent → 6 个 PackedInt32Array，
 ## 消除 Android ARM 上 RefCounted + StringName 引用计数开销（Easy 大谱面闪退/高内存的根源）。
-## 对象仅在下游"确实需要 NoteEvent"的边界点按需重建（note(i) / build_from_indices），
-## 而非一次性批量 materialize。访问器只在主线程使用；不创建 RefCounted 到 worker。
+## 不再重建 NoteEvent 对象：消费方（NoteRollView / TrackView / 键序列生成）一律经索引只读，
+## 键序列由C# KeySequenceCore 进程内直读数组。
 class_name NoteSoa
 extends RefCounted
 
@@ -24,10 +24,16 @@ var _group_indices: Variant = null    # 扁平 SOA 索引
 var _timebase: int = 480
 var _bpm_lookup: Array = []   # [[tick, bpm, cumulative_ms], ...]，按 tick 升序
 
-static func from_result(parse_result: Dictionary) -> NoteSoa:
-	## 从 load_and_parse_midi 结果构建（优先读 "soa" 字典，无则回退单数组空）。
+## 从 MidiCore（C# 解析权威）直接构建。此前经 MidiParser.load_and_parse_midi 的
+## 中间字典绕一圈，那层已删除。
+## timebase / bpm_timeline 仍由调用方给出（bpm_timeline 留在 GDScript 侧）。
+static func from_core(path: String, timebase: int, bpm_timeline: Array) -> NoteSoa:
 	var instance := NoteSoa.new()
-	instance._init_arrays(parse_result.get("soa", {}), parse_result.get("timebase", 480), parse_result.get("bpm_timeline", []))
+	# 未解析过时 C# 返回空字典，_init_arrays 内部按缺失处理
+	var arrays: Dictionary = {}
+	if MidiCore != null:
+		arrays = MidiCore.GetSoaArrays(path)
+	instance._init_arrays(arrays, timebase, bpm_timeline)
 	return instance
 
 func _init_arrays(arrays: Dictionary, timebase: int, bpm_timeline: Array) -> void:
@@ -69,11 +75,6 @@ func size_bytes() -> int:
 	return _pitches.to_byte_array().size() + _velocities.to_byte_array().size() \
 		+ _start_ticks.to_byte_array().size() + _durations.to_byte_array().size() \
 		+ _track_indices.to_byte_array().size() + _channels.to_byte_array().size()
-
-## 暴露 6 个底层并行数组（只读共享，COW 零拷贝），供 C# KeySequenceCore 按启用索引装配输入
-## 顺序：{pitches, velocities, start_ticks, durations, track_indices, channels}
-func get_raw_arrays() -> Array:
-	return [_pitches, _velocities, _start_ticks, _durations, _track_indices, _channels]
 
 func pitch(i: int) -> int:
 	return _pitches[i]
@@ -160,25 +161,6 @@ func _tick_to_ms(tick: float) -> float:
 			hi = mid - 1
 	var entry = _bpm_lookup[lo]
 	return entry[2] + (tick - entry[0]) * ((60000.0 / entry[1]) / float(_timebase))
-
-## ===================== 边界重建（按需建对象，不批量） =====================
-
-## 惰性重建单个 NoteEvent（仅明确的边界消费点使用，如 ManualNoteOffScheduler 触发）
-func note(i: int) -> MidiParser.NoteEvent:
-	return MidiParser.NoteEvent.new(
-		pitch(i), velocity(i),
-		start_tick(i), duration(i),
-		track(i), channel(i)
-	)
-
-## 按给定索引集合批量重建 NoteEvent 数组（索引须指向本 SOA，保持原有顺序）
-## 供 PlayView/MidiListItem 构建"启用 (track,channel) 子集"后再喂给 generate_keys
-func build_from_indices(indices: Array) -> Array:
-	var notes: Array = []
-	notes.resize(indices.size())
-	for k in range(indices.size()):
-		notes[k] = note(indices[k])
-	return notes
 
 ## ===================== 分组（索引化 runtime_track_channel_notes） =====================
 

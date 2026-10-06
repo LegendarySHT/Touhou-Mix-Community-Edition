@@ -22,11 +22,6 @@ var INDICATOR = PathRegistry.MIDI_VIEW_INDICATOR
 ## note_str / mpp_str 键缺席 → 需（重新）计算 Note 数量
 static var _info_cache: Dictionary = {}
 
-## 正在等待/计算的 midi_data（用于防止同一项重复触发计算）
-## 解析本身统一走 MidiPlaybackManager.preparse_midi_async（同一 MIDI 多请求方去重共享），
-## 本处不再自起 Thread，避免与 PlayView/TrackView 的 preparse 并发解析同一文件
-var _computing_midi: MidiData = null
-
 ## 配置去抖：同一帧内多次 config_changed（切换难度写多个 Generator 键）合并为一次重算，
 ## 避免每次写键各自触发一次全量 generate_keys 造成主线程卡顿
 var _recompute_pending: bool = false
@@ -265,37 +260,19 @@ func _start_midi_compute() -> void:
 		return
 
 	# 需要解析 MIDI 文件 ─ 交给 MidiPlaybackManager 统一解析：
-	# preparse_midi_async 对同一 MIDI 的多请求方去重（MidiView 统计 / TrackView / PlayView 共享一次解析），
-	# 若 PlayView/TrackView 已发起解析，本处直接等待其完成，绝不重复解析
-	if _computing_midi == midi:
-		return
-
-	_computing_midi = midi
-	_compute_async(midi)
-
-
-## 等待 MidiPlaybackManager 的共享解析完成，然后补全信息缓存（fire-and-forget 协程）
-func _compute_async(midi: MidiData) -> void:
+	# ensure_parsed 命中 C# 解析缓存时几乎零开销，未命中才真正解析。
+	# 解析主体在 C#（纯 .NET、无场景树访问），故同步调用即可。
 	var pm := MidiPlaybackManager.instance
 	if pm == null:
-		_computing_midi = null
 		return
+	var ok: bool = pm.ensure_parsed(midi)
 
-	var ok := await pm.preparse_midi_async(midi)
-
-	# 期间可能已切换选中项/退出列表：结果仍写入 _info_cache（供下次使用），
-	# 仅 _apply_display / _compute_and_cache_notes 内部以 is_inside_tree / selected_item 守卫刷新
 	if not ok:
 		_info_cache[midi.id] = {"time_str": "—", "note_str": "—", "mpp_str": "—"}
 		_apply_display()
-		if _computing_midi == midi:
-			_computing_midi = null
 		return
 
-	if _computing_midi == midi:
-		_computing_midi = null
-
-	# 构建并缓存 Time 字段（preparse_midi_async 已回填 duration_ms/bpm_timeline 等）
+	# 构建并缓存 Time 字段（ensure_parsed 已回填 duration_ms/bpm_timeline 等）
 	var entry: Dictionary = _info_cache.get(midi.id, {})
 	_fill_time_cache(midi, entry)
 	_info_cache[midi.id] = entry
@@ -362,18 +339,15 @@ func _compute_and_cache_notes(midi: MidiData) -> void:
 		_apply_display()
 		return
 
-	# 按 (track, channel) 筛选音符（SOA 优先：只对启用子集建索引，不 materialize 全量对象）
-	var enabled_indices: Array
-	if midi.notes_soa != null and midi.notes_soa.size() > 0:
-		var soa := midi.notes_soa
+	# 按 (track, channel) 筛选音符：解析数据在 C# MidiCore 缓存，这里只取启用子集索引
+	var path := midi.midi_file_path
+	var enabled_indices: PackedInt32Array
+	if not path.is_empty() and MidiCore.HasParsed(path):
 		if configs_initialized:
-			enabled_indices = midi.get_enabled_note_indices(enabled_pairs)
+			enabled_indices = MidiCore.GetEnabledIndices(path, midi.get_enabled_pair_keys())
 		else:
 			# 未初始化（极端兜底：如 pm 不可用）：全部纳入
-			enabled_indices = []
-			enabled_indices.resize(soa.size())
-			for i in range(soa.size()):
-				enabled_indices[i] = i
+			enabled_indices = MidiCore.GetAllIndices(path)
 	else:
 		enabled_indices = []
 
@@ -384,11 +358,10 @@ func _compute_and_cache_notes(midi: MidiData) -> void:
 		_apply_display()
 		return
 
-	# 异步生成（WorkerThreadPool 后台线程），避免 6 万音符时主线程阻塞 200-800ms
-	# 显式传入 midi 自己的 timebase/bpm_timeline；feed SOA 底层数组 + 启用索引，
-	# cache_key = midi_id + enabled_indices.hash()，与 PlayView 喂法一致可互相命中
+	# 异步生成（WorkerThreadPool 后台线程）；C# 直读其解析缓存，
+	# cache_key 与 PlayView 喂法一致可互相命中
 	var task_id := await ksm.generate_keys_async(
-		midi.notes_soa.get_raw_arrays(), enabled_indices, midi.id,
+		path, enabled_indices, midi.id,
 		midi.midi_timebase, midi.bpm_timeline
 	)
 	if task_id >= 0:

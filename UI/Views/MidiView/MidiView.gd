@@ -360,8 +360,8 @@ func _on_del_btn_pressed():
 			midi_to_del.vocal_file_path = ""
 			midi_to_del.vocal_offset_ms = 0
 			midi_to_del.vocal_volume = 0.5
-			# 写回 chart_runtime（权威 DB）
-			ChartDB.SaveRuntime(chart_id, midi_to_del.export_runtime_config())
+			# 写回 chart_runtime（权威 DB），经 MidiCore 配置权威入口
+			MidiCore.UpdateConfig(chart_id, midi_to_del.export_runtime_config())
 			GLogger.info("已删除人声音频: %s" % vocal_path, "MidiView")
 
 		"删除设定": # 重置设定：清除音轨/音量/静音/独奏配置，保留人声路径
@@ -377,7 +377,7 @@ func _on_del_btn_pressed():
 			# 重新解析简介并应用推荐轨道（修复 #59：删除设定后不会回落到从简介读取音轨配置的状态）
 			midi_to_del.set_track_config_initialized(false)
 			# 清空 chart_runtime（文档存在=已配置，删除=从未配置；与旧 JSON 整块移除 _runtime 语义一致）
-			ChartDB.ClearRuntime(chart_id)
+			MidiCore.ClearConfig(chart_id)
 			GLogger.info("已重置谱面设定: %s" % midi_to_del.name, "MidiView")
 
 		"删除曲包": # 删除曲包：删除整个文件夹，并从内存中移除

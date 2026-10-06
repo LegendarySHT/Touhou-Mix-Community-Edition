@@ -2199,8 +2199,7 @@ func _clear_vocal_config_for_deleted_audio(file_path: String, chart_ids: Array[S
 			continue
 		midi.vocal_file_path = ""
 		midi.vocal_enabled = false
-		if ChartDB and ChartDB.IsOpen():
-			ChartDB.SaveRuntime(chart_id, midi.export_runtime_config())
+		if MidiCore != null and MidiCore.UpdateConfig(chart_id, midi.export_runtime_config()):
 			GLogger.info("Cleared vocal config for chart %s after audio deletion: %s" % [chart_id, file_path], "FileSystemMGR")
 
 ## 删除 SF2 音源文件，并从 soundfonts_index 移除

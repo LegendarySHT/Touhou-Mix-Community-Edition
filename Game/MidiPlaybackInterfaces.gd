@@ -188,6 +188,15 @@ func get_vocal_position_ms() -> float:
 	push_error("get_vocal_position_ms not implemented")
 	return 0.0
 
+## 人声是否已就绪（解码缓冲已跟上）。无配置人声时视为就绪
+func is_vocal_ready() -> bool:
+	push_error("is_vocal_ready not implemented")
+	return true
+
+## 起播后补一次与拖动等价的原地 seek（后端按音频帧数计时，后台起播也生效）
+func request_startup_align() -> void:
+	push_error("request_startup_align not implemented")
+
 ## 人声是否正在播放
 func is_vocal_playing() -> bool:
 	push_error("is_vocal_playing not implemented")
@@ -204,3 +213,6 @@ func is_vocal_finished() -> bool:
 signal finished
 @warning_ignore("unused_signal")
 signal soundfont_changed(soundfont_path: String)
+## 曲终/回绕（loop=true 时音频回调统一检测到 sequencer 回绕）
+@warning_ignore("unused_signal")
+signal loop_wrapped

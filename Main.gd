@@ -57,6 +57,9 @@ func _notification(what: int) -> void:
 			# 蓝牙状态变化时自动切换延迟预设并重建音频桥跟随新默认设备
 			if MidiPlaybackManager.instance != null:
 				MidiPlaybackManager.instance.refresh_audio_delay()
+				# 熄屏/深后台期间 C# 可能已自行切到下一首（纯音频）：回前台按 C# 索引
+				# 把音符显示/轨道配置/人声补齐，并定位到后台已播到的位置
+				MidiPlaybackManager.instance.reconcile_current_song()
 				# 安卓：返回前台时仍处 PLAY_VIEW，设备可能已被系统打断(全屏来电/切后台再回)，
 				# 设备级重启自愈，避免挂断/返回后无声音；即使已自动暂停也先修好设备
 				if OS.get_name() == "Android" \

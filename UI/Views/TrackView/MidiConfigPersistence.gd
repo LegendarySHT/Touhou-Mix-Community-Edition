@@ -33,14 +33,14 @@ func save_midi_config() -> void:
 	# 导出运行时配置
 	var runtime_config = current_midi_data.export_runtime_config()
 
-	# 保存到 chart_runtime（优先使用file_hash，如果为空则使用id）
+	# 保存到 chart_runtime（权威 DB）。经 MidiCore.UpdateConfig 走配置权威入口，
+	# 与播放侧/后台换曲读的是同一份数据。
 	var chart_id = current_midi_data.file_hash if not current_midi_data.file_hash.is_empty() else current_midi_data.id
-	if ChartDB and ChartDB.IsOpen():
-		ChartDB.SaveRuntime(chart_id, runtime_config)
+	if MidiCore != null and MidiCore.UpdateConfig(chart_id, runtime_config):
 		GLogger.info("Successfully saved MIDI config to DB (volume: %d/%d, solo: %d, track_enabled: %s, vocal: %s)" %
 			[current_midi_data.midi_volume, current_midi_data.vocal_volume, _track_view.solo_pairs.size(), current_midi_data.selected_track_configs, _track_view._vocal_controller.vocal_file_path], "TrackView")
 	else:
-		push_error("[TrackView] ChartDB not open, cannot save MIDI config for: %s" % current_midi_data.id)
+		push_error("[TrackView] MidiCore.UpdateConfig failed for: %s" % current_midi_data.id)
 
 
 ## 恢复MIDI配置的数据部分（音量、进度条、独奏状态）

@@ -46,7 +46,7 @@ import java.util.Set;
  *   signal command_received(String action, double position_ms)
  *   signal audio_output_changed()
  *   update_state(boolean playing, double position_ms, double duration_ms,
- *                String title, String album, byte[] cover_png, int end_action)
+ *                String title, String album, byte[] cover_png)
  *   clear()
  *
  * 系统下发的命令经 emitSignal 送达（Java 侧在 UI 线程 emit，GDScript 可直接连）。
@@ -63,6 +63,14 @@ public class AndroidBridge extends GodotPlugin {
 	/** 音频输出设备增删（蓝牙/有线插拔）：上层据此立刻重算延迟预设，无需轮询 */
 	private static final SignalInfo AUDIO_OUTPUT_CHANGED =
 			new SignalInfo("audio_output_changed");
+	/** 后台空闲超时：退到后台持续 BG_IDLE_RELEASE_DELAY_MS 后发出，上层据此回收内存。
+	 *  必须由 Java 侧计时——Android 切后台后 Godot 主循环挂起，GDScript 的 _process /
+	 *  Timer 都不再运行，引擎侧无法自行判断"后台已持续多久"。 */
+	private static final SignalInfo BG_IDLE_RELEASE =
+			new SignalInfo("bg_idle_release");
+
+	/** 后台空闲判定时长（毫秒），与 GDScript 侧 MemoryGC 的语义一致 */
+	private static final long BG_IDLE_RELEASE_DELAY_MS = 30000L;
 
 	@Nullable
 	private MediaSession session;
@@ -90,9 +98,6 @@ public class AndroidBridge extends GodotPlugin {
 	private double lastDurationMs = 0.0;
 	private String lastTitle = "";
 	private String lastAlbum = "";
-	/** 上层声明的播完行为：0=无 1=原地重播（重启人声） 2=前进下一首。
-	 *  后台主循环停摆、GDScript 侧回绕检测不运行，墙钟 ticker 据此在回绕时补发 track_end。 */
-	private int lastEndAction = 0;
 	/** 最近一次的封面 PNG 字节与解码结果（字节相同则跳过重复解码） */
 	@Nullable
 	private byte[] lastCoverPng;
@@ -100,6 +105,22 @@ public class AndroidBridge extends GodotPlugin {
 	private android.graphics.Bitmap lastCover;
 	/** [诊断] 前台服务启动失败原因，供 GDScript 侧查询 */
 	private String lastFgsError = "";
+
+	// ===== 后台换曲的曲目元数据（文件契约） =====
+	//
+	// 熄屏/深后台时 Godot 主循环挂起，GDScript 无法再下发 update_state，
+	// 而 C# 侧的后台推进线程已经把歌换掉了 —— 结果通知区一直显示旧歌、
+	// 进度条按旧时长取模回绕。C# 无公开 API 可反向调本插件（Engine.GetSingleton
+	// 未暴露给 C#），故改用文件契约：C# 换曲成功后写 media_state.json，
+	// 本插件的墙钟 ticker 每次轮询时检查该文件是否变更。
+	//
+	// 放在固定引导目录（不随玩家自定义存储根迁移），两端都能确定推导：
+	//   /storage/emulated/0/Android/data/com.touhoumix.ce/files/media_state.json
+	/** 上一次读取到的文件修改时间，用于判定"是否换过歌" */
+	private long _mediaStateStampMs = -1L;
+	private static final String MEDIA_STATE_FILE = "media_state.json";
+	/** 只打印一次目录诊断，避免 ticker 每 500ms 刷屏 */
+	private boolean _mediaStateDirLogged = false;
 
 	public AndroidBridge(@NonNull Godot godot) {
 		super(godot);
@@ -117,6 +138,7 @@ public class AndroidBridge extends GodotPlugin {
 		Set<SignalInfo> signals = new HashSet<>();
 		signals.add(COMMAND_RECEIVED);
 		signals.add(AUDIO_OUTPUT_CHANGED);
+		signals.add(BG_IDLE_RELEASE);
 		return signals;
 	}
 
@@ -167,6 +189,65 @@ public class AndroidBridge extends GodotPlugin {
 	public android.view.View onMainCreate(@Nullable android.app.Activity activity) {
 		runOnUiThread(this::ensureSession);
 		return null;
+	}
+
+	// ===== 后台空闲计时（内存回收触发） =====
+	// Android 切后台后 Godot 主循环挂起（同 _ticker 的处境），引擎侧 _process / Timer 均不运行，
+	// 因此"后台已持续多久"只能由 Java 侧墙钟判断。此处只做计时与发信号，不做任何回收动作，
+	// 具体释放由 GDScript 侧 MemoryGC 在收到信号时执行。
+	//
+	// 进出后台的钩子用 GodotPlugin.onMainPause / onMainResume：
+	// Godot.onPause(host)/onResume(host) 会遍历插件回调这两个方法（已核对 godot-lib 字节码），
+	// 在 UI 线程于引擎挂起前/恢复后触发，是插件能拿到的最可靠时机。
+	private final Handler _bgWatchdog = new Handler(Looper.getMainLooper());
+	/** 看门狗是否已排期（pause 可能多次回调，避免重复堆叠） */
+	private boolean _bgWatchdogArmed = false;
+
+	private final Runnable _bgIdleRunnable = new Runnable() {
+		@Override
+		public void run() {
+			_bgWatchdogArmed = false;
+			Log.i(TAG, "[DIAG] background idle " + (BG_IDLE_RELEASE_DELAY_MS / 1000L)
+					+ "s -> emit bg_idle_release");
+			emitSignal(BG_IDLE_RELEASE);
+		}
+	};
+
+	@Override
+	public void onMainPause() {
+		super.onMainPause();
+		// 进后台立刻就发一次：此刻引擎可能仍在跑（onMainPause 在引擎挂起前回调），
+		// 赶上就地释放，才是真正"在后台压内存"；发不出去也无副作用（信号只是请求，释放幂等）。
+		Log.i(TAG, "[DIAG] onMainPause -> emit bg_idle_release (immediate)");
+		emitSignal(BG_IDLE_RELEASE);
+		// 兜底：若即时那次没被引擎处理（引擎随即被冻结），30 秒后再发一次，
+		// 届时会在引擎恢复运行时被处理
+		scheduleBackgroundWatchdog();
+	}
+
+	@Override
+	public void onMainResume() {
+		super.onMainResume();
+		cancelBackgroundWatchdog();
+	}
+
+	/** 进入后台：排期一次后台空闲判定 */
+	private void scheduleBackgroundWatchdog() {
+		if (_bgWatchdogArmed) {
+			return;
+		}
+		_bgWatchdogArmed = true;
+		_bgWatchdog.postDelayed(_bgIdleRunnable, BG_IDLE_RELEASE_DELAY_MS);
+		Log.i(TAG, "[DIAG] onMainPause -> bg idle watchdog armed (" + (BG_IDLE_RELEASE_DELAY_MS / 1000L) + "s)");
+	}
+
+	/** 回到前台：取消判定（后台时长未达阈值则不回收） */
+	private void cancelBackgroundWatchdog() {
+		if (_bgWatchdogArmed) {
+			Log.i(TAG, "[DIAG] onMainResume -> bg idle watchdog cancelled");
+		}
+		_bgWatchdogArmed = false;
+		_bgWatchdog.removeCallbacks(_bgIdleRunnable);
 	}
 
 	/**
@@ -269,6 +350,8 @@ public class AndroidBridge extends GodotPlugin {
 
 	@Override
 	public void onMainDestroy() {
+		// 后台空闲看门狗随插件一起撤下
+		cancelBackgroundWatchdog();
 		if (session != null) {
 			session.setActive(false);
 			session.release();
@@ -293,19 +376,13 @@ public class AndroidBridge extends GodotPlugin {
 
 	@UsedByGodot
 	public void update_state(boolean playing, double positionMs, double durationMs,
-			String title, String album, byte[] coverPng, int endAction) {
+			String title, String album, byte[] coverPng) {
 		runOnUiThread(() -> {
-			boolean songChanged = !lastTitle.equals(title == null ? "" : title);
 			lastPlaying = playing;
 			lastPositionMs = positionMs;
 			lastDurationMs = durationMs;
 			lastTitle = title == null ? "" : title;
 			lastAlbum = album == null ? "" : album;
-			lastEndAction = endAction;
-			// 换曲时位置归零，上一 tick 的曲尾位置不再是有效比对基准
-			if (songChanged) {
-				_lastTickPos = -1L;
-			}
 			foregroundWanted = true;
 			setCoverPng(coverPng);
 			pushState();
@@ -452,21 +529,16 @@ public class AndroidBridge extends GodotPlugin {
 	private final Handler _ticker = new Handler(Looper.getMainLooper());
 	private long _tickBasePositionMs = 0L;
 	private long _tickBaseUptimeMs = 0L;
-	/** 上一次 tick 的外推位置，用于识别墙钟回绕 */
-	private long _lastTickPos = -1L;
 
 	private static final long POSITION_TICK_INTERVAL_MS = 500L;
 
-	/** 以当前 lastPositionMs 重置墙钟基准。
-	 *  不重置 _lastTickPos：位置推送本身每 0.5s 一次，若每次推送都把比对基准清掉，
-	 *  ticker 就永远看不到"上一 tick 在曲尾"这个前提，回绕检测会时好时坏。
-	 *  仅在换曲（update_state 检测到曲名变化）时清基准。 */
+	/** 以当前 lastPositionMs 重置墙钟基准：外部 seek/换曲/回绕后进度外推必须重新起算。 */
 	private void resetTickBase() {
 		_tickBasePositionMs = (long) lastPositionMs;
 		_tickBaseUptimeMs = android.os.SystemClock.elapsedRealtime();
 	}
 
-	/** 依据墙钟推算当前位置；已知时长时按取模回绕（loop 由上层语义保证） */
+	/** 依据墙钟推算当前位置；已知时长时按时长取模回绕（loop 由上层语义保证） */
 	private double currentPositionMs() {
 		if (!lastPlaying) {
 			return lastPositionMs;
@@ -487,6 +559,148 @@ public class AndroidBridge extends GodotPlugin {
 		return pos;
 	}
 
+	/**
+	 * 读取 C# 后台推进写下的曲目元数据（media_state.json）。
+	 * 仅在文件 mtime 变化时解析（换曲频率极低，ticker 每 500ms 查一次 stat 很便宜），
+	 * 解析失败一律忽略——文件可能正被写入半截，下一个 tick 会再读。
+	 *
+	 * @return true 表示确实更新了歌名/时长（调用方需重置墙钟基准并推一次状态）
+	 */
+	private boolean pollMediaStateFile() {
+		// 必须用 getExternalFilesDir（= /storage/emulated/0/Android/data/<pkg>/files），
+	// 与 PathHelper.get_base_dir() 同址；getFilesDir() 是内部私有目录，两端读不到同一文件。
+		java.io.File dir = getActivity().getExternalFilesDir(null);
+		if (dir == null) {
+			Log.w(TAG, "[media-state] getExternalFilesDir returned null");
+			return false;
+		}
+		java.io.File f = new java.io.File(dir, MEDIA_STATE_FILE);
+		if (!_mediaStateDirLogged) {
+			_mediaStateDirLogged = true;
+			Log.i(TAG, "[media-state] watching " + f.getAbsolutePath()
+					+ " exists=" + f.exists());
+		}
+		if (!f.exists()) {
+			return false;
+		}
+		long stamp = f.lastModified();
+		if (stamp == _mediaStateStampMs) {
+			return false;   // 未变更
+		}
+		String json;
+		try {
+			json = new String(java.nio.file.Files.readAllBytes(f.toPath()),
+					java.nio.charset.StandardCharsets.UTF_8);
+		} catch (Exception e) {
+			return false;   // 读失败（可能是半写文件），下个 tick 再试
+		}
+		// 极简字段解析：格式由 C# 固定为 "key":"value" 的扁平 JSON，
+		// 歌名可能含引号/反斜杠，故只做转义还原而不引第三方库。
+		String title = extractJsonString(json, "title");
+		double duration = extractJsonNumber(json, "duration_ms");
+		if (title == null || duration <= 0.0) {
+			Log.w(TAG, "[media-state] bad payload in " + f.getAbsolutePath()
+					+ " title=" + title + " duration=" + duration);
+			return false;
+		}
+		String album = extractJsonString(json, "album");
+		if (album == null) {
+			album = "";
+		}
+		Log.i(TAG, "[media-state] read: " + title + " / " + album + " (" + (long) duration
+				+ "ms) from " + f.getAbsolutePath());
+		_mediaStateStampMs = stamp;
+		boolean changed = !title.equals(lastTitle) || duration != lastDurationMs
+				|| !album.equals(lastAlbum);
+		lastTitle = title;
+		lastDurationMs = duration;
+		lastPositionMs = 0.0;
+		lastAlbum = album;
+		// 封面：C# 给出谱面封面文件的绝对路径，这里直接解码（后台主循环停摆，
+		// GDScript 侧发不出新封面字节，只能走文件）。读不到就保留旧封面，不置空。
+		String coverPath = extractJsonString(json, "cover_path");
+		if (coverPath != null && !coverPath.isEmpty()) {
+			try {
+				android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(coverPath);
+				if (bmp != null) {
+					lastCover = bmp;
+					lastCoverPng = null;   // 与 setCoverPng 的字节缓存解耦，避免下次误判为未变
+					changed = true;
+				} else {
+					Log.w(TAG, "[media-state] cover decode failed: " + coverPath);
+				}
+			} catch (Exception e) {
+				Log.w(TAG, "[media-state] cover read failed: " + coverPath + " " + e.getMessage());
+			}
+		}
+		if (changed) {
+			// 换歌：墙钟基准必须重置，否则进度条从旧基准继续推进
+			resetTickBase();
+		}
+		return changed;
+	}
+
+	/** 取扁平 JSON 里的字符串字段（含 \" \\ \n 转义还原）；不存在或格式不符返回 null */
+	private static String extractJsonString(String json, String key) {
+		String needle = "\"" + key + "\":\"";
+		int start = json.indexOf(needle);
+		if (start < 0) {
+			return null;
+		}
+		int i = start + needle.length();
+		StringBuilder sb = new StringBuilder();
+		while (i < json.length()) {
+			char c = json.charAt(i);
+			if (c == '\\' && i + 1 < json.length()) {
+				char n = json.charAt(i + 1);
+				if (n == '"' || n == '\\') {
+					sb.append(n);
+					i += 2;
+					continue;
+				}
+				if (n == 'n') {
+					sb.append('\n');
+					i += 2;
+					continue;
+				}
+			}
+			if (c == '"') {
+				return sb.toString();
+			}
+			sb.append(c);
+			i++;
+		}
+		return null;
+	}
+
+	/** 取扁平 JSON 里的数值字段；不存在返回 -1 */
+	private static double extractJsonNumber(String json, String key) {
+		String needle = "\"" + key + "\":";
+		int start = json.indexOf(needle);
+		if (start < 0) {
+			return -1.0;
+		}
+		int i = start + needle.length();
+		int begin = i;
+		while (i < json.length()) {
+			char c = json.charAt(i);
+			if ((c >= '0' && c <= '9') || c == '-' || c == '+' || c == '.'
+					|| c == 'e' || c == 'E') {
+				i++;
+			} else {
+				break;
+			}
+		}
+		if (begin == i) {
+			return -1.0;
+		}
+		try {
+			return Double.parseDouble(json.substring(begin, i));
+		} catch (NumberFormatException e) {
+			return -1.0;
+		}
+	}
+
 	private final Runnable _tickRunnable = new Runnable() {
 		@Override
 		public void run() {
@@ -494,17 +708,11 @@ public class AndroidBridge extends GodotPlugin {
 			if (session == null || !lastPlaying) {
 				return;
 			}
-			long pos = (long) currentPositionMs();
-			// 墙钟回绕检测：上次 tick 在曲尾附近、本次已回到开头，且上层声明了播完行为时，
-			// 经命令通道补发 track_end（与 GDScript 侧逐帧回绕检测互为补充），
-			// 驱动换曲或重启人声。
-			if (lastEndAction != 0 && lastDurationMs > 0.0 && _lastTickPos >= 0L
-					&& _lastTickPos >= lastDurationMs - 1500L
-					&& pos + 1000L < _lastTickPos) {
-				Log.i(TAG, "[DIAG] wall-clock wrap detected, endAction=" + lastEndAction);
-				emitCommand("track_end", -1.0);
+			// 后台换曲：C# 推进线程换了歌但主循环挂起、无法下发 update_state，
+			// 这里主动检测 C# 写下的元数据并同步（换歌时重推一次状态）
+			if (pollMediaStateFile()) {
+				pushState();
 			}
-			_lastTickPos = pos;
 			PlaybackState.Builder b = new PlaybackState.Builder()
 					.setActions(PlaybackState.ACTION_PLAY
 							| PlaybackState.ACTION_PAUSE

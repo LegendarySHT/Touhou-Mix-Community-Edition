@@ -103,15 +103,17 @@ func await_generate_keys(task_id: int) -> void:
 		await Engine.get_main_loop().process_frame
 
 ## ========== 键序列生成（worker 线程）==========
-## SOA 输入：arrays = [pitches, velocities, start_ticks, durations, track_indices, channels]
-## enabled_indices: PackedInt32Array，SOA 索引（start_tick 升序），即启用子集
-## 全量生成：worker 内一次 RunGenerateGather 完成全部序列，完成后返回（不再流式抢先）
-func _run_generate(arrays: Array, enabled_indices: PackedInt32Array,
+## chart_path: MIDI 文件路径（= C# MidiCore 解析缓存的键）。
+## SOA 数组不再跨语言传入：C# 直读自己的解析缓存（MidiCore.TryGetSoa），
+## 省掉每次生成都把 6 条 PackedInt32Array 拷进拷出。
+func _run_generate(chart_path: String, enabled_indices: PackedInt32Array,
 		cache_key: String, timebase: int, bpm_timeline_data: Array) -> void:
 	var core := _get_core()
 	_configure_core(core, timebase, bpm_timeline_data)
-	# RunGenerateGather 参数顺序：soaStartTick, soaDurTick, soaPitch, soaVelocity, soaTrack, soaChannel
-	core.RunGenerateGather(arrays[2], arrays[3], arrays[0], arrays[1], arrays[4], arrays[5], enabled_indices)
+	if not core.RunGenerateGatherFromPath(chart_path, enabled_indices):
+		push_error("[KSM] generate failed: MidiCore has no parse cache for %s" % chart_path)
+		_cache_key = ""
+		return
 	_cache_key = cache_key
 	GLogger.debug("KSM generate done, seq=%d" % core.GameSeqCount, "KSM")
 
@@ -136,14 +138,16 @@ func _config_fingerprint() -> String:
 	]
 
 ## 启动键序列生成（WorkerThreadPool 后台线程），返回 task_id
+## chart_path: MIDI 文件路径（C# 解析缓存键，C# 直读数组，不再传 SOA arrays）
+## enabled_indices: 启用子集的 SOA 索引（PackedInt32Array，升序；来自 MidiCore.GetEnabledIndices/GetAllIndices）
 ## 返回约定：-1=无启用音符或命中缓存（直接完成）；>=0=独立启动的任务，须经 await_generate_keys 等待完成
-func generate_keys_async(soa_arrays: Array, enabled_indices: Array,
+func generate_keys_async(chart_path: String, enabled_indices: PackedInt32Array,
 		midi_id: String = "", timebase: int = -1, bpm_timeline_data: Array = []) -> int:
-	if enabled_indices.is_empty():
+	if enabled_indices.is_empty() or chart_path.is_empty():
 		_get_core().ClearOutput()
 		_cache_key = ""
 		return -1
-	var packed := PackedInt32Array(enabled_indices)
+	var packed: PackedInt32Array = enabled_indices.duplicate()
 	var cache_key := _build_cache_key(midi_id, packed)
 	# 命中缓存：直接复用 C# 已保存输出，无需重新生成
 	if cache_key == _cache_key and _get_core().GameSeqCount > 0:
@@ -152,12 +156,12 @@ func generate_keys_async(soa_arrays: Array, enabled_indices: Array,
 		# 降级为 miss 重新排队生成本键，等槽释放后产出正确输出
 		if _generate_task_id != -1:
 			return await _launch_generate_task(func():
-				_run_generate(soa_arrays, packed, cache_key, timebase, bpm_timeline_data)
+				_run_generate(chart_path, packed, cache_key, timebase, bpm_timeline_data)
 			)
 		GLogger.debug("KSM generate HIT cache, seq=%d" % _get_core().GameSeqCount, "KSM")
 		return -1
 	return await _launch_generate_task(func():
-		_run_generate(soa_arrays, packed, cache_key, timebase, bpm_timeline_data)
+		_run_generate(chart_path, packed, cache_key, timebase, bpm_timeline_data)
 	)
 
 ## ========== C# 输出访问器（只读）==========

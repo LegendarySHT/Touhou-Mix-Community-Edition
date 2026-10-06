@@ -58,6 +58,10 @@ public partial class MeltySynthPlayer : Node
 	[Signal]
 	public delegate void soundfont_changedEventHandler(string soundfont_path);
 
+	/// <summary>曲终/回绕（loop=true 时 sequencer 自己回绕，永不发 finished）由音频回调统一检测。</summary>
+	[Signal]
+	public delegate void loop_wrappedEventHandler();
+
 	public int max_polyphony = 96;
 	public bool loop = false;
 	private float _volume_db = -20.0f;
@@ -128,16 +132,12 @@ public partial class MeltySynthPlayer : Node
 	private Synthesizer _autoSynth;        // 原有：用于MIDI自动播放（就是 _synth）
 	private bool _useSeparateSynthForManual = true;  // 启用独立合成器
 
-	// 听歌降耗档：加大音频缓冲（听歌无所谓延迟，缓冲拉长反而更省电）。
-	// 不用复音上限——密集谱面会提前偷音，听感代价太大。
+	// 音频 period 固定为低延迟档（256×2），不随页面切换。
+	// 曾有过"听歌降耗档"（播放器页拉大到 4096×3）：实测省电收益可忽略，却要
+	// 在页面进出时反复重建输出桥（切页卡顿），且大缓冲下人声位置读数量化严重，
+	// 会持续触发人声 seek。已整体移除。
 	private const int GameplayPeriodFrames = 256;
 	private const int GameplayPeriodCount = 2;
-	// 听歌档 4096 帧/回调（48k ≈ 85ms）×3 周期 ≈ 256ms 缓冲，回调率降到 ~12Hz。
-	// 请求的 framesPerDataCallback 远超 AAudio MMAP 低延迟路径的窗口，设备自然落到
-	// 深缓冲路径，无需另外关低延迟标志。
-	private const int ListeningPeriodFrames = 4096;
-	private const int ListeningPeriodCount = 3;
-	private bool _listeningProfile = false;
 	private bool _preferNativeSequencerSeek = true;
 
 	// 系统时钟模式请求状态（配置来源 Playback/use_system_stopwatch）。
@@ -192,8 +192,6 @@ public partial class MeltySynthPlayer : Node
 
 	private void PrepareAudioOutputForPlaybackStart()
 	{
-		// 兜底：中断恢复等路径重建设备后可能带着旧 period，起播前对齐当前档位
-		ApplyAudioPeriodForProfile();
 		EnsureAudioInitialized();
 	}
 
@@ -574,10 +572,17 @@ public partial class MeltySynthPlayer : Node
 		GD.Print($"[MeltySynthPlayer] _Ready() complete: _audioOutput={( _audioOutput != null ? _audioOutput.GetType().Name : "null" )}");
 
 		SetProcess(true);
+		// 主循环活性时间戳 + 后台推进线程（熄屏/深后台时接管曲终→下一首）
+		MarkMainLoopAlive();
+		StartBackgroundAdvanceThread();
 	}
 
 	public override void _Process(double delta)
 	{
+		// 刷新主循环活性：后台推进线程据此判断 Godot 主循环是否停摆
+		MarkMainLoopAlive();
+		// 缓存后台推进线程要用的主线程侧依赖（节点引用不能从后台线程取）
+		MaintainBackgroundDeps();
 		// 后台 SoundFont 解析完成后，在主线程完成合成器/音频桥绑定（音频相关 API 必须主线程）
 		if (_sfParseDone && !_sfFinalized && (_sfLoadThread == null || !_sfLoadThread.IsAlive))
 		{
@@ -599,6 +604,14 @@ public partial class MeltySynthPlayer : Node
 				_vocalFinishedSignaled = true;
 				EmitSignal(SignalName.vocal_finished);
 			}
+		}
+
+		// 曲终/回绕的统一检测在音频回调（loop=true 时 sequencer 自己回绕、永不发 finished）。
+		// 主循环可用时在这里取走标志并通知 GDScript 推进播放列表；主循环停摆（熄屏/深后台）
+		// 时标志保留，由后台推进线程接管（见 MeltySynthPlayer.BackgroundAdvance.cs）。
+		if (_audioOutput is MiniaudioAudioOutputBridge maWrap && maWrap.ConsumeLoopWrapDetected())
+		{
+			EmitSignal(SignalName.loop_wrapped);
 		}
 
 		// 【关键】处理待处理的 seek 操作优先级最高，即使不在播放中也要处理
@@ -850,6 +863,7 @@ public partial class MeltySynthPlayer : Node
 	public override void _ExitTree()
 	{
 		GD.Print("[MeltySynthPlayer] _ExitTree() called, disposing audio resources");
+		StopBackgroundAdvanceThread();
 		if (_audioOutput != null)
 		{
 			_audioOutput.Dispose();
@@ -974,6 +988,17 @@ public partial class MeltySynthPlayer : Node
 		if (_midiFile == null || _sequencer == null)
 		{
 			return;
+		}
+
+		// 钳制上界：上层量程可能与实际曲目不一致（后台换曲后 UI 量程未刷新，
+		// 或拖动时按旧曲长度取值）。把位置甩到曲尾之外会让下一个音频回调的
+		// RestartVocalOnLoopWrap 看到"位置大幅回退"而误判为回绕，进而触发一次
+		// 非预期的换曲。越界 seek 本来也没有语义。
+		// 只夹上界：负值是 pre-roll 语义（[_currentOffsetMs,0)），不能动。
+		double lengthMs = _midiFile.Length.TotalMilliseconds;
+		if (positionMs > 0.0 && !double.IsNaN(lengthMs) && lengthMs > 0.0)
+		{
+			positionMs = Math.Min(positionMs, lengthMs);
 		}
 
 		// 【修复】允许负数 seek，设置待处理的 seek 标志
@@ -1116,6 +1141,23 @@ public partial class MeltySynthPlayer : Node
 		_audioOutput?.SetVocalVolume(_vocalVolumeLinear);
 	}
 
+	/// <summary>
+	/// 人声相对 MIDI 的起点偏移（毫秒）。下发到 bridge，由音频回调执行门控
+	/// （后台主循环停摆时 GDScript 的 _sync_vocal_with_midi 不运行，只有回调可靠）。
+	/// </summary>
+	public void set_vocal_offset_ms(double offsetMs)
+	{
+		if (_audioOutput is MiniaudioAudioOutputBridge ma)
+		{
+			ma.SetVocalOffsetMs(offsetMs);
+		}
+	}
+
+	public double get_vocal_offset_ms()
+	{
+		return _audioOutput is MiniaudioAudioOutputBridge ma ? ma.GetVocalOffsetMs() : 0.0;
+	}
+
 	public double get_vocal_position_ms()
 	{
 		return _audioOutput?.GetVocalPositionMs() ?? 0.0;
@@ -1176,33 +1218,7 @@ public partial class MeltySynthPlayer : Node
 		return loop;
 	}
 
-	/// <summary>听歌降耗档：把音频 period 切到省电档（页面进出时即时切换）。</summary>
-	public void set_listening_profile(bool enabled)
-	{
-		_listeningProfile = enabled;
-		ApplyAudioPeriodForProfile();
-	}
-
-
-	// period 跟随听歌档即时切换：只在页面进出时调用（仅 Android 播放器页切到 4096×3，
-	// 打歌/音轨等其余场景维持原有 256×2）。
-	// 换来的是"绝大多数时间保持低延迟高功耗档"。代价是页面切换时一次设备重建。
-	private void ApplyAudioPeriodForProfile()
-	{
-		if (OS.GetName() != "Android")
-		{
-			return;
-		}
-		var targetPeriod = _listeningProfile ? ListeningPeriodFrames : GameplayPeriodFrames;
-		_desiredBufferFrames = targetPeriod;
-		_desiredPeriodCount = _listeningProfile ? ListeningPeriodCount : GameplayPeriodCount;
-		if (_audioOutput == null || _activeAudioPeriodFrames == targetPeriod)
-		{
-			return;
-		}
-		GD.Print($"[MeltySynthPlayer] Switching audio period for profile: {_activeAudioPeriodFrames}→{targetPeriod}×{_desiredPeriodCount}");
-		RecreateAudioOutputBridge();
-	}
+	/// <summary>听歌降耗档已移除（见 GameplayPeriod 处的说明）</summary>
 
 	// Getter methods for compatibility
 	public string get_soundfont() => _soundfont;
@@ -1238,6 +1254,12 @@ public partial class MeltySynthPlayer : Node
 		_judgeAnchorValid = false;
 	}
 
+	/// <summary>上次排队的 seek 是否已被音频线程落盘（无桥/无请求按未落盘处理）。</summary>
+	private bool IsBridgeSeekApplied()
+	{
+		return _audioOutput is MiniaudioAudioOutputBridge ma && ma.IsSeekApplied;
+	}
+
 	/// <summary>以给定位置建立判定钟墙钟锚点（位置未扣设备延迟，读取时统一扣除）。</summary>
 	private void ReanchorJudgeClock(double positionMs)
 	{
@@ -1259,7 +1281,9 @@ public partial class MeltySynthPlayer : Node
 		// 【修复】seek 完成后若干帧内（原生 Seek 后 sequencer 渲染钟尚未反映新位置，
 		// 会瞬回 ~0），直接返回 seek 目标位置，避免上层 NoteDisplayer 误判位置回退而
 		// 触发音符左缩、各音轨已通过计数清零。
-		if (_seekPositionHoldFrames > 0)
+		// 仅在"seek 还没被音频线程落盘"时成立：已落盘说明渲染钟已到目标，再返回旧值
+		// 反而会跨后台挂起残留（回前台头几帧显示 seek 目标而不是真实位置）。
+		if (_seekPositionHoldFrames > 0 && !IsBridgeSeekApplied())
 		{
 			_seekPositionHoldFrames--;
 			return _lastPositionMs;
@@ -1307,7 +1331,15 @@ public partial class MeltySynthPlayer : Node
 		{
 			// seek 后优先按目标位置重建：音频渲染钟要等音频线程消费请求后才更新，
 			// 用它重锚会让进度条从 seek 前的位置起算（表现为复位到错误位置）。
-			ReanchorJudgeClock(double.IsNaN(_seekAnchorMs) ? audioRefMs : _seekAnchorMs);
+			// 但目标位置只在「seek 尚未被音频线程落盘」时可信：主循环挂起（后台）期间
+			// 音频可能早已落盘并播走甚至回绕，此时陈旧目标会让判定钟与音频长期分叉
+			// （进度条停在 seek 处自走到满，而实际音频在别处）。
+			double reanchorMs = audioRefMs;
+			if (!double.IsNaN(_seekAnchorMs) && !IsBridgeSeekApplied())
+			{
+				reanchorMs = _seekAnchorMs;
+			}
+			ReanchorJudgeClock(reanchorMs);
 			_seekAnchorMs = double.NaN;
 		}
 
@@ -1353,6 +1385,48 @@ public partial class MeltySynthPlayer : Node
 		}
 
 		return _sequencer.RenderedPosition.TotalMilliseconds;
+	}
+
+	/// <summary>
+	/// 人声是否已就绪（解码生产端已跟上，可以起播/对齐）。
+	/// 人声由原生解码线程异步填环形缓冲，起播瞬间往往还没填好，直接出声会落后伴奏一截。
+	/// 判定：无配置人声 → 立即就绪；已加载 → 需已在播放，且连续若干帧没有新增欠载
+	/// （欠载计数稳定说明缓冲不再断供）。调用方据此替代固定等待，慢设备自然多等一会。
+	/// </summary>
+	public bool is_vocal_ready()
+	{
+		if (!(_audioOutput is MiniaudioAudioOutputBridge ma) || ma.GetVocalLengthMs() <= 0.0)
+		{
+			return true;
+		}
+		if (!ma.IsVocalPlaying() || ma.GetVocalPositionMs() < 0.0)
+		{
+			return false;
+		}
+		uint underruns = ma.GetVocalUnderrunCount();
+		if (underruns != _vocalReadyProbeUnderruns)
+		{
+			// 仍在欠载（缓冲没填上）：重置稳定计数，等下一帧再看
+			_vocalReadyProbeUnderruns = underruns;
+			_vocalReadyStableFrames = 0;
+			return false;
+		}
+		_vocalReadyStableFrames++;
+		return _vocalReadyStableFrames >= VocalReadyStableFrames;
+	}
+
+	/// <summary>人声就绪探测：欠载计数的上次采样值与连续稳定帧数</summary>
+	private uint _vocalReadyProbeUnderruns;
+	private int _vocalReadyStableFrames;
+	private const int VocalReadyStableFrames = 6;
+
+	/// <summary>起播后补一次与拖动等价的原地 seek（由音频回调按帧数计时，后台也生效）</summary>
+	public void request_startup_align()
+	{
+		if (_audioOutput is MiniaudioAudioOutputBridge maBridge)
+		{
+			maBridge.RequestStartupAlign();
+		}
 	}
 
 	public void set_track_channel_volume(int trackIndex, int channel, float volumeLinear)
@@ -1952,6 +2026,14 @@ public partial class MeltySynthPlayer : Node
 	/// <summary>暂停播放 (接口方法)</summary>
 	public void pause()
 	{
+		// 暂停后 get_position_ms() 直接返回 _lastPositionMs，而主循环挂起（后台）期间
+		// get_position_ms 不会被调用，那个值可能还停在 seek 目标上——于是"一点暂停进度条
+		// 就跳回上次 seek 的位置"。这里按"已渲染 - 设备延迟"落一次真实位置（与判定钟同口径）。
+		if (_sequencer != null && _sequencerStarted)
+		{
+			double pauseLatency = (_audioOutput != null && _audioOutput.IsPlaying) ? _audioOutput.GetLatencyMs() : 0.0;
+			_lastPositionMs = Math.Max(0.0, _sequencer.RenderedPosition.TotalMilliseconds - pauseLatency);
+		}
 		InvalidateJudgeClock();  // 恢复时按暂停后的音频参考重建锚点
 		playing = false;
 		if (_sequencer != null)
@@ -2396,6 +2478,12 @@ public partial class MeltySynthPlayer : Node
 		_currentOffsetMs = 0.0;  // 重置 offset
 		_hasSkippedPreroolEvents = false;  // 重置跳过标志
 		_lastPositionMs = 0.0;  // 清除上一首 MIDI 的位置残留
+		// 换曲重置回绕基准：否则新曲起始位置相对旧曲回绕点大幅后退，
+		// 会被音频回调误判为"又回绕了一次"，导致连续切歌
+		if (_audioOutput is MiniaudioAudioOutputBridge maNewSong)
+		{
+			maNewSong.ResetLoopWrapBaseline();
+		}
 		
 		// 清理旧的乐器覆盖配置，防止状态在不同 MIDI 之间错误延续
 		track_channel_instruments.Clear();

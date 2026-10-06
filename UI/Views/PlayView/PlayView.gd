@@ -511,9 +511,6 @@ func _auto_pause_on_background(reason: String) -> void:
 
 func _prepare_game(midi:MidiData = current_midi) -> void:
 	_game_generation += 1
-	# 打歌要低延迟：强制关掉听歌降耗档（可能从播放器页带着省电缓冲进来）
-	if playback_mgr != null:
-		playback_mgr.set_listening_profile(false)
 	current_midi = midi
 	play_result = ScoreView.ScoreData.new()
 	_is_finishing_game = false
@@ -536,13 +533,16 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	# 生成随机颜色（若皮肤配置启用）— 必须在 init_flow_area 前完成，使新音符按新颜色生成
 	_regenerate_random_note_colors()
 	_regenerate_global_random_colors()
+	# 确保皮肤贴图就绪：正常情况下命中缓存；后台 GC 释放过皮肤贴图时在此重建，
+	# 避免释放后重进打歌出现音符无贴图
+	_do_load_note_skin()
 	flow_area.init_flow_area()
 	_is_auto_mode_play = flow_area.auto_mode
 	auto_label.visible = flow_area.auto_mode
 
-	# 线程化预解析 MIDI：将昂贵的文件 I/O + 数据结构构建移到 worker 线程
-	# 主线程在 await 期间继续渲染歌曲信息面板 + 转场动画
-	if not await playback_mgr.preparse_midi_async(midi):
+	# 预解析 MIDI（同步，命中缓存时几乎零开销），
+	# 后load_midi 直接命中解析缓存，仅做配置应用 + 后端加载
+	if not playback_mgr.ensure_parsed(midi):
 		push_error("Failed to preparse MIDI: " + midi.name)
 	# 加载 MIDI（此时已命中解析缓存，仅做配置应用 + 后端加载）
 	_load_and_convert_midi_notes(midi)
@@ -568,12 +568,15 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	is_pause = true
 
 	# 读取并设置音频同步阈值
+	# 优先取设置页当前值（含未落盘的待保存值）；设置页已被后台内存回收时回退到配置值
+	var sync_threshold = null
 	var setting_view = get_node_or_null(PathRegistry.SETTING_VIEW)
 	if setting_view and setting_view.has_method("get_setting_value"):
-		var sync_threshold = setting_view.get_setting_value("audio_sync_threshold")
-		if sync_threshold != null:
-			playback_mgr.set_sync_threshold(float(sync_threshold))
-			GLogger.info("Audio sync threshold set to %.0f ms" % float(sync_threshold), "PlayView")
+		sync_threshold = setting_view.get_setting_value("audio_sync_threshold")
+	if sync_threshold == null:
+		sync_threshold = ConfigManager.instance.get_int("Gameplay", "audio_sync_threshold", 30)
+	playback_mgr.set_sync_threshold(float(sync_threshold))
+	GLogger.info("Audio sync threshold set to %.0f ms" % float(sync_threshold), "PlayView")
 
 	# 提前启动 generate_keys 的 worker 线程（主线程筛选音符 + 后台线程跑全量 generate_keys）
 	# 通常 MidiView 已触发过 generate_keys，此处命中缓存直接返回（0ms）
@@ -640,10 +643,11 @@ func _load_and_convert_midi_notes(midi_data: MidiData) -> void:
 	if not playback_mgr.load_midi(midi_data):
 		push_error("Failed to load MIDI for gameplay")
 		return
-	
-	# 应用TrackView中保存的MIDI配置（音量、静音、独奏等）
-	_apply_midi_runtime_config(midi_data)
-	
+
+	# TrackView 中保存的运行时配置（音量/静音/独奏/启用通道门控/人声偏移）已由
+	# load_midi 内部的 apply_midi_runtime_config 统一应用——那份是超集（含启用通道门控），
+	# 此处不再重复下发。
+
 	GLogger.info("MIDI loaded and runtime config applied", "PlayView")
 
 ## 启动游戏序列生成（主线程筛选音符 + 启动 worker 线程跑全量 generate_keys）
@@ -665,14 +669,14 @@ func _start_generate_game_sequences(midi_data: MidiData) -> int:
 	# （仅影响 _judge_block_type 速度限制的边缘场景，FlowArea 显示位置由 viewport 宽度算）
 
 	# 构建启用 (track, channel) 集合并筛选音符（主线程）。
-	# 音符数据以 SOA 形式存储（parsed_notes 恒为空），自身已按 start_tick 升序；
-	# C# 端 SaveInputGather 用 (全量 SOA 数组 + 启用索引) 装配输入，避免建 NoteEvent 对象数组。
-	var enabled_pairs := midi_data.get_enabled_pairs_flat()
-	var soa := midi_data.notes_soa
-	if soa == null or soa.size() <= 0:
+	# 音符数据由 C# MidiCore 持有（解析缓存），这里只取"启用子集的 SOA 索引"；
+	# 键序列生成时 C# 直读自己的缓存数组，不再把 6 条 PackedInt32Array 来回拷贝。
+	var path := midi_data.midi_file_path
+	if path.is_empty() or not MidiCore.HasParsed(path):
 		key_sequence_mgr.clear_sequences()
 		return -1
-	var enabled_indices: Array
+	var enabled_pairs := midi_data.get_enabled_pairs_flat()
+	var enabled_indices: PackedInt32Array
 	if enabled_pairs.is_empty():
 		# 空对语义取决于轨道配置是否已初始化（与 MidiListItem 一致）：
 		# 已初始化 → 用户主动禁用了所有轨道（空局，清序列返回）；未初始化 → 全部启用
@@ -680,26 +684,20 @@ func _start_generate_game_sequences(midi_data: MidiData) -> int:
 			GLogger.warning("All (track, channel) pairs disabled", "PlayView")
 			key_sequence_mgr.clear_sequences()
 			return -1
-		enabled_indices = []
-		enabled_indices.resize(soa.size())
-		for i in range(soa.size()):
-			enabled_indices[i] = i
+		enabled_indices = MidiCore.GetAllIndices(path)
 	else:
-		enabled_indices = midi_data.get_enabled_note_indices(enabled_pairs)
+		enabled_indices = MidiCore.GetEnabledIndices(path, midi_data.get_enabled_pair_keys())
 
 	if enabled_indices.is_empty():
 		GLogger.warning("No notes in enabled (track, channel) pairs", "PlayView")
 		key_sequence_mgr.clear_sequences()
 		return -1
 
-	# 启动 worker 线程跑全量 generate_keys（一次 RunGenerateGather 完成全部序列，完成后返回，
-	# 不再流式抢先；命中缓存则内部直接返回 -1，此处 0ms 复用）
-	# 传入 SOA 底层数组 + 启用索引：C# 在 worker 中装配合集并产出，避免建对象数组/浅拷贝
+	# 启动 worker 线程跑全量 generate_keys；C# 在 worker 中直读解析缓存并产出。
 	# 显式传入 midi 自己的 timebase/bpm_timeline，不依赖/改写 MidiPlaybackManager 全局时间线字段
-	# （MidiListItem 的统计生成也用同一 midi 的显式参数，二者 cache_key 一致可互相命中，
-	#   cache_key = 配置指纹|midi_id+enabled_indices滚动哈希，MidiListItem 同走 KSM._build_cache_key）
+	# （MidiListItem 的统计生成也用同一 midi 的显式参数，二者 cache_key 一致可互相命中）
 	var task_id := await key_sequence_mgr.generate_keys_async(
-		soa.get_raw_arrays(), enabled_indices, midi_data.id,
+		path, enabled_indices, midi_data.id,
 		midi_data.midi_timebase, midi_data.bpm_timeline
 	)
 	return task_id
@@ -933,70 +931,6 @@ func _load_play_mode_setting() -> void:
 		GLogger.info("Performing mode auto-disabled: bluetooth audio output detected", "PlayView")
 
 ## 应用TrackView中保存的MIDI运行时配置（音量、静音、独奏等）
-func _apply_midi_runtime_config(midi_data: MidiData) -> void:
-	if playback_mgr == null:
-		return
-	
-	# 应用全局音量（映射系数见 MidiPlaybackManager.MIDI_VOLUME_GAIN: 0.5=+6dB, 1.0=+12dB）
-	# 默认值(0.5)回退全局 default_midi_volume，与 TrackView 保持一致
-	playback_mgr.apply_ui_midi_volume(playback_mgr.get_effective_midi_volume(midi_data.midi_volume))
-	
-	# 应用轨道-通道的静音状态
-	# track_channel_mute_state: {track_idx: {channel: bool}}
-	if not midi_data.track_channel_mute_state.is_empty():
-		for track_idx in midi_data.track_channel_mute_state.keys():
-			var channels = midi_data.track_channel_mute_state[track_idx]
-			if channels is Dictionary:
-				for channel in channels.keys():
-					var is_muted = channels[channel]
-					playback_mgr.set_track_channel_mute(track_idx, channel, is_muted)
-	
-	# 应用独奏状态（Additive Solo，与 TrackView._apply_solo_state 一致）：
-	# - 独奏轨保持其持久化静音状态（上面已按 track_channel_mute_state 应用）
-	# - 非独奏轨运行时静音（不写入 MidiData，避免污染持久化配置）
-	# solo_pairs: {"track:channel": true}
-	if not midi_data.solo_pairs.is_empty():
-		var seen_pairs := {}
-		# SOA 路径：只枚举 (track,channel) 对，不建全量 NoteEvent（current_notes 恒为空）
-		var soa := midi_data.notes_soa
-		if soa != null and soa.size() > 0:
-			for i in range(soa.size()):
-				var solo_key := "%d:%d" % [soa.track(i), soa.channel(i)]
-				if seen_pairs.has(solo_key):
-					continue
-				seen_pairs[solo_key] = true
-				if not midi_data.solo_pairs.has(solo_key):
-					playback_mgr.set_track_channel_mute_runtime(soa.track(i), soa.channel(i), true)
-		else:
-			# 兼容回退：无 SOA 时遍历对象列表
-			for note in playback_mgr.current_notes:
-				var solo_key := "%d:%d" % [note.track_index, note.channel]
-				if seen_pairs.has(solo_key):
-					continue
-				seen_pairs[solo_key] = true
-				if not midi_data.solo_pairs.has(solo_key):
-					playback_mgr.set_track_channel_mute_runtime(note.track_index, note.channel, true)
-
-	# 应用音轨-通道的音量调整
-	# track_channel_volume_config: {track_idx: {channel: volume_value}}（值为线性 0.0-1.0）
-	if not midi_data.track_channel_volume_config.is_empty():
-		for track_idx in midi_data.track_channel_volume_config.keys():
-			var channels = midi_data.track_channel_volume_config[track_idx]
-			if channels is Dictionary:
-				for channel in channels.keys():
-					var volume = channels[channel]
-					# 设置通道音量（线性值直接透传，勿再除以100）
-					playback_mgr.set_track_channel_volume(int(track_idx), int(channel), float(volume))
-	
-	# 乐器覆盖已在 MidiPlaybackManager.load_midi 中应用（MidiPlaybackManager.gd:372），
-	# 此处不再重复设置（原 set_track_channel_program 调用不存在，属死代码，TMX-023）
-	
-	# 应用人声偏移量
-	playback_mgr.set_vocal_offset_ms(midi_data.vocal_offset_ms)
-	
-	GLogger.info("MIDI runtime config applied: volume=%d%%, mute_states=%d, solo_pairs=%d" %
-		[int(round(playback_mgr.get_effective_midi_volume(midi_data.midi_volume) * 100.0)), midi_data.track_channel_mute_state.size(), midi_data.solo_pairs.size()], "PlayView")
-
 ## 游戏结束回调
 func _on_game_finished() -> void:
 	if _is_finishing_game:

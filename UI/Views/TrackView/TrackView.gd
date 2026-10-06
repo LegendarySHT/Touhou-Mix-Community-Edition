@@ -184,10 +184,8 @@ func _load_midi(midi: MidiData) -> void:
 	# 在执行同步耗时的 load_midi 之前先让 UI 渲染一帧
 	# （此时转场动画刚启动，避免被 MIDI 解析/JSON 写入阻塞导致首帧卡顿）
 	await get_tree().process_frame
-	# 线程化预解析 MIDI：将昂贵的文件 I/O + 数据结构构建移到 worker 线程
-	# 主线程在 await 期间继续渲染转场动画，避免复杂 MIDI 导致的首帧卡顿
-	# load_midi 后续会命中缓存跳过同步解析
-	if not await midi_playback_manager.preparse_midi_async(midi):
+	# 预解析 MIDI（同步，命中缓存时几乎零开销），让 load_midi 跳过重复解析
+	if not midi_playback_manager.ensure_parsed(midi):
 		push_error("Failed to preparse MIDI: " + midi.name)
 	# 加载MIDI到播放管理器（此时已命中解析缓存，仅做配置应用 + 后端加载）
 	if not midi_playback_manager.load_midi(midi):
@@ -263,22 +261,11 @@ func _create_track_views() -> void:
 	if not current_midi_data:
 		return
 
-	# 获取轨道信息
-	var track_infos = midi_playback_manager.get_track_infos()
-
-	if track_infos.is_empty():
-		push_warning("No track info available")
-		return
-
 	if _all_buckets.is_empty():
 		push_warning("No buckets available")
 		return
 
-	# 缓存 track 名称
-	var track_name_map = {}
-	for track_info in track_infos:
-		track_name_map[track_info.index] = track_info.name
-
+	# 轨道名统一 "Track %d"（过去 TrackInfo.name 从未填充，恒为此串）
 	# 按 (channel asc, track asc) 排序 buckets，与原逻辑一致
 	_all_buckets.sort_custom(func(a, b):
 		if a.channel != b.channel:
@@ -293,7 +280,7 @@ func _create_track_views() -> void:
 
 		var track_idx = bucket.track_index
 		var channel = bucket.channel
-		var track_name = track_name_map.get(track_idx, "Track %d" % track_idx)
+		var track_name := "Track %d" % track_idx
 
 		# 创建MidiTrack UI项
 		var track_scene = create_and_add_item(track_name, "MidiTrack") as MidiTrack
@@ -774,7 +761,7 @@ func _process(delta: float) -> void:
 		# 检测循环播放重置（位置从大跳到小，说明循环了）
 		if _seek_suppress_loop_frames > 0:
 			_seek_suppress_loop_frames -= 1
-		elif current_position < last_position_ms - 100:  # 100ms容差，避免误判seek操作
+		elif _is_playback_looped(current_position):
 			GLogger.info("Loop detected: %.1f -> %.1f ms, resetting noteDisplayers" % [last_position_ms, current_position], "TrackView")
 			_reset_player()
 
@@ -787,9 +774,24 @@ func _process(delta: float) -> void:
 
 	super._process(delta)
 
+## 是否发生整曲回绕（用于重置音符显示）。
+## 不能只看"回退 > 100ms"：蓝牙输出下音频钟会重锚、延迟预设切换、输出桥重建等
+## 都会造成百毫秒级回退，误判会把音符显示重置，看起来就是"没同步上"。
+## 故要求上一帧贴近曲尾 + 明显回退；曲尾容差之外的只看"回退超过半曲"
+func _is_playback_looped(current_position: float) -> bool:
+	var back := last_position_ms - current_position
+	if back <= 0.0:
+		return false
+	var dur := midi_playback_manager.get_backend_duration_ms()
+	if dur <= 0.0:
+		return back >= 5000.0
+	if last_position_ms >= dur - 3000.0:
+		return back >= 1000.0
+	return back >= dur * 0.5
+
 ## 窗口/应用重新获得焦点：同步循环检测基准。
 ## 后台期间 Godot 主循环挂起（本页 _process 不运行），last_position_ms 停滞在
-## 切走前的旧值；回前台首帧必然满足「当前位置 < 基准 - 100」而被误判成循环回绕，
+## 切走前的旧值；回前台首帧位置相对旧基准大幅后退而被误判成循环回绕，
 ## 触发 _reset_player() 把音符显示清零。此处把基准直接对齐当前真实位置。
 func _on_focus_regained() -> void:
 	if midi_playback_manager == null:
@@ -964,13 +966,12 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 	if current_midi_data != null:
 		_config_persistence.call_deferred("save_midi_config")
 
-	if old_state == work_state and new_state != UIStateManager.UIState.MUSIC_PLAYER_VIEW:
-		# 去播放器页不算退出播放（那边是同一首歌的另一种视图），保留会话；
-		# 否则 unregister_view 会 stop()，刚切过去的歌会被停掉再重播。
-		# 去设置页同理要先 pause：unregister_view 对 is_playing 会话会 stop()，
-		# 把 sequencer 连同位置一起清掉，返回后 resume 变成静音冻结。
-		if new_state == ui_stat_mgr.UIState.SETTINGS_VIEW and midi_playback_manager:
-			midi_playback_manager.pause()
+	# 去播放器页 / 设置页都不算退出播放：前者是同一首歌的另一种视图，后者只是配置页。
+	# 这两种情况保留媒体会话（不清通知、不 stop）——避免"清掉再重建"的闪烁，
+	# 也避免 unregister_view 的 stop() 把 sequencer 连同位置一起清掉（返回后变静音冻结）。
+	if old_state == work_state \
+			and new_state != UIStateManager.UIState.MUSIC_PLAYER_VIEW \
+			and new_state != UIStateManager.UIState.SETTINGS_VIEW:
 		MediaSess.unregister_view(self)
 		if midi_playback_manager:
 			if new_state == ui_stat_mgr.UIState.MIDI_VIEW:

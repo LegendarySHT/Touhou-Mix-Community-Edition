@@ -61,21 +61,20 @@ class TrackNoteBucket:
 	var channel: int = 0
 	var hue: float = 0.0              # 颜色色相（由 track_index 查 colors_set 一次）
 	var color: Color = Color.WHITE    # 由 hue 预计算的绘制颜色（避免逐音符 Color.from_hsv）
-	## 音符容器（按 start_time 升序）：
-	##   soa != null → PackedInt32Array（notes_soa 索引），显示路径经 soa 只读直引，不物化 22w NoteEvent；
-	##   soa == null → Array[MidiParser.NoteEvent]（兼容旧对象形态）
+	## 音符容器：PackedInt32Array（notes_soa 索引），显示路径经 soa 只读直引，
+	## 不物化 22w NoteEvent。soa 为 null 表示该MIDI 未解析出音符，桶内为空。
 	var notes: Variant = []
 	var soa: NoteSoa = null          # 共享 SOA 引用（索引形态时只读直引；_draw 不持有全量对象）
 	var cursor: int = 0               # 懒生成游标（指向下一个待生成的音符）
 	var is_enabled: bool = true       # master 用：该音轨是否启用
 
-	## 元素统一只读接口：e 为 notes[cursor]（SOA 索引 int 或 NoteEvent 对象）
+	## 元素统一只读接口：e 为 notes[cursor]（SOA 索引 int）
 	func n_start(e: Variant) -> float:
-		return soa.start_tick(e) if soa != null else float(e.start_time)
+		return soa.start_tick(e) if soa != null else 0.0
 	func n_end(e: Variant) -> float:
-		return soa.end_tick(e) if soa != null else float(e.start_time + e.duration)
+		return soa.end_tick(e) if soa != null else 0.0
 	func n_pitch(e: Variant) -> int:
-		return soa.pitch(e) if soa != null else e.pitch
+		return soa.pitch(e) if soa != null else 0
 	func n_count() -> int:
 		return notes.size()
 

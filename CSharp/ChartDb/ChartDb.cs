@@ -276,6 +276,7 @@ public partial class ChartDb : Node
                             var rt = rtV.AsDocument;
                             rt["_id"] = chartKey;
                             _runtime.Upsert(rt);
+                            _runtimeRevision++;
                         }
                     }
                     // 防御：清残留旧 data 大块（迁移期旧缓存）与临时标记/播种字段
@@ -311,7 +312,10 @@ public partial class ChartDb : Node
             {
                 var chartKey = ComputeChartKey(doc);
                 if (!string.IsNullOrEmpty(chartKey))
+                {
                     _runtime.Delete(chartKey);
+                    _runtimeRevision++;
+                }
             }
             _charts.Delete(folderName);
             RebuildAlbumsSongs();
@@ -334,7 +338,10 @@ public partial class ChartDb : Node
                 {
                     var chartKey = ComputeChartKey(doc);
                     if (!string.IsNullOrEmpty(chartKey))
+                    {
                         _runtime.Delete(chartKey);
+                        _runtimeRevision++;
+                    }
                 }
                 _charts.Delete(folderName);
             }
@@ -915,6 +922,20 @@ public partial class ChartDb : Node
 
     // ========== 运行时配置（chart_runtime，权威） ==========
 
+    /// <summary>
+    /// chart_runtime 的修订号：任何 _runtime 的写入/删除都必须调用 BumpRuntimeRevision()。
+    /// 供 MidiCore 的配置缓存判失效——本类的写入点分散在播种、删谱面、迁移、键重整多处，
+    /// 逐处通知不现实，改由缓存方比对修订号。
+    /// </summary>
+    private int _runtimeRevision = 0;
+
+    public int RuntimeRevision => _runtimeRevision;
+
+    public void BumpRuntimeRevision()
+    {
+        lock (_lock) { _runtimeRevision++; }
+    }
+
     public Godot.Collections.Dictionary GetRuntime(string chartKey)
     {
         if (!IsOpen()) return null;
@@ -936,6 +957,7 @@ public partial class ChartDb : Node
             var bd = (BsonDocument)BsonConvert.VariantToBson(dict);
             bd["_id"] = ResolveRuntimeKey(chartKey);
             _runtime.Upsert(bd);
+            _runtimeRevision++;
             // v3 起运行时配置只存 DB，不再写回 chart.json，无需同步 _json_mtime
             // （保留刷新反而会掩盖外部 chart.json 内容更新，使增量校验永不触发）
         }
@@ -947,6 +969,7 @@ public partial class ChartDb : Node
         lock (_lock)
         {
             _runtime.Delete(ResolveRuntimeKey(chartKey));
+            _runtimeRevision++;
         }
     }
 
@@ -1207,15 +1230,10 @@ public partial class ChartDb : Node
             gd["_search_name"] = GetNormField(doc, 4);
             gd["_search_uploader_name"] = GetNormField(doc, 5);
 
-            // 注入 chart_runtime（权威，主键 folder_name），覆盖磁盘 JSON 里的旧 _runtime
-            var rt = _runtime.FindById(doc["_id"].AsString);
-            if (rt != null)
-            {
-                var rtDict = new Godot.Collections.Dictionary();
-                foreach (var kv in rt)
-                    if (kv.Key != "_id") rtDict[kv.Key] = BsonConvert.BsonToVariant(kv.Value);
-                gd["_runtime"] = rtDict;
-            }
+            // 不再注入 chart_runtime 到 gd["_runtime"]：配置读取的唯一权威是
+            // MidiCore.GetConfig / ChartDb.GetRuntime。保留注入会形成第二条水合路径，
+            // 两条一旦不一致（MidiCore 有缓存、注入没有）就会读到陈旧配置，
+            // 表现为"改了设置不生效"。需要配置请显式走 GetRuntime。
 
             // 派生关联键（供 MidiData 直接持有扁平 song/album 字段，不再水合 SongData/AlbumData）
             gd["song_id"] = BsonConvert.GetStr(doc, "song_id");
@@ -1302,6 +1320,7 @@ public partial class ChartDb : Node
                             var rt = rtV.AsDocument;
                             rt["_id"] = chartKey;
                             _runtime.Upsert(rt);
+                            _runtimeRevision++;
                         }
                     }
                 }
@@ -1355,7 +1374,10 @@ public partial class ChartDb : Node
                 }
             }
             if (toFix.Count > 0)
+            {
+                _runtimeRevision++;
                 GD.Print($"[ChartDb] Re-keyed {toFix.Count} chart_runtime docs to folder_name");
+            }
         }
     }
 
