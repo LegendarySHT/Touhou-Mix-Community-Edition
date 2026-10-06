@@ -47,8 +47,6 @@ public class MediaSessionControl extends GodotPlugin {
 
 	private static final String CHANNEL_ID = "media_playback";
 	static final int NOTIFICATION_ID = 0x7A3;
-	/** 传递给 MediaSessionService 的通知 extra key（framework 无对应常量） */
-	static final String EXTRA_NOTIFICATION = "com.godot.game.extra.NOTIFICATION";
 
 	private static final SignalInfo COMMAND_RECEIVED =
 			new SignalInfo("command_received", String.class, Double.class);
@@ -61,8 +59,20 @@ public class MediaSessionControl extends GodotPlugin {
 	private static MediaSessionControl s_instance;
 	@Nullable
 	private static MediaSessionService s_pending_service;
+	/** 上次提交给前台服务的通知内容标识，内容不变则不重复提交 */
+	private String lastNotifiedKey = "";
+	/** 上次尝试拉起前台服务的时间戳与退避间隔（后台拉起必被拒，退避避免日志刷屏） */
+	private long _lastFgsAttemptUptimeMs = 0L;
+	private static final long FGS_RETRY_BACKOFF_MS = 5000L;
 
 	private boolean lastPlaying = false;
+	/**
+	 * 是否需要前台服务承载通知：播放页注册（update_state）后为 true，注销（clear）后为 false。
+	 * 刻意不跟随播放态：切歌过程中会出现一次 playing=false，若据此撤下前台，
+	 * 新歌开始时应用已在后台，系统禁止后台重新进前台，服务回不去 —— 通知消失、
+	 * 进程失去保护被冻结，表现为"切歌后通知没了、歌也卡住、回前台才恢复"。
+	 */
+	private boolean foregroundWanted = false;
 	private double lastPositionMs = 0.0;
 	private double lastDurationMs = 0.0;
 	private String lastTitle = "";
@@ -117,6 +127,32 @@ public class MediaSessionControl extends GodotPlugin {
 			return;
 		}
 		plugin.service = svc;
+	}
+
+	/**
+	 * 前台服务 onStartCommand 回调：把通知刷新为当前播放状态。
+	 *
+	 * 通知由本插件（持有播放状态与封面位图）构建，不经 Intent 传递——封面位图较大，
+	 * 走 Binder 容易触发 TransactionTooLargeException。插件尚未注册时无人能提供内容，
+	 * 结束服务撤掉占位通知（插件就绪后播放时会重新拉起）。
+	 */
+	static void onServiceReady(MediaSessionService svc) {
+		MediaSessionControl plugin = s_instance;
+		if (plugin == null) {
+			svc.stopSelf();
+			return;
+		}
+		plugin.service = svc;
+		plugin.pushForegroundNotification();
+	}
+
+	/** 服务进入前台用的占位通知（真实内容随后由 pushForegroundNotification 刷新） */
+	static Notification buildPlaceholderNotification(Context context) {
+		ensureChannel(context);
+		return new Notification.Builder(context, CHANNEL_ID)
+				.setSmallIcon(android.R.drawable.ic_media_play)
+				.setContentTitle("Touhou Mix")
+				.build();
 	}
 
 	@Nullable
@@ -185,6 +221,13 @@ public class MediaSessionControl extends GodotPlugin {
 			session.release();
 			session = null;
 		}
+		if (service != null) {
+			// 引擎退出（任务被划掉/应用结束）：音频已随引擎停止，
+			// 撤下通知并结束服务，避免留下没有播放器的僵尸前台通知
+			service.stopForegroundPlayback();
+			service.stopSelf();
+			service = null;
+		}
 		if (s_instance == this) {
 			s_instance = null;
 		}
@@ -199,12 +242,18 @@ public class MediaSessionControl extends GodotPlugin {
 	public void update_state(boolean playing, double positionMs, double durationMs,
 			String title, String album, byte[] coverPng, int endAction) {
 		runOnUiThread(() -> {
+			boolean songChanged = !lastTitle.equals(title == null ? "" : title);
 			lastPlaying = playing;
 			lastPositionMs = positionMs;
 			lastDurationMs = durationMs;
 			lastTitle = title == null ? "" : title;
 			lastAlbum = album == null ? "" : album;
 			lastEndAction = endAction;
+			// 换曲时位置归零，上一 tick 的曲尾位置不再是有效比对基准
+			if (songChanged) {
+				_lastTickPos = -1L;
+			}
+			foregroundWanted = true;
 			setCoverPng(coverPng);
 			pushState();
 		});
@@ -230,11 +279,14 @@ public class MediaSessionControl extends GodotPlugin {
 	@UsedByGodot
 	public void clear() {
 		runOnUiThread(() -> {
+			// 播放页注销（离开播放页=退出播放）：撤下前台与通知
+			foregroundWanted = false;
 			lastPlaying = false;
 			lastPositionMs = 0.0;
 			lastDurationMs = 0.0;
 			lastTitle = "";
 			lastAlbum = "";
+			lastNotifiedKey = "";
 			pushState();
 		});
 	}
@@ -245,10 +297,10 @@ public class MediaSessionControl extends GodotPlugin {
 		return session != null;
 	}
 
-	/** [诊断] 前台服务是否已成功拉起（后台播放的前提） */
+	/** [诊断] 前台服务是否已进入前台（后台播放的前提） */
 	@UsedByGodot
 	public boolean is_foreground_service_running() {
-		return service != null;
+		return service != null && service.isForeground();
 	}
 
 	/** [诊断] 最近一次前台服务启动失败原因，空串表示无失败记录 */
@@ -329,10 +381,13 @@ public class MediaSessionControl extends GodotPlugin {
 			cancelPositionTick();
 		}
 
-		if (lastPlaying) {
+		if (foregroundWanted) {
+			// 播放或暂停都保持前台与通知（暂停只把通知换成播放图标），
+			// 只在播放页注销（clear）时才撤下
 			startForegroundPlayback();
 		} else if (service != null) {
 			service.stopForegroundPlayback();
+			lastNotifiedKey = "";
 		}
 	}
 
@@ -349,11 +404,13 @@ public class MediaSessionControl extends GodotPlugin {
 
 	private static final long POSITION_TICK_INTERVAL_MS = 500L;
 
-	/** 以当前 lastPositionMs 重置墙钟基准 */
+	/** 以当前 lastPositionMs 重置墙钟基准。
+	 *  不重置 _lastTickPos：位置推送本身每 0.5s 一次，若每次推送都把比对基准清掉，
+	 *  ticker 就永远看不到"上一 tick 在曲尾"这个前提，回绕检测会时好时坏。
+	 *  仅在换曲（update_state 检测到曲名变化）时清基准。 */
 	private void resetTickBase() {
 		_tickBasePositionMs = (long) lastPositionMs;
 		_tickBaseUptimeMs = android.os.SystemClock.elapsedRealtime();
-		_lastTickPos = -1L;
 	}
 
 	/** 依据墙钟推算当前位置；已知时长时按取模回绕（loop 由上层语义保证） */
@@ -380,14 +437,14 @@ public class MediaSessionControl extends GodotPlugin {
 	private final Runnable _tickRunnable = new Runnable() {
 		@Override
 		public void run() {
+			_tickScheduled = false;
 			if (session == null || !lastPlaying) {
 				return;
 			}
 			long pos = (long) currentPositionMs();
 			// 墙钟回绕检测：上次 tick 在曲尾附近、本次已回到开头，且上层声明了播完行为时，
-			// 经命令通道补发 track_end（渲染线程暂停前会先排空事件队列，后台可达），
-			// 驱动 GDScript 侧换曲或重启人声。只在后台生效：前台每次 update_state
-			// 都重置基线（_lastTickPos=-1），GDScript 的逐帧回绕检测先于这里触发。
+			// 经命令通道补发 track_end（与 GDScript 侧逐帧回绕检测互为补充），
+			// 驱动换曲或重启人声。
 			if (lastEndAction != 0 && lastDurationMs > 0.0 && _lastTickPos >= 0L
 					&& _lastTickPos >= lastDurationMs - 1500L
 					&& pos + 1000L < _lastTickPos) {
@@ -405,34 +462,61 @@ public class MediaSessionControl extends GodotPlugin {
 							| PlaybackState.ACTION_SKIP_TO_NEXT)
 					.setState(PlaybackState.STATE_PLAYING, (long) currentPositionMs(), 1.0f);
 			session.setPlaybackState(b.build());
-			_ticker.postDelayed(this, POSITION_TICK_INTERVAL_MS);
+			postNextTick();
 		}
 	};
 
-	private void schedulePositionTick() {
-		// 基准已由 pushState 起始处的 resetTickBase 设好，此处只需重排定时器
-		_ticker.removeCallbacks(_tickRunnable);
+	/** ticker 是否已有待触发的回调，避免重复堆叠 */
+	private boolean _tickScheduled = false;
+
+	private void postNextTick() {
+		_tickScheduled = true;
 		_ticker.postDelayed(_tickRunnable, POSITION_TICK_INTERVAL_MS);
+	}
+
+	private void schedulePositionTick() {
+		// 已在运行就不重排：位置推送同样每 0.5s 一次，若每次推送都 removeCallbacks 重排，
+		// ticker 的到期时刻会被不断推迟而长期饿死，回绕检测随之静默失效
+		if (_tickScheduled) {
+			return;
+		}
+		postNextTick();
 	}
 
 	private void cancelPositionTick() {
 		_ticker.removeCallbacks(_tickRunnable);
+		_tickScheduled = false;
 	}
 
+	/**
+	 * 拉起前台服务。服务未就绪才需要拉起（通知与刷新由服务侧回调本插件完成）。
+	 *
+	 * 注意不能以 service != null 作为"是否可以拉起服务"的前提：service 只在服务
+	 * onCreate/onStartCommand 里才会被赋值，此前判断会导致服务永远拉不起来。
+	 */
 	private void startForegroundPlayback() {
 		Context context = getContext();
-		if (context == null || service == null) {
+		if (context == null) {
 			return;
 		}
-		ensureChannel(context);
-
-		int flags = PendingIntent.FLAG_UPDATE_CURRENT
-				| (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
-		Notification notification = buildNotification(context, flags);
+		if (service != null && service.isForeground()) {
+			// 已在前台：只需按需刷新通知内容（notify 后台也安全）
+			if (!notificationKey().equals(lastNotifiedKey)) {
+				pushForegroundNotification();
+			}
+			return;
+		}
+		// 服务不存在或已退出前台（暂停后重新播放）：拉起/重拉一次。
+		// startForeground 只在服务的 onStartCommand 内调用——那是系统唯一放行的窗口，
+		// 这里直接调会因应用处于后台而被拒并崩溃。后台发起的重拉本身会被拒绝，
+		// 由退避 + try/catch 兜住，等回到前台自然恢复。
+		long now = android.os.SystemClock.elapsedRealtime();
+		if (now - _lastFgsAttemptUptimeMs < FGS_RETRY_BACKOFF_MS) {
+			return;
+		}
+		_lastFgsAttemptUptimeMs = now;
 		try {
-			context.startForegroundService(
-					new Intent(context, MediaSessionService.class)
-							.putExtra(EXTRA_NOTIFICATION, notification));
+			context.startForegroundService(new Intent(context, MediaSessionService.class));
 		} catch (Exception e) {
 			// Android 12+ 后台启动前台服务受限。此前这里只打 Log.w，导致失败完全静默
 			// （dumpsys activity services 显示 (nothing) 却排查不到原因），必须显式暴露。
@@ -442,7 +526,30 @@ public class MediaSessionControl extends GodotPlugin {
 		}
 	}
 
-	private void ensureChannel(Context context) {
+	/** 用当前播放状态刷新通知内容（服务已在前台时不重复调 startForeground） */
+	private void pushForegroundNotification() {
+		MediaSessionService svc = service;
+		Context context = getContext();
+		if (svc == null || context == null) {
+			return;
+		}
+		ensureChannel(context);
+		svc.updateNotification(buildNotification(context, pendingIntentFlags()));
+		lastNotifiedKey = notificationKey();
+	}
+
+	/** 通知内容标识：曲目/播放态/封面任一变化都需要重新提交通知 */
+	private String notificationKey() {
+		return lastTitle + "\u0001" + lastAlbum + "\u0001" + lastPlaying
+				+ "\u0001" + System.identityHashCode(lastCover);
+	}
+
+	private int pendingIntentFlags() {
+		return PendingIntent.FLAG_UPDATE_CURRENT
+				| (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
+	}
+
+	static void ensureChannel(Context context) {
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
 			return;
 		}

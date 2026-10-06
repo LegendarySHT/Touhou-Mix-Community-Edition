@@ -128,10 +128,10 @@ signal transport_changed
 
 ## 播放列表播放模式
 enum RepeatMode {
-	SEQUENTIAL,   ## 顺序：播完列表末尾停止
-	REPEAT_ALL,   ## 列表循环
+	SEQUENTIAL,   ## 顺序：按列表顺序播，末尾回到第一首
+	REPEAT_ALL,   ## 列表循环（末尾同样回到第一首；保留与顺序区分仅为兼容已存配置）
 	REPEAT_ONE,   ## 单曲循环
-	SHUFFLE,      ## 随机（不重复，播完一轮后才重洗）
+	SHUFFLE,      ## 随机（播完一轮回到开头，不重洗）
 }
 
 ## 播放列表条目数变化 / 当前索引变化时发出
@@ -545,11 +545,15 @@ func handle_media_command(action: String, pos_ms: float = -1.0) -> bool:
 				return false
 			return play_previous()
 		"track_end":
-			# 系统侧墙钟检测到循环回绕时补发的命令（后台主循环停摆，_process 的
-			# 回绕检测不运行）。判定规则与 _process 的回绕点一致：
-			# 用户列表还有下一首就走换曲，单曲槽会话 / 单曲循环只重启人声。
-			if _should_advance_on_end():
-				return play_next(false)
+			# 系统侧按墙钟检测到回绕时补发的命令，与 _process 的逐帧回绕检测互为补充
+			# （位置推送每 0.5s 一次，个别回绕可能被逐帧检测漏掉）。
+			# 判定规则与 _process 的回绕点一致：用户列表还有下一首就走换曲，
+			# 单曲槽会话 / 单曲循环只重启人声。
+			# 换曲失败也必须重启人声：否则人声停在曲尾、只剩伴奏原地循环，
+			# 听起来就是"歌曲末尾停住不下一首"
+			if _should_advance_on_end() and play_next(false):
+				transport_changed.emit()
+				return true
 			_restart_vocal_for_current_position()
 		"repeat":
 			cycle_repeat_mode()
@@ -591,36 +595,33 @@ func play_next(user_initiated: bool = true) -> bool:
 	play_playlist_index(next)
 	return true
 
-## 上一首。距开头不足 3 秒时回到上一首，否则回到本曲开头（常见播放器语义）。
-## 纯列表下标导航：两种模式下"上一首"就是列表里当前曲的前一项
+## 上一首。直接切到前一首——不做"距开头不足 3 秒才切歌、否则先回本曲开头"的二次语义
+## （想回开头拖进度条即可）。列表首项的前一首 = 列表末尾，与 _next_index 的末尾回绕对称
 func play_previous() -> bool:
 	if playlist.is_empty():
 		return false
-	var pos := get_position_ms()
-	if pos > 3000.0:
-		seek(0.0)
-		return true
-	play_playlist_index(maxi(playlist_index - 1, 0))
+	var prev := playlist_index - 1
+	if prev < 0:
+		prev = playlist.size() - 1
+	play_playlist_index(prev)
 	return true
 
 ## 当前是否还有下一首（用于禁用媒体控件的"下一首"按钮）
 func has_next() -> bool:
 	return not playlist.is_empty() and _next_index() >= 0
 
-## 当前是否还有上一首
+## 当前是否还有上一首（首项会回绕到列表末尾，故非空列表恒为 true）
 func has_previous() -> bool:
-	return not playlist.is_empty() and playlist_index > 0
+	return not playlist.is_empty()
 
 ## 下一首索引（顺序 = 列表次序；随机模式下列表本身就是打乱后的顺序）。
-## 到末尾且非列表循环时返回 -1
+## 末尾一律回到开头：顺序/列表循环/随机都续播，只有单曲循环走 play_next 的重播分支。
+## 不再有"播完列表末尾停止"——那会让末尾只剩原地重播却连人声都不重启
 func _next_index() -> int:
 	var n := playlist_index + 1
 	if n < playlist.size():
 		return n
-	# 末尾：列表循环则回到开头，否则停止
-	if repeat_mode == RepeatMode.REPEAT_ALL:
-		return 0
-	return -1
+	return 0
 
 ## 「打乱列表」按钮：重新生成随机排列（_shuf_order 快照同步更新，_seq_order 不动——
 ## 切回顺序仍是原顺序）并从头播
@@ -910,7 +911,10 @@ func load_midi(midi_data: MidiData) -> bool:
 	# TrackView 循环播放中直接进入 PlayView 时，后端 sequencer/playing 状态可能残留
 	# （实测：旧曲位置停留在 74s，pre-roll seek(-2000) 后 crossing-zero 状态机错乱，
 	# 表现为判定时钟异常 + 位置冻结 + 游戏提前结束）。先 stop() 保证干净状态。
+	# 这是换曲的中转步骤，不广播播放态（否则系统媒体通知会闪暂停态、封面硬切）
+	_suppress_state_signal = true
 	stop()
+	_suppress_state_signal = false
 
 	# 清理上一首歌的人声预加载资源（若新歌无人声或路径不同，旧 stream 会一直驻留）
 	if current_midi_data != null and current_midi_data.vocal_file_path != midi_data.vocal_file_path:
@@ -1332,6 +1336,11 @@ func play() -> void:
 
 	playback_state_changed.emit()
 
+## 内部换曲清理阶段（为 true 时 stop() 不广播播放态）。
+## 换曲开头要 stop() 清场，那只是中转步骤；广播 playing=false 会让系统媒体
+## 通知/卡片闪一下暂停态，也会打断系统对封面的切换过渡（看起来就是封面硬切）
+var _suppress_state_signal: bool = false
+
 ## 停止播放
 func stop() -> void:
 	_last_raw_midi_position_ms = -1.0
@@ -1350,7 +1359,8 @@ func stop() -> void:
 	# 停止人声播放
 	stop_vocal_playback()
 
-	playback_state_changed.emit()
+	if not _suppress_state_signal:
+		playback_state_changed.emit()
 
 ## 暂停播放
 func pause() -> void:
