@@ -641,7 +641,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	_interrupted_pause = false
 
 	# 读取“播放准备动画”设置（0=关闭, 1=开启）
-	var play_ready_animation: bool = ConfigManager.instance.get_int("Playback", "play_ready_animation", 1) == 1
+	var play_ready_animation: bool = ConfigManager.instance.get_int("Playback", "play_ready_animation") == 1
 	GLogger.info("Play ready animation: %s" % ("ON" if play_ready_animation else "OFF"), "PlayView")
 	# 歌曲信息面板开始显示的时刻（遮罩期起点，用于动态计算剩余等待时长）
 	var panel_start_ms := Time.get_ticks_msec()
@@ -680,7 +680,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	playback_mgr.claim_session(self)
 
 	# 新增：从配置读取演奏模式
-	var performing_mode = ConfigManager.instance.get_int("Playback", "performing_mode", 1)
+	var performing_mode = ConfigManager.instance.get_int("Playback", "performing_mode")
 	play_mode = (performing_mode == 1)
 	GLogger.info("Performing mode: %s" % ("ON" if play_mode else "OFF"), "PlayView")
 
@@ -704,7 +704,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	if setting_view and setting_view.has_method("get_setting_value"):
 		sync_threshold = setting_view.get_setting_value("audio_sync_threshold")
 	if sync_threshold == null:
-		sync_threshold = ConfigManager.instance.get_int("Gameplay", "audio_sync_threshold", 30)
+		sync_threshold = ConfigManager.instance.get_int("Gameplay", "audio_sync_threshold")
 	playback_mgr.set_sync_threshold(float(sync_threshold))
 	GLogger.info("Audio sync threshold set to %.0f ms" % float(sync_threshold), "PlayView")
 
@@ -1116,13 +1116,13 @@ func _reinit_lane_display() -> void:
 
 ## 从配置加载演奏模式设置
 func _load_play_mode_setting() -> void:
-	var performing_mode = ConfigManager.instance.get_int("Playback", "performing_mode", 1)
+	var performing_mode = ConfigManager.instance.get_int("Playback", "performing_mode")
 	play_mode = (performing_mode == 1)
 	GLogger.info("PlayView play mode: %s" % ("ON" if play_mode else "OFF"), "PlayView")
 	# 蓝牙输出时自动关闭演奏模式（高延迟下演奏手感不佳）；
 	# 仅当局会话生效（不覆写全局 performing_mode 配置），玩家可在游戏中手动重开
 	if play_mode and AudioBtDetector.is_bluetooth_output() \
-			and ConfigManager.instance.get_int("Gameplay", "bt_auto_disable_performing_mode", 1) == 1:
+			and ConfigManager.instance.get_int("Gameplay", "bt_auto_disable_performing_mode") == 1:
 		play_mode = false
 		GLogger.info("Performing mode auto-disabled: bluetooth audio output detected", "PlayView")
 

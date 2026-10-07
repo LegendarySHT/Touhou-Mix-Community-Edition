@@ -190,7 +190,7 @@ func _update_bt_status() -> void:
 	if is_bt:
 		_bt_status.text += "｜正在校准蓝牙延迟预设"
 	# 开关初始状态从配置读取（默认开启）
-	var auto_off := ConfigManager.instance.get_int("Gameplay", "bt_auto_disable_performing_mode", 1) == 1
+	var auto_off := ConfigManager.instance.get_int("Gameplay", "bt_auto_disable_performing_mode") == 1
 	_setting_bt_toggle = true
 	_bt_toggle.button_pressed = auto_off
 	_setting_bt_toggle = false

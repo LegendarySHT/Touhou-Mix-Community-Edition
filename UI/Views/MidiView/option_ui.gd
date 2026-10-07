@@ -44,7 +44,7 @@ func _ready():
 	_sync_difficulty_from_config()
 
 func _sync_mode_from_config() -> void:
-	var is_auto := ConfigManager.instance.get_int("Playback", "auto_mode", 0) == 1
+	var is_auto := ConfigManager.instance.get_int("Playback", "auto_mode") == 1
 	var target_id := MODE_AUTO_ID if is_auto else MODE_NORMAL_ID
 	var target_index := mode_btn.get_item_index(target_id)
 

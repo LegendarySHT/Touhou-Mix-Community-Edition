@@ -235,7 +235,7 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 						if keys.size() > 0:
 							lane_count = keys.size()
 					else:
-						max_touch_move_velocity = ConfigManager.instance.get_float("Generator", "max_touch_move_speed", 300.0)
+						max_touch_move_velocity = ConfigManager.instance.get_float("Generator", "max_touch_move_speed")
 						hand_model_enabled = true
 						lane_count = ConfigManager.instance.get_int("Lane", "lane_count", 12)
 				"keyboard_mode_keys":

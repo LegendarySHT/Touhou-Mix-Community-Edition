@@ -115,11 +115,12 @@ func push_global_playback_config() -> void:
 	var cfg := ConfigManager.instance
 	if cfg == null:
 		return
+	# 默认值不写在这里：config.ini 是唯一权威来源（见 Game/PlayerSettings.gd 头部说明）
 	MeltySynth.set_global_playback_config(
-		float(cfg.get_float("Gameplay", "default_midi_volume", 50.0)),
-		cfg.get_int("Playback", "use_system_stopwatch", 1) != 0,
-		float(cfg.get_int("Gameplay", "audio_sync_threshold", 30)),
-		float(cfg.get_float("Gameplay", "default_vocal_volume", 50.0)))
+		float(cfg.get_float("Gameplay", "default_midi_volume")),
+		cfg.get_int("Playback", "use_system_stopwatch") != 0,
+		float(cfg.get_int("Gameplay", "audio_sync_threshold")),
+		float(cfg.get_float("Gameplay", "default_vocal_volume")))
 	# 恢复"播放器页音量"（本页音量优先于全局默认）—— 不接这一步，存进 [Playback] 的值永远读不回来
 	_load_player_volumes()
 
@@ -493,14 +494,14 @@ const DEFAULT_SOUNDFONT_PATH := "res://Resources/Soundfont/GeneralUser-GS.sf2"
 ## 原先还有 `volume_db`，已删除：它永远是 -20（重构后没人再同步它），
 ## 而 DelayAdjust / TrackView 都曾拿它当"当前音量"用 —— DelayAdjust 因此在校准结束时
 ## 把用户音量冲成 -20dB。真值一律用 get_backend_volume_db() 读 C#。
-var midi_player_config: Dictionary = {"max_polyphony": 96}
+var midi_player_config: Dictionary = {"max_polyphony": 256}
 
 ## 后端当前 MIDI 音量（dB）。真值在 C#（ApplyChartMidiVolume / 播放器页滑块都会改写）。
 func get_backend_volume_db() -> float:
 	return MeltySynth.get_volume_db() if MeltySynth != null else -20.0
 
 func load_soundfont_from_config() -> void:
-	var name: String = str(ConfigManager.instance.get_value("Gameplay", "soundfont_file", "GeneralUser-GS.sf2"))
+	var name: String = str(ConfigManager.instance.get_value("Gameplay", "soundfont_file"))
 	name = name.replace(".sf2", "").replace("[内置]", "").strip_edges()
 	if not name.is_empty() and set_soundfont(name):
 		return
@@ -653,30 +654,9 @@ func evaluate_audio_device_health(trigger: String) -> bool:
 # 设计见 Doc/architecture/player_intent_api.md §5.2。目的：让 GDScript 一次拿到完整状态，
 # 不再靠 is_playing/is_paused 两个布尔去猜"现在是预卷、在播、还是设备已失效"。
 #
-# 【枚举镜像：数值即契约】C# 侧快照字段一律是 int，GDScript 用下面这些同序常量比较，
-# 不依赖任何跨语言的枚举名解析。**改 C# 枚举时必须同步改这里**（顺序即数值，不可重排）。
-
-## PlaybackPhase（对应 CSharp/PlaybackEnums.cs）
-const PHASE_IDLE := 0
-const PHASE_PREPARING := 1
-const PHASE_PRE_ROLLING := 2
-const PHASE_PLAYING := 3
-const PHASE_PAUSED := 4
-const PHASE_ENDED := 5
-const PHASE_STOPPED := 6
-
-## AudioDeviceState（对应 CSharp/PlaybackEnums.cs）
-const DEVICE_STATE_ABSENT := 0
-const DEVICE_STATE_STOPPED := 1
-const DEVICE_STATE_RUNNING := 2
-const DEVICE_STATE_START_FAILED := 3
-
-## PlaybackInterruptReason（对应 CSharp/PlaybackEnums.cs）
-const INTERRUPT_NONE := 0
-const INTERRUPT_AUDIO_FOCUS_LOSS := 1
-const INTERRUPT_DEVICE_LOST := 2
-const INTERRUPT_APP_BACKGROUNDED := 3
-const INTERRUPT_OUTPUT_ENDPOINT_CHANGED := 4
+# 快照里的 `Phase` / `DeviceState` / `InterruptReason` 都是 int，
+# 对应的 GDScript 枚举在 `Game/PlaybackTypes.gd`（Phase / DeviceState / InterruptReason），
+# 按数值比较，不依赖跨语言枚举名解析。
 
 ## 一次取全当前播放状态（C# `PlaybackSnapshot`，[GlobalClass] + [Export] 字段可直读）。
 ##

@@ -38,9 +38,9 @@ const _SPEED_MULT_MAX: float = 5.0
 ## 由 PopupWindow.show_falling_adjust 调用：初始化控件值并启动预览
 func init_adjust() -> void:
 	# 从配置读取初始值
-	var fall_mode := ConfigManager.instance.get_int("Generator", "note_fall_mode", 0)
-	var fall_time := ConfigManager.instance.get_float("Generator", "note_fall_time", 1.0)
-	var fall_speed_mult := ConfigManager.instance.get_float("Generator", "note_fall_speed_after_judge_multiplier", 1.0)
+	var fall_mode := ConfigManager.instance.get_int("Generator", "note_fall_mode")
+	var fall_time := ConfigManager.instance.get_float("Generator", "note_fall_time")
+	var fall_speed_mult := ConfigManager.instance.get_float("Generator", "note_fall_speed_after_judge_multiplier")
 	var before_func := ConfigManager.instance.get_string("Generator", "note_fall_easing_before_func", "LINEAR")
 	var before_phase := ConfigManager.instance.get_string("Generator", "note_fall_easing_before_phase", "IN")
 	var after_func := ConfigManager.instance.get_string("Generator", "note_fall_easing_after_func", "LINEAR")

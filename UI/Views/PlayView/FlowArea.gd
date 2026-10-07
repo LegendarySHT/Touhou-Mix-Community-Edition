@@ -298,7 +298,7 @@ func init_flow_area():
 	if EvtBus and not EvtBus.config_changed.is_connected(_on_config_changed):
 		EvtBus.config_changed.connect(_on_config_changed)
 
-	auto_mode = ConfigManager.instance.get_int("Playback", "auto_mode", 0) == 1
+	auto_mode = ConfigManager.instance.get_int("Playback", "auto_mode") == 1
 	
 	# 从配置读取判定有效区（时间窗）
 	var judge_window_idx = ConfigManager.instance.get_int("Judge", "judge_window_ms", 0)
@@ -367,7 +367,9 @@ func _apply_judge_line_thickness() -> void:
 		jl.add_theme_stylebox_override("separator", line_style)
 
 func _apply_note_fall_config_from_settings() -> void:
-	var note_fall_time = ConfigManager.instance.get_float("Generator", "note_fall_time", 1.5)
+	# 不写内联回退：config.ini 是默认值的权威来源，且 ConfigManager.merge_with_defaults
+	# 保证默认层里有的键在读取时一定存在（默认值写两处正是此前漂移的成因）
+	var note_fall_time = ConfigManager.instance.get_float("Generator", "note_fall_time")
 	note_generation_lead_time = max(1.0, note_fall_time * 1000.0)
 	# 把本页实际使用的"生成提前量"推给播放器：开局预卷时长由它推出（+1s 余量），
 	# 保证"音符生成窗口"与"预卷"恒等对齐。此前预卷由 PlayView 按同一配置独立算一遍，
@@ -377,7 +379,7 @@ func _apply_note_fall_config_from_settings() -> void:
 	if _mgr != null:
 		_mgr.set_note_generation_lead_ms(note_generation_lead_time)
 
-	var note_fall_mode = ConfigManager.instance.get_int("Generator", "note_fall_mode", 0)
+	var note_fall_mode = ConfigManager.instance.get_int("Generator", "note_fall_mode")
 	var note_fall_speed_after_judge_multiplier = ConfigManager.instance.get_float("Generator", "note_fall_speed_after_judge_multiplier", -1.0)
 	if note_fall_speed_after_judge_multiplier <= 0.0:
 		note_fall_speed_after_judge_multiplier = ConfigManager.instance.get_float("Appearance", "grace_time", 1.0)
@@ -1336,9 +1338,9 @@ func _trigger_touch_vibration() -> void:
 		return
 	if not (OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")):
 		return
-	if ConfigManager.instance.get_int("Playback", "vibrate_on_touch", 1) != 1:
+	if ConfigManager.instance.get_int("Playback", "vibrate_on_touch") != 1:
 		return
-	var duration_ms = max(1.0, ConfigManager.instance.get_int("Playback", "vibration_duration", 20))
+	var duration_ms = max(1.0, ConfigManager.instance.get_int("Playback", "vibration_duration"))
 	Input.vibrate_handheld(duration_ms, 0.5)
 
 func _generate_particle(type: String, pos: Vector2) -> void:
