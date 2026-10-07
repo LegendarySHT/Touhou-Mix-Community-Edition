@@ -71,7 +71,6 @@ func _ready() -> void:
 	_forward(MeltySynth, "vocal_finished", func(): vocal_finished.emit())
 	_forward(MeltySynth, "playlist_index_changed", func(i): playlist_index_changed.emit(i))
 	_forward(MeltySynth, "repeat_mode_changed", func(m): repeat_mode_changed.emit(m))
-	_load_player_volumes()
 	# 全局配置与校准延迟都不在这里读：本 autoload 的 _ready 早于 ConfigManager 加载用户配置，
 	# 此刻读只会拿到默认值、并给每个键附一条 "Config key not found" 告警。
 	# Main 在配置加载完成后会调 push_global_playback_config() + refresh_audio_delay()
@@ -106,7 +105,10 @@ func push_global_playback_config() -> void:
 	MeltySynth.set_global_playback_config(
 		float(cfg.get_float("Gameplay", "default_midi_volume", 50.0)),
 		cfg.get_int("Playback", "use_system_stopwatch", 1) != 0,
-		float(cfg.get_int("Gameplay", "audio_sync_threshold", 30)))
+		float(cfg.get_int("Gameplay", "audio_sync_threshold", 30)),
+		float(cfg.get_float("Gameplay", "default_vocal_volume", 50.0)))
+	# 恢复"播放器页音量"（本页音量优先于全局默认）—— 不接这一步，存进 [Playback] 的值永远读不回来
+	_load_player_volumes()
 
 func _forward(src: Object, sig: String, cb: Callable) -> void:
 	if src != null and src.has_signal(sig):
@@ -589,6 +591,11 @@ func _apply_delay_preset() -> void:
 	audio_delay_ms = float(ConfigManager.instance.get_int("Gameplay", key, default_value))
 	if MeltySynth != null:
 		MeltySynth.set_audio_delay_ms(audio_delay_ms)
+	# 生效值只在"预设键或数值变化"时打一条：设备切换后能直接从 logcat 看到最终生效的延迟
+	if key != _last_delay_log_key or not is_equal_approx(audio_delay_ms, _last_delay_log_ms):
+		_last_delay_log_key = key
+		_last_delay_log_ms = audio_delay_ms
+		GLogger.info("Audio delay preset [%s] = %.0f ms" % [key, audio_delay_ms], "PlaybackDisplay")
 
 # ===================== 传输门面（转发 C# MeltySynth，保持旧调用点） =====================
 
@@ -730,12 +737,17 @@ func _load_player_volumes() -> void:
 		return
 	var m := cfg.get_float(PLAYER_VOL_SECTION, PLAYER_MIDI_KEY, -1.0)
 	if m < 0.0:
+		GLogger.info("Player volume: nothing stored yet (using global default)", "PlaybackDisplay")
 		return
 	var v := cfg.get_float(PLAYER_VOL_SECTION, PLAYER_VOCAL_KEY, 0.0)
 	MeltySynth.set_player_volumes(clampf(m, 0.0, 1.0), clampf(db_to_linear(clampf(v, -80.0, 12.0)), 0.0, 4.0))
+	GLogger.info("Player volume loaded: midi=%.2f vocal=%.1fdB" % [m, v], "PlaybackDisplay")
 
 ## 音量落盘防抖：拖动会高频触发，合并成 1 秒后一次整文件写
 var _vol_save_pending: bool = false
+# 延迟生效值日志的去重状态（只在预设键或值变化时打一条，避免每次焦点回归都刷）
+var _last_delay_log_key: String = ""
+var _last_delay_log_ms: float = -1.0
 var _vol_save_timer: float = 0.0
 
 ## 蓝牙输出轮询兜底：Android 正常由 Java AudioDeviceCallback 事件驱动（见 AudioBtDetector），
@@ -767,6 +779,9 @@ func _tick_volume_save(delta: float) -> void:
 	if _vol_save_timer < 1.0:
 		return
 	_vol_save_pending = false
+	GLogger.info("Player volume saved: midi=%.2f vocal=%.1fdB" % [
+		ConfigManager.instance.get_float(PLAYER_VOL_SECTION, PLAYER_MIDI_KEY, -1.0),
+		ConfigManager.instance.get_float(PLAYER_VOL_SECTION, PLAYER_VOCAL_KEY, 0.0)], "PlaybackDisplay")
 	var cfg := ConfigManager.instance
 	if cfg != null:
 		cfg.save_config(ConfigManager.USER_CONFIG_PATH, cfg.get_current_config())

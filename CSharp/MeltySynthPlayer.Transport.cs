@@ -1315,12 +1315,15 @@ public partial class MeltySynthPlayer
 	public int get_sync_threshold_ms() => (int)Math.Round(_vocalSyncThresholdMs);
 
 
-	/// <summary>播放器页 MIDI 音量（线性）；未设置过返回 -1（调用方回退全局默认）</summary>
-	public double get_player_midi_linear() => _playerMidiVolumeLinear;
+	/// <summary>播放器页 MIDI 音量（线性）。未设置过（哨兵 -1）时**回退全局默认** ——
+	/// 绝不能把哨兵交给 UI：滑块 min=0 会把它钳成 0，页面随即把 0 存回配置（音量"回退"的根因）。</summary>
+	public double get_player_midi_linear() =>
+		_playerMidiVolumeLinear >= 0.0f ? _playerMidiVolumeLinear : _cachedDefaultMidiVolume;
 
 	/// <summary>播放器页人声音量（dB）；未设置过返回 0dB，静音返回 -80dB</summary>
 	public double get_player_vocal_db() =>
-		_playerVocalVolumeLinear < 0.0f ? 0.0
+		_playerVocalVolumeLinear < 0.0f
+			? (_cachedDefaultVocalLinear <= 0.0001f ? -80.0 : Mathf.LinearToDb(_cachedDefaultVocalLinear))
 			: (_playerVocalVolumeLinear <= 0.0001f ? -80.0 : Mathf.LinearToDb(_playerVocalVolumeLinear));
 
 	/// <summary>音源是否仍在加载/切换（TrackView 挂在 soundfont_reload_completed 前的等待判据）</summary>

@@ -80,13 +80,23 @@ public partial class MeltySynthPlayer
 	/// 改为由显示侧显式推送纯标量后：C# 不依赖场景树、不需要跨语言轮询，
 	/// 后台换曲线程也能安全读取（这些字段是 volatile）。
 	/// </summary>
-	public void set_global_playback_config(double defaultMidiVolume, bool useSystemStopwatch, double syncThresholdMs)
+	public void set_global_playback_config(double defaultMidiVolume, bool useSystemStopwatch, double syncThresholdMs,
+		double defaultVocalVolume = 50.0)
 	{
 		// 兼容旧版 0-100 存值（与 GDScript 侧 get_effective_midi_volume 同规则）
 		double vol = defaultMidiVolume > 1.0 ? defaultMidiVolume / 100.0 : defaultMidiVolume;
 		if (!double.IsNaN(vol))
 		{
 			_cachedDefaultMidiVolume = (float)Math.Clamp(vol, 0.0, 1.0);
+		}
+
+		// 人声全局默认：兼容 0-100 百分数与 dB 两种历史存值（<=0 视为 dB）
+		double vv = defaultVocalVolume;
+		if (vv > 1.0) { vv /= 100.0; }
+		else if (vv <= 0.0) { vv = Mathf.DbToLinear((float)vv); }
+		if (!double.IsNaN(vv))
+		{
+			_cachedDefaultVocalLinear = (float)Math.Clamp(vv, 0.0, 1.0);
 		}
 
 		// 系统时钟模式切换会重写 sequencer 的时钟基准并与音频回调互斥，
@@ -120,6 +130,8 @@ public partial class MeltySynthPlayer
 	/// volatile：主线程推送、后台换曲线程读取。
 	/// </summary>
 	private volatile float _cachedDefaultMidiVolume = 0.5f;
+	/// <summary>人声全局默认（线性 0-1），由 set_global_playback_config 推送</summary>
+	private volatile float _cachedDefaultVocalLinear = 1.0f;
 
 
 	private void StartBackgroundAdvanceThread()

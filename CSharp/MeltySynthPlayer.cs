@@ -866,6 +866,10 @@ public partial class MeltySynthPlayer : Node
 			{
 				ThreadSafeLog.Print($"[MeltySynthPlayer][DIAG] AUDIO RESUMED pos={pos:F1}ms " +
 					$"(stalled {_watchdogStallFrames} frames)");
+					// 【卡顿恢复后强行对齐人声】设备停顿时 MIDI 的渲染位置停了、而人声解码与位置记账已追平，
+					// 于是出现『报告位置一致、实际内容落后』—— 按位置判定的漂移同步看不见它，只有 seek 会丢
+					// 弃待播帧。真机现象：断/连蓝牙后 MIDI 比人声快，seek 一下就正常。这里主动补一次重对齐。
+					RealignVocalToMidiPosition();
 			}
 			_watchdogStallFrames = 0;
 		}
@@ -3353,6 +3357,21 @@ public partial class MeltySynthPlayer : Node
 
 
 
+	/// <summary>
+	/// 把已加载的人声按**当前 MIDI 渲染位置**重新定位（丢弃待播帧）。
+	/// 用于音频设备停顿 / 路由切换之后：那时 MIDI 位置停了、人声的位置记账却追平了，
+	/// 于是『位置一致但内容落后』，按位置判定的漂移同步发现不了，只能靠一次重定位对齐
+	/// （真机现象：切蓝牙后 MIDI 比人声快，seek 一下即恢复正常）。
+	/// </summary>
+	public void RealignVocalToMidiPosition()
+	{
+		if (!(_audioOutput is MiniaudioAudioOutputBridge ma) || !ma.IsVocalLoaded)
+		{
+			return;
+		}
+		double posMs = _sequencer != null ? _sequencer.RenderedPosition.TotalMilliseconds : 0.0;
+		SeekVocalToMidi(posMs);
+	}
 	private void ResetManualVoices()
 	{
 		if (!_useSeparateSynthForManual || _manualSynth == null || _manualSynth == _synth)
