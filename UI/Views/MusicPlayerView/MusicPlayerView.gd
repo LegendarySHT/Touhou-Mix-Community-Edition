@@ -21,6 +21,7 @@ const LibraryLayerScript := preload("res://UI/Views/MusicPlayerView/LibraryLayer
 const PlaylistPanelScript := preload("res://UI/Views/MusicPlayerView/PlaylistPanel.gd")
 
 @onready var _back_btn: TextureButton = $BackBtn
+@onready var _track_view_btn: TextureButton = $TrackViewBtn
 @onready var _cover_view: Control = $MainColumn/Stage/CoverView
 @onready var _cover: TextureRect = $MainColumn/Stage/CoverView/AspectRatio/Cover
 @onready var _cover_placeholder: Label = $MainColumn/Stage/CoverView/AspectRatio/CoverPlaceholder
@@ -195,9 +196,8 @@ func _activate_page() -> void:
 func apply_theme() -> void:
 	if ThemeMGR == null:
 		return
-	var bg := get_node_or_null("Bg") as ColorRect
-	if bg != null:
-		bg.color = ThemeMGR.get_color("background", bg.color)
+	# 本页不再有独立的 Bg 底色矩形：底色交给全局背景（与其它视图一致），
+	# 免得在这里多一个"要跟着主题走"的色块，也少一处要维护的背景设置。
 	var bar := get_node_or_null("MainColumn/BottomBar") as Panel
 	if bar != null:
 		var sb := bar.get_theme_stylebox("panel") as StyleBoxFlat
@@ -419,7 +419,7 @@ func _apply_icon_tints() -> void:
 	var dim := normal
 	if ThemeMGR != null:
 		dim = ThemeMGR.get_color("text_dim", normal)
-	for b in [_back_btn, _stage_switch_btn, _prev_btn, _play_pause_btn, _next_btn, _repeat_btn]:
+	for b in [_back_btn, _track_view_btn, _stage_switch_btn, _prev_btn, _play_pause_btn, _next_btn, _repeat_btn]:
 		if b != null:
 			b.self_modulate = normal
 	if _equalizer_btn != null:
