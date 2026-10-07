@@ -222,8 +222,13 @@ func _process(delta: float) -> void:
 				var drift: float = current_time - _visual_time_ms
 				_visual_time_ms += clampf(drift * _VISUAL_ANCHOR_RATE, -_VISUAL_ANCHOR_MAX_MS, _VISUAL_ANCHOR_MAX_MS)
 			# 【方案C】同步到FlowArea：判定与渲染均为墙钟锚点钟（current_time），
-			# _visual_time_ms 仅做帧间平滑
-			flow_area.set_current_time(current_time, _visual_time_ms)
+			# _visual_time_ms 仅做帧间平滑。
+			# 第三个参数是**判定入口专用的口径**：历史上判定入口用
+			# get_realtime_position_ms()（= get_visual_position_ms()，比 current_time 多扣一次
+			# 校准延迟），两者在有校准延迟时本来就不同，故分开传、不合并（见 FlowArea.set_current_time）。
+			# 每帧只读一次：既让同帧内所有判定入口看到同一个时间，
+			# 也避免 C# get_position_ms() 的 _seekPositionHoldFrames 被同帧多次递减。
+			flow_area.set_current_time(current_time, _visual_time_ms, playback_mgr.get_realtime_position_ms())
 
 			# 检测音频停滞：判定钟（current_time）已改为墙钟锚点推导，音频卡顿时不再停滞，
 			# 故停滞检测必须改用音频回调钟（get_raw_position_ms）——音频中断/曲终时停止增长的是它。

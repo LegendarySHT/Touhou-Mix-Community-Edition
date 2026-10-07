@@ -133,6 +133,8 @@ var _synced_current_time: float = 0.0
 # 渲染时钟（毫秒）：来自 PlayView 的平滑视觉墙钟，仅用于计算音符显示位置。
 # 判定（过线/Miss/长条结束/滑过认领）仍用 _synced_current_time（音频钟），保证判定与声音对齐。
 var _render_time_ms: float = 0.0
+## 判定入口用的位置口径（每帧由 PlayView 推一次；见 set_current_time 的说明）
+var _judge_time_ms: float = 0.0
 
 # ===== 平行数组（彻底无 FlowNote 对象，直接消费 C# 静态数据 + 本地运行态数组）=====
 # 索引 = C# KeySequenceCore 的 seq 索引。静态数据（时间/时长/类型/轨道）在 build_seq_data() 时
@@ -1417,15 +1419,28 @@ func _notification(what: int) -> void:
 
 ## 【方案C】同步当前播放时间（毫秒）
 ## 由 PlayView._process() 每帧调用。time_ms = 音频钟（判定用）；render_time_ms = 渲染钟（平滑视觉，可选）
-func set_current_time(time_ms: float, render_time_ms: float = -1.0) -> void:
+##
+## judge_time_ms = 判定入口（触摸/键盘/取消/长条释放）用的那个口径。它**未必等于 time_ms**：
+## time_ms 来自 `get_position_ms()`（墙钟锚点 − 设备延迟），而判定入口历史上用
+## `get_realtime_position_ms()`（= `get_visual_position_ms()`，再多扣一次校准延迟）。
+## 两者在有校准延迟时**本来就不同**，故必须分别传入、不能合并 —— 合并会静默改变判定口径。
+## 默认值 -1 表示"与 time_ms 相同"，供 end-of-game 等无判定读取的阶段使用。
+func set_current_time(time_ms: float, render_time_ms: float = -1.0, judge_time_ms: float = -1.0) -> void:
 	_synced_current_time = time_ms
 	_render_time_ms = render_time_ms if render_time_ms >= 0.0 else time_ms
+	_judge_time_ms = judge_time_ms if judge_time_ms >= 0.0 else time_ms
 
+## 判定入口的位置读取。
+##
+## 【为什么用每帧缓存而不是每次现查】本函数被判定路径每帧调用多次（键盘按下/触摸/
+## 取消/长条释放/自动判定）。原先每次都实时查一次后端，副作用有二：
+##   1. 同一帧内各判定入口拿到**略微不同**的时间（后端位置在帧内仍会推进），
+##      与"每帧一次判定时钟"的语义不符；
+##   2. C# `get_position_ms()` 内部会递减 `_seekPositionHoldFrames`（seek 后的保持帧），
+##      一帧读多次 = 一个保持帧被消耗多次，seek 刚下单时的位置保持会被提前用光。
+## 现在每帧由 PlayView 读一次并推进来，本函数只做读取。
 func _get_realtime_position_ms() -> float:
-	var playback_mgr = PlaybackDisplay.instance
-	if playback_mgr:
-		return playback_mgr.get_realtime_position_ms()
-	return _synced_current_time
+	return _judge_time_ms
 
 func _process(delta: float) -> void:
 	if not parent_node:

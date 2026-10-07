@@ -352,7 +352,7 @@ func _seek_to(target_ms: float) -> void:
 ## 现在改成订阅状态信号：命令已由 C# 执行完毕，本页只对齐显示，**绝不再次 seek**
 ## （旧实现里 seek 由页面发起所以那时调 _seek_to；现在再调一次就是回授）。
 func _on_transport_changed() -> void:
-	if ui_stat_mgr == null or ui_stat_mgr.current_state != work_state:
+	if not _owns_session():
 		return
 	if midi_playback_manager == null:
 		return
@@ -376,14 +376,21 @@ func _on_transport_changed() -> void:
 ## 表现为"回前台后轨道与正在播放的歌对不上、可视化不动"。
 ## 用 deferred：该信号在 C# 的 _Process 栈里同步发出，重活不该压在信号发射栈上。
 func _on_transport_song_changed(data: MidiData) -> void:
-	if ui_stat_mgr == null or ui_stat_mgr.current_state != work_state:
+	# 用统一的会话所有权判据（与 PlayView / MusicPlayerView 同一形式）：
+	# "这次播放归我管吗"比"页面是否可见"更准 —— 后台播放时页面可以不可见却仍归它管。
+	if not _owns_session():
 		return
 	if data == null or data == current_midi_data:
 		return
 	_reload_for_song.call_deferred(data)
 
+## 本次播放是否归本页管（页内复用；判据见 PlaybackDisplay.is_session_owner）
+func _owns_session() -> bool:
+	var mgr := PlaybackDisplay.instance
+	return mgr != null and mgr.is_session_owner(self)
+
 func _reload_for_song(data: MidiData) -> void:
-	if ui_stat_mgr == null or ui_stat_mgr.current_state != work_state:
+	if not _owns_session():
 		return
 	if data == null or data == current_midi_data:
 		return
@@ -1220,7 +1227,7 @@ func _on_soundfont_changed(soundfont_path: String) -> void:
 ## 音源未就绪时推迟的续播在音源就绪后真正开始：启动轨道音符显示
 ## （此前为避免静止音符而延后，待 MIDI 从头续播真正推进位置后再显示）
 func _on_deferred_play_resumed() -> void:
-	if ui_stat_mgr.current_state == work_state:
+	if _owns_session():
 		_set_note_displayers_process(true)
 
 ## 当乐器列表变更时，快速更新所有MidiTrack的选项
