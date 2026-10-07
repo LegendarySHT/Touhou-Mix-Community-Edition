@@ -487,7 +487,7 @@ func _popup_falling_adjust() -> void:
 
 # 弹出延迟校准窗口，校准结果写入当前输出类型对应的延迟预设（pending 保存）
 # 双预设：蓝牙输出校准写 audio_playback_delay_bt，普通输出校准写 audio_playback_delay
-# DelayAdjust 内部用 MidiPlaybackManager 实时合成 GM 鼓组节拍音，与 PlayView 演奏模式同音频路径
+# DelayAdjust 内部用 PlaybackDisplay 实时合成 GM 鼓组节拍音，与 PlayView 演奏模式同音频路径
 func _popup_delay_adjust() -> void:
 	# 强制刷新检测后再选预设，保证校准目标与状态提示一致
 	AudioBtDetector.is_bluetooth_output(true)

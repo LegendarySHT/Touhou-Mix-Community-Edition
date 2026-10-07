@@ -126,7 +126,7 @@ var _note_fall_calculator: NoteFallCalculator = NoteFallCalculator.new()
 var parent_node: Node = null
 
 # 【方案C】从PlayView同步的当前播放时间（毫秒）
-## 这个时间来自 MidiPlaybackManager.get_position_ms()，已包含缓冲补偿
+## 这个时间来自 PlaybackDisplay.get_position_ms()，已包含缓冲补偿
 ## 用于确保note判定与MIDI播放位置完全同步
 var _synced_current_time: float = 0.0
 
@@ -1422,7 +1422,7 @@ func set_current_time(time_ms: float, render_time_ms: float = -1.0) -> void:
 	_render_time_ms = render_time_ms if render_time_ms >= 0.0 else time_ms
 
 func _get_realtime_position_ms() -> float:
-	var playback_mgr = MidiPlaybackManager.instance
+	var playback_mgr = PlaybackDisplay.instance
 	if playback_mgr:
 		return playback_mgr.get_realtime_position_ms()
 	return _synced_current_time

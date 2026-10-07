@@ -121,7 +121,7 @@ func cleanup_midi_cache(midi: MidiData) -> void:
 	var ksm := KeySequenceManager.instance
 	if ksm != null:
 		ksm.clear_sequences()
-	var pm := MidiPlaybackManager.instance
+	var pm := PlaybackDisplay.instance
 	if pm != null and pm.current_midi_data == midi and pm.has_method("unload_midi"):
 		pm.unload_midi()
 	midi.clear_parsed_notes()

@@ -65,13 +65,21 @@ public partial class MeltySynthPlayer
 			private bool _useDeviceNativeSampleRate = false;  // 方向 1: sampleRate=0 请求设备原生率
 
 			private bool _initialized = false;
-			private bool _playing = false;
-			private int _postSeekSilenceFrames = 0;
+			// 【跨线程】主线程 Play/Stop 写，后台换曲线程经 IsPlaying 读（决定换曲后要不要重新拉起
+			// 设备）。陈旧读会让设备该起不起 → 换完曲彻底静音，故 volatile。
+			private volatile bool _playing = false;
+			// 【跨线程】主线程在 seek 后设置（PostSeekSilenceFrames），音频回调读取并递减。
+			// 无可见性保证时那次"seek 后静音"可能整段丢失 → seek 会听到瞬态攻击音。
+			// 递减方只有回调自己（单回调线程），偶发丢一次递减只是多静音一个 period（无害）。
+			private volatile int _postSeekSilenceFrames = 0;
 			private StringName _bus = new StringName("Master");
 
 			// Vocal control methods are called from the Godot main thread. The native
 			// audio callback owns the actual playback state and never reads these fields.
-			private bool _vocalLoaded = false;
+			// 【跨线程】主线程在 vocalLock 内装载/卸载，音频回调的偏移门控**刻意不取锁**读它
+			// （避免与 vocalLock 形成嵌套）。故用 volatile 保证可见性：陈旧 false 会让门控
+			// 晚放行一个回调（约 5ms），陈旧 true 才是问题，而卸载路径同时会把门重置。
+			private volatile bool _vocalLoaded = false;
 			private float _vocalVolumeLinear = 1.0f;
 
 			// ---- 统计 ----
@@ -105,6 +113,10 @@ public partial class MeltySynthPlayer
 			// 音频线程禁止直接 GD.Print（会与主线程争用打印锁、拖延回调返回）。
 			// 诊断日志先入队，由主线程 Update() 每帧排空打印。
 			private readonly ConcurrentQueue<string> _audioLogQueue = new ConcurrentQueue<string>();
+
+			/// <summary>音频回调内的异常次数（诊断/回归用；回调把异常吞成静音，不计数就不可见）</summary>
+			private long _callbackExceptionCount = 0;
+			public long CallbackExceptionCount => Interlocked.Read(ref _callbackExceptionCount);
 
 			/// <summary>慢回调比例（回调耗时 &gt; 回调周期），用于验证欠载是否被根治</summary>
 			internal double PerfSlowRatio =>
@@ -142,7 +154,7 @@ public partial class MeltySynthPlayer
 			public void SetDecodeFrames(int frames)
 			{
 				_targetDecodeFrames = Math.Clamp(frames, MIN_DECODE_FRAMES, MAX_DECODE_FRAMES);
-				GD.Print($"[MeltySynthPlayer][miniaudio] Target decode frames: {_targetDecodeFrames}");
+				ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Target decode frames: {_targetDecodeFrames}");
 			}
 
 			/// <summary>
@@ -153,7 +165,7 @@ public partial class MeltySynthPlayer
 			{
 				_periodSizeInFrames = Math.Max(periodSizeInFrames, 64u);
 				_periodCount = (uint)Math.Clamp(periodCount, 2, 4);
-				GD.Print($"[MeltySynthPlayer][miniaudio] Period size target: {_periodSizeInFrames}×{_periodCount}");
+				ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Period size target: {_periodSizeInFrames}×{_periodCount}");
 			}
 
 			/// <summary>设置后端 (Default/Wasapi/CoreAudio/Aaudio 等)</summary>
@@ -168,7 +180,7 @@ public partial class MeltySynthPlayer
 				_wasapiExclusive = exclusive;
 				if (exclusive)
 				{
-					GD.Print("[MeltySynthPlayer][miniaudio] WASAPI exclusive mode enabled");
+					ThreadSafeLog.Print("[MeltySynthPlayer][miniaudio] WASAPI exclusive mode enabled");
 				}
 			}
 
@@ -182,7 +194,7 @@ public partial class MeltySynthPlayer
 			public void UseDeviceNativeSampleRate(bool useNative)
 			{
 				_useDeviceNativeSampleRate = useNative;
-				GD.Print($"[MeltySynthPlayer][miniaudio] Device native sample rate mode: {(useNative ? "enabled (sampleRate=0)" : "disabled")}");
+				ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Device native sample rate mode: {(useNative ? "enabled (sampleRate=0)" : "disabled")}");
 			}
 
 			public void SetSynthesizers(MidiFileSequencer sequencer, Synthesizer autoSynth, Synthesizer manualSynth, bool useSeparateSynth)
@@ -193,7 +205,7 @@ public partial class MeltySynthPlayer
 					_autoSynth = autoSynth;
 					_manualSynth = manualSynth;
 					_useSeparateSynth = useSeparateSynth;
-					GD.Print($"[MeltySynthPlayer][miniaudio] SetSynthesizers: seq={sequencer!=null}, auto={autoSynth!=null}, manual={manualSynth!=null}, separate={useSeparateSynth}");
+					ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] SetSynthesizers: seq={sequencer!=null}, auto={autoSynth!=null}, manual={manualSynth!=null}, separate={useSeparateSynth}");
 				}
 			}
 
@@ -227,12 +239,12 @@ public partial class MeltySynthPlayer
 				var r = MiniaudioNative.ma_bridge_vocal_load(_bridgeHandle, utf8Path);
 				if (r != MiniaudioNative.Result.Ok)
 				{
-					GD.PrintErr($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_load failed: {r} ({path})");
+					ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_load failed: {r} ({path})");
 					return false;
 				}
 				_vocalLoaded = true;
 				ApplyVocalVolume();
-				GD.Print($"[MeltySynthPlayer][miniaudio] Vocal loaded: {path}");
+				ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Vocal loaded: {path}");
 				return true;
 			}
 
@@ -251,7 +263,7 @@ public partial class MeltySynthPlayer
 				var r = MiniaudioNative.ma_bridge_vocal_play(_bridgeHandle);
 				if (r != MiniaudioNative.Result.Ok)
 				{
-					GD.PushWarning($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_play failed: {r}");
+					ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_play failed: {r}");
 				}
 			}
 
@@ -261,7 +273,7 @@ public partial class MeltySynthPlayer
 				var r = MiniaudioNative.ma_bridge_vocal_pause(_bridgeHandle);
 				if (r != MiniaudioNative.Result.Ok)
 				{
-					GD.PushWarning($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_pause failed: {r}");
+					ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_pause failed: {r}");
 				}
 			}
 
@@ -276,7 +288,7 @@ public partial class MeltySynthPlayer
 				var r = MiniaudioNative.ma_bridge_vocal_stop(_bridgeHandle);
 				if (r != MiniaudioNative.Result.Ok)
 				{
-					GD.PushWarning($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_stop failed: {r}");
+					ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_stop failed: {r}");
 				}
 			}
 
@@ -291,7 +303,7 @@ public partial class MeltySynthPlayer
 				var r = MiniaudioNative.ma_bridge_vocal_seek(_bridgeHandle, (ulong)Math.Round(frames));
 				if (r != MiniaudioNative.Result.Ok)
 				{
-					GD.PushWarning($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_seek failed: {r} ({positionMs}ms)");
+					ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_seek failed: {r} ({positionMs}ms)");
 				}
 			}
 
@@ -307,7 +319,7 @@ public partial class MeltySynthPlayer
 				var r = MiniaudioNative.ma_bridge_vocal_set_volume(_bridgeHandle, _vocalVolumeLinear);
 				if (r != MiniaudioNative.Result.Ok)
 				{
-					GD.PushWarning($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_set_volume failed: {r}");
+					ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_set_volume failed: {r}");
 				}
 			}
 
@@ -318,6 +330,12 @@ public partial class MeltySynthPlayer
 					: 0.0;
 			}
 
+			/// <summary>
+			/// 是否已装载人声解码器。**判"有没有人声"必须用它，不能用 GetVocalLengthMs() &gt; 0**：
+			/// native 对 .ogg 刻意把总帧数置 0（stb_vorbis 报的是重采样前的源帧数，换算成设备率会错），
+			/// 于是 GetVocalLengthMs() 对 ogg 恒返回 -1 —— 而本项目的人声几乎都是 ogg。
+			/// 之前多处用长度判"有人声"，等于把这些逻辑对人声整个关掉了。
+			/// </summary>
 			public double GetVocalLengthMs()
 			{
 				return _bridgeHandle != IntPtr.Zero
@@ -335,19 +353,6 @@ public partial class MeltySynthPlayer
 		{
 			return _bridgeHandle != IntPtr.Zero &&
 				MiniaudioNative.ma_bridge_vocal_is_finished(_bridgeHandle) != 0;
-		}
-
-		// loop 开关由 MeltySynthPlayer.set_loop 同步进来（人声循环跟随 MIDI）
-		private volatile bool _vocalLoopEnabled = false;
-		private double _lastLoopPositionMs = -1.0;
-
-		public void SetVocalLoopEnabled(bool enabled)
-		{
-			_vocalLoopEnabled = enabled;
-			if (!enabled)
-			{
-				_lastLoopPositionMs = -1.0;
-			}
 		}
 
 		/// <summary>
@@ -371,7 +376,10 @@ public partial class MeltySynthPlayer
 			double clamped = double.IsNaN(offsetMs) || offsetMs < 0.0 ? 0.0 : offsetMs;
 			lock (_vocalOffsetLock)
 			{
-				_vocalOffsetUs = (long)(clamped * 1000.0);
+				// 写侧必须与回调侧的 Volatile.Read 配对（release/acquire）：
+				// 普通写在缺少屏障时可能长时间不被音频线程观察到，
+				// 表现是人声偏移门控按**旧偏移**放行（人声提前/滞后进）。
+				Volatile.Write(ref _vocalOffsetUs, (long)(clamped * 1000.0));
 			}
 		}
 
@@ -414,99 +422,48 @@ public partial class MeltySynthPlayer
 			PlayVocal();
 		}
 
+
+	private void TickEndOfSequenceInCallback()
+	{
+	if (_sequencer != null && _sequencer.EndOfSequence && Volatile.Read(ref _endOfSequenceFlag) == 0)
+	{
+		Volatile.Write(ref _endOfSequenceFlag, 1);
+			// 有交棒就先换手：换成功则本次"曲终"已被处理，标志立刻清掉（不让主线程再处理一次）；
+			// 失败（如音源未就绪）则把交棒放回，标志留给前台正规路径。
+		// 音频线程不能碰引擎：ThreadSafeLog 会入队，主线程 flush。带绝对时间戳便于对表
+		ThreadSafeLog.Print($"[MeltySynthPlayer] end-of-sequence latched (t={System.Environment.TickCount64})");
+	}
+}
+
 /// <summary>
-/// 人声跟随 MIDI 回绕重播。在音频回调内调用，但【只置标志】不做实际 seek。
+/// "已播完"闩锁（0/1）。
 ///
-/// 不能在音频回调里调 SeekVocal：它会走到原生 vocal_stop_producer → ma_thread_wait
-/// （pthread_join）。人声播完后 producer 线程已自然退出，而 vocalProducerRunning
-/// 仍为 1，此时 join 一个已结束的线程会让音频回调线程死锁——表现为第二遍循环完全
-/// 无声（音频钟卡死），随后主线程再触碰同一把锁则整个游戏卡住。
-/// 真正的人声重启交给 ApplyPendingVocalRestart()，在主线程执行。
+/// 【为什么是 int + Interlocked 而不是 volatile bool】这个标志有三个写入方/读取方：
+/// 音频回调置位、前台 _Process 消费、后台推进线程消费，而"读-改-写"（consume / reset）
+/// 在两边都可能发生。用 volatile bool 时 `if (!_endOfSequence) return; _endOfSequence = false;`
+/// 不是原子操作 —— 前台与后台同时消费会**双双通过判定**，两边各换一次曲 = 连跳两首；
+/// 而 reset 与回调置位交叉时又会**丢掉闩锁** = 曲终不换曲。改成原子交换后两者都不会发生。
 /// </summary>
-public void RestartVocalOnLoopWrap()
+private int _endOfSequenceFlag = 0;
+
+
+
+	/// <summary>由播放器注册：在回调里真正完成换手（纯 C#/MeltySynth）。返回 false 表示无法换。</summary>
+
+/// <summary>只窥视"已播完"标志，不消费（换曲真正落地后才消费，失败要留着重试）。</summary>
+public bool HasEndOfSequence => Volatile.Read(ref _endOfSequenceFlag) != 0;
+
+/// <summary>消费"已播完"标志（一次性，原子）。返回 true 表示本次由调用方取走。</summary>
+public bool ConsumeEndOfSequence()
 {
-	if (!_vocalLoopEnabled || _sequencer == null)
-	{
-		return;
-	}
-	double nowMs = _sequencer.RenderedPosition.TotalMilliseconds;
-	if (double.IsNaN(nowMs))
-	{
-		return;
-	}
-	if (_lastLoopPositionMs >= 0.0 && nowMs < _lastLoopPositionMs - 100.0)
-	{
-		// 无条件请求从头重播，不看 IsVocalFinished()：
-		// 人声自然结束要等 ring 缓冲排空才置 vocalEndReached，而 MIDI 回绕发生在
-		// 音频回调里，那一刻 ring 可能还剩数据 → 判定为「未结束」而跳过重启，
-		// 于是第二遍循环人声缺失。
-		_vocalRestartRequested = true;
-		// 曲终/回绕的统一检测点：主线程据此推进播放列表（或原地重播）。
-		// 放在音频回调里是因为熄屏/深后台时 Godot 主循环与 _Process 都不运行。
-		_loopWrapDetected = true;
-	}
-	_lastLoopPositionMs = nowMs;
+	return Interlocked.Exchange(ref _endOfSequenceFlag, 0) != 0;
 }
 
-// 音频回调只写此标志，主线程读并清（上层据此推进播放列表）。volatile：跨线程可见性
-private volatile bool _loopWrapDetected = false;
-
-/// <summary>消费"已回绕"标志（一次性）。返回 true 表示自上次消费后发生过回绕。</summary>
-public bool ConsumeLoopWrapDetected()
+/// <summary>换曲/seek 后清掉标志（新位置未必在末尾，重播时重新判定）。</summary>
+public void ResetEndOfSequence()
 {
-	if (!_loopWrapDetected)
-	{
-		return false;
-	}
-	_loopWrapDetected = false;
-	return true;
+	Interlocked.Exchange(ref _endOfSequenceFlag, 0);
 }
-
-/// <summary>只窥视"已回绕"标志，不消费。</summary>
-/// <remarks>
-/// 后台推进线程必须先用它判断，换曲真正落地后才 Consume：
-/// 中途任何一步失败（列表状态不对 / ChartDb 未就绪 / 文件缺失）都要把标志留着，
-/// 否则主循环停摆期间无人接手，表现为"曲终后一直原地循环、不切歌"。
-/// </remarks>
-public bool HasLoopWrapDetected => _loopWrapDetected;
-
-/// <summary>
-/// 换曲时重置回绕基准。新曲起始位置远小于旧曲（尤其带 LoopStart、回绕点在数十秒处时），
-/// 不重置会被当成"又回绕了一次"，导致连续切歌。flag 一并清掉。
-/// </summary>
-public void ResetLoopWrapBaseline()
-{
-	_lastLoopPositionMs = -1.0;
-	_loopWrapDetected = false;
-	_vocalRestartRequested = false;
-}
-
-/// 由主线程（_Process）调用：消费回调置起的标志，执行真正的人声 seek + 播放。
-public void ApplyPendingVocalRestart()
-{
-	if (!_vocalRestartRequested)
-	{
-		return;
-	}
-	_vocalRestartRequested = false;
-	if (_sequencer == null)
-	{
-		return;
-	}
-	double nowMs = _sequencer.RenderedPosition.TotalMilliseconds;
-	if (double.IsNaN(nowMs) || nowMs < 0.0)
-	{
-		nowMs = 0.0;
-	}
-	// 用 MIDI 的当前位置而非固定 0：回绕后 currentTime 已被重置到回绕点，所以它就是
-	//「距回绕点过了多久」。主线程可能因页面切换/动画/load_midi 被阻塞若干帧，期间音频
-	// 线程仍在推进 MIDI；若固定 seek 到 0，人声会落后这段卡顿时长而与 MIDI 错位。
-	SeekVocal(nowMs);
-	PlayVocal();
-}
-
-// 音频回调只写此标志，主线程读并清
-private volatile bool _vocalRestartRequested = false;
 
 		// 后台 seek：Godot 主循环挂起时 _Process 不再处理 _pendingSeekMs，
 		// 故由音频线程消费。_seekTargetMs 为 NaN 表示无待处理请求。
@@ -515,18 +472,27 @@ private volatile bool _vocalRestartRequested = false;
 		// 上次排队的 seek 是否已被音频线程落盘。主线程据此判断判定钟重锚能否信任
 		// seek 目标位置：未落盘时渲染钟还是旧值，必须用目标位置；已落盘则以真实渲染钟
 		// 为准——后台挂起期间的陈旧目标会让进度条自走到满而音频早已在别处。
-		private volatile bool _seekApplied = false;
+		//
+		// 【为什么用请求号而不是一个 bool】主线程的"清 applied → 排队"与音频线程的
+		// "落盘 → 置 applied"会交错：主线程刚把 applied 清成 false，回调可能正在收尾
+		// 上一次请求并把它置回 true，于是**新请求看起来已经落盘**（ABA）。判定钟据此
+		// 误信"渲染钟已到新位置"，进度条与判定就会有若干帧偏在旧位置。
+		// 用单调递增的请求号比对，任何交错下 IsSeekApplied 都不会提前为真。
+		private long _seekRequestToken = 0;   // Interlocked
+		private long _seekAppliedToken = 0;   // Interlocked
 
 		/// <summary>请求在音频线程内执行 seek（后台可用）</summary>
 		public void RequestSeek(double positionMs)
 		{
-			_seekApplied = false;
+			// 先写出目标值，再用 volatile 写发布（release），回调侧 volatile 读（acquire）后可见
 			_seekTargetMs = positionMs;
+			Interlocked.Increment(ref _seekRequestToken);
 			_hasPendingSeek = true;
 		}
 
-		/// <summary>上次排队的 seek 是否已被音频线程落盘</summary>
-		public bool IsSeekApplied => _seekApplied;
+		/// <summary>上次排队的 seek 是否已被音频线程落盘（按请求号单调比对）</summary>
+		public bool IsSeekApplied =>
+			Interlocked.Read(ref _seekAppliedToken) >= Interlocked.Read(ref _seekRequestToken);
 
 		/// <summary>起播对齐延时（秒）：等播放真正滚动起来再做，避开起播时的缓冲填充/欠载过渡态</summary>
 		private const double StartupAlignDelaySec = 0.4;
@@ -560,7 +526,7 @@ private volatile bool _vocalRestartRequested = false;
 			}
 			_startupAlignRequested = false;
 			double posMs = _sequencer.RenderedPosition.TotalMilliseconds;
-			GD.Print($"[MeltySynthPlayer] start-up align: in-place seek to {posMs:F0} ms");
+			ThreadSafeLog.Print($"[MeltySynthPlayer] start-up align: in-place seek to {posMs:F0} ms");
 			RequestSeek(posMs);
 		}
 
@@ -574,18 +540,18 @@ private volatile bool _vocalRestartRequested = false;
 		{
 			return;
 		}
+		// 先取本次要落盘的请求号，再清 pending。若这期间主线程又排了新的请求，
+		// 我们写回的旧请求号 < 新请求号 → IsSeekApplied 仍为 false，上层不会误信。
+		long token = Interlocked.Read(ref _seekRequestToken);
 		_hasPendingSeek = false;
 		double targetMs = _seekTargetMs;
-		_seekTargetMs = double.NaN;
 		if (_sequencer == null || double.IsNaN(targetMs) || targetMs < 0.0)
 		{
-			_seekApplied = true;   // 请求已消费（无效目标）：不再让上层继续等它
+			Interlocked.Exchange(ref _seekAppliedToken, token);   // 无效目标也算已消费，别让上层一直等
 			return;
 		}
-		// seek 会让渲染钟从大值跳到目标值（例如跳到 0），紧接着的循环回绕检测会把这
-		// 次跳变误判成 loop，从而在同一回调里既 seek 又重置人声——两者交叉易崩。
-		// 故清空基准，让下一帧重新建立。
-		_lastLoopPositionMs = -1.0;
+		// seek 后新位置未必在末尾：清掉"已播完"标志，由下一次回调按 EndOfSequence 重判。
+		Interlocked.Exchange(ref _endOfSequenceFlag, 0);
 			try
 			{
 				_sequencer.Seek(TimeSpan.FromMilliseconds(targetMs));
@@ -594,17 +560,20 @@ private volatile bool _vocalRestartRequested = false;
 			{
 				// 音频线程内不打印（会争用打印锁拖慢回调）；失败留给主线程的诊断
 			}
-		_seekApplied = true;
+		Interlocked.Exchange(ref _seekAppliedToken, token);
 		// 人声定位不在这里做：上层 MidiPlaybackManager.seek() 已按目标位置调用
 		// _seek_vocal_to_midi_position(pos)，这里再拉回 0 会覆盖掉正确结果，
 		// 导致拖动进度条后 MIDI 在新位置、人声却从头播（拖到靠后处即立刻播完）。
 		// 音频线程只负责 MIDI 时钟，与人声各自独立。
 	}
 
-		private bool IsVocalLoaded()
-		{
-			return _bridgeHandle != IntPtr.Zero && _vocalLoaded;
-		}
+		/// <summary>
+		/// 是否已装载人声解码器。**判"有没有人声"必须用它，不能用 GetVocalLengthMs() &gt; 0**：
+		/// native 对 .ogg 刻意把总帧数置 0（stb_vorbis 报的是重采样前的源帧数，换算成设备率会错），
+		/// 于是 GetVocalLengthMs() 对 ogg 恒返回 -1 —— 而本项目的人声几乎都是 ogg。
+		/// 之前多处用长度判"有人声"，等于把这些逻辑对人声整个关掉了。
+		/// </summary>
+		public bool IsVocalLoaded => _bridgeHandle != IntPtr.Zero && _vocalLoaded;
 
 			public uint GetVocalUnderrunCount()
 			{
@@ -641,7 +610,7 @@ private volatile bool _vocalRestartRequested = false;
 				if (_sampleRate != systemSampleRate)
 				{
 					// 用 Print 而非 PushWarning，避免每次启动都误报为异常。
-					GD.Print($"[MeltySynthPlayer][miniaudio] Sample rate: synth={_sampleRate}Hz, system={systemSampleRate}Hz (intentional, SRC will handle)");
+					ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Sample rate: synth={_sampleRate}Hz, system={systemSampleRate}Hz (intentional, SRC will handle)");
 				}
 
 				_decodeFrames = Math.Max(MIN_DECODE_FRAMES, Math.Min(MAX_DECODE_FRAMES, _targetDecodeFrames));
@@ -659,8 +628,8 @@ private volatile bool _vocalRestartRequested = false;
 				Array.Clear(_manualRight, 0, _manualRight.Length);
 				Array.Clear(_outputBuffer, 0, _outputBuffer.Length);
 
-				GD.Print($"[MeltySynthPlayer][miniaudio] System audio: mix_rate={systemSampleRate}Hz");
-				GD.Print($"[MeltySynthPlayer][miniaudio] Initializing: " +
+				ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] System audio: mix_rate={systemSampleRate}Hz");
+				ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Initializing: " +
 					$"sample_rate={_sampleRate}, decode_buffer={_decodeFrames}f ({_decodeFrames * 1000.0 / _sampleRate:F1}ms), " +
 					$"period={_periodSizeInFrames}×{_periodCount}");
 
@@ -688,7 +657,7 @@ private volatile bool _vocalRestartRequested = false;
 					//
 					// 渲染线程是 SpinWait 循环, 只要总生产速率 >= 消耗速率即可, 与每次生产量无关.
 					// 小批量渲染 (如 128 帧) 让 RingBuffer 填充更平滑, 稳态延迟更低.
-					GD.Print($"[MeltySynthPlayer][miniaudio] Decode frames: {_decodeFrames} (actualPeriod={actualPeriod}, not adjusted up)");
+					ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Decode frames: {_decodeFrames} (actualPeriod={actualPeriod}, not adjusted up)");
 				}
 
 				_initialized = true;
@@ -723,7 +692,7 @@ private volatile bool _vocalRestartRequested = false;
 				if (!_wasapiExclusive && _backend == MiniaudioNative.Backend.Wasapi)
 				{
 					cfg.NoAutoConvertSRC = 1;
-					GD.Print("[MeltySynthPlayer][miniaudio] Low-latency shared mode: noAutoConvertSRC=true " +
+					ThreadSafeLog.Print("[MeltySynthPlayer][miniaudio] Low-latency shared mode: noAutoConvertSRC=true " +
 						"(enables IAudioClient3, target period=" + _periodSizeInFrames + "×" + _periodCount + ")");
 				}
 
@@ -734,7 +703,7 @@ private volatile bool _vocalRestartRequested = false;
 				string deviceName = System.Environment.GetEnvironmentVariable("MINIAUDIO_DEVICE_NAME");
 				if (!string.IsNullOrEmpty(deviceName))
 				{
-					GD.Print($"[MeltySynthPlayer][miniaudio] Setting device name: {deviceName}");
+					ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Setting device name: {deviceName}");
 					MiniaudioNative.ma_bridge_set_device_name(MiniaudioNative.StringToUtf8NullTerminated(deviceName));
 				}
 				else
@@ -775,12 +744,12 @@ private volatile bool _vocalRestartRequested = false;
 				if (qSr == MiniaudioNative.Result.Ok)
 				{
 					_actualSampleRate = actualSr;
-					GD.Print($"[MeltySynthPlayer][miniaudio] Actual sample rate: {actualSr}Hz");
+					ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Actual sample rate: {actualSr}Hz");
 					if (_useDeviceNativeSampleRate && actualSr > 0)
 					{
 						if (actualSr != (uint)_sampleRate)
 						{
-							GD.Print($"[MeltySynthPlayer][miniaudio] Device native rate {actualSr}Hz differs from requested {_sampleRate}Hz; using native rate");
+							ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Device native rate {actualSr}Hz differs from requested {_sampleRate}Hz; using native rate");
 						}
 						_sampleRate = (int)actualSr;
 					}
@@ -804,18 +773,18 @@ private volatile bool _vocalRestartRequested = false;
 				{
 					_actualPeriod = actualPeriod;
 					_actualPeriodCount = actualCount;
-					GD.Print($"[MeltySynthPlayer][miniaudio] Actual period: {actualPeriod}×{actualCount} " +
+					ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Actual period: {actualPeriod}×{actualCount} " +
 						$"(≈{actualPeriod * actualCount / (double)_sampleRate * 1000:F1}ms total, " +
 						$"≈{actualPeriod * (actualCount - 0.5) / _sampleRate * 1000:F1}ms avg latency)");
 				}
 
 				IntPtr namePtr = MiniaudioNative.ma_bridge_get_backend_name(_bridgeHandle);
 				string backendName = MiniaudioNative.PtrToStringAnsiSafe(namePtr);
-				GD.Print($"[MeltySynthPlayer][miniaudio] Backend: {backendName}");
+				ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Backend: {backendName}");
 
 				IntPtr verPtr = MiniaudioNative.ma_bridge_get_version();
 				string ver = MiniaudioNative.PtrToStringAnsiSafe(verPtr);
-				GD.Print($"[MeltySynthPlayer][miniaudio] miniaudio version: {ver}");
+				ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] miniaudio version: {ver}");
 
 				// 枚举可用播放设备 (用于诊断独占模式无声音问题)
 				// 独占模式可能打开错误的端点 (如 HDMI), 通过设备列表可以确认.
@@ -836,17 +805,17 @@ private volatile bool _vocalRestartRequested = false;
 				_deviceEnumCallback = (userData, namePtr, isDefault) =>
 				{
 					string name = MiniaudioNative.PtrToStringUtf8Safe(namePtr);
-					GD.Print($"[MeltySynthPlayer][miniaudio]   Device: {name}{(isDefault != 0 ? " (DEFAULT)" : "")}");
+					ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio]   Device: {name}{(isDefault != 0 ? " (DEFAULT)" : "")}");
 					return 1; // 继续枚举
 				};
 
-				GD.Print("[MeltySynthPlayer][miniaudio] Available playback devices:");
+				ThreadSafeLog.Print("[MeltySynthPlayer][miniaudio] Available playback devices:");
 				int count = MiniaudioNative.ma_bridge_enumerate_devices(_bridgeHandle, _deviceEnumCallback, IntPtr.Zero);
-				GD.Print($"[MeltySynthPlayer][miniaudio] Total: {count} device(s)");
+				ThreadSafeLog.Print($"[MeltySynthPlayer][miniaudio] Total: {count} device(s)");
 
 				if (string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("MINIAUDIO_DEVICE_NAME")))
 				{
-					GD.Print("[MeltySynthPlayer][miniaudio] Tip: If exclusive mode has no sound, " +
+					ThreadSafeLog.Print("[MeltySynthPlayer][miniaudio] Tip: If exclusive mode has no sound, " +
 						"set MINIAUDIO_DEVICE_NAME env var to the correct device name above.");
 				}
 			}
@@ -870,12 +839,14 @@ private volatile bool _vocalRestartRequested = false;
 					var r = MiniaudioNative.ma_bridge_start(_bridgeHandle);
 					if (r != MiniaudioNative.Result.Ok)
 					{
-						GD.PushWarning($"[MeltySynthPlayer][miniaudio] ma_bridge_start failed: {r}");
+						// Play() 会从后台换曲线程调用 → 不能走 GD.PushWarning（引擎调用，
+						// 主线程冻结时会阻塞）。ThreadSafeLog 主线程直接打、非主线程入队。
+						ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] ma_bridge_start failed: {r}");
 						return;
 					}
 					_playing = true;
 
-				GD.Print("[MeltySynthPlayer][miniaudio] Playback started (DIRECT MODE)");
+				ThreadSafeLog.Print("[MeltySynthPlayer][miniaudio] Playback started (DIRECT MODE)");
 				}
 			}
 
@@ -897,7 +868,7 @@ private volatile bool _vocalRestartRequested = false;
 				// 避免音频线程直接调用 GD.Print（打印锁争用会拖延回调，诱发欠载）。
 				while (_audioLogQueue.TryDequeue(out var log))
 				{
-					GD.Print(log);
+					ThreadSafeLog.Print(log);
 				}
 			}
 
@@ -914,14 +885,33 @@ private volatile bool _vocalRestartRequested = false;
 					VirtualId = virtualId,
 					Pitch = pitch,
 					Velocity = velocity
-				});
-				// self-heal：若计数器为负（历史重复 note_off 导致），强制重置为 1
+				});				// self-heal：若计数器为负（历史重复 note_off 导致），强制重置为 1
 				// 否则 shouldRenderManual 永远为 false，manual synth 不渲染
 				if (Interlocked.Increment(ref _manualActiveVoiceCount) <= 0)
 				{
 					_manualActiveVoiceCount = 1;
 				}
 			}
+
+			/// <summary>
+			/// 丢弃尚未被音频回调消费的手动音符事件。停止播放 / 换曲时调用。
+			///
+			/// 【为什么必须清】设备停止期间回调不再出队，而打歌页的输入路径（trigger_note_on）
+			/// 仍可能继续入队 —— 例如曲终后 PlayView 还要等最多 10s 让音符落完，玩家在这段
+			/// 时间里点屏幕就会被记下，等下一局（或下一首）设备重新起跑时**一次性补发**，
+			/// 表现为开局就有一个卡住的音（幽灵音）。
+			/// ConcurrentQueue.Clear 本身线程安全，回调并发出队时也安全。
+			/// </summary>
+			public void ClearPendingNotes()
+			{
+				_pendingNoteEvents.Clear();
+				// 丢弃的 NoteOn 不能把"手动音符活跃数"留在高位：否则 shouldRenderManual 永远为真，
+				// 独立手动合成器会被一直渲染（并让已结束的手动音继续存在）。
+				Interlocked.Exchange(ref _manualActiveVoiceCount, 0);
+			}
+
+			/// <summary>[诊断/回归] 尚未被回调消费的手动音符事件数。</summary>
+			public int PendingNoteCount => _pendingNoteEvents.Count;
 
 			public void EnqueueNoteOff(int virtualId, int pitch)
 			{
@@ -974,7 +964,10 @@ private volatile bool _vocalRestartRequested = false;
 				// 防御性: 若 native 回调请求量超过 _outputBuffer 容量, 截断避免越界
 				if (framesRequested > MAX_DECODE_FRAMES)
 				{
-					GD.PushWarning($"[MeltySynthPlayer][miniaudio] framesRequested={framesRequested} exceeds MAX_DECODE_FRAMES={MAX_DECODE_FRAMES}, clamping");
+					// 音频线程禁止任何引擎调用（GD.PushWarning 会争用引擎/打印锁，
+					// 主线程冻结时甚至永久阻塞回调）。与其它音频线程诊断一致：只入队，
+					// 由主线程 Update() 统一打出去。
+					_audioLogQueue.Enqueue($"[MeltySynthPlayer][miniaudio] WARN framesRequested={framesRequested} exceeds MAX_DECODE_FRAMES={MAX_DECODE_FRAMES}, clamping");
 					framesRequested = MAX_DECODE_FRAMES;
 				}
 
@@ -1068,7 +1061,7 @@ private volatile bool _vocalRestartRequested = false;
                                        TickStartupAlignInCallback(framesRequested);
                                        ProcessPendingSeekInCallback();
                                        TickVocalOffsetGateInCallback();
-                                       RestartVocalOnLoopWrap();
+                                       TickEndOfSequenceInCallback();
 				}
 
 					_lastRenderTimestampTicks = Stopwatch.GetTimestamp();
@@ -1076,7 +1069,10 @@ private volatile bool _vocalRestartRequested = false;
 				}
 				catch (Exception ex)
 				{
-					GD.PrintErr($"[MeltySynthPlayer][miniaudio] FillDataDirect exception: {ex}");
+					// 计数供 smoke 断言：音频回调里的异常会被吞成静音，光看"还能播"是发现不了的。
+					// 典型成因是主线程无锁直写合成器与回调 voices 遍历并发（见 WithSynthLock 的注释）。
+					Interlocked.Increment(ref _callbackExceptionCount);
+					ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] FillDataDirect exception: {ex}");
 					FillWithSilence(pOutput, framesRequested);
 				}
 
@@ -1256,7 +1252,7 @@ private volatile bool _vocalRestartRequested = false;
 					{
 						// 旧版 DLL 无此导出, 不再尝试
 						_nativeGetLatencyAvailable = false;
-						GD.Print("[MeltySynthPlayer][miniaudio] ma_bridge_get_latency not found in DLL, using estimate");
+						ThreadSafeLog.Print("[MeltySynthPlayer][miniaudio] ma_bridge_get_latency not found in DLL, using estimate");
 						deviceLatencyMs = EstimateDeviceLatencyMs();
 					}
 				}

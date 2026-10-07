@@ -7,15 +7,72 @@ using System.IO;
 /// <summary>
 /// C# 原生 SMF 解析器 + 业务逻辑（note_on/off 配对 / BPM 时间线 / 排序 / 乐器提取）
 /// 替代 GDScript 的 SMF.addon + MidiParser 业务层
-/// 纯 .NET API（除返回 Godot.Collections.Dictionary 外），可在 Thread.new() / WorkerThreadPool 中安全执行
+///
+/// 【线程模型】解析本身**纯 .NET**：<see cref="ParsePlain"/> 只产出托管数组（int[] / float[] /
+/// 托管字典），可在任意线程执行，包括熄屏时接管换曲的后台线程。
+/// 面向 GDScript 的 <see cref="Parse"/> 只是它的适配层，会把结果包成 Godot 容器
+/// （Dictionary + PackedInt32Array），**必须主线程调用**。
+/// 需要引擎容器的调用方请走主线程入口，后台路径一律用 ParsePlain。
 /// </summary>
 [GlobalClass]
 public partial class MidiParserNative : RefCounted
 {
     /// <summary>
-    /// 解析 MIDI 字节流，返回紧凑 SOA 数组 + 标量字段
+    /// 面向 GDScript 的适配入口：解析后包装成 Godot 容器。
+    /// **仅主线程调用**（会创建 Godot.Collections.Dictionary / PackedInt32Array）。
     /// </summary>
     public Godot.Collections.Dictionary Parse(byte[] bytes)
+    {
+        var r = ParsePlain(bytes);
+        if (!r.Success)
+        {
+            return new Godot.Collections.Dictionary { { "success", false }, { "error_msg", r.Error } };
+        }
+        var godotInstruments = new Godot.Collections.Dictionary();
+        foreach (var trackPair in r.TrackInstruments)
+        {
+            var trackDict = new Godot.Collections.Dictionary();
+            foreach (var chPair in trackPair.Value)
+            {
+                trackDict[chPair.Key] = new Godot.Collections.Dictionary
+                {
+                    { "bank", chPair.Value.bank },
+                    { "program", chPair.Value.program }
+                };
+            }
+            godotInstruments[trackPair.Key] = trackDict;
+        }
+        return new Godot.Collections.Dictionary
+        {
+            { "success", true },
+            { "pitches", r.Pitches },
+            { "velocities", r.Velocities },
+            { "start_ticks", r.StartTicks },
+            { "durations", r.Durations },
+            { "track_indices", r.TrackIndices },
+            { "channels", r.Channels },
+            { "bpm", r.Bpm },
+            { "duration_ms", r.DurationMs },
+            { "timebase", r.Timebase },
+            { "bpm_timeline_ticks", r.BpmTicks },
+            { "bpm_timeline_bpms", r.BpmBpms },
+            { "bpm_timeline_times_ms", r.BpmTimesMs },
+            { "track_channel_groups_keys", r.GroupKeys },
+            { "track_channel_groups_offsets", r.GroupOffsets },
+            { "track_channel_groups_indices", r.GroupIndices },
+            { "track_channel_groups_time_ms", r.GroupTimeMs },
+            { "max_end_tick", r.MaxEndTick },
+            { "track_count", r.TrackCount },
+            { "track_instruments", godotInstruments },
+            { "parse_time_ms", r.ParseTimeMs },
+        };
+    }
+
+    /// <summary>
+    /// 解析 MIDI 字节流为**纯托管**结果（零 Godot 对象），任意线程可调用。
+    /// internal：返回类型 MidiParseResult 不是 Godot 可编组类型，不该出现在 GDScript 绑定里。
+    /// </summary>
+    internal MidiParseResult ParsePlain(byte[] bytes)
     {
         var sw = Stopwatch.StartNew();
         try
@@ -26,15 +83,15 @@ public partial class MidiParserNative : RefCounted
             // 1. 读 MThd 头
             var chunkType = ReadFourCC(reader);
             if (chunkType != "MThd")
-                return ErrorResult($"Invalid MThd header: '{chunkType}'");
+                return MidiParseResult.Fail($"Invalid MThd header: '{chunkType}'");
 
             var headerSize = ReadInt32BigEndian(reader);
             if (headerSize < 6)
-                return ErrorResult("Invalid MThd size");
+                return MidiParseResult.Fail("Invalid MThd size");
 
             var format = ReadInt16BigEndian(reader);
             if (format != 0 && format != 1)
-                return ErrorResult($"Unsupported MIDI format: {format}");
+                return MidiParseResult.Fail($"Unsupported MIDI format: {format}");
 
             var trackCount = ReadInt16BigEndian(reader);
             var resolution = ReadInt16BigEndian(reader);
@@ -75,7 +132,7 @@ public partial class MidiParserNative : RefCounted
 
                 var trkChunkType = ReadFourCC(reader);
                 if (trkChunkType != "MTrk")
-                    return ErrorResult($"Invalid MTrk header: '{trkChunkType}' at track {trackIdx}");
+                    return MidiParseResult.Fail($"Invalid MTrk header: '{trkChunkType}' at track {trackIdx}");
 
                 var trackEnd = (long)ReadInt32BigEndian(reader);
                 trackEnd += reader.BaseStream.Position;
@@ -332,52 +389,37 @@ public partial class MidiParserNative : RefCounted
                 tlTimesMs[i] = (float)bpmTimesMs[i];
             }
 
-            var godotInstruments = new Godot.Collections.Dictionary();
-            foreach (var trackPair in trackInstruments)
-            {
-                var trackDict = new Godot.Collections.Dictionary();
-                foreach (var chPair in trackPair.Value)
-                {
-                    trackDict[chPair.Key] = new Godot.Collections.Dictionary
-                    {
-                        { "bank", chPair.Value.bank },
-                        { "program", chPair.Value.program }
-                    };
-                }
-                godotInstruments[trackPair.Key] = trackDict;
-            }
-
             sw.Stop();
 
-            return new Godot.Collections.Dictionary
+            return new MidiParseResult
             {
-                { "success", true },
-                { "pitches", pitches },
-                { "velocities", velocities },
-                { "start_ticks", startTicks },
-                { "durations", durations },
-                { "track_indices", trackIndices },
-                { "channels", channels },
-                { "bpm", currentBpm },
-                { "duration_ms", durationMs },
-                { "timebase", resolution },
-                { "bpm_timeline_ticks", tlTicks },
-                { "bpm_timeline_bpms", tlBpms },
-                { "bpm_timeline_times_ms", tlTimesMs },
-                { "track_channel_groups_keys", gKeys },
-                { "track_channel_groups_offsets", gOffsets },
-                { "track_channel_groups_indices", gIndices },
-                { "track_channel_groups_time_ms", swGrp.Elapsed.TotalMilliseconds },
-                { "max_end_tick", maxEndTick },
-                { "track_count", trackCount },
-                { "track_instruments", godotInstruments },
-                { "parse_time_ms", sw.Elapsed.TotalMilliseconds },
+                Success = true,
+                Pitches = pitches,
+                Velocities = velocities,
+                StartTicks = startTicks,
+                Durations = durations,
+                TrackIndices = trackIndices,
+                Channels = channels,
+                Bpm = currentBpm,
+                DurationMs = durationMs,
+                Timebase = resolution,
+                BpmTicks = tlTicks,
+                BpmBpms = tlBpms,
+                BpmTimesMs = tlTimesMs,
+                GroupKeys = gKeys,
+                GroupOffsets = gOffsets,
+                GroupIndices = gIndices,
+                GroupTimeMs = swGrp.Elapsed.TotalMilliseconds,
+                MaxEndTick = maxEndTick,
+                TrackCount = trackCount,
+                TrackInstruments = trackInstruments,
+                ParseTimeMs = sw.Elapsed.TotalMilliseconds,
             };
         }
         catch (Exception ex)
         {
             sw.Stop();
-            return ErrorResult($"Exception during parse: {ex.Message}");
+            return MidiParseResult.Fail($"Exception during parse: {ex.Message}");
         }
     }
 
@@ -529,17 +571,6 @@ public partial class MidiParserNative : RefCounted
         }
 
         return cumulativeMs;
-    }
-
-    private Godot.Collections.Dictionary ErrorResult(string msg)
-    {
-        // 错误信息通过返回值传递给 GDScript 调用方（push_error 输出），不在 C# 侧调用 GD.Print
-        System.Diagnostics.Debug.WriteLine($"[MidiParserNative] {msg}");
-        return new Godot.Collections.Dictionary
-        {
-            { "success", false },
-            { "error_msg", msg }
-        };
     }
 
     // ========== 大端读取辅助 ==========

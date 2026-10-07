@@ -45,7 +45,7 @@ var current_midi: MidiData = null
 var play_result: ScoreView.ScoreData = null
 
 @onready var ani: AnimationManager = AniMGR
-@onready var playback_mgr: MidiPlaybackManager = MidiPlaybackManager.instance
+@onready var playback_mgr: PlaybackDisplay = PlaybackDisplay.instance
 @onready var key_sequence_mgr: KeySequenceManager = KeySequenceManager.instance
 @onready var score_calc: ScoreCalculator = ScoreCalculator.instance
 
@@ -160,7 +160,7 @@ func _ready() -> void:
 	
 	# 初始化MIDI播放管理器
 	if playback_mgr == null:
-		push_error("MidiPlaybackManager not initialized!")
+		push_error("PlaybackDisplay not initialized!")
 		return
 
 	# 播放自然结束时立即触发游戏结算（C# 后端 finished → midi_finished）
@@ -548,6 +548,8 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	_load_and_convert_midi_notes(midi)
 
 	# 演奏：写「正常通道的单曲槽」(不落盘、不碰用户播放列表) + 关闭文件级循环
+	# （旧实现就是 start_session(..., persist=false, loop_file=false) 的第 4 个参数；
+	#  少了它，曲终会原地重播 —— 打完一首歌在结算界面里还会从头再放一遍）
 	playback_mgr.start_session([midi] as Array[MidiData], 0, false, false)
 
 	# 新增：从配置读取演奏模式
@@ -636,7 +638,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 ## 加载MIDI（不再处理FlowArea初始化，该部分由KeySequenceManager处理）
 func _load_and_convert_midi_notes(midi_data: MidiData) -> void:
 	if playback_mgr == null:
-		push_error("MidiPlaybackManager not available!")
+		push_error("PlaybackDisplay not available!")
 		return
 
 	# 加载MIDI
@@ -644,8 +646,8 @@ func _load_and_convert_midi_notes(midi_data: MidiData) -> void:
 		push_error("Failed to load MIDI for gameplay")
 		return
 
-	# TrackView 中保存的运行时配置（音量/静音/独奏/启用通道门控/人声偏移）已由
-	# load_midi 内部的 apply_midi_runtime_config 统一应用——那份是超集（含启用通道门控），
+	# TrackView 中保存的运行时配置（音量/静音/独奏/启用通道门控/人声偏移）已由 load_midi
+	# 内部的 C# apply_chart_audio_config 统一应用（含启用通道门控，与熄屏后台换曲同一份），
 	# 此处不再重复下发。
 
 	GLogger.info("MIDI loaded and runtime config applied", "PlayView")
@@ -664,15 +666,22 @@ func _start_generate_game_sequences(midi_data: MidiData) -> int:
 		key_sequence_mgr.clear_sequences()
 		return -1
 
-	# screen_width 已不进 cache_key，且 lane_area.size.x 永远是 40（Lane 节点 anchors_preset=0 不拉伸）
-	# 不再调用 set_screen_size：读 lane_area.size.x 没意义，KSM 内部用默认 1920 即可
-	# （仅影响 _judge_block_type 速度限制的边缘场景，FlowArea 显示位置由 viewport 宽度算）
+	# 不调用 set_screen_size：读 lane_area.size.x 没意义（永远是 40，Lane 节点 anchors_preset=0 不拉伸），
+	# KSM 内部用默认 1920 即可；screen_width 仍进 KSM 的配置指纹（改了会整体失效缓存，安全）。
 
 	# 构建启用 (track, channel) 集合并筛选音符（主线程）。
 	# 音符数据由 C# MidiCore 持有（解析缓存），这里只取"启用子集的 SOA 索引"；
 	# 键序列生成时 C# 直读自己的缓存数组，不再把 6 条 PackedInt32Array 来回拷贝。
+	#
+	# 【自查解析就绪】_prepare_game 开头虽已 ensure_parsed，但到这里的路上有多个 await，
+	# 期间别的消费者（MidiListItem 统计等）可能解析其它谱面、把 2 槽解析缓存挤掉 ——
+	# 那时下面的 HasParsed 会为 false，静默变成"整首歌没有音符"。ensure_parsed 幂等且命中时几乎零开销。
+	if not playback_mgr.ensure_parsed(midi_data):
+		key_sequence_mgr.clear_sequences()
+		return -1
 	var path := midi_data.midi_file_path
 	if path.is_empty() or not MidiCore.HasParsed(path):
+		GLogger.warning("Parse cache still missing after ensure_parsed: %s" % path, "PlayView")
 		key_sequence_mgr.clear_sequences()
 		return -1
 	var enabled_pairs := midi_data.get_enabled_pairs_flat()
@@ -694,7 +703,7 @@ func _start_generate_game_sequences(midi_data: MidiData) -> int:
 		return -1
 
 	# 启动 worker 线程跑全量 generate_keys；C# 在 worker 中直读解析缓存并产出。
-	# 显式传入 midi 自己的 timebase/bpm_timeline，不依赖/改写 MidiPlaybackManager 全局时间线字段
+	# 显式传入 midi 自己的 timebase/bpm_timeline，不依赖/改写 PlaybackDisplay 全局时间线字段
 	# （MidiListItem 的统计生成也用同一 midi 的显式参数，二者 cache_key 一致可互相命中）
 	var task_id := await key_sequence_mgr.generate_keys_async(
 		path, enabled_indices, midi_data.id,
@@ -708,7 +717,7 @@ func _finish_playback_setup() -> void:
 	var manual_count := key_sequence_mgr.manual_count()
 	var auto_count := key_sequence_mgr.auto_count()
 
-	# 将真实分类提交给MidiPlaybackManager
+	# 将真实分类提交给PlaybackDisplay
 	# 仅在演奏模式开启时下发手动控制；关闭时必须清空以恢复自动播放
 	if playback_mgr:
 		if play_mode:

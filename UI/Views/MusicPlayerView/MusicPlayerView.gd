@@ -2,7 +2,7 @@ extends Control
 ## 音乐播放器页
 ##
 ## 与其他页面不同，本页不驱动播放——系统媒体控件与页面按钮的命令都经
-## MidiPlaybackManager.handle_media_command 执行，本页只订阅状态信号并更新界面。
+## PlaybackDisplay.handle_media_command 执行，本页只订阅状态信号并更新界面。
 ## 这样页面切换、后台、失焦都不影响播放控制。
 ##
 ## 结构：TopBar（返回）/ Stage（封面 or 音符可视化）/ BottomBar（播放控制）。
@@ -11,8 +11,11 @@ extends Control
 ## 进度/封面/歌曲信息、主题、面板开关按钮与主栏让位动画。
 
 const WORK_STATE := UIStateManager.UIState.MUSIC_PLAYER_VIEW
-## 播放方式枚举直接引用 manager 的，避免两处字面量漂移
-const RepeatMode := MidiPlaybackManager.RepeatMode
+## 播放方式枚举直接引用 manager 的，避免两处字面量漂移。
+## 用 preload 拿而不是全局类名：全局类表可能因编辑器缓存过期而缺失该条目，
+## 那样本脚本会在**解析期**直接报错（整页加载失败）。preload 不依赖全局类表。
+const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
+const RepeatMode := PlaybackTypesLib.RepeatMode
 ## 子页脚本用 preload 常量做类型标注，不依赖全局类缓存
 const LibraryLayerScript := preload("res://UI/Views/MusicPlayerView/LibraryLayer.gd")
 const PlaylistPanelScript := preload("res://UI/Views/MusicPlayerView/PlaylistPanel.gd")
@@ -67,14 +70,21 @@ func _ready() -> void:
 	_library_layer.favorite_requested.connect(_on_favorite_requested)
 	_playlist_panel.favorite_requested.connect(_on_favorite_requested)
 
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.current_song_changed.connect(_on_current_song_changed)
 		mgr.transport_changed.connect(_on_transport_changed)
 		mgr.playback_state_changed.connect(_on_playback_state_changed)
 		mgr.repeat_mode_changed.connect(_on_repeat_mode_changed)
-		_midi_vol_slider.value = mgr.get_effective_midi_volume(-1.0)
-		_vocal_vol_slider.value = mgr.get_vocal_volume_db()
+		# 本页音量就是"实际听到的音量"，优先于 per-MIDI 配置：滑块初值取自本页音量
+		# （不用 per-MIDI 值回填，否则会把上一首的 per-MIDI 音量固化成页面设置）
+		_midi_vol_slider.set_block_signals(true)
+		_vocal_vol_slider.set_block_signals(true)
+		_midi_vol_slider.value = mgr.get_player_midi_linear()
+		_vocal_vol_slider.value = mgr.get_player_vocal_db()
+		_midi_vol_slider.set_block_signals(false)
+		_vocal_vol_slider.set_block_signals(false)
+		mgr.set_player_volumes(_midi_vol_slider.value, _vocal_vol_slider.value)
 
 	_apply_stage_mode()
 	# 懒加载视图的 _ready 可能晚于 state_changed，两处都调 _activate_page（幂等）
@@ -93,7 +103,7 @@ func _on_transport_changed() -> void:
 ## 自动换曲都走 play_playlist_index），彼时 is_playing 还是 false，只靠它同步
 ## 按钮会慢一拍——真正的状态翻转在 playback_state_changed 里
 func _on_playback_state_changed() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	_set_play_pause_pressed(mgr != null and mgr.is_playing)
 
 func _on_repeat_mode_changed(_mode: int) -> void:
@@ -106,15 +116,15 @@ func _on_ui_state_changed(_old: int, new: int) -> void:
 		# 离开本页停掉每帧进度刷新，并恢复默认帧率（0 = vsync 主导）
 		set_process(false)
 		Engine.max_fps = 0
-		var mgr := MidiPlaybackManager.instance
+		var mgr := PlaybackDisplay.instance
 		# 去 TrackView（同一首歌的另一种视图）与设置页都保留媒体会话：
 		# unregister_view 会 clear() 通知并 stop() 播放，切回来又要重建 —— 表现为
 		# 通知闪一下、歌曲被停掉再重播。其余出口才注销并交还会话。
 		if new != UIStateManager.UIState.TRACK_VIEW \
 				and new != UIStateManager.UIState.SETTINGS_VIEW:
-			MediaSess.unregister_view(self)
-			# 注销会停止播放；同时把活动会话交还给单曲槽(B)，A 只在本页期间活动
+			# 离开本页 = 退出播放；同时把活动会话交还给单曲槽(B)，A 只在本页期间活动
 			if mgr != null:
+				mgr.unregister_view(self)
 				mgr.end_user_session()
 
 func _process(_delta: float) -> void:
@@ -124,7 +134,7 @@ func _process(_delta: float) -> void:
 func _refresh_progress() -> void:
 	if _progress == null or _progress_dragging:
 		return
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	# 时长是 load 后才可知的；若 max 停在 HSlider 默认 100，value 会被 clamp 满
@@ -139,7 +149,7 @@ func _on_progress_drag_ended(value_changed: bool) -> void:
 	_progress_dragging = false
 	if not value_changed:
 		return
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.handle_media_command("seek", _progress.value)
 
@@ -150,16 +160,11 @@ func _activate_page() -> void:
 	set_process(true)
 	# 每次进页面都要重新注册：离开本页时 _on_ui_state_changed 会 unregister_view，
 	# 不重新注册则 has_view() 为 false，系统媒体卡片不显示、媒体命令被直接丢弃。
-	# register_view 自身幂等（同一视图重复调用直接返回），不必再自己判断。
-	MediaSess.register_view(self)
-	var mgr := MidiPlaybackManager.instance
+	PlaybackDisplay.instance.register_view(self)
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
-		# 本页的页面级播放模式 = 单曲文件循环（从演奏/TrackView 过来都要纠正回来）：
-		# 让音频在文件末尾继续流，换曲判定挂在这个回绕点上。不走 start_session——
-		# 那会重设用户播放列表(A)，而这里只需要改当前曲的循环标志。
-		# 注：关掉它（loop=false）会让 sequencer 停在末尾后无人接续（媒体卡片仍按
-		# 在播外推，出现"进度条自己回到开头但没有声音"），故不采用
-		mgr.set_loop(true)
+		# 本页音量为本页会话的播放基准（优先于 per-MIDI 配置）：回页面后重新下发
+		mgr.set_player_volumes(_midi_vol_slider.value, _vocal_vol_slider.value)
 		# 熄屏/深后台期间 C# 可能已自行切到下一首（纯音频）：先对账把显示/配置补齐，
 		# 再决定是否起播（对账后 current_midi_data 才与 C# 当前曲一致）
 		mgr.reconcile_current_song()
@@ -288,6 +293,15 @@ func _ensure_playing(mgr) -> void:
 	mgr.align_index_to_current()
 	if mgr.is_playing:
 		return
+	# 从设置页返回等"同曲暂停"场景：直接续播，不重新起曲
+	# （play_playlist_index 会重新 load_midi + 从 0 起播，把暂停位置丢掉）
+	if mgr.is_paused:
+		var resume_pos_ms: float = mgr.position_ms
+		mgr.resume()
+		# 音源重载会把后端合成器位置清零：续播后恢复到暂停时的位置
+		if resume_pos_ms > 0.001 and not mgr.deferred_play_pending:
+			mgr.seek(resume_pos_ms)
+		return
 	if MidiCore.GetCount() == 0:
 		return
 	# restore 已把索引对准 saved 位置；已恢复列表则从当前索引续播
@@ -317,7 +331,7 @@ func _on_back_pressed() -> void:
 
 ## 去音轨编辑页：把当前播放的 MIDI 整给 TrackView（当前没有在播的歌则不响应）
 func _on_track_view_pressed() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	var midi: MidiData = mgr.current_midi_data if mgr != null else null
 	if midi == null:
 		return
@@ -330,12 +344,12 @@ func _on_track_view_pressed() -> void:
 	EvtBus.enter_track_view_with.emit.call_deferred(midi)
 
 func _on_prev_pressed() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.handle_media_command("prev", -1.0)
 
 func _on_next_pressed() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.handle_media_command("next", -1.0)
 
@@ -344,7 +358,7 @@ func _on_play_pause_toggled(_pressed: bool) -> void:
 	# 只处理「因播放状态变化而被动更新」之外的用户点击，避免与状态同步互相触发
 	if _syncing_pause_btn:
 		return
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	# 点击时的目标状态 = 本次点击后按钮将处的状态
@@ -358,7 +372,7 @@ var _syncing_pause_btn: bool = false
 ## 播放方式两态：默认=循环播放（顺序），按下=随机。
 ## 三态循环（顺序/列表循环/单曲）由媒体控件的 repeat 键承担，按钮只做两态。
 func _on_repeat_toggled(pressed: bool) -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	if _syncing_repeat_btn:
@@ -422,14 +436,14 @@ func _refresh_panel_btn_tint() -> void:
 			b.self_modulate = on if b.button_pressed else off
 
 func _on_midi_volume_changed(value: float) -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
-		mgr.apply_ui_midi_volume(value)
+		mgr.set_player_volumes(value, _vocal_vol_slider.value)
 
 func _on_vocal_volume_changed(value: float) -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
-		mgr.set_vocal_volume_db(value)
+		mgr.set_player_volumes(_midi_vol_slider.value, value)
 
 # ── 曲库开合（页面侧）─────────────────────────────────
 
@@ -469,7 +483,10 @@ func _on_favorite_picked(fav_id: String) -> void:
 # ── 状态刷新 ──────────────────────────────────────────
 
 func _refresh_song_info() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
+	if mgr != null:
+		# 后台换曲后显示侧可能还没对账：读之前先按需对齐，避免页面停在旧歌
+		mgr.sync_display_if_needed()
 	var data: MidiData = mgr.current_midi_data if mgr != null else null
 	if data == null:
 		_song_title.set_scroll_text("未在播放")
@@ -501,7 +518,7 @@ func _update_time_labels(mgr) -> void:
 func _sync_progress_range() -> void:
 	if _progress == null:
 		return
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	var dur: float = mgr.get_backend_duration_ms() if mgr != null else 0.0
 	_progress.max_value = maxf(dur, 1.0)
 	_progress.step = 1.0
@@ -516,7 +533,7 @@ func _set_play_pause_pressed(playing: bool) -> void:
 
 ## 以 button_pressed 反映播放方式：按下=随机，默认=循环
 func _sync_repeat_btn() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	var random_on := mgr.repeat_mode == RepeatMode.SHUFFLE
@@ -531,7 +548,7 @@ func _sync_repeat_btn() -> void:
 const COVER_ITEM_ID := "music_player_cover"
 
 func _refresh_cover() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	var data: MidiData = mgr.current_midi_data if mgr != null else null
 	if data == null:
 		CoverLoader.cancel(COVER_ITEM_ID)

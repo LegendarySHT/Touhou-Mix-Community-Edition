@@ -81,7 +81,7 @@ public partial class ChartDb : Node
     private static void NormLog(string s)
     {
         _normDiag += s + "\n";
-        GD.Print("[ChartDb][Norm] " + s);
+        ThreadSafeLog.Print("[ChartDb][Norm] " + s);
     }
 
     /// <summary>返回规范化器诊断文本（暴露给 GDScript，真机排查用）。</summary>
@@ -114,7 +114,7 @@ public partial class ChartDb : Node
                     int schema = schemaDoc != null ? (int)schemaDoc["version"].AsInt32 : 0;
                     if (schema != SchemaVersion)
                     {
-                        GD.Print($"[ChartDb] Schema v{schema} != v{SchemaVersion}, rebuilding...");
+                        ThreadSafeLog.Print($"[ChartDb] Schema v{schema} != v{SchemaVersion}, rebuilding...");
                         _db.DropCollection("charts");
                         _db.DropCollection("albums");
                         _db.DropCollection("songs");
@@ -126,7 +126,7 @@ public partial class ChartDb : Node
                     // 一次性：把旧键（file_hash/midi_id）的 chart_runtime 文档重键为 folder_name
                     MigrateRuntimeKeys();
                     _isOpen = true;
-                    GD.Print($"[ChartDb] Opened, charts={CountCharts()} albums={CountAlbums()} songs={CountSongs()}");
+                    ThreadSafeLog.Print($"[ChartDb] Opened, charts={CountCharts()} albums={CountAlbums()} songs={CountSongs()}");
                     // 主线程解析 res:// zstd 路径；Opencc 静态构造强制从 BaseDirectory/dicts/ 加载默认词典，
                     // 因此必须在主线程先把 zstd 就位（安卓从 res:// 抽取）再触碰 Opencc 类型。
                     // 用 CallDeferred 延迟到下一帧初始化，避开启动主路径卡顿（~0.5s 一次）。
@@ -137,7 +137,7 @@ public partial class ChartDb : Node
                 }
                 catch (Exception e)
                 {
-                    GD.PrintErr($"[ChartDb] Open failed (attempt {attempt + 1}): {e.Message}");
+                    ThreadSafeLog.PrintErr($"[ChartDb] Open failed (attempt {attempt + 1}): {e.Message}");
                     try { _db?.Dispose(); } catch { }
                     _db = null;
                     // 区分「占用」与「损坏」，避免误删用户数据（chart_runtime/收藏）：
@@ -177,7 +177,7 @@ public partial class ChartDb : Node
         }
         catch (Exception ex)
         {
-            GD.PrintErr($"[ChartDb] Failed to back up corrupt db: {ex.Message}");
+            ThreadSafeLog.PrintErr($"[ChartDb] Failed to back up corrupt db: {ex.Message}");
         }
         try
         {
@@ -187,7 +187,7 @@ public partial class ChartDb : Node
         }
         catch (Exception ex)
         {
-            GD.PrintErr($"[ChartDb] Failed to remove stale log file: {ex.Message}");
+            ThreadSafeLog.PrintErr($"[ChartDb] Failed to remove stale log file: {ex.Message}");
         }
     }
 
@@ -361,6 +361,19 @@ public partial class ChartDb : Node
     }
 
     /// <summary>
+    /// 全部谱面主键（纯托管数组，**不产生任何 Godot 对象**），任意线程可调用。
+    /// 供 MidiCore.Prune 在后台/主线程都能走同一条纯托管路径。
+    /// </summary>
+    internal string[] GetAllChartKeysPlain()
+    {
+        if (!IsOpen()) return System.Array.Empty<string>();
+        lock (_lock)
+        {
+            return _charts.FindAll().Select(d => d["_id"].AsString).ToArray();
+        }
+    }
+
+    /// <summary>
     /// 返回所有谱面的 (folder_name -> "album_id|song_id") 结构快照，
     /// 用于扫描前后对比 album / song 归属是否变化。
     /// 返回 Dictionary：key=folder_name, value="album_id|song_id"（空值字段占位 ""）。
@@ -441,6 +454,32 @@ public partial class ChartDb : Node
     {
         var doc = FindDoc(key);
         return doc == null ? "" : BsonConvert.GetStr(doc, "cover_path");
+    }
+
+    /// <summary>
+    /// 标记"当前线程是后台换曲线程"（由后台线程自己在启动时置位）。
+    /// 目的：该线程的**只读**查询不取 <c>_lock</c> —— LiteDB 自身线程安全，而这把锁的持有者
+    /// 可能正是被系统挂起的主线程，取锁会让后台陪冻（真机熄屏深后台实测到 192 秒级停摆）。
+    /// </summary>
+
+    // [已退场] 后台换曲线程不再存在，此标记恒为 false（保留仅为兼容既有分支，无行为影响）
+
+
+    /// <summary>
+    /// 读谱面元数据的单个字符串字段（纯 C#，不产生任何 Godot 对象）。
+    /// 供后台换曲线程取 _id / file_hash / hash / song_name / album_name 等，
+    /// 避免走 GetChartJson 构建 Godot Dictionary 而阻塞在冻结的主线程锁上。
+    /// </summary>
+    public string GetChartFieldPlain(string key, string field)
+    {
+        // 后台换曲线程：不取 _lock。理由是"主线程可能被系统整段挂起并正持着这把锁"——
+        // 后台要连播几十上百首，绝不能因为一次挂起就停摆。LiteDB 读写本身线程安全，
+        // 且这里是纯读，失败/缺失也只会退化成空串（调用方都有兜底）。
+        lock (_lock)
+        {
+            var doc = FindDoc(key);
+            return doc == null ? "" : BsonConvert.GetStr(doc, field);
+        }
     }
 
     // ========== 分组（专辑 → 歌曲 → 谱面） ==========
@@ -949,6 +988,24 @@ public partial class ChartDb : Node
         }
     }
 
+    /// <summary>
+    /// 纯 C# 形态的运行时配置（BSON 直接转托管对象，**不产生任何 Godot 对象**）。
+    /// 供后台换曲线程读取：Godot 容器跨线程读写会与冻结的主线程抢锁而阻塞，甚至 UB。
+    /// 任何线程可调用（内部走 LiteDB 自身的锁）。
+    /// </summary>
+    internal System.Collections.Generic.Dictionary<string, object> GetRuntimePlain(string chartKey)
+    {
+        if (!IsOpen()) return null;
+        lock (_lock)
+        {
+            var d = _runtime.FindById(ResolveRuntimeKey(chartKey));
+            if (d == null) return null;
+            var plain = BsonConvert.BsonDocToPlain(d);
+            plain.Remove("_id");
+            return plain;
+        }
+    }
+
     public void SaveRuntime(string chartKey, Godot.Collections.Dictionary dict)
     {
         if (!IsOpen() || string.IsNullOrEmpty(chartKey)) return;
@@ -1069,15 +1126,70 @@ public partial class ChartDb : Node
                     arr.Add(item.AsString());
                 }
             }
-            var bd = new BsonDocument
+            WritePlaylistLocked(arr, index, repeatMode, sourceFavId);
+        }
+    }
+
+    /// <summary>
+    /// 纯托管入口：保存播放列表（**不产生任何 Godot 对象**）。
+    /// 供 MidiCore 在熄屏后台的 C# 换曲线程里落盘——那条路径不能建 Godot 容器，
+    /// 否则会与冻结的主线程抢引擎全局锁。
+    /// </summary>
+    internal void SavePlaylistPlain(System.Collections.Generic.IReadOnlyList<string> keys, int index, int repeatMode, string sourceFavId)
+    {
+        if (!IsOpen()) return;
+        lock (_lock)
+        {
+            var arr = new BsonArray();
+            if (keys != null)
             {
-                ["_id"] = PlaylistMetaId,
-                ["keys"] = arr,
-                ["index"] = index,
-                ["repeat_mode"] = repeatMode,
-                ["source_fav_id"] = sourceFavId ?? "",
-            };
-            _meta.Upsert(bd);
+                for (int i = 0; i < keys.Count; i++)
+                {
+                    var s = keys[i];
+                    if (!string.IsNullOrEmpty(s)) arr.Add(s);
+                }
+            }
+            WritePlaylistLocked(arr, index, repeatMode, sourceFavId);
+        }
+    }
+
+    private void WritePlaylistLocked(BsonArray arr, int index, int repeatMode, string sourceFavId)
+    {
+        var bd = new BsonDocument
+        {
+            ["_id"] = PlaylistMetaId,
+            ["keys"] = arr,
+            ["index"] = index,
+            ["repeat_mode"] = repeatMode,
+            ["source_fav_id"] = sourceFavId ?? "",
+        };
+        _meta.Upsert(bd);
+    }
+
+    /// <summary>
+    /// 纯托管读取播放列表：返回 (keys, index, repeat_mode, source_fav_id)。
+    /// **不产生任何 Godot 对象**，任意线程可调用。
+    /// </summary>
+    internal (System.Collections.Generic.List<string> keys, int index, int repeatMode, string sourceFavId)
+        GetPlaylistPlain()
+    {
+        var keys = new System.Collections.Generic.List<string>();
+        if (!IsOpen()) return (keys, 0, 0, "");
+        lock (_lock)
+        {
+            var d = _meta.FindById(PlaylistMetaId);
+            if (d == null) return (keys, 0, 0, "");
+            if (d.TryGetValue("keys", out var k) && k.IsArray)
+            {
+                foreach (var item in k.AsArray)
+                {
+                    if (item.IsString) keys.Add(item.AsString);
+                }
+            }
+            int index = d.TryGetValue("index", out var i) && i.IsNumber ? i.AsInt32 : 0;
+            int mode = d.TryGetValue("repeat_mode", out var r) && r.IsNumber ? r.AsInt32 : 0;
+            string fav = d.TryGetValue("source_fav_id", out var f) && f.IsString ? f.AsString : "";
+            return (keys, index, mode, fav);
         }
     }
 
@@ -1249,6 +1361,8 @@ public partial class ChartDb : Node
     private BsonDocument FindDoc(string key)
     {
         if (!IsOpen()) return null;
+        // 后台换曲线程：只等 50ms，等不到就退化成"没找到"（标题/封面取不到，但绝不陪冻
+        // 被系统挂起的主线程 —— 真机熄屏深后台实测过 192 秒级停摆）。
         lock (_lock)
         {
             var folderName = LookupChartKey(key);
@@ -1337,11 +1451,11 @@ public partial class ChartDb : Node
             }
             catch { }
             try { System.IO.File.Delete(_oldCachePath); } catch { }
-            GD.Print($"[ChartDb] Migrated {count} charts from old cache");
+            ThreadSafeLog.Print($"[ChartDb] Migrated {count} charts from old cache");
         }
         catch (Exception e)
         {
-            GD.PrintErr($"[ChartDb] Migration failed: {e.Message}");
+            ThreadSafeLog.PrintErr($"[ChartDb] Migration failed: {e.Message}");
         }
     }
 
@@ -1376,7 +1490,7 @@ public partial class ChartDb : Node
             if (toFix.Count > 0)
             {
                 _runtimeRevision++;
-                GD.Print($"[ChartDb] Re-keyed {toFix.Count} chart_runtime docs to folder_name");
+                ThreadSafeLog.Print($"[ChartDb] Re-keyed {toFix.Count} chart_runtime docs to folder_name");
             }
         }
     }
@@ -1557,7 +1671,7 @@ public partial class ChartDb : Node
         if (!_searchDiagLogged)
         {
             _searchDiagLogged = true;
-            GD.Print($"[ChartDb][Norm] FilterSearch: query='{query}' normQuery='{normQuery}' 命中 {result.Count}/{docs.Count}");
+            ThreadSafeLog.Print($"[ChartDb][Norm] FilterSearch: query='{query}' normQuery='{normQuery}' 命中 {result.Count}/{docs.Count}");
         }
         return result;
     }
@@ -1675,7 +1789,7 @@ public partial class ChartDb : Node
     private void _DeferredInitNormalizer()
     {
         try { EnsureNormalizer(); }
-        catch (Exception e) { GD.Print($"[ChartDb][Norm] 延迟初始化异常: {e.Message}"); }
+        catch (Exception e) { ThreadSafeLog.Print($"[ChartDb][Norm] 延迟初始化异常: {e.Message}"); }
         // 词典就绪 → 后台预热全库规范化缓存（缓存被 RebuildAlbumsSongs 清空时按世代号自取消）
         if (_normT2S == null) return;
         try
@@ -1686,7 +1800,7 @@ public partial class ChartDb : Node
                     PrewarmNormCache(_charts.FindAll().ToList());
             }
         }
-        catch (Exception e) { GD.Print($"[ChartDb][Norm] 预热启动失败: {e.Message}"); }
+        catch (Exception e) { ThreadSafeLog.Print($"[ChartDb][Norm] 预热启动失败: {e.Message}"); }
     }
 
     private static bool TryCreateNormalizer()

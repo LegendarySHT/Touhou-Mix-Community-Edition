@@ -42,19 +42,55 @@ public partial class MidiCore : Node
     private string _session_key = "";
     private bool _loaded = false;
 
-    private ChartDb _chartDb;
+    /// <summary>
+    /// 播放列表状态（_keys/_index/_repeat_mode/_session_single/_loaded…）的互斥锁。
+    ///
+    /// 【为什么必须有】这份状态是双线程访问：
+    ///   - 主线程：用户编辑（增删/拖拽排序/整表替换/打乱）、play_index、落盘；
+    ///   - **后台换曲线程**：熄屏时 AdvanceToNextInBackground 会读 GetCount/GetIndex/
+    ///     GetRepeatMode/IsSessionSingle/GetCurrentKey，并经 ResolveAdvanceKey→NextKey 读 _keys。
+    /// List&lt;string&gt; 的读与"主线程正在增删"并发会抛 IndexOutOfRange 或读到撕裂状态；
+    /// 而这是用户数据的唯一副本，损坏后果严重。锁只在微秒级，DB 写入也在锁内属可接受
+    /// （ChartDb 自身有锁且从不回调 MidiCore，无反向加锁，不会死锁）。
+    /// </summary>
+    private readonly object _playlistLock = new();
+
+    private volatile ChartDb _chartDb;
 
     public override void _Ready()
     {
         Instance = this;
     }
 
+    /// <summary>
+    /// 取 ChartDb 引用。
+    ///
+    /// 【后台线程绝不碰引擎】熄屏后台换曲会走到 Save()/SetIndex()，其链路上会经这里拿 DB。
+    /// 而旧实现每次都调 IsInstanceValid（引擎调用，内部要拿 ObjectDB 的读写锁）——
+    /// 主线程若正持锁被冻结，后台线程就会永久阻塞（正是"不切歌且彻底静音"的成因之一）。
+    /// 故非主线程只返回**已缓存的引用**，不做有效性检查、更不 GetNodeOrNull：
+    /// ChartDb 是 autoload，进程存活期内一直有效；真被释放时访问会抛异常，
+    /// 由后台循环的 try/catch 兜住（不会拖死主线程）。
+    /// </summary>
     private ChartDb Db()
     {
-        if (_chartDb == null || !IsInstanceValid(_chartDb))
+        var cached = _chartDb;
+        if (cached != null)
         {
-            _chartDb = GetNodeOrNull<ChartDb>("/root/ChartDB");
+            if (!ThreadSafeLog.IsMainThread)
+            {
+                return cached;
+            }
+            if (IsInstanceValid(cached))
+            {
+                return cached;
+            }
         }
+        if (!ThreadSafeLog.IsMainThread)
+        {
+            return cached;   // 后台线程：拿不到就返回 null，由调用方判空（不碰引擎）
+        }
+        _chartDb = GetNodeOrNull<ChartDb>("/root/ChartDB");
         return _chartDb;
     }
 
@@ -69,34 +105,36 @@ public partial class MidiCore : Node
     /// <summary>懒加载：DB 就绪时读回磁盘列表。未就绪返回 false，调用方可稍后重试。</summary>
     public bool EnsureLoaded()
     {
-        if (_loaded) return true;
-        if (!DbReady()) return false;
-        var raw = Db().GetPlaylist();
-        _keys.Clear();
-        var arr = raw.TryGetValue("keys", out var kv) ? kv.AsGodotArray() : new Godot.Collections.Array();
-        foreach (var item in arr)
+        lock (_playlistLock)
         {
-            var s = item.AsString();
-            if (!string.IsNullOrEmpty(s)) _keys.Add(s);
+            if (_loaded) return true;
+            if (!DbReady()) return false;
+            var raw = Db().GetPlaylistPlain();
+            _keys.Clear();
+            _keys.AddRange(raw.keys);
+            _index = raw.index;
+            _repeat_mode = raw.repeatMode;
+            _source_fav_id = raw.sourceFavId;
+            if (_keys.Count == 0) _index = -1;
+            else _index = 0;   // 位置不持久化：读回后一律从第一首开始
+            _loaded = true;
+            ThreadSafeLog.Print($"[MidiCore] playlist loaded: {_keys.Count} songs, index={_index}");
+            return true;
         }
-        _index = raw.TryGetValue("index", out var iv) ? iv.AsInt32() : 0;
-        _repeat_mode = raw.TryGetValue("repeat_mode", out var rv) ? rv.AsInt32() : REPEAT_SEQUENTIAL;
-        _source_fav_id = raw.TryGetValue("source_fav_id", out var fv) ? fv.AsString() : "";
-        if (_keys.Count == 0) _index = -1;
-        else _index = Mathf.Clamp(_index, 0, _keys.Count - 1);
-        _loaded = true;
-        GD.Print($"[MidiCore] playlist loaded: {_keys.Count} songs, index={_index}");
-        return true;
     }
 
-    /// <summary>落盘（受 persist 门控）。未成功载入过不写，避免用空列表覆盖磁盘。</summary>
+    /// <summary>落盘（受 persist 门控）。未成功载入过不写，避免用空列表覆盖磁盘。
+    /// 走 ChartDb 的纯托管入口：熄屏后台的换曲线程也会调到这里。</summary>
     public void Save()
     {
-        if (!_persist_enabled || !_loaded) return;
-        if (!DbReady()) return;
-        var arr = new Godot.Collections.Array();
-        foreach (var k in _keys) arr.Add(k);
-        Db().SavePlaylist(arr, _index, _repeat_mode, _source_fav_id);
+        lock (_playlistLock)
+        {
+            if (!_persist_enabled || !_loaded) return;
+            if (!DbReady()) return;
+            // 位置（播放到第几首）**不持久化**：列表每次都从头发起（随机模式本来每次都会重新打乱）。
+            // 这样后台换曲也不需要任何落盘/写入 —— 少一处会与冻结的主线程争锁的写操作。
+            Db().SavePlaylistPlain(_keys, 0, _repeat_mode, _source_fav_id);
+        }
     }
 
     /// <summary>变更前保证已从磁盘读回：否则首次变更要么落盘被 _loaded 门挡掉，
@@ -109,61 +147,79 @@ public partial class MidiCore : Node
     /// <summary>剔除已删除的曲子。DB 无谱面时直接跳过——用户数据唯一副本在此，不能误删。</summary>
     public void Prune()
     {
-        if (!DbReady()) return;
-        var db = Db();
-        // 空库（扫描未完成/DB 未就绪）时绝不剪枝，否则会把整表清空
-        if (db.CountCharts() <= 0) return;
-        var valid = new HashSet<string>();
-        foreach (var k in db.GetAllChartKeys()) valid.Add(k);
-        var kept = new List<string>();
-        var dropped = false;
-        foreach (var k in _keys)
+        lock (_playlistLock)
         {
-            if (valid.Contains(k)) { kept.Add(k); continue; }
-            // 旧数据可能存的是别名（id / file_hash），逐键兜底解析
-            var canonical = db.LookupChartKey(k);
-            if (string.IsNullOrEmpty(canonical)) dropped = true;
-            else { kept.Add(canonical); dropped = true; }
+            if (!DbReady()) return;
+            var db = Db();
+            // 空库（扫描未完成/DB 未就绪）时绝不剪枝，否则会把整表清空
+            if (db.CountCharts() <= 0) return;
+            var valid = new HashSet<string>();
+            foreach (var k in db.GetAllChartKeysPlain()) valid.Add(k);
+            var kept = new List<string>();
+            var dropped = false;
+            foreach (var k in _keys)
+            {
+                if (valid.Contains(k)) { kept.Add(k); continue; }
+                // 旧数据可能存的是别名（id / file_hash），逐键兜底解析
+                var canonical = db.LookupChartKey(k);
+                if (string.IsNullOrEmpty(canonical)) dropped = true;
+                else { kept.Add(canonical); dropped = true; }
+            }
+            if (!dropped) return;
+            _keys.Clear();
+            _keys.AddRange(kept);
+            if (_index >= _keys.Count) _index = Mathf.Max(0, _keys.Count - 1);
+            if (_keys.Count == 0) _index = -1;
+            Save();
+            ThreadSafeLog.Print($"[MidiCore] playlist pruned: {_keys.Count} songs remain");
         }
-        if (!dropped) return;
-        _keys.Clear();
-        _keys.AddRange(kept);
-        if (_index >= _keys.Count) _index = Mathf.Max(0, _keys.Count - 1);
-        if (_keys.Count == 0) _index = -1;
-        Save();
-        GD.Print($"[MidiCore] playlist pruned: {_keys.Count} songs remain");
     }
 
     // ── 查询 ──────────────────────────────────────────────
 
     public Godot.Collections.Array<string> GetKeys()
     {
-        var outArr = new Godot.Collections.Array<string>();
-        foreach (var k in _keys) outArr.Add(k);
-        return outArr;
+        lock (_playlistLock)
+        {
+            var outArr = new Godot.Collections.Array<string>();
+            foreach (var k in _keys) outArr.Add(k);
+            return outArr;
+        }
     }
 
-    public int GetCount() => _keys.Count;
+    public int GetCount()
+    {
+        lock (_playlistLock) return _keys.Count;
+    }
 
     public string GetKeyAt(int i)
     {
-        if (i < 0 || i >= _keys.Count) return "";
-        return _keys[i];
+        lock (_playlistLock)
+        {
+            if (i < 0 || i >= _keys.Count) return "";
+            return _keys[i];
+        }
     }
 
-    public int GetIndex() => _index;
+    public int GetIndex()
+    {
+        lock (_playlistLock) return _index;
+    }
 
     public string GetCurrentKey()
     {
-        if (_index < 0 || _index >= _keys.Count) return "";
-        return _keys[_index];
+        lock (_playlistLock)
+        {
+            if (_index < 0 || _index >= _keys.Count) return "";
+            return _keys[_index];
+        }
     }
 
     /// <summary>按 key 定位下标；未命中返回 -1。用于「当前曲是否在列表里」等判断。</summary>
     public int IndexOf(string key)
     {
         if (string.IsNullOrEmpty(key)) return -1;
-        return _keys.IndexOf(key);
+        lock (_playlistLock) return _keys.IndexOf(key);
     }
 
     public bool Has(string key) => IndexOf(key) >= 0;
@@ -172,85 +228,106 @@ public partial class MidiCore : Node
 
     public void SetIndex(int i)
     {
-        if (_keys.Count == 0) { _index = -1; return; }
-        _index = Mathf.Clamp(i, 0, _keys.Count - 1);
+        lock (_playlistLock)
+        {
+            if (_keys.Count == 0) { _index = -1; return; }
+            _index = Mathf.Clamp(i, 0, _keys.Count - 1);
+        }
     }
 
     /// <summary>整表替换（选收藏夹 / 恢复会话 / 打乱后提交顺序）。会重置索引。</summary>
     public void SetKeys(Godot.Collections.Array keys, int index)
     {
-        PrepareForMutation();
-        _keys.Clear();
-        foreach (var item in keys)
+        lock (_playlistLock)
         {
-            var s = item.AsString();
-            if (!string.IsNullOrEmpty(s)) _keys.Add(s);
+            PrepareForMutation();
+            _keys.Clear();
+            foreach (var item in keys)
+            {
+                var s = item.AsString();
+                if (!string.IsNullOrEmpty(s)) _keys.Add(s);
+            }
+            _index = _keys.Count == 0 ? -1 : Mathf.Clamp(index, 0, _keys.Count - 1);
+            Save();
         }
-        _index = _keys.Count == 0 ? -1 : Mathf.Clamp(index, 0, _keys.Count - 1);
-        Save();
     }
 
     public void AppendKey(string key)
     {
         if (string.IsNullOrEmpty(key)) return;
-        PrepareForMutation();
-        _keys.Add(key);
-        Save();
+        lock (_playlistLock)
+        {
+            PrepareForMutation();
+            _keys.Add(key);
+            Save();
+        }
     }
 
     public void InsertAt(int i, string key)
     {
         if (string.IsNullOrEmpty(key)) return;
-        PrepareForMutation();
-        var at = Mathf.Clamp(i, 0, _keys.Count);
-        _keys.Insert(at, key);
-        if (_index >= at) _index += 1;   // 播放下标一起挪，保证仍指着同一首
-        Save();
+        lock (_playlistLock)
+        {
+            PrepareForMutation();
+            var at = Mathf.Clamp(i, 0, _keys.Count);
+            _keys.Insert(at, key);
+            if (_index >= at) _index += 1;   // 播放下标一起挪，保证仍指着同一首
+            Save();
+        }
     }
 
     /// <summary>移除指定下标。移除的是当前曲时，索引落到接管其位置的那首（末首被移除则退一位）。</summary>
     public void RemoveAt(int i)
     {
-        if (i < 0 || i >= _keys.Count) return;
-        PrepareForMutation();
-        var wasCurrent = i == _index;
-        _keys.RemoveAt(i);
-        if (_keys.Count == 0) _index = -1;
-        else if (wasCurrent) _index = Mathf.Clamp(i, 0, _keys.Count - 1);
-        else if (_index >= _keys.Count) _index = _keys.Count - 1;
-        Save();
+        lock (_playlistLock)
+        {
+            if (i < 0 || i >= _keys.Count) return;
+            PrepareForMutation();
+            var wasCurrent = i == _index;
+            _keys.RemoveAt(i);
+            if (_keys.Count == 0) _index = -1;
+            else if (wasCurrent) _index = Mathf.Clamp(i, 0, _keys.Count - 1);
+            else if (_index >= _keys.Count) _index = _keys.Count - 1;
+            Save();
+        }
     }
 
     /// <summary>调整两项顺序，播放下标一起挪位（拖拽排序用）。</summary>
     public void Move(int fromIdx, int toIdx)
     {
-        if (fromIdx < 0 || fromIdx >= _keys.Count) return;
-        var to = Mathf.Clamp(toIdx, 0, _keys.Count - 1);
-        if (fromIdx == to) return;
-        PrepareForMutation();
-        var item = _keys[fromIdx];
-        var cur = _index;
-        _keys.RemoveAt(fromIdx);
-        _keys.Insert(to, item);
-        if (cur >= 0)
+        lock (_playlistLock)
         {
-            if (fromIdx == cur) cur = to;            // 播的就是被拖的那首 → 跟到新位置
-            else
+            if (fromIdx < 0 || fromIdx >= _keys.Count) return;
+            var to = Mathf.Clamp(toIdx, 0, _keys.Count - 1);
+            if (fromIdx == to) return;
+            PrepareForMutation();
+            var item = _keys[fromIdx];
+            var cur = _index;
+            _keys.RemoveAt(fromIdx);
+            _keys.Insert(to, item);
+            if (cur >= 0)
             {
-                if (fromIdx < cur) cur -= 1;         // 移除点在它前面 → 左移一位
-                if (to <= cur) cur += 1;             // 插入点在它前面 → 右移一位
+                if (fromIdx == cur) cur = to;            // 播的就是被拖的那首 → 跟到新位置
+                else
+                {
+                    if (fromIdx < cur) cur -= 1;         // 移除点在它前面 → 左移一位
+                    if (to <= cur) cur += 1;             // 插入点在它前面 → 右移一位
+                }
+                _index = Mathf.Clamp(cur, 0, _keys.Count - 1);
             }
-            _index = Mathf.Clamp(cur, 0, _keys.Count - 1);
+            Save();
         }
-        Save();
     }
 
     public void ClearAll()
     {
-        PrepareForMutation();
-        _keys.Clear();
-        _index = -1;
-        Save();
+        lock (_playlistLock)
+        {
+            PrepareForMutation();
+            _keys.Clear();
+            _index = -1;
+            Save();
+        }
     }
 
     // ── 导航 ──────────────────────────────────────────────
@@ -258,59 +335,123 @@ public partial class MidiCore : Node
     /// <summary>下一首 key（纯下标 +1，末尾回绕）。列表空返回空串。</summary>
     public string NextKey()
     {
-        if (_keys.Count == 0) return "";
-        var n = _index + 1;
-        if (n < 0 || n >= _keys.Count) n = 0;
-        return _keys[n];
+        lock (_playlistLock)
+        {
+            if (_keys.Count == 0) return "";
+            var n = _index + 1;
+            if (n < 0 || n >= _keys.Count) n = 0;
+            return _keys[n];
+        }
     }
 
     /// <summary>上一首 key（纯下标 -1，首项回绕到末尾）。列表空返回空串。</summary>
     public string PrevKey()
     {
-        if (_keys.Count == 0) return "";
-        var p = _index - 1;
-        if (p < 0) p = _keys.Count - 1;
-        return _keys[p];
+        lock (_playlistLock)
+        {
+            if (_keys.Count == 0) return "";
+            var p = _index - 1;
+            if (p < 0) p = _keys.Count - 1;
+            return _keys[p];
+        }
     }
 
     /// <summary>
     /// 播完/回绕时该接哪一首——深度后台由音频侧直接调用。
-    /// 返回空串表示「不推进，原地重播当前曲」（单曲槽会话 / 单曲循环 / 列表为空）。
+    /// 返回空串表示「不推进，原地重播当前曲」。
+    ///
+    /// 判定必须与前台 _should_advance_on_end 逐条对齐，否则前后台行为分裂：
+    /// 列表只有一首时前台是原地循环（不重载），这里若返回同一首会让 C# 把这首整曲重载重播。
     /// </summary>
     public string ResolveAdvanceKey()
     {
-        if (_keys.Count == 0 || _session_single) return "";
-        if (_repeat_mode == REPEAT_ONE) return "";
-        return NextKey();
+        lock (_playlistLock)
+        {
+            if (_keys.Count <= 1 || _session_single) return "";
+            if (_repeat_mode == REPEAT_ONE) return "";
+            return NextKey();
+        }
     }
+
+    // ── 后台线程专用：无锁读取的纯数据快照 ──────────────────────────
+    //
+    // 【为什么不是"让后台拿锁"】后台换曲跑在独立线程，而主线程随时可能正持着 _playlistLock
+    // （改列表 / EnsureLoaded / Save 里的 LiteDB 落盘）。真机实测：熄屏深后台时主线程会被
+    // Android 整段挂起（日志里 192 秒），此时任何等锁的后台调用都会**陪冻**同样久 ——
+    // `Playback started` 之后隔 192 秒才打印 `media state published`，而两行之间只有
+    // IndexOf/SetIndex/Save 三步。表现成"后台曲终不切歌 / 拖进度条卡住"。
+    //
+    // 解法（即"进后台前把状态缓存好"）：主线程在**每次改动后**发布一份纯数据快照
+    // （string[] 引用拷贝，2333 首也就微秒级），后台只 volatile 读这个引用 —— 不取锁、不碰 DB、
+    // 不落盘。后台换曲成功后也只记一个"待收敛 key"，由主线程回前台后补索引与落盘。
+
+
+    /// <summary>后台推进用的纯数据快照（volatile 发布：主线程写、后台线程读）</summary>
+
+
+
+
+
+
+
 
     // ── 模式 / 会话 / 持久化开关 ───────────────────────────
 
     public void SetRepeatMode(int mode)
     {
-        PrepareForMutation();
-        _repeat_mode = mode;
-        Save();
+        lock (_playlistLock)
+        {
+            PrepareForMutation();
+            _repeat_mode = mode;
+            Save();
+        }
     }
 
-    public int GetRepeatMode() => _repeat_mode;
+    public int GetRepeatMode()
+    {
+        lock (_playlistLock) return _repeat_mode;
+    }
 
-    public void SetSessionSingle(bool single) => _session_single = single;
+    public void SetSessionSingle(bool single)
+    {
+        lock (_playlistLock) _session_single = single;
+    }
 
-    public bool IsSessionSingle() => _session_single;
+    public bool IsSessionSingle()
+    {
+        lock (_playlistLock) return _session_single;
+    }
 
     /// <summary>正常通道的单曲槽（B）：演奏 / 音轨试听 / 媒体控件播种，永不落盘。</summary>
-    public void SetSessionKey(string key) => _session_key = key ?? "";
+    public void SetSessionKey(string key)
+    {
+        lock (_playlistLock) _session_key = key ?? "";
+    }
 
-    public string GetSessionKey() => _session_key;
+    public string GetSessionKey()
+    {
+        lock (_playlistLock) return _session_key;
+    }
 
-    public void SetPersistEnabled(bool enabled) => _persist_enabled = enabled;
+    public void SetPersistEnabled(bool enabled)
+    {
+        lock (_playlistLock) _persist_enabled = enabled;
+    }
 
-    public bool IsPersistEnabled() => _persist_enabled;
+    public bool IsPersistEnabled()
+    {
+        lock (_playlistLock) return _persist_enabled;
+    }
 
-    public void SetSourceFavId(string id) => _source_fav_id = id ?? "";
+    public void SetSourceFavId(string id)
+    {
+        lock (_playlistLock) _source_fav_id = id ?? "";
+    }
 
-    public string GetSourceFavId() => _source_fav_id;
+    public string GetSourceFavId()
+    {
+        lock (_playlistLock) return _source_fav_id;
+    }
 
     // ── 运行时配置权威（chart_runtime） ─────────────────────────
     //
@@ -348,6 +489,45 @@ public partial class MidiCore : Node
             }
         }
         return cfg;
+    }
+
+    // ── 纯 C# 配置投影（后台换曲线程用：零 Godot 接触） ────────────
+    private readonly Dictionary<string, Dictionary<string, object>> _configPlainCache = new();
+    private int _configPlainRev = -1;
+
+    /// <summary>
+    /// 纯 C# 形态的运行时配置（Dictionary/List/数值/字符串/布尔）。
+    ///
+    /// 【首次构建须在主线程】走 ChartDb/LiteDB 读 BSON 并转托管对象；命中缓存后任意线程可读。
+    /// 后台换曲线程靠它在挂起期间读配置，避免碰 Godot 容器而阻塞主线程持有的锁。
+    /// </summary>
+    internal Dictionary<string, object> GetConfigPlain(string chartKey)
+    {
+        if (!DbReady() || string.IsNullOrEmpty(chartKey)) return null;
+        var db = Db();
+        int rev = db.RuntimeRevision;
+        lock (_parseLock)
+        {
+            if (_configPlainRev != rev)
+            {
+                _configPlainCache.Clear();
+                _configPlainRev = rev;
+            }
+            if (_configPlainCache.TryGetValue(chartKey, out var hit))
+            {
+                return hit;
+            }
+        }
+        var plain = db.GetRuntimePlain(chartKey);
+        lock (_parseLock)
+        {
+            // 期间若有写入改了修订号则不缓存，下个调用自然重建
+            if (_configPlainRev == db.RuntimeRevision)
+            {
+                _configPlainCache[chartKey] = plain;
+            }
+        }
+        return plain;
     }
 
     /// <summary>
@@ -415,7 +595,7 @@ public partial class MidiCore : Node
         current["_track_config_initialized"] = true;
         Db().SaveRuntime(chartKey, current);
         InvalidateConfigCache(chartKey);
-        GD.Print($"[MidiCore] defaults initialized once for {chartKey}");
+        ThreadSafeLog.Print($"[MidiCore] defaults initialized once for {chartKey}");
         return true;
     }
 
@@ -458,9 +638,14 @@ public partial class MidiCore : Node
     //   - KeySequenceCore 直接进程内读数组（TryGetSoa），省掉 6 条 Godot.PackedInt32Array 的来回拷贝
     private sealed class ParseEntry
     {
-        public Godot.Collections.Dictionary Native;
-        public int[] St, Du, Pt, Ve, Tr, Ch;   // 与 Native 同内容的托管数组（进程内直读）
+        public int[] St, Du, Pt, Ve, Tr, Ch;   // SOA 六数组
         public int[] PairsFlat;                // 去重 (track<<8|channel)，按首次出现顺序
+        public int[] GroupKeys, GroupOffsets, GroupIndices;
+        public int[] BpmTicks;
+        public float[] BpmBpms, BpmTimesMs;
+        public int Timebase, TrackCount, MaxEndTick;
+        public double DurationMs;
+        public System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<int, (int bank, int program)>> Instruments;
         public long Stamp;
     }
 
@@ -480,6 +665,18 @@ public partial class MidiCore : Node
     /// 注意：签名不得给参数默认值——GDScript 调用 C# 方法必须严格匹配参数个数，
     /// 带默认值的方法在少传参调用时报 "Nonexistent function"（实测）。</summary>
     public bool ParseChartFile(string readPath, string cacheKey)
+        => ParseChartFileImpl(readPath, cacheKey, false);
+
+    /// <summary>
+    /// 与 ParseChartFile 相同，但绝对路径用 System.IO 读盘（完全不碰 Godot 文件 API）。
+    ///
+    /// 供熄屏/深后台的 C# 换曲线程按需解析：那边的主循环被冻结，若它此刻正持有引擎全局锁，
+    /// 后台线程再调 Godot 文件 API 会永久阻塞（表现为"设备已停、不切歌、彻底静音"）。
+    /// </summary>
+    public bool ParseChartFileSystemIo(string filePath, string cacheKey)
+        => ParseChartFileImpl(filePath, cacheKey, true);
+
+    private bool ParseChartFileImpl(string readPath, string cacheKey, bool preferSystemIo)
     {
         if (string.IsNullOrEmpty(readPath)) return false;
         var key = string.IsNullOrEmpty(cacheKey) ? readPath : cacheKey;
@@ -491,34 +688,64 @@ public partial class MidiCore : Node
                 return true;
             }
         }
-        if (!Godot.FileAccess.FileExists(readPath)) return false;
-        using var f = Godot.FileAccess.Open(readPath, Godot.FileAccess.ModeFlags.Read);
-        if (f == null) return false;
-        var bytes = f.GetBuffer((long)f.GetLength());
-        f.Close();
+        byte[] bytes;
+        if (preferSystemIo && !readPath.StartsWith("res://") && !readPath.StartsWith("user://"))
+        {
+            try
+            {
+                bytes = System.IO.File.ReadAllBytes(readPath);
+            }
+            catch (Exception e)
+            {
+                ThreadSafeLog.PrintErr($"[MidiCore] System.IO read failed: {readPath} ({e.Message})");
+                return false;
+            }
+        }
+        else
+        {
+            if (!Godot.FileAccess.FileExists(readPath)) return false;
+            using var f = Godot.FileAccess.Open(readPath, Godot.FileAccess.ModeFlags.Read);
+            if (f == null) return false;
+            bytes = f.GetBuffer((long)f.GetLength());
+            f.Close();
+        }
 
-        Godot.Collections.Dictionary native;
+        MidiParseResult parsed;
         try
         {
-            native = new MidiParserNative().Parse(bytes);
+            parsed = new MidiParserNative().ParsePlain(bytes);
         }
         catch (Exception e)
         {
-            GD.PrintErr($"[MidiCore] MIDI parse failed ({readPath}): {e.Message}");
+            ThreadSafeLog.PrintErr($"[MidiCore] MIDI parse failed ({readPath}): {e.Message}");
             return false;
         }
-        if (native.Count == 0 || !native.TryGetValue("success", out var sv) || !sv.AsBool())
+        if (!parsed.Success)
         {
             return false;
         }
 
-        var entry = new ParseEntry { Native = native, Stamp = ++_parseStamp };
-        entry.St = native["start_ticks"].AsInt32Array();
-        entry.Du = native["durations"].AsInt32Array();
-        entry.Pt = native["pitches"].AsInt32Array();
-        entry.Ve = native["velocities"].AsInt32Array();
-        entry.Tr = native["track_indices"].AsInt32Array();
-        entry.Ch = native["channels"].AsInt32Array();
+        var entry = new ParseEntry
+        {
+            Stamp = ++_parseStamp,
+            Pt = parsed.Pitches,
+            Ve = parsed.Velocities,
+            St = parsed.StartTicks,
+            Du = parsed.Durations,
+            Tr = parsed.TrackIndices,
+            Ch = parsed.Channels,
+            GroupKeys = parsed.GroupKeys,
+            GroupOffsets = parsed.GroupOffsets,
+            GroupIndices = parsed.GroupIndices,
+            BpmTicks = parsed.BpmTicks,
+            BpmBpms = parsed.BpmBpms,
+            BpmTimesMs = parsed.BpmTimesMs,
+            Timebase = parsed.Timebase,
+            TrackCount = parsed.TrackCount,
+            MaxEndTick = parsed.MaxEndTick,
+            DurationMs = parsed.DurationMs,
+            Instruments = parsed.TrackInstruments,
+        };
         entry.PairsFlat = BuildPairsFlat(entry);
 
         lock (_parseLock)
@@ -526,14 +753,15 @@ public partial class MidiCore : Node
             _parseCache[key] = entry;
             TrimParseCacheLocked();
         }
-        GD.Print($"[MidiCore] parsed & cached: {entry.Pt.Length} notes, {entry.PairsFlat.Length} pairs ({key})");
+        // 走线程安全出口：后台换曲线程会调到这里解析谱面，而主线程冻结时直接 GD.Print 会阻塞
+        ThreadSafeLog.Print($"[MidiCore] parsed & cached: {entry.Pt.Length} notes, {entry.PairsFlat.Length} pairs ({key})");
         return true;
     }
 
     /// <summary>
     /// 取 SOA 的 9 个并行数组（6 音符 + 3 分组）供 GDScript 侧 NoteSoa 包装。
-    /// 直接返回 PackedInt32Array 本身（GODOT 侧 COW 共享底层存储，不复制），
-    /// 故 NoteRollView / TrackView 每帧读仍是零跨语言开销。
+    /// **仅主线程**：这里是解析产物里唯一会创建 Godot 容器的地方（PackedInt32Array），
+    /// 而解析本身（ParseChartFileSystemIo）在熄屏后台可能由音频侧线程触发。
     /// 未解析过返回空字典。
     /// 注意：不用 out 参数——Godot 无法绑定 out 参数，GDScript 调用会报
     /// "Nonexistent function"（实测）。
@@ -546,19 +774,17 @@ public partial class MidiCore : Node
         {
             if (!_parseCache.TryGetValue(path, out e)) return new Godot.Collections.Dictionary();
         }
-        var n = e.Native;
-        if (n == null || n.Count == 0) return new Godot.Collections.Dictionary();
         return new Godot.Collections.Dictionary
         {
-            ["pitches"] = n["pitches"].AsInt32Array(),
-            ["velocities"] = n["velocities"].AsInt32Array(),
-            ["start_ticks"] = n["start_ticks"].AsInt32Array(),
-            ["durations"] = n["durations"].AsInt32Array(),
-            ["track_indices"] = n["track_indices"].AsInt32Array(),
-            ["channels"] = n["channels"].AsInt32Array(),
-            ["track_channel_groups_keys"] = ReadInt32(n, "track_channel_groups_keys"),
-            ["track_channel_groups_offsets"] = ReadInt32(n, "track_channel_groups_offsets"),
-            ["track_channel_groups_indices"] = ReadInt32(n, "track_channel_groups_indices"),
+            ["pitches"] = e.Pt,
+            ["velocities"] = e.Ve,
+            ["start_ticks"] = e.St,
+            ["durations"] = e.Du,
+            ["track_indices"] = e.Tr,
+            ["channels"] = e.Ch,
+            ["track_channel_groups_keys"] = e.GroupKeys,
+            ["track_channel_groups_offsets"] = e.GroupOffsets,
+            ["track_channel_groups_indices"] = e.GroupIndices,
         };
     }
 
@@ -577,106 +803,84 @@ public partial class MidiCore : Node
         {
             if (!_parseCache.TryGetValue(path, out e)) return outArr;
         }
-        var n = e.Native;
-        if (n == null || n.Count == 0) return outArr;
-        if (!n.TryGetValue("bpm_timeline_ticks", out var ticksV)) return outArr;
-        var ticks = ticksV.AsInt32Array();
-        var bpms = ReadFloat32(n, "bpm_timeline_bpms");
-        var times = ReadFloat32(n, "bpm_timeline_times_ms");
+        var ticks = e.BpmTicks;
+        var bpms = e.BpmBpms;
+        var times = e.BpmTimesMs;
+        if (ticks == null || ticks.Length == 0) return outArr;
         for (int i = 0; i < ticks.Length; i++)
         {
             outArr.Add(new Godot.Collections.Dictionary
             {
                 ["tick"] = ticks[i],
-                ["bpm"] = i < bpms.Length ? (float)bpms[i] : 120.0f,
-                ["time_ms"] = i < times.Length ? (float)times[i] : 0.0f,
+                ["bpm"] = i < bpms.Length ? bpms[i] : 120.0f,
+                ["time_ms"] = i < times.Length ? times[i] : 0.0f,
             });
         }
         return outArr;
     }
 
-    /// <summary>轨道/通道乐器映射（C# 解析阶段一次性提取，GD 侧不再遍历事件）</summary>
+    /// <summary>轨道/通道乐器映射（C# 解析阶段一次性提取，GD 侧不再遍历事件）。
+    /// **仅主线程**（会创建 Godot 容器）。</summary>
     public Godot.Collections.Dictionary GetTrackInstruments(string path)
     {
-        if (string.IsNullOrEmpty(path)) return new Godot.Collections.Dictionary();
+        var result = new Godot.Collections.Dictionary();
+        if (string.IsNullOrEmpty(path)) return result;
         ParseEntry e;
         lock (_parseLock)
         {
-            if (!_parseCache.TryGetValue(path, out e)) return new Godot.Collections.Dictionary();
+            if (!_parseCache.TryGetValue(path, out e)) return result;
         }
-        var n = e.Native;
-        if (n == null || !n.TryGetValue("track_instruments", out var v)) return new Godot.Collections.Dictionary();
-        return v.AsGodotDictionary();
+        if (e.Instruments == null) return result;
+        foreach (var trackPair in e.Instruments)
+        {
+            var trackDict = new Godot.Collections.Dictionary();
+            foreach (var chPair in trackPair.Value)
+            {
+                trackDict[chPair.Key] = new Godot.Collections.Dictionary
+                {
+                    { "bank", chPair.Value.bank },
+                    { "program", chPair.Value.program }
+                };
+            }
+            result[trackPair.Key] = trackDict;
+        }
+        return result;
     }
 
-    /// <summary>解析出的轨道数（替代 GDScript 侧重建 track_infos 数组）</summary>
+    /// <summary>解析出的轨道数（替代 GDScript 侧重建 track_infos 数组）。任意线程可读。</summary>
     public int GetTrackCount(string path)
     {
-        if (string.IsNullOrEmpty(path)) return 0;
-        ParseEntry e;
         lock (_parseLock)
         {
-            if (!_parseCache.TryGetValue(path, out e)) return 0;
+            return _parseCache.TryGetValue(path ?? "", out var e) ? e.TrackCount : 0;
         }
-        var n = e.Native;
-        if (n != null && n.TryGetValue("track_count", out var v)) return v.AsInt32();
-        return 0;
     }
 
-    /// <summary>曲长（毫秒）</summary>
+    /// <summary>曲长（毫秒）。任意线程可读。</summary>
     public double GetDurationMs(string path)
     {
-        if (string.IsNullOrEmpty(path)) return 0.0;
-        ParseEntry e;
         lock (_parseLock)
         {
-            if (!_parseCache.TryGetValue(path, out e)) return 0.0;
+            return _parseCache.TryGetValue(path ?? "", out var e) ? e.DurationMs : 0.0;
         }
-        var n = e.Native;
-        if (n != null && n.TryGetValue("duration_ms", out var v)) return v.AsDouble();
-        return 0.0;
     }
 
-    /// <summary>MIDI timebase（每四分音符 tick 数，默认 480）</summary>
+    /// <summary>MIDI timebase（每四分音符 tick 数，默认 480）。任意线程可读。</summary>
     public int GetTimebase(string path)
     {
-        if (string.IsNullOrEmpty(path)) return 480;
-        ParseEntry e;
         lock (_parseLock)
         {
-            if (!_parseCache.TryGetValue(path, out e)) return 480;
+            return _parseCache.TryGetValue(path ?? "", out var e) ? e.Timebase : 480;
         }
-        var n = e.Native;
-        if (n != null && n.TryGetValue("timebase", out var v)) return v.AsInt32();
-        return 480;
     }
 
-    /// <summary>最大结束 tick（TrackView 自动滚动范围用，0 = 未知）</summary>
+    /// <summary>最大结束 tick（TrackView 自动滚动范围用，0 = 未知）。任意线程可读。</summary>
     public double GetMaxEndTick(string path)
     {
-        if (string.IsNullOrEmpty(path)) return 0.0;
-        ParseEntry e;
         lock (_parseLock)
         {
-            if (!_parseCache.TryGetValue(path, out e)) return 0.0;
+            return _parseCache.TryGetValue(path ?? "", out var e) ? e.MaxEndTick : 0.0;
         }
-        var n = e.Native;
-        if (n != null && n.TryGetValue("max_end_tick", out var v)) return v.AsDouble();
-        return 0.0;
-    }
-
-    /// <summary>解析结果里取 int32 数组；键缺失时给空数组（分组解析失败时NoteSoa 会走重算回退）</summary>
-    private static int[] ReadInt32(Godot.Collections.Dictionary d, string key)
-    {
-        return d.TryGetValue(key, out var v) && v.VariantType == Variant.Type.PackedInt32Array
-            ? v.AsInt32Array() : System.Array.Empty<int>();
-    }
-
-    /// <summary>解析结果里取 float32 数组；键缺失时给空数组</summary>
-    private static float[] ReadFloat32(Godot.Collections.Dictionary d, string key)
-    {
-        return d.TryGetValue(key, out var v) && v.VariantType == Variant.Type.PackedFloat32Array
-            ? v.AsFloat32Array() : System.Array.Empty<float>();
     }
 
     private static int[] BuildPairsFlat(ParseEntry e)
@@ -715,15 +919,6 @@ public partial class MidiCore : Node
     public void DropParsed(string path)
     {
         lock (_parseLock) _parseCache.Remove(path);
-    }
-
-    /// <summary>GDScript 组装 MidiData 用的原始解析结果（与 MidiParserNative.Parse 同形态）</summary>
-    public Godot.Collections.Dictionary GetParsedNative(string path)
-    {
-        lock (_parseLock)
-        {
-            return _parseCache.TryGetValue(path, out var e) ? e.Native : new Godot.Collections.Dictionary();
-        }
     }
 
     public int GetNoteCount(string path)
@@ -799,5 +994,26 @@ public partial class MidiCore : Node
         }
         startTick = durTick = pitch = velocity = track = channel = null;
         return false;
+    }
+
+    /// <summary>
+    /// worker 线程版"确保解析就绪"：缓存命中直接 true；未命中且路径是原生文件系统路径时
+    /// 就地补一次解析（解析已是纯托管实现，绝对路径不必碰引擎）。
+    ///
+    /// 存在意义：解析缓存只留 2 首，而 <see cref="KeySequenceCore"/> 的生成跑在 worker 上，
+    /// 从"主线程排队"到"worker 真去读数组"之间，主线程可能又解析了别的谱面把这首挤掉 ——
+    /// 那时生成会静默产出 0 条序列（表现为打歌没有音符）。这里让 worker 自己兜住。
+    /// res:// / user:// 这类需要引擎读盘的路径不在此处理（后台线程不得碰引擎），返回 false。
+    /// </summary>
+    public bool EnsureParsedForWorker(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        lock (_parseLock)
+        {
+            if (_parseCache.ContainsKey(path)) return true;
+        }
+        if (path.StartsWith("res://") || path.StartsWith("user://")) return false;
+        // ParseChartFileSystemIo 内部对纯原生路径走 System.IO，解析主体是纯托管代码
+        return ParseChartFileSystemIo(path, path);
     }
 }

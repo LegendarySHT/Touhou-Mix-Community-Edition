@@ -187,7 +187,7 @@ func save_config_to_file() -> bool:
 		GLogger.info("Applied %d deferred config updates" % applied_count, "SettingView")
 
 	# 同步发出 settings_changed：必须在退场动画之前。
-	#    MidiPlaybackManager 据此异步重载音源，重载完成回调在 is_playing=false（退场/暂停态）时
+	#    PlaybackDisplay 据此异步重载音源，重载完成回调在 is_playing=false（退场/暂停态）时
 	#    会跳过人声 resync；若推迟到下一帧，TrackView 已 resume 并启动人声，重载完成会再次重启人声
 	if EvtBus:
 		EvtBus.settings_changed.emit("*", null)

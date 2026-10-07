@@ -89,7 +89,7 @@ func _build_color_lut() -> void:
 		_color_lut.append(row)
 
 func _process(_delta: float) -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null or not is_visible_in_tree():
 		return
 	var pos := mgr.get_realtime_position_ms()

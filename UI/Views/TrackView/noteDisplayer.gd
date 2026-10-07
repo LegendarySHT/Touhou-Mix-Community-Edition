@@ -181,7 +181,7 @@ func _process(_delta):
 	# ScrollContainer 滚动使子节点滑出视口时，get_global_rect() 与视口无交集
 	var on_screen: bool = flow_area.get_global_rect().intersects(get_viewport_rect())
 
-	var midi_mgr = MidiPlaybackManager.instance
+	var midi_mgr = PlaybackDisplay.instance
 	if midi_mgr == null or not midi_mgr.is_playing:
 		# 不主动 set_process(false)：由 TrackView._set_note_displayers_process 统一管理启停
 		return
@@ -414,8 +414,8 @@ func reset_playhead_position(target_ms: float) -> void:
 	# 确保 _process 处于启用状态：拖动进度条/重入时恢复计时
 	set_process(true)
 
-	# 获取MidiPlaybackManager以计算tick
-	var midi_playback_mgr = MidiPlaybackManager.instance
+	# 获取PlaybackDisplay以计算tick
+	var midi_playback_mgr = PlaybackDisplay.instance
 	if midi_playback_mgr == null:
 		return
 

@@ -248,7 +248,7 @@ func _start_midi_compute() -> void:
 	if midi == null:
 		return
 
-	# 若音符数据已就绪（SOA 或旧对象路径；之前解析过或 MidiPlaybackManager 加载过），直接算 Note 数量
+	# 若音符数据已就绪（SOA 或旧对象路径；之前解析过或 PlaybackDisplay 加载过），直接算 Note 数量
 	if midi.duration_ms > 0 and midi.has_notes():
 		var entry: Dictionary = _info_cache.get(midi.id, {})
 		# 补全 time 缓存（可能之前没建过）
@@ -259,10 +259,10 @@ func _start_midi_compute() -> void:
 		_compute_and_cache_notes(midi)
 		return
 
-	# 需要解析 MIDI 文件 ─ 交给 MidiPlaybackManager 统一解析：
+	# 需要解析 MIDI 文件 ─ 交给 PlaybackDisplay 统一解析：
 	# ensure_parsed 命中 C# 解析缓存时几乎零开销，未命中才真正解析。
 	# 解析主体在 C#（纯 .NET、无场景树访问），故同步调用即可。
-	var pm := MidiPlaybackManager.instance
+	var pm := PlaybackDisplay.instance
 	if pm == null:
 		return
 	var ok: bool = pm.ensure_parsed(midi)
@@ -294,10 +294,10 @@ func _fill_time_cache(midi: MidiData, entry: Dictionary) -> void:
 	else:
 		entry["time_str"] = "—"
 
-	# 获取 bpm_timeline：优先使用 MidiData 自持，其次 MidiPlaybackManager
+	# 获取 bpm_timeline：优先使用 MidiData 自持，其次 PlaybackDisplay
 	var timeline: Array = midi.bpm_timeline
 	if timeline.is_empty():
-		var pm := MidiPlaybackManager.instance
+		var pm := PlaybackDisplay.instance
 		if pm and pm.current_midi_data == midi:
 			timeline = pm.bpm_timeline
 
@@ -315,7 +315,7 @@ func _compute_and_cache_notes(midi: MidiData) -> void:
 	# 计算前先确保轨道配置已按简介完成初始化（幂等）：
 	# 若首次进入 MidiView 时仍未初始化，统计口径会退化为"全部轨道"，
 	# 与 TrackView / PlayView 的"按简介推荐轨道"不一致。
-	var pm := MidiPlaybackManager.instance
+	var pm := PlaybackDisplay.instance
 	if pm != null and not midi.is_track_config_initialized():
 		pm.ensure_track_config_initialized(midi, midi.parsed_notes)
 

@@ -373,7 +373,7 @@ func _on_del_btn_pressed():
 			midi_to_del.track_channel_instrument_overrides.clear()
 			midi_to_del.solo_pairs.clear()
 			midi_to_del.midi_volume = -1.0  # -1=未配置（跟随全局 default_midi_volume）
-			# 重置 _track_config_initialized=false：使下次进入 TrackView 时 MidiPlaybackManager.load_midi
+			# 重置 _track_config_initialized=false：使下次进入 TrackView 时 PlaybackDisplay.load_midi
 			# 重新解析简介并应用推荐轨道（修复 #59：删除设定后不会回落到从简介读取音轨配置的状态）
 			midi_to_del.set_track_config_initialized(false)
 			# 清空 chart_runtime（文档存在=已配置，删除=从未配置；与旧 JSON 整块移除 _runtime 语义一致）

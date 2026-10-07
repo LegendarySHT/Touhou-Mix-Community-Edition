@@ -1,7 +1,7 @@
 ## 键序列管理器（薄封装）
 ## 完整算法与输出存储已迁移到 C# KeySequenceCore；本节点只保留：
 ##   - 配置加载 / 单任务槽 / 全量生成 / 缓存
-##   - 向 GDScript 消费方（PlayView/FlowArea/ManualNoteOffScheduler/MidiPlaybackManager）暴露 C# 输出的只读访问器
+##   - 向 GDScript 消费方（PlayView/FlowArea/ManualNoteOffScheduler/PlaybackDisplay）暴露 C# 输出的只读访问器
 ## 输出（game sequences / 背景 / 手动 / 自动）全部以紧凑平行数组存放于 C#，消除 GDScript 数万对象开销
 class_name KeySequenceManager
 extends Node

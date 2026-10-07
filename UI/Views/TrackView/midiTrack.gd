@@ -596,7 +596,7 @@ func _refresh_current_highlight() -> void:
 		_current_display_name)
 
 func _on_mute_toggled(is_pressed: bool):
-	# 注意：MidiData的修改由TrackView._on_track_mute_toggled通过MidiPlaybackManager处理
+	# 注意：MidiData的修改由TrackView._on_track_mute_toggled通过PlaybackDisplay处理
 	# 这里仅负责UI状态更新
 	mute_btn.texture_normal.region = Rect2(0, 240, 80, 80) if is_pressed else Rect2(0, 160, 80, 80)
 

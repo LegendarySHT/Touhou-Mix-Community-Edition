@@ -61,7 +61,7 @@ const _BEAT_DURATION_SEC: float = 0.12 # 单拍发声时长（note_off 延迟，
 # 待清理的 note_off entry 列表（stop_calibration 时强制停音）
 # 每个 entry = {pitch, done, mp}，done 标志防止 SceneTreeTimer 自然超时重复触发 note_off
 var _beat_off_timers: Array = []
-# 校准前保存的 MidiPlaybackManager 音量（dB），stop_calibration 时恢复
+# 校准前保存的 PlaybackDisplay 音量（dB），stop_calibration 时恢复
 # 避免校准期间修改的全局音量污染后续 PlayView 播放
 var _saved_volume_db: float = NAN
 
@@ -81,11 +81,13 @@ func start_calibration(current_delay: int = 0) -> void:
 
 	# 确保 SoundFont 已加载到后端合成器（trigger_note_on 依赖 SoundFont）
 	# 设置页打开 DelayAdjust 时未调用 play()，SoundFont 可能尚未懒加载到 synth
-	var mp = MidiPlaybackManager.instance
+	var mp = PlaybackDisplay.instance
 	if mp:
 		mp.ensure_soundfont_loaded()
-		_saved_volume_db = mp.midi_player_config.get("volume_db", -20.0)
-		# 走与 TrackView/PlayView 同一套映射（系数见 MidiPlaybackManager.MIDI_VOLUME_GAIN）
+		# 保存"校准前"的后端音量以便还原：必须读后端真值，midi_player_config 是初值投影
+		# （永远是 -20dB），照它还原会把用户音量冲掉。
+		_saved_volume_db = mp.get_backend_volume_db()
+		# 走与 TrackView/PlayView 同一套映射（系数见 PlaybackTypes.MIDI_VOLUME_GAIN）
 		mp.apply_ui_midi_volume(mp.get_effective_midi_volume(-1.0))
 	# 启动 AdjustLine 单向循环动画
 	# AdjustLine 本身不可见，仅作为位置跟踪器，点击时在当前位置生成残影
@@ -124,7 +126,7 @@ func stop_calibration() -> void:
 	_stop_all_beat_sounds()
 	# 恢复校准前的全局音量，避免污染后续 PlayView 播放
 	if not is_nan(_saved_volume_db):
-		var mp = MidiPlaybackManager.instance
+		var mp = PlaybackDisplay.instance
 		if mp:
 			mp.set_volume_db(_saved_volume_db)
 		_saved_volume_db = NAN
@@ -140,10 +142,10 @@ func _stop_all_beat_sounds() -> void:
 			entry["mp"].midi_player.call("trigger_note_off", entry["pitch"], 0, _BEAT_CHANNEL, _BEAT_TRACK)
 	_beat_off_timers.clear()
 
-## 播放节拍音：通过 MidiPlaybackManager 实时合成 GM 鼓组
+## 播放节拍音：通过 PlaybackDisplay 实时合成 GM 鼓组
 ## 与 PlayView 演奏模式音符走同一音频路径（trigger_note_on），确保延迟特性一致
 func _play_beat_sound(hard: bool = false) -> void:
-	var mp = MidiPlaybackManager.instance
+	var mp = PlaybackDisplay.instance
 	if not mp or not mp.midi_player:
 		return
 	var pitch: int = _BEAT_HARD_PITCH if hard else _BEAT_SOFT_PITCH

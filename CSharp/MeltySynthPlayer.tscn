@@ -1,10 +1,6 @@
-[gd_scene format=3 uid="uid://d3v8wq7x2y5m1"]
+[gd_scene load_steps=2 format=3 uid="uid://d3v8wq7x2y5m1"]
 
 [ext_resource type="Script" uid="uid://c5wr8kvrleagt" path="res://CSharp/MeltySynthPlayer.cs" id="1_csharp"]
-[ext_resource type="Script" uid="uid://bxaqib5fcyumq" path="res://CSharp/MeltySynthPlayerWrapper.gd" id="1_wrapper"]
 
-[node name="MeltySynthPlayer" type="Node" unique_id=1994786198]
-script = ExtResource("1_wrapper")
-
-[node name="CSharpBackend" type="Node" parent="." unique_id=1141911046]
+[node name="MeltySynth" type="Node"]
 script = ExtResource("1_csharp")

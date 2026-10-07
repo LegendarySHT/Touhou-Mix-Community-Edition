@@ -2,6 +2,10 @@ extends BaseScrollList
 
 class_name TrackView
 
+## 音量映射系数来源。用 preload 而非全局类名：全局类表可能因编辑器缓存过期而缺失该条目
+## （实测掉过），那样本脚本会在解析期直接报错。preload 不依赖全局类表。
+const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
+
 @onready var master_note_displayer: NoteDisplayer = $MC/VBox/TotalView/MC/VBoxC/flowArea
 @onready var current_time: Label = $MC/VBox/TotalView/MC/VBoxC/playArea/currentTime
 @onready var progress_bar: HSlider = $MC/VBox/TotalView/MC/VBoxC/playArea/progressBar
@@ -23,7 +27,7 @@ class_name TrackView
 
 # MIDI播放相关
 
-@onready var midi_playback_manager: MidiPlaybackManager = MidiPlaybackManager.instance
+@onready var midi_playback_manager: PlaybackDisplay = PlaybackDisplay.instance
 @onready var ui_stat_mgr: UIStateManager = UiStatMGR
 
 var current_midi_data: MidiData = null
@@ -67,12 +71,13 @@ func _ready() -> void:
 
 	# 检查管理器引用
 	if midi_playback_manager == null:
-		push_error("MidiPlaybackManager not initialized in Main! MIDI features will not work.")
+		push_error("PlaybackDisplay not initialized in Main! MIDI features will not work.")
 		return
 
 	# 反推MIDI音量slider值（映射的逆：UI值 = 后端线性增益 / MIDI_VOLUME_GAIN）
+	# 读后端真值而不是 midi_player_config：后者是初值投影，永远停在 -20dB
 	midi_vol_slider.value = clampf(
-		db_to_linear(midi_playback_manager.midi_player_config["volume_db"]) / MidiPlaybackManager.MIDI_VOLUME_GAIN,
+		db_to_linear(midi_playback_manager.get_backend_volume_db()) / PlaybackTypesLib.MIDI_VOLUME_GAIN,
 		0.0, 1.0)
 	_set_display_midi_volume(midi_vol_slider.value)
 
@@ -90,6 +95,13 @@ func _ready() -> void:
 	# 音源未就绪时推迟的续播在音源就绪后真正开始：延迟启动轨道显示，避免静止音符
 	if not midi_playback_manager.is_connected("deferred_play_resumed", Callable(self, "_on_deferred_play_resumed")):
 		midi_playback_manager.deferred_play_resumed.connect(_on_deferred_play_resumed)
+
+	# 系统媒体/外部命令生效后的伴生同步 + 曲目被换掉时换页
+	# （MediaSess 已下沉 C#，这两条是它当年那条 command_received 连接的替代）
+	if not midi_playback_manager.is_connected("transport_changed", Callable(self, "_on_transport_changed")):
+		midi_playback_manager.transport_changed.connect(_on_transport_changed)
+	if not midi_playback_manager.is_connected("current_song_changed", Callable(self, "_on_transport_song_changed")):
+		midi_playback_manager.current_song_changed.connect(_on_transport_song_changed)
 
 	if not midi_vol_btn.is_connected("toggled", Callable(self, "_on_volume_btn_toggled")):
 		midi_vol_btn.toggled.connect(_on_volume_btn_toggled.bind(midi_vol_btn))
@@ -114,10 +126,6 @@ func _ready() -> void:
 		_config_persistence.name = "MidiConfigPersistence"
 		add_child(_config_persistence)
 		_config_persistence.setup(self)
-
-	# 系统媒体控制（通知栏/锁屏/媒体键）命令入口
-	if not MediaSess.command_received.is_connected(_on_media_command):
-		MediaSess.command_received.connect(_on_media_command)
 
 	super._ready()
 
@@ -196,7 +204,7 @@ func _load_midi(midi: MidiData) -> void:
 	if midi.duration_ms > 0:
 		_set_display_total_time(midi.duration_ms)
 	# TrackView 试听：写「正常通道的单曲槽」(不落盘、不碰用户播放列表) + 文件级循环
-	midi_playback_manager.start_session([midi] as Array[MidiData], 0, false, true)
+	midi_playback_manager.start_session([midi] as Array[MidiData], 0, false)
 
 	# 新增：从加载的 MIDI 和 SoundFont 提取可用乐器选项
 	_extract_instruments_from_midi()
@@ -207,7 +215,7 @@ func _load_midi(midi: MidiData) -> void:
 	_config_persistence.restore_midi_data_config()
 
 	# 加载音符
-	# runtime_track_channel_notes 由 MidiPlaybackManager.load_midi 兜底从 notes_soa 重建（保证与 SOA 强一致），
+	# runtime_track_channel_notes 由 PlaybackDisplay.load_midi 兜底从 notes_soa 重建（保证与 SOA 强一致），
 	# _build_buckets 直接读取（SOA 就绪时经 grouped_indices 重建 bucket，无需主线程遍历全量音符）。
 	# 守卫不能只看 is_empty()：残留"空分组字典"也要重建；SOA 就绪则直接以 grouped_indices 兜底。
 	if (current_midi_data.notes_soa == null or current_midi_data.notes_soa.size() == 0) \
@@ -335,43 +343,51 @@ func _seek_to(target_ms: float) -> void:
 	# 显式跳转后抑制循环检测若干帧：seek 越过循环尾回绕（位置由大跳小）不应触发重置到 0
 	_seek_suppress_loop_frames = 30
 
-## 系统媒体控制命令（通知栏/锁屏/媒体键）。PlayView 不注册会话，故不会与
-## 打歌界面的暂停菜单/视觉时钟锚定冲突
-func _on_media_command(action: String, position_ms: float) -> void:
-	# 播放动作已由 MidiPlaybackManager 统一执行（SystemMediaSession 在那里调用
-	# handle_media_command），本页只做音符显示的伴生同步。
-	if ui_stat_mgr.current_state != work_state:
+## 外部/系统媒体命令执行完毕后的"伴生同步"（transport_changed 由 C# 在命令真正生效后发出）。
+##
+## 旧实现把 `MediaSess.command_received` 连到 `_on_media_command`，重构后 MediaSess 与会话桥
+## 整体下沉进 C#，这条连接没了着落 —— 该处理函数变成"定义了但没人调用"的死代码。
+## 现在改成订阅状态信号：命令已由 C# 执行完毕，本页只对齐显示，**绝不再次 seek**
+## （旧实现里 seek 由页面发起所以那时调 _seek_to；现在再调一次就是回授）。
+func _on_transport_changed() -> void:
+	if ui_stat_mgr == null or ui_stat_mgr.current_state != work_state:
 		return
-	match action:
-		"play", "toggle":
-			if not midi_playback_manager.deferred_play_pending:
-				_set_note_displayers_process(true)
-		"pause", "stop":
-			_set_note_displayers_process(false)
-		"seek":
-			_seek_to(position_ms)
-		"next", "prev":
-			_activate(true)
-		_:
-			pass
-
-
-func _activate(changed: bool) -> void:
-	if not changed:
-		_restart_from_beginning()
+	if midi_playback_manager == null:
 		return
-	_set_note_displayers_process(true)
-	# 换曲后把循环检测基准对齐到新曲起点
-	last_position_ms = 0.0
+	var pos: float = midi_playback_manager.position_ms
+	last_position_ms = pos
+	current_tick = int(midi_playback_manager.position)
+	for track in list_items:
+		if track.note_display:
+			track.note_display.reset_playhead_position(pos)
+	if master_note_displayer:
+		master_note_displayer.reset_playhead_position(pos)
+	# 与 _seek_to 同理：位置被外部改动后抑制循环检测若干帧
 	_seek_suppress_loop_frames = 30
-
-## 从头重播：回到 0 并确保处于播放态
-func _restart_from_beginning() -> void:
-	_seek_to(0.0)
-	if midi_playback_manager.is_paused:
-		midi_playback_manager.resume()
-	if not midi_playback_manager.deferred_play_pending:
+	if midi_playback_manager.is_playing and not midi_playback_manager.deferred_play_pending:
 		_set_note_displayers_process(true)
+	else:
+		_set_note_displayers_process(false)
+
+## 正在播放的曲子被换掉（熄屏后台自动切歌、系统媒体上下首、播放器页选曲）时，
+## 本页必须跟着换到新曲：显示侧会重建，但本视图的轨道列表/音符桶仍是旧曲的，
+## 表现为"回前台后轨道与正在播放的歌对不上、可视化不动"。
+## 用 deferred：该信号在 C# 的 _Process 栈里同步发出，重活不该压在信号发射栈上。
+func _on_transport_song_changed(data: MidiData) -> void:
+	if ui_stat_mgr == null or ui_stat_mgr.current_state != work_state:
+		return
+	if data == null or data == current_midi_data:
+		return
+	_reload_for_song.call_deferred(data)
+
+func _reload_for_song(data: MidiData) -> void:
+	if ui_stat_mgr == null or ui_stat_mgr.current_state != work_state:
+		return
+	if data == null or data == current_midi_data:
+		return
+	GLogger.info("TrackView: song changed underneath, reloading for %s" % data.id, "TrackView")
+	_load_midi(data)
+
 
 # 进度条值改变 - 预览时间
 func _on_progress_bar_value_changed(value: float) -> void:
@@ -494,7 +510,7 @@ func _on_track_mute_toggled(is_muted: bool, track_index: int, channel: int) -> v
 	if midi_playback_manager == null:
 		return
 
-	# 调用MidiPlaybackManager的实时mute接口（会同步MidiData）
+	# 调用PlaybackDisplay的实时mute接口（会同步MidiData）
 	midi_playback_manager.set_track_channel_mute(track_index, channel, is_muted)
 
 # 轨道独奏切换
@@ -543,7 +559,7 @@ func _on_track_volume_changed(value: float, track_index: int, channel: int ) -> 
 	# 滑块已是线性 0-1 值，直接透传
 	var volume_linear = value
 
-	# 调用MidiPlaybackManager设置轨道音量（立即生效）
+	# 调用PlaybackDisplay设置轨道音量（立即生效）
 	midi_playback_manager.set_track_channel_volume(track_index, channel, volume_linear)
 	
 	# 同时保存到MidiData以支持持久化
@@ -847,7 +863,7 @@ func _init_master_note_displayer() -> void:
 		push_warning("No notes found in selected tracks")
 		return
 	
-	# 推荐轨道的首次应用与 _track_config_initialized 标记已在 MidiPlaybackManager.load_midi 中完成
+	# 推荐轨道的首次应用与 _track_config_initialized 标记已在 PlaybackDisplay.load_midi 中完成
 	# TrackView 只需根据已恢复的 selected_track_configs 显示 UI（由 restore_midi_ui_config 处理）
 	# 这里仅记录日志，不再重复应用推荐轨道
 	if current_midi_data.is_track_config_initialized():
@@ -972,7 +988,7 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 	if old_state == work_state \
 			and new_state != UIStateManager.UIState.MUSIC_PLAYER_VIEW \
 			and new_state != UIStateManager.UIState.SETTINGS_VIEW:
-		MediaSess.unregister_view(self)
+		PlaybackDisplay.instance.unregister_view(self)
 		if midi_playback_manager:
 			if new_state == ui_stat_mgr.UIState.MIDI_VIEW:
 				midi_playback_manager.stop()
@@ -984,13 +1000,13 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 
 	# 进入本视图时接管系统媒体控制（切后台继续播放由 miniaudio 音频线程维持）
 	if new_state == work_state:
-		MediaSess.register_view(self)
+		PlaybackDisplay.instance.register_view(self)
 
 	# Reload MIDI when returning from settings (handles backend switch)
 	if old_state == ui_stat_mgr.UIState.SETTINGS_VIEW and new_state == work_state:
 		if current_midi_data:
 			# 回到本页续听：保持「正常通道单曲槽 + 文件级循环」的会话语义
-			midi_playback_manager.start_session([current_midi_data] as Array[MidiData], 0, false, true)
+			midi_playback_manager.start_session([current_midi_data] as Array[MidiData], 0, false)
 			# 若本次退出设置触发了音源重载（settings_changed 已在退场前同步发出），
 			# 须等重载完成后再 resume：否则重载完成回调会在已启动的人声之上再次重启人声（"多放一下"）。
 			# 重载多在退场动画期间完成；若仍进行中则挂起续播，待 soundfont_reload_completed 再启动。
@@ -1041,7 +1057,7 @@ func _init_latency_edit() -> void:
 	latency_edit.text = str(int(current_midi_data.vocal_offset_ms))
 	latency_edit.set_block_signals(false)
 
-	# 将偏移值应用到MidiPlaybackManager
+	# 将偏移值应用到PlaybackDisplay
 	midi_playback_manager.set_vocal_offset_ms(current_midi_data.vocal_offset_ms)
 
 ## 处理Latency输入框文本变化
@@ -1064,7 +1080,7 @@ func _on_latency_changed(new_text: String) -> void:
 	# 更新MidiData中的偏移值
 	current_midi_data.vocal_offset_ms = offset_ms
 
-	# 应用到MidiPlaybackManager
+	# 应用到PlaybackDisplay
 	midi_playback_manager.set_vocal_offset_ms(offset_ms)
 
 	# 如果人声正在播放，立即应用偏移

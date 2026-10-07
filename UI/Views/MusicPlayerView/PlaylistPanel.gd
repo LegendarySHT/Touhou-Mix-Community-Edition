@@ -10,8 +10,11 @@ signal favorite_requested(midis: Array)
 const ITEM_SCRIPT := preload("res://UI/Views/MusicPlayerView/PlaylistItem.gd")
 const LIST_SCRIPT := preload("res://UI/Views/MusicPlayerView/PlaylistList.gd")
 const PL_ITEM_SCENE := preload("res://UI/Views/MusicPlayerView/PlaylistItem.tscn")
-## 播放方式枚举直接引用 manager 的，避免两处字面量漂移
-const RepeatMode := MidiPlaybackManager.RepeatMode
+## 播放方式枚举直接引用 manager 的，避免两处字面量漂移。
+## 用 preload 拿而不是全局类名：全局类表可能因编辑器缓存过期而缺失该条目（实测掉过），
+## 那样本脚本会在解析期直接报错。preload 不依赖全局类表。
+const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
+const RepeatMode := PlaybackTypesLib.RepeatMode
 
 ## 行对象池（照曲库的池化思路）：只保留「视窗 ± margin」的行节点，滚动时换绑数据。
 ## 行高一致，PlList 里用上下两个 spacer 撑出滚动总高，池行夹在中间占住可视窗口的位置
@@ -72,7 +75,7 @@ func _ready() -> void:
 	apply_theme()
 	_pl_scroll.get_v_scroll_bar().value_changed.connect(_on_scroll_moved)
 	_pl_scroll.resized.connect(_on_pl_scroll_resized)
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.playlist_index_changed.connect(_refresh_playlist_highlight)
 		# 列表被手动改动 → 歌单选择框复位（视图常驻，绑一次即可）
@@ -87,12 +90,12 @@ func _ready() -> void:
 
 ## 打乱按钮跟随播放模式显隐
 func _on_repeat_mode_changed(_mode: int) -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	_reshuffle_btn.visible = mgr != null and mgr.repeat_mode == RepeatMode.SHUFFLE
 
 ## 「打乱列表」：整表打乱并从头播（manager 侧清空历史/重放栈，全新收听会话）
 func _on_reshuffle_pressed() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.shuffle_playlist_from_head()
 
@@ -119,7 +122,7 @@ func _follow_current_song_if_needed() -> void:
 		return
 	if Time.get_ticks_msec() - _last_user_scroll_ms < FOLLOW_IDLE_MS:
 		return
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	var idx := mgr.playlist_index
@@ -234,7 +237,7 @@ func _grow_row_pool() -> void:
 func _sync_row_window(force: bool = false) -> void:
 	if _row_stride_px <= 0.0:
 		return
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	var total: int = mgr.playlist_count() if mgr != null else 0
 	var cur: int = mgr.playlist_index if mgr != null else -1
 	var first := 0
@@ -285,7 +288,7 @@ func _playlist_sig(keys: Array) -> PackedStringArray:
 	return sig
 
 func _rebuild_playlist_list() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	# 列表以 C# MidiCore 为唯一事实来源（改收藏夹/增删/打乱时 manager 已推过去）；
 	# 这里只读 keys 做签名与总数，不整表水合 MidiData
 	var keys: Array = mgr.playlist_keys() if mgr != null else []
@@ -320,7 +323,7 @@ func _refresh_playlist_highlight(_changed_index: int = -1) -> void:
 	# 面板未打开时行池内容仍是旧的，打开时 open() 会全量重绑
 	if not visible:
 		return
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	var cur: int = mgr.playlist_index if mgr != null else -1
 	for item in _pool_rows:
 		if not item.visible:
@@ -339,25 +342,25 @@ func _refresh_playlist_highlight(_changed_index: int = -1) -> void:
 ## 注意：下面是 PlaylistItem 信号的回调。immediate 重建会 queue_free「正在处理
 ## 输入事件的那个节点」，其后续语句访问已释放的 self 而崩溃，故一律 call_deferred。
 func _on_pl_remove(idx: int) -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.remove_from_playlist(idx)
 	_rebuild_playlist_list.call_deferred()
 
 func _on_pl_move(from_idx: int, to_idx: int) -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.move_in_playlist(from_idx, to_idx)
 	_rebuild_playlist_list.call_deferred()
 
 func _on_pl_activated(idx: int) -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.play_playlist_index(idx)
 	_rebuild_playlist_list.call_deferred()
 
 func _on_pl_add_fav_pressed() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	# 列表 key 即规范键（folder_name）= 收藏夹条目 id，直接上报，无需水合 MidiData
@@ -370,7 +373,7 @@ func _on_pl_add_fav_pressed() -> void:
 	favorite_requested.emit(ids)
 
 func _on_pl_clear_pressed() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.clear_playlist()
 	_rebuild_playlist_list()
@@ -408,7 +411,7 @@ func _keys_of_favorite(fav_id: String) -> Array:
 
 func _on_fav_select_selected(idx: int) -> void:
 	var fav_id := str(_fav_select_btn.get_item_metadata(idx))
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	if fav_id.is_empty():
@@ -419,9 +422,8 @@ func _on_fav_select_selected(idx: int) -> void:
 	# 直接用 keys 开会话，免去把整表水合成 MidiData（省内存）
 	var keys := _keys_of_favorite(fav_id)
 	MidiCore.SetSourceFavId(fav_id)
-	# 选歌单是「要记住」的会话（persist=true），并按本页页面级模式开文件循环
-	# （loop_file=true）——播完的推进挂在这个回绕点上，非空则从第一首起播
-	mgr.start_session_keys(keys, 0, true)
+	# 选歌单是「要记住」的会话（persist=true）；播完由 EndOfSequence 推进到下一首
+	mgr.start_session_keys(keys, 0)
 	if not keys.is_empty():
 		mgr.play_playlist_index(0)
 	_rebuild_fav_select()

@@ -366,7 +366,7 @@ func _on_card_play_next(item: Dictionary) -> void:
 	var k := _key_of(item)
 	if k.is_empty():
 		return
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	var data: MidiData = DataMGR.get_midi_by_id(k)
@@ -377,7 +377,7 @@ func _on_card_add(item: Dictionary) -> void:
 	var k := _key_of(item)
 	if k.is_empty():
 		return
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	var data: MidiData = DataMGR.get_midi_by_id(k)
@@ -391,7 +391,7 @@ func _on_card_favorite(item: Dictionary) -> void:
 	favorite_requested.emit([k])
 
 func _on_batch_add_pressed() -> void:
-	var mgr := MidiPlaybackManager.instance
+	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	var add: Array[MidiData] = []

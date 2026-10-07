@@ -357,8 +357,8 @@ func migrate(old_root: String, new_root: String, ui: Dictionary = {}, keep_targe
 		return {"ok": false, "reason": "无法写入迁移日志"}
 
 	# 2. 停止播放 + 关闭 DB（LiteDB 单文件锁，必须先关再复制 charts.ldb）
-	if MidiPlaybackManager.instance != null:
-		MidiPlaybackManager.instance.stop()
+	if PlaybackDisplay.instance != null:
+		PlaybackDisplay.instance.stop()
 	var db_closed: bool = false
 	if ChartDB != null and ChartDB.IsOpen():
 		ChartDB.CloseDb()

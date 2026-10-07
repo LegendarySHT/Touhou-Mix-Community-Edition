@@ -109,13 +109,13 @@ var use_soundfont: String = ""
 var parsed_notes: Array = []
 
 ## SOA 只读访问器（6 个并行紧凑数组），音符数据唯一事实来源
-## 由 MidiPlaybackManager.ensure_parsed / load_midi 构建；为空 = 尚未解析
+## 由 PlaybackDisplay.ensure_parsed / load_midi 构建；为空 = 尚未解析
 ## Android 大谱面内存优化：22w 音符 = 6 个 PackedInt32Array，而非 22w NoteEvent 对象
 var notes_soa: NoteSoa = null
 
 ## notes_soa 的最近构建时刻（毫秒）。浏览列表时每个可见项都会预解析，
 ## 而清理只挂在"选中切换"上，只滚动不点选的歌曲会永久滞留；
-## MidiPlaybackManager 据此按最近使用顺序淘汰（见 _trim_parsed_notes_cache）
+## PlaybackDisplay 据此按最近使用顺序淘汰（见 _trim_parsed_notes_cache）
 var notes_parsed_at: int = 0
 
 ## 缓存的 (track, channel) → 索引分组（运行时缓存，不持久化）
@@ -141,12 +141,12 @@ var max_end_tick: float = 0.0
 
 ## MIDI 解析时提取的 (track, channel) → {bank, program} 乐器映射（运行时缓存，不持久化）
 ## 由 C# MidiParserNative 一次性提取，替代原 extract_track_channel_instruments 的 GDScript 遍历
-## 缓存命中时 MidiPlaybackManager.load_midi 直接复用此字段，无需重新解析
+## 缓存命中时 PlaybackDisplay.load_midi 直接复用此字段，无需重新解析
 var track_channel_instruments: Dictionary = {}
 
 ## ========== 用户配置字段（运行时可修改，需持久化）==========
 
-## MIDI播放音量（线性 0.0-1.0；UI→增益映射系数见 MidiPlaybackManager.MIDI_VOLUME_GAIN，0.5=+6dB；-1=未配置，使用全局 default_midi_volume）
+## MIDI播放音量（线性 0.0-1.0；UI→增益映射系数见 PlaybackTypes.MIDI_VOLUME_GAIN，0.5=+6dB；-1=未配置，使用全局 default_midi_volume）
 ## 注意：0.5 是合法显式值（用户设 50%），不再兼任"未配置"哨兵
 var midi_volume: float = -1.0
 
@@ -169,7 +169,7 @@ var track_channel_volume_config: Dictionary = {}
 var solo_pairs: Dictionary = {}
 
 ## 用户自定义的轨道-通道音色覆盖 {track_idx: {channel: {bank: int, program: int, name: String}}}
-## 专门存储用户覆盖配置（持久化到 JSON）；MIDI 解析的原始乐器值由 MidiPlaybackManager.cached_track_channel_instruments 持有
+## 专门存储用户覆盖配置（持久化到 JSON）；MIDI 解析的原始乐器值由 PlaybackDisplay.cached_track_channel_instruments 持有
 var track_channel_instrument_overrides: Dictionary = {}
 
 ## 标记：音轨配置是否曾被初始化过（用于区分"新MIDI"和"所有音轨禁用"两种情况）
@@ -334,7 +334,7 @@ func from_json(json_data: Dictionary, chart_key: String = "") -> void:
 		else:
 			# 第一次加载此MIDI，没有保存过配置：保持 selected_track_configs 为空。
 			# "未初始化"（_track_config_initialized == false）的语义是"默认全部启用"，
-			# 由 MidiPlaybackManager.load_midi / MidiListItem 等消费方按此处理。
+			# 由 PlaybackDisplay.load_midi / MidiListItem 等消费方按此处理。
 			# 不要写入 {0:[0]} 占位：会让 MidiListItem 误以为仅启用 track0/ch0，
 			# 导致音符全在第 1 轨之后的谱面在 MidiView 首次显示 0 音符（issue #62）。
 			pass
@@ -370,9 +370,9 @@ func from_json(json_data: Dictionary, chart_key: String = "") -> void:
 								"name": instr_data.get("name", "")
 							}
 
-	# 简介解析与推荐轨道应用统一在 MidiPlaybackManager.load_midi 中完成
+	# 简介解析与推荐轨道应用统一在 PlaybackDisplay.load_midi 中完成
 	# - 首次进入 TrackView 时解析简介、设置 vocal_offset_ms、应用推荐轨道、标记 _track_config_initialized=true 并持久化
-	# - from_json 只读取 _track_config_initialized（用于 MidiPlaybackManager 判断是否需要初始化）
+	# - from_json 只读取 _track_config_initialized（用于 PlaybackDisplay 判断是否需要初始化）
 	# 这样避免 DataManager 加载阶段（每次启动）重复解析简介
 
 ## 设置选中的轨道
@@ -433,7 +433,7 @@ func has_notes() -> bool:
 	return (notes_soa != null and notes_soa.size() > 0) or not parsed_notes.is_empty()
 
 ## 单一授权点：解析完成后一次性构建 SOA 紧凑数组 + 轨道-通道分组缓存。
-## 所有解析入口（MidiPlaybackManager.ensure_parsed / load_midi）统一经此写入，
+## 所有解析入口（PlaybackDisplay.ensure_parsed / load_midi）统一经此写入，
 ## 保证 notes_soa 与 runtime_track_channel_notes 强一致、永不脱节；消费方只读共享不再各自推导。
 ## 这是 SOA 唯一的构建时机——"读取 MIDI 一次建好，其余地方等解析完毕直接取用"。
 ##

@@ -11,7 +11,6 @@ var animation_manager: AnimationManager
 var sorting_engine: SortingEngine
 var score_calculator: ScoreCalculator
 var audio_manager: AudioManager
-var midi_playback_manager: MidiPlaybackManager
 var key_sequence_manager: KeySequenceManager
 var config_loader: ConfigManager
 var logger: GameLogger
@@ -52,19 +51,16 @@ func _notification(what: int) -> void:
 		# 关闭 LiteDB（Dispose 刷写 journal）
 		if ChartDB:
 			ChartDB.CloseDb()
-	elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
+	elif what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_APPLICATION_RESUMED:
 			# 应用焦点回归：重新检测蓝牙输出（用户可能在离开期间切换了输出设备），
 			# 蓝牙状态变化时自动切换延迟预设并重建音频桥跟随新默认设备
-			if MidiPlaybackManager.instance != null:
-				MidiPlaybackManager.instance.refresh_audio_delay()
-				# 熄屏/深后台期间 C# 可能已自行切到下一首（纯音频）：回前台按 C# 索引
-				# 把音符显示/轨道配置/人声补齐，并定位到后台已播到的位置
-				MidiPlaybackManager.instance.reconcile_current_song()
-				# 安卓：返回前台时仍处 PLAY_VIEW，设备可能已被系统打断(全屏来电/切后台再回)，
-				# 设备级重启自愈，避免挂断/返回后无声音；即使已自动暂停也先修好设备
-				if OS.get_name() == "Android" \
-						and state_manager.current_state == UIStateManager.UIState.PLAY_VIEW:
-					MidiPlaybackManager.instance.recover_audio_output()
+			if PlaybackDisplay.instance != null:
+				PlaybackDisplay.instance.refresh_audio_delay()
+			# 安卓：返回前台时仍处 PLAY_VIEW，设备可能已被系统打断(全屏来电/切后台再回)，
+			# 设备级重启自愈，避免挂断/返回后无声音；即使已自动暂停也先修好设备
+			if MeltySynth != null and OS.get_name() == "Android" \
+					and state_manager.current_state == UIStateManager.UIState.PLAY_VIEW:
+				MeltySynth.recover_audio_output()
 
 ## 桌面端 Esc 键（仅在无其他控件消费事件时触发）
 func _unhandled_input(event: InputEvent) -> void:
@@ -222,13 +218,8 @@ func _initialize_core_systems() -> void:
 	if logger:
 		logger.info("AudioManager initialized", "Main")
 	
-	# 11. 初始化MIDI播放管理器
-	midi_playback_manager = MidiPlaybackManager.new()
-	midi_playback_manager.name = "MidiPlaybackManager"
-	add_child(midi_playback_manager)
-	if logger:
-		logger.info("MidiPlaybackManager initialized", "Main")
-	
+	# 11. MIDI 播放器已改为 autoload（MeltySynth 传输权威 / PlaybackDisplay 显示层）
+
 	# 让出帧：MeltySynth 后端初始化（场景加载 + C# _Ready）较重，
 	# 让引擎先渲染一帧再继续 UI 初始化，避免单帧卡顿
 	await get_tree().process_frame
@@ -279,7 +270,8 @@ func _initialize_core_systems() -> void:
 
 	# 13.5. 预加载 SoundFont 到后端（~30MB，同步阻塞 3-5 秒）
 	# 放在 UI 渲染后、信号连接/MIDI 数据加载前，确保阻塞发生在启动阶段而非用户交互阶段
-	midi_playback_manager._preload_soundfont_to_backend()
+	PlaybackDisplay.instance.load_soundfont_from_config()
+	PlaybackDisplay.instance.preload_soundfont()
 
 	# 连接信号
 	_connect_signals()
@@ -359,6 +351,14 @@ func _load_configuration() -> void:
 		return
 	
 	logger.info("Configuration loaded successfully, sections: %d" % config.size(), "Main")
+	
+	# 全局播放配置的真值在 GDScript 侧：加载完成后推一次给 C# 播放器。
+	# （ConfigManager 是懒创建单例、不入场景树，C# 无法按节点路径自取，必须显式推送）
+	if PlaybackDisplay.instance != null:
+		PlaybackDisplay.instance.push_global_playback_config()
+		# 校准延迟也要在此刻按真实配置应用一次：PlaybackDisplay 是 autoload，
+		# 它的 _ready 早于本次配置加载，那时只能读到默认值
+		PlaybackDisplay.instance.refresh_audio_delay()
 	
 	# 检查版本并迁移（如必要）
 	config_loader.check_and_migrate()
@@ -449,14 +449,12 @@ func _reload_all_settings() -> void:
 	# 更新为正确值；若重新读取磁盘（延迟落盘尚未完成）会读到旧值，反而把刚改的音源当成"变化"触发重载。
 
 	# 应用Gameplay设置（包括SoundFont）
-	if midi_playback_manager:
+	if PlaybackDisplay.instance:
 		var soundfont_name = config_loader.get_value("Gameplay", "soundfont_file", "GeneralUser-GS.sf2")
-		# 仅当音源确实与当前已加载的不同时才重载：避免"未变也重载"导致 FinalizeSoundfontLoad
-		# 再次把播放位置清零（表现为从设置返回后重头播放）。live 配置已是正确值，无需重读磁盘。
-		var cur_basename = midi_playback_manager.current_soundfont_path.get_file().get_basename()
+		var cur_basename = PlaybackDisplay.instance.current_soundfont_path.get_file().get_basename()
 		var new_basename = soundfont_name.replace(".sf2", "").replace("[内置]", "").strip_edges()
 		if new_basename != cur_basename:
-			midi_playback_manager.set_soundfont(soundfont_name)
+			PlaybackDisplay.instance.set_soundfont(soundfont_name)
 
 	# 应用显示设置
 	var fullscreen = config_loader.get_bool("Display", "fullscreen", true)
@@ -476,9 +474,8 @@ func _reload_all_settings() -> void:
 func _apply_single_setting(setting_name: String, value: Variant) -> void:
 	# SoundFont相关设置
 	if setting_name == "soundfont_select":
-		if midi_playback_manager:
-			var soundfont_name = str(value)
-			midi_playback_manager.set_soundfont(soundfont_name)
+		if PlaybackDisplay.instance:
+			PlaybackDisplay.instance.set_soundfont(str(value))
 
 	# 显示相关设置
 	elif setting_name == "fullscreen":
@@ -513,8 +510,34 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 
 		"Gameplay":
 			# MIDI播放管理器监听这些配置
-			if key == "soundfont_file" and midi_playback_manager:
-				midi_playback_manager.set_soundfont(str(value))
+			if key == "soundfont_file" and PlaybackDisplay.instance:
+				PlaybackDisplay.instance.set_soundfont(str(value))
+			# 全局播放配置：推给 C# 播放器（ConfigManager 不入场景树，C# 取不到）
+			elif key == "default_midi_volume" or key == "audio_sync_threshold":
+				if PlaybackDisplay.instance:
+					PlaybackDisplay.instance.push_global_playback_config()
+			# 音频校准延迟：只在该键是"当前激活预设"时下发（另一套预设的改动不应影响当前输出）。
+			# 旧实现在 MidiPlaybackManager._on_config_changed 里做，重构后丢了这个入口，
+			# 导致校准完不生效、要等失焦回归或重启。
+			elif (key == "audio_playback_delay" or key == "audio_playback_delay_bt") \
+					and PlaybackDisplay.instance:
+				if key == PlaybackDisplay.instance.active_delay_key():
+					PlaybackDisplay.instance.apply_audio_delay_from_config()
+					logger.info("Audio playback delay applied live: %s = %s" % [key, str(value)], "Main")
+				else:
+					logger.debug("Delay preset %s updated but inactive, not applied" % key, "Main")
+
+		"Playback":
+			# 全局播放配置：系统时钟等
+			if key == "use_system_stopwatch":
+				if PlaybackDisplay.instance:
+					PlaybackDisplay.instance.push_global_playback_config()
+			# 复音数是合成器创建期参数：置新值后必须重建音源才生效（旧实现同样如此）。
+			# 重建走 C# 的保位置版本，避免"从头重播 / 停在原地静音"。
+			elif key == "max_polyphony" and PlaybackDisplay.instance:
+				PlaybackDisplay.instance.set_max_polyphony(int(value))
+				PlaybackDisplay.instance.reload_soundfont_preserving_position()
+				logger.info("Max polyphony applied live: %s" % str(value), "Main")
 		
 		"Display":
 			if key == "fullscreen":

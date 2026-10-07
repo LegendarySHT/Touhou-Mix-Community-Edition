@@ -86,7 +86,7 @@ func restore_midi_data_config() -> void:
 	_track_view.vocal_vol_btn.set_pressed_no_signal(vocal_vol_slider.value <= 0.0)
 
 	# 应用实际的播放音量，不只是更新UI
-	# MIDI音量映射系数见 MidiPlaybackManager.MIDI_VOLUME_GAIN（0.5=+6dB, 1.0=+12dB）
+	# MIDI音量映射系数见 PlaybackTypes.MIDI_VOLUME_GAIN（0.5=+6dB, 1.0=+12dB）
 	midi_playback_manager.apply_ui_midi_volume(midi_vol)
 
 	# 人声音量1:1映射

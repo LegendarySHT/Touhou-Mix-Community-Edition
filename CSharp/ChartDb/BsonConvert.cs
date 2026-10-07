@@ -119,4 +119,39 @@ public static class BsonConvert
         if (v.IsInt64) return v.AsInt64;
         return def;
     }
+
+    /// <summary>
+    /// BSON → 纯 C#（Dictionary&lt;string,object&gt; / List&lt;object&gt; / long / double / string / bool / null）。
+    /// 供后台线程读取配置：**不产生任何 Godot 对象**（Godot 容器非线程安全，跨线程读写会阻塞甚至 UB）。
+    /// </summary>
+    public static object BsonToPlain(BsonValue b)
+    {
+        if (b == null || b.IsNull) return null;
+        if (b.IsBoolean) return b.AsBoolean;
+        if (b.IsInt32) return (long)b.AsInt32;
+        if (b.IsInt64) return b.AsInt64;
+        if (b.IsDouble || b.IsDecimal) return b.AsDouble;
+        if (b.IsString) return b.AsString;
+        if (b.IsDocument)
+        {
+            var d = new System.Collections.Generic.Dictionary<string, object>();
+            foreach (var kv in b.AsDocument) d[kv.Key] = BsonToPlain(kv.Value);
+            return d;
+        }
+        if (b.IsArray)
+        {
+            var l = new System.Collections.Generic.List<object>();
+            foreach (var it in b.AsArray) l.Add(BsonToPlain(it));
+            return l;
+        }
+        return null;
+    }
+
+    public static System.Collections.Generic.Dictionary<string, object> BsonDocToPlain(BsonDocument doc)
+    {
+        var d = new System.Collections.Generic.Dictionary<string, object>();
+        if (doc == null) return d;
+        foreach (var kv in doc) d[kv.Key] = BsonToPlain(kv.Value);
+        return d;
+    }
 }

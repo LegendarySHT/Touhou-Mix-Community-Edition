@@ -42,14 +42,17 @@ import java.util.Set;
  *   2) 音频输出设备变化监听：蓝牙/有线插拔时发出 audio_output_changed，
  *      上层据此立刻重算音频延迟预设（息屏时没有焦点事件，事件驱动才不会漏）。
  *
- * 与 GDScript 侧 Game/SystemMediaSession.gd 的契约：
+ * 契约（消费方为 C# 播放器 CSharp/MeltySynthPlayer.Transport.cs，它已接管全部播放真值；
+ * GDScript 侧 Game/PlaybackDisplay.gd 只转发信号）：
  *   signal command_received(String action, double position_ms)
  *   signal audio_output_changed()
+ *   signal bg_idle_release()
  *   update_state(boolean playing, double position_ms, double duration_ms,
  *                String title, String album, byte[] cover_png)
  *   clear()
  *
- * 系统下发的命令经 emitSignal 送达（Java 侧在 UI 线程 emit，GDScript 可直接连）。
+ * 系统下发的命令经 emitSignal 送达（Java 侧在 UI 线程 emit）。C# 侧走 GodotObject.Connect
+ * 直连 command_received（Java 插件信号是真正的 Godot 信号，与 C# 自己 [Signal] 的注册差异无关）。
  */
 public class AndroidBridge extends GodotPlugin {
 
@@ -94,6 +97,13 @@ public class AndroidBridge extends GodotPlugin {
 	 * 进程失去保护被冻结，表现为"切歌后通知没了、歌也卡住、回前台才恢复"。
 	 */
 	private boolean foregroundWanted = false;
+	/** 应用是否已进入后台（onMainPause/onMainResume 维护）：bg_tick 只在此时才需要 ——
+	 *  后台时 Godot 的帧回调（_Process/Timer）不跑，曲终推进得靠它叫醒主线程。 */
+	private volatile boolean appPaused = false;
+	/** 上次推送的播放态与时刻：位置交给系统按 (position, speed, updated) 自行外推，
+	 *  只在播放态变化或超时（漂移校正）时才重推。 */
+	private boolean lastPushedPlaying = false;
+	private long lastPushUptimeMs = 0L;
 	private double lastPositionMs = 0.0;
 	private double lastDurationMs = 0.0;
 	private String lastTitle = "";
@@ -116,9 +126,14 @@ public class AndroidBridge extends GodotPlugin {
 	//
 	// 放在固定引导目录（不随玩家自定义存储根迁移），两端都能确定推导：
 	//   /storage/emulated/0/Android/data/com.touhoumix.ce/files/media_state.json
-	/** 上一次读取到的文件修改时间，用于判定"是否换过歌" */
-	private long _mediaStateStampMs = -1L;
 	private static final String MEDIA_STATE_FILE = "media_state.json";
+	/**
+	 * 上一次已处理的发布版本号（C# 每次发布自增）。
+	 * 初值 -2 而不是 -1：-1 是"文件里没有 version 字段"的取值，留作旧版文件仍按内容比对。
+	 */
+	private long _mediaStateVersion = -2L;
+	/** 上一次已解码的封面路径：路径未变就不重复解码位图 */
+	private String _mediaStateCoverPath = "";
 	/** 只打印一次目录诊断，避免 ticker 每 500ms 刷屏 */
 	private boolean _mediaStateDirLogged = false;
 
@@ -216,6 +231,7 @@ public class AndroidBridge extends GodotPlugin {
 	@Override
 	public void onMainPause() {
 		super.onMainPause();
+		appPaused = true;
 		// 进后台立刻就发一次：此刻引擎可能仍在跑（onMainPause 在引擎挂起前回调），
 		// 赶上就地释放，才是真正"在后台压内存"；发不出去也无副作用（信号只是请求，释放幂等）。
 		Log.i(TAG, "[DIAG] onMainPause -> emit bg_idle_release (immediate)");
@@ -228,6 +244,7 @@ public class AndroidBridge extends GodotPlugin {
 	@Override
 	public void onMainResume() {
 		super.onMainResume();
+		appPaused = false;
 		cancelBackgroundWatchdog();
 	}
 
@@ -418,6 +435,8 @@ public class AndroidBridge extends GodotPlugin {
 			lastAlbum = "";
 			lastNotifiedKey = "";
 			pushState();
+			// 播放页注销：通知撤下，ticker 也可以停了（没有任何人再需要文件轮询）
+			cancelPositionTick();
 		});
 	}
 
@@ -425,6 +444,27 @@ public class AndroidBridge extends GodotPlugin {
 	@UsedByGodot
 	public boolean is_available() {
 		return session != null;
+	}
+
+	/**
+	 * media_state.json 的绝对路径（C# 播放器在熄屏后台换曲时写入、本类 ticker 读取）。
+	 *
+	 * 由 Java 侧给出而不是让 C# 硬编码：外部存储根并不总是 /storage/emulated/0
+	 * （工作资料 / 副用户下是 /storage/emulated/&lt;userId&gt;/...），硬编码会让
+	 * "后台换曲后通知栏与封面更新"静默失效 —— 两端读写不同文件，谁都不报错。
+	 * 拿不到时返回空串，C# 侧回退到硬编码路径。
+	 */
+	@UsedByGodot
+	public String get_media_state_path() {
+		android.app.Activity activity = getActivity();
+		if (activity == null) {
+			return "";
+		}
+		java.io.File dir = activity.getExternalFilesDir(null);
+		if (dir == null) {
+			return "";
+		}
+		return new java.io.File(dir, MEDIA_STATE_FILE).getAbsolutePath();
 	}
 
 	/** [诊断] 前台服务是否已进入前台（后台播放的前提） */
@@ -505,11 +545,12 @@ public class AndroidBridge extends GodotPlugin {
 
 		// 每次下发都以 lastPositionMs 为新基准：外部 seek（含暂停态下的 seek）后
 		// 墙钟必须重新起算，否则进度条会从旧基准继续推进而不反映 seek 结果。
-		if (lastPlaying) {
-			schedulePositionTick();
-		} else {
-			cancelPositionTick();
-		}
+		//
+		// ticker 只要会话还在就**常驻**：它的职责已不只是走进度，还负责在熄屏后台轮询
+		// media_state.json（C# 后台换曲写下的新曲目）。一旦停掉，后台又不会再有 update_state
+		// 来把它拉起来，就会永远不再读文件 —— 表现为"歌切了、卡片信息没切，拖动一次才恢复"。
+		// 暂停态它只轮询文件、不做进度外推，开销极低。只在播放页注销（clear）时才停。
+		schedulePositionTick();
 
 		if (foregroundWanted) {
 			// 播放或暂停都保持前台与通知（暂停只把通知换成播放图标），
@@ -530,7 +571,8 @@ public class AndroidBridge extends GodotPlugin {
 	private long _tickBasePositionMs = 0L;
 	private long _tickBaseUptimeMs = 0L;
 
-	private static final long POSITION_TICK_INTERVAL_MS = 500L;
+	// 1s：系统按 PlaybackState(speed/updated) 自行外推进度，推送无须更密（更密只是徒增 JNI/系统服务开销）
+	private static final long POSITION_TICK_INTERVAL_MS = 1000L;
 
 	/** 以当前 lastPositionMs 重置墙钟基准：外部 seek/换曲/回绕后进度外推必须重新起算。 */
 	private void resetTickBase() {
@@ -561,15 +603,25 @@ public class AndroidBridge extends GodotPlugin {
 
 	/**
 	 * 读取 C# 后台推进写下的曲目元数据（media_state.json）。
-	 * 仅在文件 mtime 变化时解析（换曲频率极低，ticker 每 500ms 查一次 stat 很便宜），
-	 * 解析失败一律忽略——文件可能正被写入半截，下一个 tick 会再读。
+	 *
+	 * 换歌判定用文件里的 version 字段（C# 每次发布自增），不用 mtime：部分存储/文件系统上
+	 * rename 改写后 mtime 不变（实测表现为"第一次换曲更新了、之后每次换曲都不再更新"）。
+	 * 也不能只靠内容比对：前台时 GDScript 会持续下发 update_state，把后台写下的旧曲目
+	 * 与新状态比对会把正确值覆盖成旧值。version 未变化即视为"非本文件的换歌"，直接跳过。
+	 * 封面按路径变化才重新解码，避免每 tick 重复解码位图。
 	 *
 	 * @return true 表示确实更新了歌名/时长（调用方需重置墙钟基准并推一次状态）
 	 */
 	private boolean pollMediaStateFile() {
 		// 必须用 getExternalFilesDir（= /storage/emulated/0/Android/data/<pkg>/files），
-	// 与 PathHelper.get_base_dir() 同址；getFilesDir() 是内部私有目录，两端读不到同一文件。
-		java.io.File dir = getActivity().getExternalFilesDir(null);
+		// 与 PathHelper.get_base_dir() 同址；getFilesDir() 是内部私有目录，两端读不到同一文件。
+		// activity 为 null（极少数生命周期边界）时直接放弃：ticker 会继续排期重试，
+		// 不能让它抛 NPE —— 那会崩在 UI 线程上，整个后台播放链路一起挂掉。
+		android.app.Activity activity = getActivity();
+		if (activity == null) {
+			return false;
+		}
+		java.io.File dir = activity.getExternalFilesDir(null);
 		if (dir == null) {
 			Log.w(TAG, "[media-state] getExternalFilesDir returned null");
 			return false;
@@ -583,16 +635,18 @@ public class AndroidBridge extends GodotPlugin {
 		if (!f.exists()) {
 			return false;
 		}
-		long stamp = f.lastModified();
-		if (stamp == _mediaStateStampMs) {
-			return false;   // 未变更
-		}
 		String json;
 		try {
 			json = new String(java.nio.file.Files.readAllBytes(f.toPath()),
 					java.nio.charset.StandardCharsets.UTF_8);
 		} catch (Exception e) {
 			return false;   // 读失败（可能是半写文件），下个 tick 再试
+		}
+		// 版本未变化 = 与上次已处理的同一份内容：跳过。
+		// 前台时 GDScript 每 0.5s 直接下发 update_state，若不跳过就会拿这份旧曲目覆盖前台正确值。
+		long version = (long) extractJsonNumber(json, "version");
+		if (version == _mediaStateVersion) {
+			return false;
 		}
 		// 极简字段解析：格式由 C# 固定为 "key":"value" 的扁平 JSON，
 		// 歌名可能含引号/反斜杠，故只做转义还原而不引第三方库。
@@ -601,25 +655,29 @@ public class AndroidBridge extends GodotPlugin {
 		if (title == null || duration <= 0.0) {
 			Log.w(TAG, "[media-state] bad payload in " + f.getAbsolutePath()
 					+ " title=" + title + " duration=" + duration);
-			return false;
+			return false;   // 不记录 version，下个 tick 重试
 		}
+		_mediaStateVersion = version;
 		String album = extractJsonString(json, "album");
 		if (album == null) {
 			album = "";
 		}
-		Log.i(TAG, "[media-state] read: " + title + " / " + album + " (" + (long) duration
-				+ "ms) from " + f.getAbsolutePath());
-		_mediaStateStampMs = stamp;
 		boolean changed = !title.equals(lastTitle) || duration != lastDurationMs
 				|| !album.equals(lastAlbum);
-		lastTitle = title;
-		lastDurationMs = duration;
-		lastPositionMs = 0.0;
-		lastAlbum = album;
+		if (changed) {
+			Log.i(TAG, "[media-state] read: " + title + " / " + album + " (" + (long) duration
+					+ "ms) from " + f.getAbsolutePath());
+			lastTitle = title;
+			lastDurationMs = duration;
+			lastPositionMs = 0.0;
+			lastAlbum = album;
+		}
 		// 封面：C# 给出谱面封面文件的绝对路径，这里直接解码（后台主循环停摆，
-		// GDScript 侧发不出新封面字节，只能走文件）。读不到就保留旧封面，不置空。
+		// GDScript 侧发不出新封面字节，只能走文件）。路径未变则跳过解码；
+		// 读不到就保留旧封面，不置空。
 		String coverPath = extractJsonString(json, "cover_path");
-		if (coverPath != null && !coverPath.isEmpty()) {
+		if (coverPath != null && !coverPath.isEmpty() && !coverPath.equals(_mediaStateCoverPath)) {
+			_mediaStateCoverPath = coverPath;
 			try {
 				android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(coverPath);
 				if (bmp != null) {
@@ -705,13 +763,33 @@ public class AndroidBridge extends GodotPlugin {
 		@Override
 		public void run() {
 			_tickScheduled = false;
-			if (session == null || !lastPlaying) {
+			if (session == null) {
+				// 会话还没建好也别让 ticker 死掉（否则之后再没人把它拉起来）
+				postNextTick();
 				return;
 			}
 			// 后台换曲：C# 推进线程换了歌但主循环挂起、无法下发 update_state，
-			// 这里主动检测 C# 写下的元数据并同步（换歌时重推一次状态）
-			if (pollMediaStateFile()) {
+			// 这里主动检测 C# 写下的元数据并同步（换歌时重推一次状态）。
+			// 暂停态同样要轮询——换曲可能就发生在暂停/曲终那一刻。
+			boolean mediaStateChanged = pollMediaStateFile();
+			if (mediaStateChanged) {
 				pushState();
+			}
+
+			// 【喂主线程】熄屏/后台时**只有帧回调（_Process / Timer）不跑**，Godot 主线程仍在派发信号
+			// （媒体按钮就是这么生效的）。曲终推进改由这里每秒叫醒主线程去做 —— 于是"自动切歌"与
+			// "点按钮切歌"最终走同一份同步代码，不需要独立的后台换曲线程，也不需要回调内换手。
+			if (appPaused && lastPlaying) {
+				emitSignal(COMMAND_RECEIVED, "bg_tick", (double) currentPositionMs());
+			}			if (!lastPlaying) {
+				// 暂停态：只继续轮询元数据文件，不写 PLAYING 的进度自走
+					// 单链保证：本轮工作里 pushState() 的 schedulePositionTick() 可能已经重排过，
+					// 这里再无脑排一条就成两条链（表现为每秒发两次 tick、彼此差几毫秒）。
+					if (!_tickScheduled)
+					{
+						postNextTick();
+					}
+				return;
 			}
 			PlaybackState.Builder b = new PlaybackState.Builder()
 					.setActions(PlaybackState.ACTION_PLAY
@@ -722,8 +800,19 @@ public class AndroidBridge extends GodotPlugin {
 							| PlaybackState.ACTION_SKIP_TO_PREVIOUS
 							| PlaybackState.ACTION_SKIP_TO_NEXT)
 					.setState(PlaybackState.STATE_PLAYING, (long) currentPositionMs(), 1.0f);
-			session.setPlaybackState(b.build());
-			postNextTick();
+			// 位置由系统外推：只在播放态变化、或超过 30s 未推（漂移校正）时才重推。
+			if (lastPlaying != lastPushedPlaying || android.os.SystemClock.elapsedRealtime() - lastPushUptimeMs > 30000L)
+			{
+				session.setPlaybackState(b.build());
+				lastPushedPlaying = lastPlaying;
+				lastPushUptimeMs = android.os.SystemClock.elapsedRealtime();
+			}
+			// 单链保证：本轮工作里 pushState() 的 schedulePositionTick() 可能已重排过，
+			// 这里再无脑排一条就成两条链（每秒发两次 tick、彼此差几毫秒）。
+			if (!_tickScheduled)
+			{
+				postNextTick();
+			}
 		}
 	};
 

@@ -269,10 +269,14 @@ func shutdown() -> void:
 	# 唤醒所有线程使其退出循环
 	for i in _threads.size():
 		_semaphore.post()
-	# 等待所有线程退出
+	# 等待所有线程退出。
+	# 【必须无条件 wait_to_finish】Godot 的 Thread 只要没被 wait_to_finish 过，
+	# 销毁时就报 "A Thread object is being destroyed without its completion having been
+	# realized" —— 包括"线程函数已自己跑完"的情况（此时 is_alive() 为 false，
+	# 旧写法 if t.is_alive() 会跳过等待，于是退出时必留一条告警）。对已结束的线程
+	# wait_to_finish 只是 join，安全且即时。
 	for t in _threads:
-		if t.is_alive():
-			t.wait_to_finish()
+		t.wait_to_finish()
 	_threads.clear()
 	# 清空队列与字典,释放 Callable 引用(可能绑定到已 freed 的节点)
 	_mutex.lock()

@@ -197,6 +197,13 @@ public partial class KeySequenceCore : RefCounted
         {
             return false;
         }
+        // 本方法跑在 worker 上：从"主线程排队"到这里之间，2 槽解析缓存可能已被主线程
+        // 解析的别的谱面挤掉。EnsureParsedForWorker 会在纯原生路径上就地补解析，
+        // 避免静默产出 0 条序列（打歌没有音符）。
+        if (!core.EnsureParsedForWorker(path))
+        {
+            return false;
+        }
         if (!core.TryGetSoa(path, out var st, out var du, out var pt, out var ve, out var tr, out var ch))
         {
             return false;
