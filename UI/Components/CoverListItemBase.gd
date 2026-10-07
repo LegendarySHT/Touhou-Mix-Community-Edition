@@ -166,6 +166,13 @@ func release_cover() -> void:
 		cover_texture.texture = null
 	_cover_loaded = false
 
+## 后台内存回收后复位封面状态(见 Core/MemoryGC.gd)
+## 与 release_cover 的区别：本方法用于"外部把全局封面缓存清空了"的场景，
+## 所以要在同一个同步调用里把节点的 texture 一起放掉——否则节点仍强引用着 Texture，
+## 缓存清了内存也降不下来。
+func reset_cover_state() -> void:
+	release_cover()
+
 ## 切换封面数据(复用项刷新时调用)
 ## 与 release_cover 区别:不清空 texture,保留旧封面显示直到新封面加载完成
 ## 避免异步加载期间显示空白;新封面加载完成后 _apply_cover_texture 会自动覆盖

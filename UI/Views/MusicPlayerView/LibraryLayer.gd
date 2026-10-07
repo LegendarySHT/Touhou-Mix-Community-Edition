@@ -27,6 +27,8 @@ var _lib_slots: Array = []          # LibraryCard 节点（槽位）
 ## 不变量：两者并集恒为全部槽位、互不相交；绑定 = 从空闲池 pop 后写入占用表。
 var _lib_free_slots: Array = []
 var _lib_occupied: Dictionary = {}
+## 卡片池封面纹理被后台回收放掉过（见 release_cover_state）：下次 open 需全量重绑才会重新加载
+var _cover_released: bool = false
 ## 曲库滚动值（像素）。由 LibraryOverlay 经 Callable 读写，自己持有，
 ## 不再依赖 ScrollContainer——卡片位置是锚点/像素混合表达，转 scroll_vertical 不划算
 var _lib_scroll_y: float = 0.0
@@ -78,6 +80,19 @@ func prewarm() -> void:
 	_ensure_library_pool.call_deferred()
 	_request_sort.call_deferred()
 
+## 后台内存回收用（见 Core/MemoryGC.gd）：把卡片池里所有封面纹理放掉。
+##
+## 刻意不在这里就地重绑：清理发生在后台、主循环暂停中，重绑会立刻重新请求封面，
+## 等于把刚释放的内存又装回去。重绑留给下次 open()：
+## 那时以"可见窗口只有十几张卡"重绑，代价可接受，且只加载真正要看的那几张。
+func release_cover_state() -> void:
+	if _lib_slots.is_empty():
+		return
+	for card in _lib_slots:
+		if is_instance_valid(card) and card.has_method("release_cover_state"):
+			card.call("release_cover_state")
+	_cover_released = true
+
 func open() -> void:
 	_open = true
 	_ensure_library_pool()
@@ -86,6 +101,12 @@ func open() -> void:
 	# 排序签名没变时 _request_sort 会直接复用，不会发 items_ready；
 	# 这里补一次窗口绑定，保证打开时按当前覆盖层尺寸铺满可见行
 	_reconcile_library_pool.call_deferred(false)
+	# 池内卡片可能刚被后台回收放掉过封面纹理（release_cover_state），
+	# 此时窗口内槽位都还"已绑定"，上面那次补位不会给它们重绑 → 封面会一直是空的。
+	# 故再补一次全量重绑（animate_in=true 会先归还全部槽位再按可见窗口重绑）。
+	if _cover_released:
+		_cover_released = false
+		_reconcile_library_pool.call_deferred(true)
 
 	visible = true
 	TextScrollMGR.resume_page(self)

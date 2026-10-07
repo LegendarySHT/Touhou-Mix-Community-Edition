@@ -20,6 +20,7 @@ var net_manager: NetManager
 var auth_manager: AuthManager
 var score_manager: ScoreManager
 var community_manager: CommunityManager
+var memory_gc: MemoryGC
 var _is_reloading_settings: bool = false
 
 # UI组件路径
@@ -58,9 +59,21 @@ func _notification(what: int) -> void:
 				PlaybackDisplay.instance.refresh_audio_delay()
 			# 安卓：返回前台时仍处 PLAY_VIEW，设备可能已被系统打断(全屏来电/切后台再回)，
 			# 设备级重启自愈，避免挂断/返回后无声音；即使已自动暂停也先修好设备
+			# 【只触发，不判断】是否就地重启/是否整桥重建由 C# 的 EvaluateAudioDeviceHealth 决定
 			if MeltySynth != null and OS.get_name() == "Android" \
 					and state_manager.current_state == UIStateManager.UIState.PLAY_VIEW:
-				MeltySynth.recover_audio_output()
+				MeltySynth.evaluate_audio_device_health("app_resume", false, true)
+			# 内存回收：回前台消费一次内存档位（兜住后台投递时机不定的情况），
+			# 并让封面等被清掉的缓存自愈。放在最后：自愈会触发重载，不该抢在音频自修复之前。
+			if memory_gc != null:
+				memory_gc.set_background(false)
+				memory_gc.notify_resumed()
+	elif what == NOTIFICATION_APPLICATION_PAUSED:
+		# 进后台：置位"后台态"。MemoryGC 只在后台执行回收（前台的内存压力只记日志），
+		# 该标志也用于诊断（onTrimMemory 的日志里会打出来）。
+		# 该通知在引擎挂起前于主线程触发，与 AndroidBridge.onMainPause 同源。
+		if memory_gc != null:
+			memory_gc.set_background(true)
 
 ## 桌面端 Esc 键（仅在无其他控件消费事件时触发）
 func _unhandled_input(event: InputEvent) -> void:
@@ -260,6 +273,15 @@ func _initialize_core_systems() -> void:
 	add_child(community_manager)
 	if logger:
 		logger.info("CommunityManager initialized", "Main")
+
+	# 12.8. 后台内存回收管理器（Android 专用）：接收 AndroidBridge 的 trim_memory，
+	# 在后台主动释放纹理/缓存/非当前页内容。依赖 FileSystemManager/SkinMGR/ParticleMGR/
+	# CharaMGR/DataMGR/UiStatMGR，故放在这些之后创建（非 autoload，避免初始化顺序不确定）。
+	memory_gc = MemoryGC.new()
+	memory_gc.name = "MemoryGC"
+	add_child(memory_gc)
+	if logger:
+		logger.info("MemoryGC initialized", "Main")
 
 	# 13. 初始化并加载UI（确保各管理器已就绪）
 	_init_ui()

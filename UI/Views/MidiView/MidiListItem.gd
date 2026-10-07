@@ -22,6 +22,12 @@ var INDICATOR = PathRegistry.MIDI_VIEW_INDICATOR
 ## note_str / mpp_str 键缺席 → 需（重新）计算 Note 数量
 static var _info_cache: Dictionary = {}
 
+## 清空信息缓存（后台内存回收用，见 Core/MemoryGC.gd）。
+## 条目里除了几个字符串，还挂着每条 MIDI 的 bpm_timeline 数组副本，量不小。
+## 清掉后已显示的项会在下次 setup_with_midi/_update_data_display 时按需重算。
+static func clear_info_cache() -> void:
+	_info_cache.clear()
+
 ## 配置去抖：同一帧内多次 config_changed（切换难度写多个 Generator 键）合并为一次重算，
 ## 避免每次写键各自触发一次全量 generate_keys 造成主线程卡顿
 var _recompute_pending: bool = false

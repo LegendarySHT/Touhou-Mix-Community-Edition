@@ -254,6 +254,12 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 			# 切到不直接相邻的状态：立即释放所有封面
 			_release_all_covers()
 
+	# 后台被 MemoryGC 清过缓存：回本视图时把封面状态一并复位并重载。
+	# 只靠上面那一条 _schedule_cover_reload 不够——它走的是视窗对比，
+	# 而节点的 _cover_loaded 仍是 true，会被 start_cover_load 直接挡掉。
+	if state == work_state and MemoryGC.instance != null and MemoryGC.instance.is_trimmed():
+		invalidate_cover_state()
+
 	# 状态未变化时提前返回，避免重复遍历 list_items 和无谓的 set_process 调用
 	if enable == _items_process_enabled:
 		return
@@ -276,6 +282,27 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 ## FileSystemManager 用 WeakRef 缓存 Texture：列表项 texture=null 后引用计数归零，
 ## Texture 自动 GC，无需手动 clear_cover_cache
 func _release_all_covers() -> void:
+	for item in list_items:
+		if is_instance_valid(item) and item is CoverListItemBase:
+			(item as CoverListItemBase).release_cover()
+
+## 外部把全局封面缓存清空后，复位本列表的封面状态并让下次滚入重新加载。
+## 必须同时复位 _cover_window 与各节点的 _cover_loaded：后者是"已加载"的纯标记，
+## 缓存被清掉它仍为 true，会出现"封面永久空着、滚回去也不重载"。
+## 调用方是 Core/MemoryGC.gd（后台内存回收）与视图自身（回前台自愈）。
+func invalidate_cover_state() -> void:
+	_cover_window = Vector2i(-1, -1)
+	for item in list_items:
+		if is_instance_valid(item) and item is CoverListItemBase:
+			(item as CoverListItemBase).reset_cover_state()
+	# 重载放到下一帧：清理发生在主循环暂停的后台，此刻排版/可见性都不可靠；
+	# 回前台后这一帧一定是跑得起来的。trigger_cover_chain 内部自带空列表/未启用守卫。
+	trigger_cover_chain.call_deferred()
+
+## 只放掉封面纹理引用、不动节点（后台回收用，见 Core/MemoryGC.gd）。
+## 与 invalidate_cover_state 同源但更轻：调用方随后可能还要销毁节点，
+## 这里保证"引用已经放开"，内存立刻降下来，而不必等 queue_free 的帧末回收。
+func release_covers() -> void:
 	for item in list_items:
 		if is_instance_valid(item) and item is CoverListItemBase:
 			(item as CoverListItemBase).release_cover()

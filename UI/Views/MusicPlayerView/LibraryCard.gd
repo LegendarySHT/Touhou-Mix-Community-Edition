@@ -90,5 +90,15 @@ func _cover_path_of(midi_item: Dictionary) -> String:
 func _exit_tree() -> void:
 	CoverLoader.cancel(COVER_ITEM_PREFIX + str(get_instance_id()))
 
+## 后台内存回收用（见 Core/MemoryGC.gd）：放掉封面纹理引用，并作废在途请求。
+## 递增版本号使在途回调失效——否则回调回来还会再把刚刚释放的纹理装回去。
+## 下次进曲库时由 LibraryLayer.release_cover_state() → _reconcile_library_pool(true)
+## 全量重绑，届时会重新走 _apply_item 重新加载。
+func release_cover_state() -> void:
+	_cover_version += 1
+	CoverLoader.cancel(COVER_ITEM_PREFIX + str(get_instance_id()))
+	if _cover != null and is_instance_valid(_cover):
+		_cover.texture = null
+
 func _on_fav_pressed() -> void:
 	add_to_favorite_requested.emit(item)

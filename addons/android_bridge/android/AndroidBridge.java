@@ -46,13 +46,17 @@ import java.util.Set;
  * GDScript 侧 Game/PlaybackDisplay.gd 只转发信号）：
  *   signal command_received(String action, double position_ms)
  *   signal audio_output_changed()
- *   signal bg_idle_release()
+ *   signal trim_memory(int level)
  *   update_state(boolean playing, double position_ms, double duration_ms,
  *                String title, String album, byte[] cover_png)
  *   clear()
  *
  * 系统下发的命令经 emitSignal 送达（Java 侧在 UI 线程 emit）。C# 侧走 GodotObject.Connect
  * 直连 command_received（Java 插件信号是真正的 Godot 信号，与 C# 自己 [Signal] 的注册差异无关）。
+ *
+ * trim_memory 的 level：0 = 后台挂留超时（本地语义，非 Android 档位），
+ * 其余为 ComponentCallbacks2.onTrimMemory 的原值（10/15/20/40/60/80）。
+ * 消费方是 GDScript Core/MemoryGC.gd。
  */
 public class AndroidBridge extends GodotPlugin {
 
@@ -66,11 +70,39 @@ public class AndroidBridge extends GodotPlugin {
 	/** 音频输出设备增删（蓝牙/有线插拔）：上层据此立刻重算延迟预设，无需轮询 */
 	private static final SignalInfo AUDIO_OUTPUT_CHANGED =
 			new SignalInfo("audio_output_changed");
-	/** 后台空闲超时：退到后台持续 BG_IDLE_RELEASE_DELAY_MS 后发出，上层据此回收内存。
-	 *  必须由 Java 侧计时——Android 切后台后 Godot 主循环挂起，GDScript 的 _process /
-	 *  Timer 都不再运行，引擎侧无法自行判断"后台已持续多久"。 */
-	private static final SignalInfo BG_IDLE_RELEASE =
-			new SignalInfo("bg_idle_release");
+	/** 需要回收内存：两条触发源合并到同一条信号，消费方（GDScript Core/MemoryGC.gd）
+	 *  只需按 level 决定清理深度。
+	 *
+	 *  - level == 0：后台挂留超时（退到后台持续 BG_IDLE_RELEASE_DELAY_MS 后发出）。
+	 *    必须由 Java 侧计时——Android 切后台后 Godot 主循环挂起，GDScript 的 _process /
+	 *    Timer 都不再运行，引擎侧无法自行判断"后台已持续多久"。
+	 *  - level != 0：ComponentCallbacks2.onTrimMemory 的原值（10/15/20/40/60/80）。
+	 *
+	 *  为什么两条触发源合成一条：上层策略是"后台 + 该清了就全清"，判据只有"是否在后台"，
+	 *  而挂留超时本身就是"后台且该清了"的可靠等价信号——比 TRIM 事件更稳定（内存宽裕的
+	 *  设备可能长时间不发 TRIM）。合成一条可以只维护一套清理路径。 */
+	private static final SignalInfo TRIM_MEMORY =
+			new SignalInfo("trim_memory", Integer.class);
+	/** 音频焦点变化（请求/丢失/闪避）。上层据此决定"何时"暂停与恢复：
+	 *  - 失去焦点时立即暂停，避免对着通话放音乐；
+	 *  - 焦点回来时才是恢复音频设备**唯一可能成功**的时刻。
+	 *
+	 *  为什么必须由系统告诉而不是靠"音频钟停滞"推断：AAudio stream 一旦被系统夺走就永久失效，
+	 *  miniaudio 的 AAudio 错误回调虽然会自动重路由（ma_device_reinit__aaudio），但那是
+	 *  4 次零延迟重试、失败后静默 ma_device_stop —— 来电期间必然全部失败且不通知上层。
+	 *  没有焦点事件的话，上层只能反复"停滞检测 → 拆桥重建 → 启动失败"，空转一整个通话。 */
+	private static final SignalInfo AUDIO_FOCUS_CHANGED =
+			new SignalInfo("audio_focus_changed", Integer.class);
+
+	/** 音频焦点状态（与 focus_change 的取值域对应）：
+	 *  0 = 已获得/恢复（AUDIOFOCUS_GAIN）
+	 *  1 = 短暂丢失，稍后自动归还（AUDIOFOCUS_LOSS_TRANSIENT）
+	 *  2 = 闪避：降低音量让对方出声（AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK）
+	 *  3 = 永久丢失，需要重新申请（AUDIOFOCUS_LOSS） */
+	static final int FOCUS_GAIN = 0;
+	static final int FOCUS_LOSS_TRANSIENT = 1;
+	static final int FOCUS_DUCK = 2;
+	static final int FOCUS_LOSS = 3;
 
 	/** 后台空闲判定时长（毫秒），与 GDScript 侧 MemoryGC 的语义一致 */
 	private static final long BG_IDLE_RELEASE_DELAY_MS = 30000L;
@@ -153,7 +185,8 @@ public class AndroidBridge extends GodotPlugin {
 		Set<SignalInfo> signals = new HashSet<>();
 		signals.add(COMMAND_RECEIVED);
 		signals.add(AUDIO_OUTPUT_CHANGED);
-		signals.add(BG_IDLE_RELEASE);
+		signals.add(TRIM_MEMORY);
+		signals.add(AUDIO_FOCUS_CHANGED);
 		return signals;
 	}
 
@@ -196,20 +229,160 @@ public class AndroidBridge extends GodotPlugin {
 		}
 	}
 
+	// ===== 音频焦点（Audio Focus）=====
+	//
+	// 本应用此前**完全没有焦点会话**：既没 requestAudioFocus、也没 OnAudioFocusChangeListener，
+	// 所以系统拿走音频焦点时无人通知，只能靠"音频钟停滞"事后推断 —— 表现为反复拆桥重建、
+	// 且在通话期间必然启动失败。这里补上焦点会话，让"何时该暂停/何时能恢复"由系统直接告知。
+	//
+	// 保留策略（AUDIOFOCUS_GAIN）：打歌/后台播放都需要独占，"闪避降音量"对手游不适用
+	// （玩家要听清判定音），所以 duck 也按"短暂丢失"处理、不做音量闪避。
+	private boolean audioFocusRequested = false;
+	private AudioManager.OnAudioFocusChangeListener audioFocusListener = null;
+	/** 持有的 AudioFocusRequest（Android 8+ 新 API 需要它来放弃焦点） */
+	@Nullable
+	private android.media.AudioFocusRequest audioFocusRequest = null;
+
+	/**
+	 * 申请音频焦点并订阅焦点变化。幂等。
+	 * 由上层在"开始播放"时调用；失败不致命（没焦点只是拿不到事件，播放仍可继续）。
+	 *
+	 * 【必须显式申请】上层曾以为"AAudio 自己会处理焦点"，实测不会：没有焦点会话时系统
+	 * 拿走音频焦点不会通知我们，只能靠"音频钟停滞"事后推断 —— 那是空转一整个通话的根源。
+	 */
+	@UsedByGodot
+	public void request_audio_focus() {
+		Context context = getContext();
+		if (context == null) {
+			return;
+		}
+		AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+		if (audioManager == null) {
+			return;
+		}
+		if (audioFocusListener == null) {
+			audioFocusListener = focusChange -> {
+				int mapped;
+				String name;
+				switch (focusChange) {
+					case AudioManager.AUDIOFOCUS_GAIN:
+						mapped = FOCUS_GAIN;
+						name = "GAIN";
+						audioFocusRequested = true;
+						break;
+					case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+						mapped = FOCUS_LOSS_TRANSIENT;
+						name = "LOSS_TRANSIENT";
+						break;
+					case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+						mapped = FOCUS_DUCK;
+						name = "LOSS_TRANSIENT_CAN_DUCK";
+						break;
+					case AudioManager.AUDIOFOCUS_LOSS:
+						mapped = FOCUS_LOSS;
+						name = "LOSS";
+						// 永久丢失：焦点会话作废，下次起播要重新申请
+						audioFocusRequested = false;
+						break;
+					default:
+						Log.w(TAG, "[FOCUS] unknown focus change: " + focusChange);
+						return;
+				}
+				// 回调线程不保证是主线程，统一挪到主线程再发（emitSignal 内部还会转到渲染线程）
+				final int level = mapped;
+				final String label = name;
+				new Handler(Looper.getMainLooper()).post(() -> {
+					Log.i(TAG, "[FOCUS] " + label + " -> emit audio_focus_changed(" + level + ")");
+					emitSignal(AUDIO_FOCUS_CHANGED, level);
+				});
+			};
+		}
+		if (audioFocusRequested) {
+			return;
+		}
+		try {
+			// 用新的 AudioFocusRequest API（Android 8+ 推荐；本工程 targetSdk 36，
+			// 旧 requestAudioFocus(listener, streamType, durationHint) 在 8.0+ 已弃用）。
+			android.media.AudioFocusRequest request =
+					new android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+							.setAudioAttributes(new android.media.AudioAttributes.Builder()
+									.setUsage(android.media.AudioAttributes.USAGE_GAME)
+									.setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+									.build())
+							.setOnAudioFocusChangeListener(audioFocusListener, new Handler(Looper.getMainLooper()))
+							.build();
+			audioFocusRequest = request;
+			int result = audioManager.requestAudioFocus(request);
+			audioFocusRequested = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED);
+			Log.i(TAG, "[FOCUS] requestAudioFocus result=" + result
+					+ (audioFocusRequested ? " (granted)" : " (denied)"));
+		} catch (Exception e) {
+			Log.w(TAG, "[FOCUS] requestAudioFocus failed: " + e.getMessage());
+		}
+	}
+
+	/** 释放音频焦点（停止播放时调用）。幂等。 */
+	@UsedByGodot
+	public void abandon_audio_focus() {
+		if (!audioFocusRequested || audioFocusListener == null) {
+			return;
+		}
+		Context context = getContext();
+		if (context == null) {
+			return;
+		}
+		AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+		if (audioManager == null) {
+			return;
+		}
+		try {
+			if (audioFocusRequest != null) {
+				audioManager.abandonAudioFocusRequest(audioFocusRequest);
+				audioFocusRequest = null;
+			} else {
+				audioManager.abandonAudioFocus(audioFocusListener);
+			}
+			Log.i(TAG, "[FOCUS] abandonAudioFocus");
+		} catch (Exception e) {
+			Log.w(TAG, "[FOCUS] abandonAudioFocus failed: " + e.getMessage());
+		}
+		audioFocusRequested = false;
+	}
+
+	/** [诊断] 当前是否持有音频焦点 */
+	@UsedByGodot
+	public boolean has_audio_focus() {
+		return audioFocusRequested;
+	}
+
 	/**
 	 * GodotPlugin.onMainCreate 返回插件视图（可为 null），此处不贡献视图，
 	 * 只借此时机在主线程建立 MediaSession —— 必须在主线程创建。
 	 */
 	@Override
 	public android.view.View onMainCreate(@Nullable android.app.Activity activity) {
-		runOnUiThread(this::ensureSession);
+		runOnUiThread(() -> {
+			ensureSession();
+			// 插件在 Godot.initEngine() 早期就被注册（早于引擎启动），此处注册即最早时机，
+			// 不会漏掉启动阶段就到达的 onTrimMemory。
+			registerTrimCallback();
+		});
 		return null;
 	}
 
-	// ===== 后台空闲计时（内存回收触发） =====
+	// ===== 后台内存回收触发（两条源：后台挂留超时 / onTrimMemory） =====
 	// Android 切后台后 Godot 主循环挂起（同 _ticker 的处境），引擎侧 _process / Timer 均不运行，
 	// 因此"后台已持续多久"只能由 Java 侧墙钟判断。此处只做计时与发信号，不做任何回收动作，
-	// 具体释放由 GDScript 侧 MemoryGC 在收到信号时执行。
+	// 具体释放由 GDScript 侧 Core/MemoryGC.gd 在收到信号时执行。
+	//
+	// 【为什么后台也能收到】GodotPlugin.emitSignal 走 godot.runOnRenderThread → GLSurfaceView.queueEvent，
+	// 而 GLSurfaceView 的渲染线程循环是"先取事件队列、再判断能否绘制"（mEventQueue 判定在
+	// readyToDraw 之前）。暂停时虽然释放了 EGL surface 不再出帧，但队列里的 Runnable 仍会执行
+	// —— 这正是"熄屏后台媒体按钮仍生效"的机制。所以本类发出的信号在后台能被 GDScript 处理。
+	//
+	// 【为什么还要缓存 lastTrimLevel】引擎启动完成前就可能收到 trim；后台期间的投递时机也不
+	// 完全确定。故每次回调都记录档位，上层可经 consume_pending_trim_level() 主动拉取（启动时
+	// 与回前台时各拉一次），不依赖"一定被叫醒"。
 	//
 	// 进出后台的钩子用 GodotPlugin.onMainPause / onMainResume：
 	// Godot.onPause(host)/onResume(host) 会遍历插件回调这两个方法（已核对 godot-lib 字节码），
@@ -218,15 +391,147 @@ public class AndroidBridge extends GodotPlugin {
 	/** 看门狗是否已排期（pause 可能多次回调，避免重复堆叠） */
 	private boolean _bgWatchdogArmed = false;
 
+	/** 最近一次的内存档位（0 = 无 / 后台挂留超时之外的语义见 TRIM_MEMORY 注释）。
+	 *  volatile：写入可能不在主线程（onTrimMemory 的线程不保证），拉取在主线程。 */
+	private volatile int _lastTrimLevel = 0;
+
 	private final Runnable _bgIdleRunnable = new Runnable() {
 		@Override
 		public void run() {
 			_bgWatchdogArmed = false;
-			Log.i(TAG, "[DIAG] background idle " + (BG_IDLE_RELEASE_DELAY_MS / 1000L)
-					+ "s -> emit bg_idle_release");
-			emitSignal(BG_IDLE_RELEASE);
+			Log.i(TAG, "[MEMGC] background idle " + (BG_IDLE_RELEASE_DELAY_MS / 1000L)
+					+ "s -> emit trim_memory(0)");
+			emitTrimMemory(0);
 		}
 	};
+
+	// ===== onTrimMemory 监听 =====
+	// 引擎侧完全没有实现 ComponentCallbacks2（本地 godot 源码全仓库 grep 零命中），
+	// 只能在插件里自行注册到 Application context 上。
+	// 用 Application context 而不是 Activity：Activity 重建不会导致重复注册，也不需要管生命周期。
+	private boolean trimCallbackRegistered = false;
+
+	private final android.content.ComponentCallbacks2 trimCallbacks =
+			new android.content.ComponentCallbacks2() {
+				@Override
+				public void onTrimMemory(int level) {
+					// 回调线程不保证是主线程，统一挪到主线程再发（emitSignal 内部还会转到渲染线程）
+					new Handler(Looper.getMainLooper()).post(() -> {
+						Log.i(TAG, "[MEMGC] onTrimMemory level=" + level
+								+ " paused=" + appPaused + " -> emit trim_memory(" + level + ")");
+						emitTrimMemory(level);
+					});
+				}
+
+				@Override
+				public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+					// 配置变化与本插件无关：Godot 自己会处理，插件不重复处理
+				}
+
+				@Override
+				public void onLowMemory() {
+					// onLowMemory 是"全系统低内存"的旧回调，语义等价于 TRIM_MEMORY_COMPLETE 的前兆。
+					// ComponentCallbacks2 覆盖了它，所以必须实现；转成 COMPLETE(80) 档处理。
+					Log.i(TAG, "[MEMGC] onLowMemory -> emit trim_memory(80)");
+					new Handler(Looper.getMainLooper()).post(() -> emitTrimMemory(80));
+				}
+			};
+
+	private void registerTrimCallback() {
+		if (trimCallbackRegistered) {
+			return;
+		}
+		Context context = getContext();
+		if (context == null) {
+			return;
+		}
+		try {
+			context.getApplicationContext().registerComponentCallbacks(trimCallbacks);
+			trimCallbackRegistered = true;
+			Log.i(TAG, "[MEMGC] ComponentCallbacks2 (onTrimMemory) registered");
+		} catch (Exception e) {
+			Log.w(TAG, "[MEMGC] registerComponentCallbacks failed: " + e.getMessage());
+		}
+	}
+
+	/** 记录档位并广播。level 语义见 TRIM_MEMORY 常量注释。 */
+	private void emitTrimMemory(int level) {
+		_lastTrimLevel = level;
+		emitSignal(TRIM_MEMORY, level);
+	}
+
+	/**
+	 * 拉取并清零最近一次的内存档位。返回 0 表示"无待处理事项"。
+	 *
+	 * 存在的意义：信号是"推"，但引擎启动完成前、以及后台投递时机都不确定，
+	 * 光靠推会漏。上层在启动时与每次回前台时各拉一次，两条路互为兜底。
+	 */
+	@UsedByGodot
+	public int consume_pending_trim_level() {
+		int level = _lastTrimLevel;
+		_lastTrimLevel = 0;
+		return level;
+	}
+
+	/**
+	 * [诊断] 系统当前把本进程当成什么。
+	 *
+	 * 返回 "adj=<oom_adj> procState=<名称>"；拿不到时返回 "unavailable"。
+	 * 用于回答"后台是否已被系统当成缓存进程"：播放中应能看到前台服务保护生效
+	 * （IMPORTANCE_FOREGROUND_SERVICE=125），而不是 CACHED。
+	 */
+	@UsedByGodot
+	public String get_my_memory_state() {
+		try {
+			android.app.ActivityManager.RunningAppProcessInfo info =
+					new android.app.ActivityManager.RunningAppProcessInfo();
+			android.app.ActivityManager.getMyMemoryState(info);
+			String state;
+			switch (info.importance) {
+				case android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND:
+					state = "FOREGROUND";
+					break;
+				case android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE:
+					state = "FOREGROUND_SERVICE";
+					break;
+				case android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE:
+					state = "VISIBLE";
+					break;
+				case android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_SERVICE:
+					state = "SERVICE";
+					break;
+				case android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED:
+					state = "CACHED";
+					break;
+				default:
+					state = "OTHER";
+					break;
+			}
+			return "adj=" + info.importance + " procState=" + state;
+		} catch (Exception e) {
+			return "unavailable: " + e.getMessage();
+		}
+	}
+
+	/**
+	 * [诊断] 打一条含真实 PSS 的日志，用于量出"清理前/清理后"的内存差。
+	 *
+	 * PSS 是系统给的实测值（含共享库的均摊），比只看托管堆更接近真实占用。
+	 */
+	@UsedByGodot
+	public void log_pss(String tag) {
+		try {
+			android.os.Debug.MemoryInfo info = new android.os.Debug.MemoryInfo();
+			android.os.Debug.getMemoryInfo(info);
+			Log.i(TAG, "[MEMGC][PSS] " + tag
+					+ " totalPss=" + info.getTotalPss() + "kB"
+					+ " dalvikPss=" + info.dalvikPss + "kB"
+					+ " nativePss=" + info.nativePss + "kB"
+					+ " otherPss=" + info.otherPss + "kB");
+		} catch (Exception e) {
+			Log.w(TAG, "[MEMGC][PSS] " + tag + " failed: " + e.getMessage());
+		}
+	}
 
 	@Override
 	public void onMainPause() {
@@ -234,8 +539,8 @@ public class AndroidBridge extends GodotPlugin {
 		appPaused = true;
 		// 进后台立刻就发一次：此刻引擎可能仍在跑（onMainPause 在引擎挂起前回调），
 		// 赶上就地释放，才是真正"在后台压内存"；发不出去也无副作用（信号只是请求，释放幂等）。
-		Log.i(TAG, "[DIAG] onMainPause -> emit bg_idle_release (immediate)");
-		emitSignal(BG_IDLE_RELEASE);
+		Log.i(TAG, "[MEMGC] onMainPause -> emit trim_memory(0) (immediate)");
+		emitTrimMemory(0);
 		// 兜底：若即时那次没被引擎处理（引擎随即被冻结），30 秒后再发一次，
 		// 届时会在引擎恢复运行时被处理
 		scheduleBackgroundWatchdog();
@@ -255,13 +560,13 @@ public class AndroidBridge extends GodotPlugin {
 		}
 		_bgWatchdogArmed = true;
 		_bgWatchdog.postDelayed(_bgIdleRunnable, BG_IDLE_RELEASE_DELAY_MS);
-		Log.i(TAG, "[DIAG] onMainPause -> bg idle watchdog armed (" + (BG_IDLE_RELEASE_DELAY_MS / 1000L) + "s)");
+		Log.i(TAG, "[MEMGC] onMainPause -> bg idle watchdog armed (" + (BG_IDLE_RELEASE_DELAY_MS / 1000L) + "s)");
 	}
 
 	/** 回到前台：取消判定（后台时长未达阈值则不回收） */
 	private void cancelBackgroundWatchdog() {
 		if (_bgWatchdogArmed) {
-			Log.i(TAG, "[DIAG] onMainResume -> bg idle watchdog cancelled");
+			Log.i(TAG, "[MEMGC] onMainResume -> bg idle watchdog cancelled");
 		}
 		_bgWatchdogArmed = false;
 		_bgWatchdog.removeCallbacks(_bgIdleRunnable);
@@ -369,6 +674,18 @@ public class AndroidBridge extends GodotPlugin {
 	public void onMainDestroy() {
 		// 后台空闲看门狗随插件一起撤下
 		cancelBackgroundWatchdog();
+		// 注销 onTrimMemory 监听（注册在 Application context 上，不注销会随进程存活）
+		if (trimCallbackRegistered) {
+			try {
+				Context context = getContext();
+				if (context != null) {
+					context.getApplicationContext().unregisterComponentCallbacks(trimCallbacks);
+				}
+			} catch (Exception e) {
+				Log.w(TAG, "[MEMGC] unregisterComponentCallbacks failed: " + e.getMessage());
+			}
+			trimCallbackRegistered = false;
+		}
 		if (session != null) {
 			session.setActive(false);
 			session.release();
