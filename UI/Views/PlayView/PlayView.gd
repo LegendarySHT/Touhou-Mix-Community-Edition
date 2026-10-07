@@ -167,6 +167,11 @@ func _ready() -> void:
 	# 原"位置停滞"启发式检测保留作为兜底
 	if not playback_mgr.midi_finished.is_connected(_on_game_finished):
 		playback_mgr.midi_finished.connect(_on_game_finished)
+	# 音频焦点（Android）：焦点丢失即刻暂停，焦点归还时才恢复 —— 后者是恢复音频设备
+	# 唯一可能成功的时刻，比"音频钟停滞 0.5s 后拆桥重建"既快又准。
+	if playback_mgr.has_signal("audio_focus_changed") \
+			and not playback_mgr.audio_focus_changed.is_connected(_on_audio_focus_changed):
+		playback_mgr.audio_focus_changed.connect(_on_audio_focus_changed)
 	
 	# 从配置加载演奏模式设置
 	_load_play_mode_setting()
@@ -237,11 +242,28 @@ func _process(delta: float) -> void:
 						GLogger.warning("Playback position stalled at end %.1fms, triggering game finished" % current_time, "PlayView")
 						_on_game_finished()
 					elif OS.get_name() == "Android":
-						# 安卓设备被系统打断（如来电/切后台）：整桥重建恢复声音，再自动弹暂停
-						# 阻止停滞被误判为曲终跳结算，同时覆盖悬浮来电不暂停 Activity 时的自动暂停
+						# 安卓设备被系统打断（来电/切后台/被别的应用抢音频焦点）。
+						#
+						# 【顺序：先评估恢复，再决定要不要弹暂停菜单】不能反过来。
+						# 就地在多数打断下会成功，此时根本不该出现暂停菜单 ——
+						# 先弹再收会闪一下，且逻辑颠倒（菜单只为"真的恢复不了"而存在）。
+						# 注意此处 is_pause 仍为 false，FlowArea 继续按旧位置渲染，不闪。
+						#
+						# 【不再在这里决定"怎么恢复设备"】上层只在正确时机**触发**健康评估，
+						# 判断与执行（先就地 Play、失败才整桥重建）都在 C# 内部完成。
+						# 此前这段逻辑被复制到四处，每处漏一个条件就是一个 bug。
 						if playback_mgr:
-							playback_mgr.recover_audio_output()
-						_auto_pause_on_background("audio_interrupted")
+							playback_mgr.evaluate_audio_device_health("stall")
+						if playback_mgr and playback_mgr.is_playing:
+							# 就地恢复成功：不打断玩家，硬锚定视觉钟后继续
+							_visual_time_needs_anchor = true
+							GLogger.info("Audio stall recovered in place, continuing playback", "PlayView")
+						else:
+							# 真的起不来：弹暂停并记下"是我们的自动暂停"，等焦点归还或用户继续。
+							# 标记只在真的暂停成功时置位，否则曲终后会被误判成待恢复。
+							if _auto_pause_on_background("audio_interrupted"):
+								_interrupted_pause = true
+							GLogger.info("Audio stall: paused and awaiting focus regain / user resume", "PlayView")
 					else:
 						GLogger.warning("Playback position stalled at %.1fms, triggering game finished" % current_time, "PlayView")
 						_on_game_finished()
@@ -313,6 +335,19 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 			playback_mgr.stop()
 			playback_mgr.clear_manual_control_notes()
 		flow_area.clear_flow_area()
+		# 释放本局判定特效的粒子精灵图缓存。
+		#
+		# 为什么必须在这里放：prewarm_spark_packs() 会在开局前把本局用到的粒子包整张精灵表
+		# load() 进 ParticleManager 的纹理缓存，而资源监视器实测三张 2048×2560/2048×2048 的
+		# 帧序列表合计约 56 MiB（Diamond-Rainbow 20 + Diamond-Orange 20 + BoxBurst 16）。
+		# 这些是 VRAM 压缩后的解码占用，格式上已无优化空间，唯一能省的就是"不再用时放掉"。
+		# 此前只有 MemoryGC 在后台上限时才清 —— 打完一局回到菜单，那 56 MiB 会一直挂着。
+		#
+		# 去 SCORE_VIEW 也放：重试时预卷前的准备动画期（最长 3s）会重新预热，
+		# 不影响对局；而结算页停留时间往往比这长得多。代价是重试多约 0.2s 的加载，
+		# 收益是结算页省下 56 MiB。
+		if ParticleMGR != null:
+			ParticleMGR.clear_texture_cache()
 		# 游戏序列数据由 C# KeySequenceCore 持有（跨视图复用），离开时本地无需持有引用
 		# 结算页(from SCORE_VIEW 重试)与播放页同 MIDI，保留已烘焙的模糊背景以便重试复用；
 		# 仅离开播放到其它视图时才清理，避免重试触发重新烘焙、闪现清晰原图
@@ -483,6 +518,13 @@ var is_pause: bool = false:
 func show_or_hide_menu():
 	if is_pause and menu.visible:
 		if _game_started:
+			# 只有在"准备阶段就呼出暂停菜单"时，预卷才还没被玩家看到过，需要重新起算；
+			# 已经正常打起来过的会话（来电打断 / 手动暂停）绝不能重起预卷 ——
+			# 那等于 seek 回负时间轴（曲首），表现就是"挂断电话回来声音从头重播"。
+			# 打断恢复的位置由 C# RecreateAudioOutputBridge 负责，这里只负责继续播。
+			if not _session_started:
+				_start_pre_roll_now("menu resume (pre-roll never played)")
+				_visual_time_needs_anchor = true
 			is_pause = false
 			ani.animate_fade_out(center_bg, 0.2, "_show_bg")
 		ani.animate_fade_out(menu, 0.2, "_show_menu")
@@ -498,26 +540,84 @@ func _show_pause_menu() -> void:
 func _on_window_focus_exited() -> void:
 	_auto_pause_on_background("window_focus_exited")
 
-func _auto_pause_on_background(reason: String) -> void:
+func _auto_pause_on_background(reason: String) -> bool:
 	if UiStatMGR.current_state != UIStateManager.UIState.PLAY_VIEW:
-		return
+		return false
 	if playback_mgr and not playback_mgr.is_playing:
-		return
+		return false
 	if is_pause:
-		return
+		return false
 
 	_show_pause_menu()
 	GLogger.info("Auto pause triggered by background event: %s" % reason, "PlayView")
+	return true
+
+## 音频焦点事件（Android AudioManager）：
+##   GAIN(0) → 焦点归还：这是恢复音频设备唯一能成功的时刻，就地拉起设备并继续播放。
+##   其余(1/2/3) → 焦点丢失/闪避：立即暂停并弹暂停菜单，同时**记住"是被打断的"**，
+##   以便焦点归还时自动继续（用户没主动暂停的话）。
+##
+## 相比旧的"音频钟停滞 0.5s → 拆桥重建"：那条路在通话期间必然失败并反复重试，
+## 而焦点事件是系统直接告知的确定时刻，一次就对。
+func _on_audio_focus_changed(state: int) -> void:
+	if UiStatMGR.current_state != UIStateManager.UIState.PLAY_VIEW:
+		return
+	if state == 0:
+		# 焦点归还
+		if not _interrupted_pause:
+			return
+		# 防御：只有"本局确实起播过"才自动恢复。曲终后 / 准备阶段都不该被拉起来 ——
+		# 后者会 seek 回预卷（曲首），与"继续播放"的语义不符。
+		if not _session_started:
+			_interrupted_pause = false
+			return
+		_interrupted_pause = false
+		GLogger.info("Audio focus regained: resuming playback", "PlayView")
+		if playback_mgr:
+			# 只触发健康评估；是否就地重启、是否整桥重建由 C# 判断
+			playback_mgr.evaluate_audio_device_health("focus_gain")
+		is_pause = false
+		_visual_time_needs_anchor = true
+		ani.animate_fade_out(center_bg, 0.2, "_show_bg")
+		ani.animate_fade_out(menu, 0.2, "_show_menu")
+		return
+
+	# 焦点丢失：暂停。只有在**真的暂停成功**时才记下"是我们的自动暂停"，
+	# 否则焦点归还时会把一个已经结束的会话重新拉起来。
+	#
+	# 【曾经的 bug】原实现在这里无条件 `_interrupted_pause = true`，而
+	# _auto_pause_on_background 里有 "is_playing 为假就直接返回" 的门槛（曲已终、
+	# 会话已停时命中）。于是：曲终 → 来个焦点变动 → 标记被置位但没暂停 →
+	# 之后焦点归还 → 自动恢复把一个结束了的会话从预卷重新拉起
+	# → 表现就是"播完了直接蹦回歌曲开头并暂停"。
+	if is_pause:
+		return
+	if _auto_pause_on_background("audio_focus_lost_%d" % state):
+		_interrupted_pause = true
+
+## 是否因音频焦点丢失而自动暂停（焦点归还时据此自动继续；用户手动暂停则不自动继续）
+var _interrupted_pause: bool = false
 
 func _prepare_game(midi:MidiData = current_midi) -> void:
 	_game_generation += 1
+	# 本轮的代次：本方法有多个 await（序列生成 / 准备动画 / 人声预加载），
+	# 期间再来一次 start_game_with（重复点开始、叠加导航）会启动第二轮。
+	# 没有守卫时两轮会各自 seek + build_seq_data + _finish_playback_setup，
+	# 交错覆盖 FlowArea 快照与后端播放位置 —— 表现为"音符显示不对劲、位置像有残留"。
+	var my_gen := _game_generation
 	current_midi = midi
 	play_result = ScoreView.ScoreData.new()
 	_is_finishing_game = false
 	_game_started = false
+	# 本局是否已经真正起播过（预卷完成、进入正常播放）。与 _game_started 不同：
+	# 后者在"准备阶段就呼出暂停菜单"那条路上也会被置 true（它表达的是"继续=直接开局"），
+	# 所以不能拿它判断"预卷是否已经消费过"。见 show_or_hide_menu。
+	_session_started = false
 	_is_auto_mode_play = false
 	_last_playback_position = -1.0
 	_position_stall_frames = 0
+	# 新一局：清除"因焦点丢失而暂停"的标记，否则上一局的打断状态会把本局开局误判成待恢复
+	_interrupted_pause = false
 
 	# 读取“播放准备动画”设置（0=关闭, 1=开启）
 	var play_ready_animation: bool = ConfigManager.instance.get_int("Playback", "play_ready_animation", 1) == 1
@@ -536,6 +636,9 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	# 确保皮肤贴图就绪：正常情况下命中缓存；后台 GC 释放过皮肤贴图时在此重建，
 	# 避免释放后重进打歌出现音符无贴图
 	_do_load_note_skin()
+	# 申请音频焦点：本页开局走 "seek + resume"，不经过 PlaybackDisplay.play()，
+	# 不显式申请的话打歌期间没有焦点会话 —— 来电时又只剩事后停滞检测。
+	playback_mgr.ensure_audio_focus()
 	flow_area.init_flow_area()
 	_is_auto_mode_play = flow_area.auto_mode
 	auto_label.visible = flow_area.auto_mode
@@ -561,10 +664,11 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	if not EvtBus.config_changed.is_connected(_on_config_changed):
 		EvtBus.config_changed.connect(_on_config_changed)
 
-	# 计算初始seek位置：-1000ms（固定：给予UI准备时间）- 音符下落时间（配置项）
-	var note_fall_time = ConfigManager.instance.get_float("Generator", "note_fall_time", 1.5)
-	var seek_position = -(1000 + note_fall_time * 1000)
-	playback_mgr.seek(seek_position)
+	# 计算初始seek位置：-1000ms（固定：给予UI准备时间）- 音符下落时间（配置项）。
+	# 注意这**不算**开局预卷：后面准备动画 + 序列生成期间后端已经在倒计时（见 _pre_roll_ms 注释），
+	# 这里先摆好位置，真正供玩家看的那一段预卷由 _start_pre_roll_now() 在开局瞬间重新起算。
+	_pre_roll_ms = 0.0
+	_start_pre_roll_now("prepare")
 	# 视觉钟硬锚定：开局 pre-roll 从负时间起，首次 resume 对齐音频钟
 	_visual_time_needs_anchor = true
 	is_pause = true
@@ -586,6 +690,10 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	var gen_task_id := await _start_generate_game_sequences(midi)
 	if gen_task_id >= 0:
 		await key_sequence_mgr.await_generate_keys(gen_task_id)
+
+	# 代次守卫：等待期间被新一轮 _prepare_game 取代则整轮作废（见方法开头的说明）
+	if not _is_current_game_gen(my_gen, "note generation"):
+		return
 
 	# 解析/生成序列期间若用户已退出播放视图，立即中止后续启动流程，
 	if UiStatMGR.current_state != UIStateManager.UIState.PLAY_VIEW:
@@ -625,14 +733,24 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 		await AniMGR.animate_fade_out(center_bg, 1).finished
 
 	# 准备阶段若用户已退出播放视图（打开菜单后强退/返回），不再启动播放：
+	# 同样要防"新一轮已开始"——否则旧轮会把 is_pause 置回 false，和新轮抢播放态
+	if not _is_current_game_gen(my_gen, "ready phase"):
+		return
 	if UiStatMGR.current_state != UIStateManager.UIState.PLAY_VIEW:
 		GLogger.info("Prepare aborted: left PLAY_VIEW during ready phase", "PlayView")
 		return
 
 	# 记录游玩开始时间（用于统计游玩时长）
 	_play_start_time = Time.get_ticks_msec()
+	# 【预卷在此刻重新起算】准备动画期间后端已经在倒计时预卷，等这里开局时那段预卷
+	# 早已被吃掉（FlowArea 在 is_pause 期间不取位置，玩家根本看不到）。不重新起算的话，
+	# 开局瞬间预卷已归零 → 第一批音符一出生就在判定线附近，直接过线 Miss，
+	# 之后位置才随正常播放逐渐"上移回正常"。见 _start_pre_roll_now 注释。
+	_start_pre_roll_now("game start")
+	_visual_time_needs_anchor = true
 	# 开始播放MIDI
 	_game_started = true
+	_session_started = true
 	is_pause = false
 
 ## 加载MIDI（不再处理FlowArea初始化，该部分由KeySequenceManager处理）
@@ -710,6 +828,47 @@ func _start_generate_game_sequences(midi_data: MidiData) -> int:
 		midi_data.midi_timebase, midi_data.bpm_timeline
 	)
 	return task_id
+
+## 本轮开局是否仍然有效。用于 _prepare_game 里每个 await 之后的中止判断。
+## 判据是代次（不是"是否还在 PLAY_VIEW"）：重复点开始会在同一视图内再起一轮，
+## 那时视图没变、只有代次变了 —— 旧轮必须让位，否则两轮交错写同一份运行态。
+func _is_current_game_gen(gen: int, stage: String) -> bool:
+	if gen == _game_generation:
+		return true
+	GLogger.info("Prepare aborted: superseded by a newer game (%s, gen=%d -> %d)" %
+		[stage, gen, _game_generation], "PlayView")
+	return false
+
+## 开局预卷时长（毫秒，负值）。由 note_fall_time 推出，两处 seek 共用同一来源。
+var _pre_roll_ms: float = 0.0
+
+## 本局是否已经真正起播过（预卷跑完、进入正常播放）。
+## 用于区分"准备阶段就呼出的暂停菜单"（预卷还没被看到，继续时要重起预卷）
+## 与"已经打起来后的暂停/打断"（绝不能再 seek 回曲首）。
+var _session_started: bool = false
+
+## 就地重新起算预卷。
+##
+## 为什么必须"重新起算"而不是只在 _prepare_game 开头 seek 一次：
+## 后端（C# MeltySynthPlayer）的预卷倒计时条件是 `_currentOffsetMs < 0 && playing`，
+## 而 playing 在 _prepare_game 早期就已经是 true；但 FlowArea 只在 `is_pause == false`
+## 时才会被喂位置——准备动画（最长 3s）+ 序列生成这段时间里，预卷在后台一路倒计时、
+## 玩家一帧都看不到。等真正开局时预卷往往已经归零，于是：
+##   · 第一批音符一出生就在判定线附近 → 直接过线 Miss
+##   · 之后位置才随正常播放从 0 涨起，看起来像"音符逐渐上移回正常位置"
+## 所以在"玩家即将看到音符"的那一刻把预卷重新压回起点，让这 1.7s（0.7 下落 + 1.0 余量）
+## 完整地发生在玩家眼前。
+func _start_pre_roll_now(stage: String) -> void:
+	if playback_mgr == null:
+		return
+	if _pre_roll_ms == 0.0:
+		var note_fall_time: float = ConfigManager.instance.get_float("Generator", "note_fall_time", 1.5)
+		_pre_roll_ms = -(1000.0 + note_fall_time * 1000.0)
+	playback_mgr.seek(_pre_roll_ms)
+	# 立刻回读：后端若把这次负 seek 吞掉/钳成 0（历史上有过负值被 clamp 的情况），
+	# position 会不认识 -1700，预卷就会整个失效 —— 这是本类最需要一眼看到的数值。
+	GLogger.info("Pre-roll (re)started at %.0fms (%s); backend position now %.1fms" %
+		[_pre_roll_ms, stage, playback_mgr.position_ms], "PlayView")
 
 ## 全量生成完成后的收尾（应用手动分类 + 结算总音符数），仅在 _prepare_game 内调用一次
 func _finish_playback_setup() -> void:

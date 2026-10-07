@@ -158,6 +158,8 @@ func _on_state_changed(old_state: int, new_state: int) -> void:
 	# 重新进入 MidiView 时：清除残留 pending 标志 + 刷新排行榜（打歌结束后数据可能已更新）
 	elif new_state == UIStateManager.UIState.MIDI_VIEW:
 		_pending_cleanup = false
+		# 回到本页 = 上一次开局流程已结束，解除"开始"防重标志
+		_start_requested = false
 		var midi: MidiData = midi_list.get_selection()
 		if midi:
 			score_list.load_scores(midi)
@@ -207,10 +209,20 @@ func _on_click_start_btn() -> void:
 		return
 	GLogger.info("选择歌曲： %s" % midi.name, "MidiView")
 
+	# 重复触发防护：连点开始会连续 emit 两次 start_game_with。
+	# 判据用本地标志而不是 current_state —— 本函数是"先 change_state 再 deferred emit"，
+	# 连点当帧 current_state 已经是 PLAY_VIEW，用它判会连正常进入都被挡掉。
+	# PlayView 侧另有代次守卫兜底；这里只是省掉一轮白跑的序列生成 + 后端 seek。
+	if _start_requested:
+		return
+	_start_requested = true
+
 	# 先 change_state 触发 PlayView 懒加载（_ready 连接 start_game_with 信号），
 	# 再用 call_deferred emit，确保信号不丢失（与 _on_click_track_btn 模式一致）
 	UiStatMGR.change_state(UIStateManager.UIState.PLAY_VIEW)
 	EvtBus.start_game_with.emit.call_deferred(midi)
+
+var _start_requested: bool = false
 
 func _on_click_track_btn():
 	var midi:MidiData = midi_list.get_selection()

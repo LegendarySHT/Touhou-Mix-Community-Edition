@@ -25,6 +25,8 @@ public partial class MeltySynthPlayer : Node
 		void Stop();
 		void Update();
 		bool IsPlaying { get; }
+		/// <summary>最近一次 Play() 是否因 ma_bridge_start 失败（设备/流已失效，需整桥重建）</summary>
+		bool AudioStartFailed { get; }
 		object SyncRoot { get; }
 		void SetSynthesizers(MidiFileSequencer sequencer, Synthesizer autoSynth, Synthesizer manualSynth, bool useSeparateSynth);
 		void SetVolume(float volumeLinear);
@@ -89,6 +91,9 @@ public partial class MeltySynthPlayer : Node
 	private SoundFont _soundFont;
 
 	private int _sampleRate;
+	/// <summary>设备原生率模式下探测到的设备实际采样率（0 = 尚未探测）。
+	/// 一旦探测到就沿用，避免每次重建都退回 AudioServer mix rate 而误判采样率变化。</summary>
+	private int _detectedDeviceSampleRate;
 	// 线程模型说明（TMX-005）：
 	// - 下列标量字段（_volumeLinear/_sequencerStarted/_pendingSeekMs/_currentOffsetMs/_lastPositionMs/
 	//   _hasSkippedPreroolEvents/_judgeAnchorMs/_judgeAnchorTicks/_judgeAnchorValid/_lastRenderedRefMs 等）
@@ -100,6 +105,10 @@ public partial class MeltySynthPlayer : Node
 	//   _manualFilterRegistry 采用"不可变快照 + volatile 引用交换"（播放中禁止重建）。
 	private float _volumeLinear = 1.0f;
 	private bool _sequencerStarted = false;  // 追踪 sequencer 是否已启动
+	/// <summary>audio_device_lost 的 reason 取值：音频钟停摆且未到曲终 → 设备失效。
+	/// 与设计方案里的 PlaybackInterruptReason.DeviceLost 对应（暂用常量，待该 enum 正式引入后替换）。</summary>
+	public const int DEVICE_LOST_REASON_DEVICE_LOST = 2;
+
 	private double _pendingSeekMs = double.NaN;  // 待处理的 seek 位置（NaN 表示无待处理的 seek）
 	private double _currentOffsetMs = 0.0;  // 当前相对于 sequencer 的时间偏移（支持负数 pre-roll）
 	private double _lastPositionMs = 0.0;  // 最后已知播放位置（暂停/seek 后保持，供 get_position_ms 读取）
@@ -270,8 +279,7 @@ public partial class MeltySynthPlayer : Node
 		// 独占模式必须用设备原生采样率 (通常 48000Hz), 不能强制 96000Hz.
 		int oldSampleRate = _sampleRate;
 		_sampleRate = (int)AudioServer.GetMixRate();  // 重新读取 (可能 44100)
-		int targetRate = _sampleRate;  // 默认使用系统采样率
-		// 仅 Windows 需要高采样率技巧突破 WASAPI period 限制
+		int targetRate = _sampleRate;  // 默认使用系统采样率		// 仅 Windows 需要高采样率技巧突破 WASAPI period 限制
 		var envRate = System.Environment.GetEnvironmentVariable("MINIAUDIO_SAMPLE_RATE");
 		int envRateVal = 0;
 		if (!string.IsNullOrEmpty(envRate) && int.TryParse(envRate, out envRateVal) && envRateVal > 0)
@@ -286,6 +294,16 @@ public partial class MeltySynthPlayer : Node
 		bool useDeviceNativeRate = envRateVal <= 0 &&
 			(OS.GetName() == "Android" ||
 			 System.Environment.GetEnvironmentVariable("MINIAUDIO_NATIVE_SAMPLE_RATE") == "1");
+
+		// 设备原生率模式下，_sampleRate 是"合成器当前实际采样率"，不是 AudioServer 的 mix rate。
+		// 上面那行 `_sampleRate = AudioServer.GetMixRate()` 会把它重置回 44100，于是每次
+		// EnsureAudioInitialized（含来电打断后的整桥重建）都会在下面误判"设备 48000 ≠ 合成器 44100"
+		// 而重建合成器 + 重置 sequencer —— 这正是"挂断电话回来 MIDI 从头重播"的放大器。
+		// 认得的设备率一旦探测到就不再变，直接沿用即可。
+		if (useDeviceNativeRate && _detectedDeviceSampleRate > 0)
+		{
+			_sampleRate = _detectedDeviceSampleRate;
+		}
 
 		if (OS.GetName() == "Windows" && !useDeviceNativeRate)
 		{
@@ -328,17 +346,22 @@ public partial class MeltySynthPlayer : Node
 		}
 
 		// 【方向 1】设备已按原生采样率初始化：回读实际率，并与合成器/序列器对齐。
-		if (useDeviceNativeRate && bridge is MiniaudioAudioOutputBridge maBridge && maBridge.ActualSampleRate > 0 && maBridge.ActualSampleRate != (uint)_sampleRate)
+		if (useDeviceNativeRate && bridge is MiniaudioAudioOutputBridge maBridge && maBridge.ActualSampleRate > 0)
 		{
-			ThreadSafeLog.Print($"[MeltySynthPlayer] Device native sample rate: {maBridge.ActualSampleRate}Hz (synth was {_sampleRate}Hz), rebuilding synthesizers");
-			_sampleRate = (int)maBridge.ActualSampleRate;
-			if (_autoSynth != null && !string.IsNullOrEmpty(_soundfont))
+			// 记住设备实际率：下次重建直接沿用，不再退回 mix rate 误判（见函数开头的说明）
+			_detectedDeviceSampleRate = (int)maBridge.ActualSampleRate;
+			if (maBridge.ActualSampleRate != (uint)_sampleRate)
 			{
-				LoadSoundfont(_soundfont);
+				ThreadSafeLog.Print($"[MeltySynthPlayer] Device native sample rate: {maBridge.ActualSampleRate}Hz (synth was {_sampleRate}Hz), rebuilding synthesizers");
+				_sampleRate = (int)maBridge.ActualSampleRate;
+				if (_autoSynth != null && !string.IsNullOrEmpty(_soundfont))
+				{
+					LoadSoundfont(_soundfont);
+				}
+				// LoadSoundfont 内部绑定合成器时 _audioOutput 尚未赋值，这里须显式重新绑定到新桥
+				maBridge.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
+				maBridge.SetVolume(_volumeLinear);
 			}
-			// LoadSoundfont 内部绑定合成器时 _audioOutput 尚未赋值，这里须显式重新绑定到新桥
-			maBridge.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
-			maBridge.SetVolume(_volumeLinear);
 		}
 
 		_audioOutput = bridge;
@@ -413,6 +436,17 @@ public partial class MeltySynthPlayer : Node
 		var wasPlaying = _audioOutput.IsPlaying;
 		var wasVocalPlaying = _audioOutput.IsVocalPlaying();
 		var vocalPositionMs = _audioOutput.GetVocalPositionMs();
+		// 【MIDI 位置同样必须在 Dispose 之前取】重建会连带重建 sequencer（位置归 0），
+		// 而旧桥一 Disonse 就再也读不到位置了。原实现只记了人声位置，于是打断恢复后
+		// MIDI 从 0 重播、人声却回到原处 —— 两层声音彻底错开，
+		// 真机表现就是"打歌一半来电，挂断回来声音从头重播"。
+		// 【必须用原始时间轴口径（get_raw_position_ms），不能用判定钟（get_position_ms）】
+		// sequencer 活在"原始时间轴"上，而 get_position_ms() 已经扣掉了设备延迟
+		// （- latencyMs）。拿判定钟去 seek sequencer = 位置恒定偏早一个设备延迟，
+		// 每恢复一次就叠加一次，表现为"恢复后声音比画面前一点"这类极难查的同步偏差。
+		// get_raw_position_ms() 才是 sequencer 的时间域，且同样处理了预卷负值与 pending seek。
+		// 注意不要 Math.Max(0,...)：预卷是负值，钳掉会毁掉开局预卷。
+		var preInterruptPositionMs = wasPlaying ? get_raw_position_ms() : _lastPositionMs;
 
 		_audioOutput.Dispose();
 		_audioOutput = null;
@@ -425,8 +459,18 @@ public partial class MeltySynthPlayer : Node
 
 		if (_sequencer != null && _autoSynth != null)
 		{
+			// 【先恢复 MIDI 位置，再 SetSynthesizers】不能两件事反过来：
+			// 打断恢复走的是"重建合成器"分支，那条路径自己会把 _sequencerStarted/_currentOffsetMs
+			// 清掉。顺序错了的话刚 seek 好的位置会立刻被清成 0。
+			RestoreSequencerPositionAfterBridgeRecreate(preInterruptPositionMs);
 			_audioOutput.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
 			_audioOutput.SetVolume(_volumeLinear);
+			// 重建 = 新的播放会话：清掉旧桥留下的回绕基准，避免渲染钟相对旧基准回跳
+			// 被音频回调误判成"又回绕了一次"而触发非预期切歌
+			if (_audioOutput is MiniaudioAudioOutputBridge maReset)
+			{
+				maReset.ResetEndOfSequence();
+			}
 		}
 
 		var vocalRestored = false;
@@ -454,6 +498,151 @@ public partial class MeltySynthPlayer : Node
 		{
 			_audioOutput.PlayVocal();
 		}
+	}
+
+	/// <summary>
+	/// 整桥重建后把 sequencer 拉回打断前的位置（含预卷负值）。
+	/// 新建的 sequencer 位置恒为 0，不恢复就等于"从头重播"。
+	/// </summary>
+	private void RestoreSequencerPositionAfterBridgeRecreate(double positionMs)
+	{
+		if (_sequencer == null || _midiFile == null)
+		{
+			return;
+		}
+		WithSynthLock(() =>
+		{
+			if (!_sequencerStarted)
+			{
+				_sequencer.Play(_midiFile, false);
+				_sequencerStarted = true;
+			}
+			// Seek 内部会把负值/超长都钳进 [0, Length]；预卷负值在下面用 offset 另行表达
+			if (positionMs > 0.0)
+			{
+				_sequencer.Seek(TimeSpan.FromMilliseconds(positionMs));
+				_hasSkippedPreroolEvents = true;
+				_currentOffsetMs = 0.0;
+			}
+			ApplyInstrumentOverridesToSynth();
+		});
+
+		if (positionMs > 0.0)
+		{
+			_lastPositionMs = positionMs;
+			// 打断恢复后墙钟必须从新位置起算，否则锚点还停在打断前
+			_seekAnchorMs = positionMs;
+		}
+		else
+		{
+			// 预卷（负值）：sequencer 停在 0，负时间轴由 _currentOffsetMs 表达，
+			// 让下一次 _Process 按正常预卷流程推进它。
+			_currentOffsetMs = positionMs;
+		}
+		// 位置已被外部改动：作废锚点且不要留下会返回陈旧值的 hold 帧
+		_seekPositionHoldFrames = 0;
+		InvalidateJudgeClock();
+		ThreadSafeLog.Print($"[MeltySynthPlayer] MIDI position restored after audio bridge recreation: {positionMs:F1}ms");
+	}
+
+	/// <summary>
+	/// 【设备健康评估与恢复的唯一决策点】
+	///
+	/// 设计意图：**"要不要恢复音频设备、怎么恢复"只在这里判断**，上层（GDScript）不再参与。
+	/// 此前这个决策散落在 4 处（Main 回前台 / PlaybackDisplay.resume / PlayView 停滞检测 /
+	/// PlayView 焦点归还），每处各自写一遍"顺序 try 就地 Play、失败再重建"，
+	/// 结果每处漏一个条件就是一个 bug（典型：曲终后误判成待恢复、预卷期间误启动设备）。
+	///
+	/// 唯一能看见设备状态的就是这里，所以判断也留在这里。
+	///
+	/// 恢复顺序刻意是"先便宜后昂贵"：
+	///   1. 就地 Play() —— miniaudio 标准暂停/恢复（ma_device_start），大多数打断后设备仍然可用；
+	///   2. 仅当确认流已失效（AudioStartFailed）才整桥重建（会重建合成器/sequencer，位置靠
+	///      RestoreSequencerPositionAfterBridgeRecreate 还原）。
+	///
+	/// 【预卷期间必须让位】预卷时设备是"故意停着"的，由 _Process 跨零点统一起播。
+	/// 此时启动设备会让回调在 sequencer 未运行时渲染全 0 帧 → 被判成 end-of-sequence → 假曲终。
+	/// </summary>
+	/// <param name="trigger">诊断用：谁触发的（focus_gain / app_resume / stall / endpoint_change）</param>
+	/// <param name="notifyOnLost">检测到失效时是否补发 audio_device_lost</param>
+	/// <param name="allowRecreate">是否允许整桥重建（重建较重，仅在主线程安全时机传 true）</param>
+	/// <returns>true = 设备当前可用（本来就好，或已恢复）</returns>
+	public bool EvaluateAudioDeviceHealth(string trigger, bool notifyOnLost = true, bool allowRecreate = true)
+	{
+		if (_audioOutput == null)
+		{
+			// 桥都没建：这里不主动建（调用方语境各异），交给 EnsureAudioInitialized 的常规路径
+			return false;
+		}
+		// 预卷：设备与 sequencer 的起播由 _Process 跨零点统一负责
+		if (_currentOffsetMs < 0.0)
+		{
+			ThreadSafeLog.Print($"[MeltySynthPlayer] device health ({trigger}): pre-roll in progress, hands off");
+			return false;
+		}
+		// 设备已在跑且上次启动没失败 → 健康
+		if (_audioOutput.IsPlaying && !_audioOutput.AudioStartFailed)
+		{
+			return true;
+		}
+		// 传输没在播（曲终/停止）：设备该停着，不试着恢复
+		if (!playing)
+		{
+			return _audioOutput.IsPlaying;
+		}
+		// 【暂停期间绝不恢复设备】`playing` 是传输级标志、**不反映暂停**
+		// （pause() 只置 _paused，playing 仍为 true）。只看 playing 的话，
+		// 暂停中的设备会被这里重新启动 —— 那正是"被抢了音频焦点就反复重试"的老毛病：
+		// 停滞检测每 0.5s 触发一次，每次都把刚停下的设备又拉起来。
+		// 暂停是用户可见的稳定状态，设备就该停着。
+		if (_paused)
+		{
+			return _audioOutput.IsPlaying;
+		}
+
+		if (notifyOnLost)
+		{
+			ThreadSafeLog.Print($"[MeltySynthPlayer] device health ({trigger}): device not running while transport playing -> recovering");
+			EmitSignal(SignalName.audio_device_lost, DEVICE_LOST_REASON_DEVICE_LOST);
+		}
+
+		_audioOutput.Play();
+		if (!_audioOutput.AudioStartFailed)
+		{
+			ThreadSafeLog.Print($"[MeltySynthPlayer] device health ({trigger}): resumed in place (no rebuild)");
+			InvalidateJudgeClock();
+			EmitSignal(SignalName.audio_device_recovered, false);
+			return true;
+		}
+
+		if (!allowRecreate)
+		{
+			// 后台线程等不安全语境：只报告，重建留给主线程
+			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] device health ({trigger}): lost and cannot rebuild here");
+			return false;
+		}
+
+		ThreadSafeLog.Print($"[MeltySynthPlayer] device health ({trigger}): in-place failed, rebuilding bridge");
+		RecreateAudioOutputBridge();
+		var ok = _audioOutput != null && _audioOutput.IsPlaying;
+		if (ok)
+		{
+			EmitSignal(SignalName.audio_device_recovered, true);
+		}
+		else
+		{
+			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] device health ({trigger}): rebuild did not bring audio back");
+		}
+		return ok;
+	}
+
+	/// <summary>
+	/// 中断后恢复音频输出（保留旧名供过渡期调用）：等价于设备健康评估。
+	/// 【新代码请直接调 EvaluateAudioDeviceHealth】上层的焦点/回前台/停滞三条路径最终都应走它。
+	/// </summary>
+	public void resume_audio_output_in_place_or_recreate()
+	{
+		EvaluateAudioDeviceHealth("legacy_resume_call", notifyOnLost: false);
 	}
 
 	/// <summary>
@@ -653,6 +842,13 @@ public partial class MeltySynthPlayer : Node
 				_currentOffsetMs = _pendingSeekMs;
 				_sequencerStarted = false;  // 标记 sequencer 需要重启
 				_hasSkippedPreroolEvents = false;  // 重置标志，准备首次 crossing zero
+				// 【锚点也必须一起指向预卷位置】正值路径会设 _seekAnchorMs，负值路径历史上漏了，
+				// 于是 _seekAnchorMs 会保留上一次 seek（典型是播放器页那个几十秒的位置）。
+				// 判定钟一旦按它重锚，位置就从一个很大的值开始 —— 真机表现就是"从播放器页
+				// 退出再进打歌，音符一出来就全部过线 Miss"。设成负 offset 后，预卷期间判定钟
+				// 也从负值起步，跨零点时同一分支会再用音频参考重锚一次。
+				_seekAnchorMs = _currentOffsetMs;
+				_lastPositionMs = _currentOffsetMs;
 				InvalidateJudgeClock();
 		
 				// 停止所有播放（AudioStreamPlayer 和 Sequencer）
@@ -1886,6 +2082,18 @@ public partial class MeltySynthPlayer : Node
 			return _pendingSeekMs;
 		}
 
+		// 在 pre-roll 阶段返回当前的负数 offset。
+		// 【必须排在 seek-hold 之前】预卷期间音频设备是停着的（resume() 的预卷分支
+		// 刻意不启动设备），桥的 seek 永远不会被落盘 → IsBridgeSeekApplied() 恒为假，
+		// 于是在下面的 seek-hold 分支里一直返回 _lastPositionMs（被 LoadMidiFile 清成 0），
+		// 判定钟在整个预卷期间恒为 0。真机表现：准备动画结束后"音符突然冒出来"、
+		// 开局全部 Miss（FlowArea 拿到的 current_time 从 0 起跳，而不是 -1700）。
+		if (_currentOffsetMs < 0.0)
+		{
+			_lastPositionMs = _currentOffsetMs;
+			return _currentOffsetMs;
+		}
+
 		// 【修复】seek 完成后若干帧内（原生 Seek 后 sequencer 渲染钟尚未反映新位置，
 		// 会瞬回 ~0），直接返回 seek 目标位置，避免上层 NoteDisplayer 误判位置回退而
 		// 触发音符左缩、各音轨已通过计数清零。
@@ -1895,13 +2103,6 @@ public partial class MeltySynthPlayer : Node
 		{
 			_seekPositionHoldFrames--;
 			return _lastPositionMs;
-		}
-
-		// 在 pre-roll 阶段返回当前的负数 offset
-		if (_currentOffsetMs < 0.0)
-		{
-			_lastPositionMs = _currentOffsetMs;
-			return _currentOffsetMs;
 		}
 
 		// 【修复D-4】非播放状态（暂停 / seek 后 / 自然结束）返回最后已知位置，不再归零，

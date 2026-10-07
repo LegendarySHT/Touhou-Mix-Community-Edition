@@ -842,13 +842,22 @@ public void ResetEndOfSequence()
 						// Play() 会从后台换曲线程调用 → 不能走 GD.PushWarning（引擎调用，
 						// 主线程冻结时会阻塞）。ThreadSafeLog 主线程直接打、非主线程入队。
 						ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] ma_bridge_start failed: {r}");
+						// 记下来供上层判断：ma_device_start 失败说明这条 AAudio stream 已经永久失效
+						// （通话抢焦点后的典型结果），此时任何重试都没用，只能整桥重建。
+						// 上层（PlayView / 暂停恢复）据此决定是否走重建，而不是靠"音频钟停滞"事后推断。
+						AudioStartFailed = true;
 						return;
 					}
+					AudioStartFailed = false;
 					_playing = true;
 
 				ThreadSafeLog.Print("[MeltySynthPlayer][miniaudio] Playback started (DIRECT MODE)");
 				}
 			}
+
+			/// <summary>最近一次 Play() 是否因 ma_bridge_start 失败而没能起播。
+			/// true = 设备/流已失效，需要整桥重建；false = 要么起播成功，要么根本没尝试。</summary>
+			public bool AudioStartFailed { get; private set; }
 
 			public void Stop()
 			{
@@ -860,6 +869,8 @@ public void ResetEndOfSequence()
 				_lastSampleL = 0;
 				_lastSampleR = 0;
 				_playing = false;
+				// 停设备不代表流失效；下一次 Play() 会重新尝试并如实置位
+				AudioStartFailed = false;
 			}
 
 			public void Update()

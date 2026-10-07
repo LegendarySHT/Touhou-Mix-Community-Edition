@@ -91,6 +91,14 @@ public partial class MeltySynthPlayer
 	[Signal] public delegate void deferred_play_resumedEventHandler();
 	[Signal] public delegate void soundfont_reload_completedEventHandler();
 	[Signal] public delegate void midi_finishedEventHandler();
+	/// <summary>音频焦点变化（来自 Java AudioManager）。取值：0=GAIN / 1=LOSS_TRANSIENT /
+	/// 2=DUCK / 3=LOSS。上层据此暂停与恢复 —— 焦点归还的时刻才是恢复音频设备唯一可能成功的时刻。</summary>
+	[Signal] public delegate void audio_focus_changedEventHandler(int state);
+	/// <summary>音频设备被判定为已失效（ma_bridge_start 失败 / 音频钟停摆且未到曲终）。
+	/// **由播放器自己判定**，上层只需据此表现"声音断了"（如暂停并提示），不要自己尝试恢复设备。</summary>
+	[Signal] public delegate void audio_device_lostEventHandler(int reason);
+	/// <summary>设备已恢复（就地重启成功，或整桥重建完成且位置已还原）。</summary>
+	[Signal] public delegate void audio_device_recoveredEventHandler(bool rebuilt);
 
 	/// <summary>由 _Ready 调用：初始化传输层（注册 UI 状态策略 + 媒体后端 + 恢复播放模式）。</summary>
 	/// <summary>平台标志：后台线程不能调 OS.GetName()（引擎调用），主线程缓存一次。</summary>
@@ -868,6 +876,48 @@ public partial class MeltySynthPlayer
 			var err = backend.Connect("command_received", callable);
 			ThreadSafeLog.Print($"[MeltySynthPlayer] connected AndroidBridge.command_received err={err}");
 		}
+		// 音频焦点：Java 侧 OnAudioFocusChangeListener → audio_focus_changed(state)，
+		// 这里转成同名 C# 信号供 GDScript（PlaybackDisplay → PlayView）消费。
+		if (backend.HasSignal("audio_focus_changed"))
+		{
+			var focusCallable = Callable.From<int>(OnAudioFocusChangedSignal);
+			if (!backend.IsConnected("audio_focus_changed", focusCallable))
+			{
+				var ferr = backend.Connect("audio_focus_changed", focusCallable);
+				ThreadSafeLog.Print($"[MeltySynthPlayer] connected AndroidBridge.audio_focus_changed err={ferr}");
+			}
+		}
+	}
+
+	/// <summary>音频焦点变化：只做转发，不在这里决定暂停/恢复策略
+	/// （策略归显示层：打歌页要弹暂停菜单，播放器页只需停播）。</summary>
+	private void OnAudioFocusChangedSignal(int state)
+	{
+		ThreadSafeLog.Print($"[MeltySynthPlayer] audio focus changed: state={state}");
+		EmitSignal(SignalName.audio_focus_changed, state);
+	}
+
+	/// <summary>
+	/// 主动触发一次托管堆回收，供 GDScript（MemoryGC / 后台内存压力）调用。
+	///
+	/// 为什么值得主动做：`dumpsys meminfo` 里我们的 Native Heap 常驻约 100MB，
+	/// 其中一大块是 CoreCLR 的 GC 堆已提交页 —— 而 CoreCLR 默认**不主动把已提交页还给 OS**，
+	/// 要等下一次分配压力或 GC 才可能收缩，空闲进程可能长期占着。
+	/// 大块临时分配之后（SoundFont 30MB 解析、MIDI 解析的成批临时数组）主动收一次，
+	/// 能把已经变成垃圾的那批还回去。
+	///
+	/// 代价：gen2 全回收 + LOH 压缩会停顿几十毫秒级，**绝不能放在对局中或切曲关键路径上**；
+	/// 调用点是后台内存回收，那个时机没有实时性要求。
+	/// </summary>
+	public void collect_managed_garbage()
+	{
+		var before = System.GC.GetTotalMemory(false);
+		System.GC.Collect();
+		System.GC.WaitForPendingFinalizers();
+		// 再收一次：第一次回收触发的 finalizer 可能又释放了新的可回收对象
+		System.GC.Collect();
+		var after = System.GC.GetTotalMemory(false);
+		ThreadSafeLog.Print($"[MeltySynthPlayer] managed GC: {before / 1048576.0:F1}MB -> {after / 1048576.0:F1}MB");
 	}
 
 	private void OnMediaCommandSignal(string action, double posMs)
@@ -1175,8 +1225,25 @@ public partial class MeltySynthPlayer
 	public void set_audio_delay_ms(double ms) => _audioDelayMs = ms;
 
 
-	/// <summary>供显示用的位置：扣除视觉校准延迟（与旧 GDScript _process 口径一致）。</summary>
-	public double get_visual_position_ms() => Math.Max(0.0, get_position_ms() - _audioDelayMs);
+	/// <summary>
+	/// 供显示用的位置：扣除视觉校准延迟（与旧 GDScript _process 口径一致）。
+	///
+	/// 【负值必须原样透出】开局预卷走的是负时间轴（PlayView 用 seek(-1000 - note_fall_time*1000)
+	/// 开场，判定/渲染都靠它把音符从屏幕上方落下来）。原来这里无条件 Math.Max(0.0, ...)，
+	/// 会把整个预卷钳成 0 —— 真机表现：准备动画结束后 current_time 从 0 起跳，
+	/// 生成提前量恰好等于下落时间，第一批音符生成即过线 → 开局全部 Miss，
+	/// 之后判定钟靠慢速校准一点点把墙钟拉回真实值，要几十秒才"恢复正常"。
+	/// 校准延迟只对"已经超过 0 的播放位置"有意义，预卷阶段没有设备延迟可扣。
+	/// </summary>
+	public double get_visual_position_ms()
+	{
+		double pos = get_position_ms();
+		if (pos < 0.0)
+		{
+			return pos;
+		}
+		return Math.Max(0.0, pos - _audioDelayMs);
+	}
 
 	// ===== 人声门面（原 GDScript MidiPlaybackManager 的转发）=====
 

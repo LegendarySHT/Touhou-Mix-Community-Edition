@@ -36,6 +36,13 @@ signal deferred_play_resumed
 signal soundfont_reload_completed
 signal midi_finished
 signal vocal_finished
+## 音频焦点变化（Android）：0=GAIN / 1=LOSS_TRANSIENT / 2=DUCK / 3=LOSS
+signal audio_focus_changed(state: int)
+## 音频设备被播放器判定为已失效（reason 见 C# DEVICE_LOST_REASON_*）。
+## 播放器已自行尝试恢复；上层只需表现"声音断了"（如暂停并提示），**不要自己恢复设备**。
+signal audio_device_lost(reason: int)
+## 设备已恢复（rebuilt=true 表示走了整桥重建）。
+signal audio_device_recovered(rebuilt: bool)
 
 ## 当前曲的显示数据
 var current_midi_data: MidiData = null
@@ -71,6 +78,12 @@ func _ready() -> void:
 	_forward(MeltySynth, "vocal_finished", func(): vocal_finished.emit())
 	_forward(MeltySynth, "playlist_index_changed", func(i): playlist_index_changed.emit(i))
 	_forward(MeltySynth, "repeat_mode_changed", func(m): repeat_mode_changed.emit(m))
+	# 音频焦点（Android AudioManager）：Java → C# → GDScript。
+	# 上层据此在"焦点丢失瞬间"暂停、在"焦点归还瞬间"恢复 —— 后者是恢复音频设备唯一可能成功的时刻。
+	_forward(MeltySynth, "audio_focus_changed", func(state): audio_focus_changed.emit(state))
+	# 音频设备健康（由播放器自己判定与恢复）：上层只消费"断了/回来了"，不自己尝试恢复设备。
+	_forward(MeltySynth, "audio_device_lost", func(reason): audio_device_lost.emit(reason))
+	_forward(MeltySynth, "audio_device_recovered", func(rebuilt): audio_device_recovered.emit(rebuilt))
 	# 全局配置与校准延迟都不在这里读：本 autoload 的 _ready 早于 ConfigManager 加载用户配置，
 	# 此刻读只会拿到默认值、并给每个键附一条 "Config key not found" 告警。
 	# Main 在配置加载完成后会调 push_global_playback_config() + refresh_audio_delay()
@@ -568,11 +581,10 @@ func refresh_audio_delay() -> void:
 	_bt_state_initialized = true
 	_delay_using_bt = is_bt
 	if output_changed and not first_check and OS.get_name() == "Windows" and MeltySynth != null:
-		# 输出端点换了：WASAPI 流绑定的是打开时的默认设备，必须重建才能跟随
-		var was_playing: bool = MeltySynth.is_playing()
-		MeltySynth.recreate_audio_output()
-		if was_playing:
-			MeltySynth.play_transport()
+		# 输出端点换了：WASAPI 流绑定的是打开时的默认设备，必须重建才能跟随。
+		# 走统一内核：它会先试就地重启、失败再整桥重建，并还原 MIDI 位置
+		#（旧写法先 recreate 再 play_transport，位置会丢 —— 这是"换输出后从头播"的来源）。
+		MeltySynth.evaluate_audio_device_health("endpoint_change", false, true)
 	_apply_delay_preset()
 
 ## 延迟预设被改动时调用（设置页保存 audio_playback_delay[_bt] 之后）。
@@ -621,13 +633,99 @@ var midi_player: Node:
 
 # ---- 传输 ----
 func play() -> void:
+	request_audio_focus()
 	if MeltySynth != null: MeltySynth.play_transport()
 func pause() -> void:
 	if MeltySynth != null: MeltySynth.pause_with_vocal()
+## 【设备恢复的唯一入口】上层在"可能出问题"的时机调它，由 C# 自己判断该不该恢复、怎么恢复。
+##
+## 为什么要收敛成这一个：此前"顺序 try 就地 Play、失败再整桥重建"这段逻辑被复制到
+## Main 回前台 / resume / 停滞检测 / 焦点归还 四处，每处漏一个条件就是一个 bug
+## （典型：曲终后误判成待恢复、预卷期间误启动设备导致假曲终）。
+## 现在上层只负责"在正确的时机触发"，判断与执行都在 C# 内部。
+func evaluate_audio_device_health(trigger: String) -> bool:
+	if MeltySynth == null or not MeltySynth.has_method("evaluate_audio_device_health"):
+		return false
+	return bool(MeltySynth.evaluate_audio_device_health(trigger, true, true))
+
 func resume() -> void:
+	request_audio_focus()
+	# 【不要在 GDScript 侧决定"要不要拉起音频设备"】C# 的 resume() 自己已经分好了：
+	#   - 预卷中（_currentOffsetMs < 0）：故意不碰设备，等预卷跨零点由 _Process 统一起播
+	#   - 正常续播：PrepareAudioOutputForPlaybackStart() + _audioOutput.Play() 自己起设备
+	# 曾经在这里加过一句 resume_audio_output_in_place_or_recreate()，结果在预卷期间把设备
+	# 提前拉起来 → 回调渲染全 0 → 被判成 end-of-sequence → 一进打歌页就被抬去结算。
+	# 设备恢复只属于"打断/焦点归还"语境，那是 C# 与焦点监听的事。
 	if MeltySynth != null: MeltySynth.resume_with_vocal()
 func stop() -> void:
 	if MeltySynth != null: MeltySynth.stop_transport()
+	abandon_audio_focus()
+
+# ---- 音频焦点（Android）----
+#
+# 本应用此前**没有焦点会话**，所以系统拿走音频焦点时无人通知，只能靠"音频钟停滞 0.5s"
+# 事后推断 → 反复拆桥重建、且通话期间必然全部启动失败（空转一整个通话）。
+# 现在改成：起播时申请焦点、停播时释放，焦点事件回送到 PlayView 决定暂停/恢复。
+const _ANDROID_FOCUS_GAIN := 0
+const _ANDROID_FOCUS_LOSS_LIKE := [1, 2, 3]   # TRANSIENT / DUCK / LOSS 都按"该停"处理
+
+## 焦点事件是否已订阅（AndroidBridge 插件注册晚于本 autoload，故每次起播都幂等地试一次）
+var _focus_listener_ready: bool = false
+
+func _android_bridge() -> Object:
+	if not Engine.has_singleton("AndroidBridge"):
+		return null
+	return Engine.get_singleton("AndroidBridge")
+
+func request_audio_focus() -> void:
+	_ensure_focus_listener()
+	var bridge := _android_bridge()
+	if bridge == null:
+		return
+	# 【不要用 has_method 判断 Java 插件能力】JNISingleton 只重写了 callp，
+	# 对 Java 插件对象 has_method 恒为 false（C# 侧同款坑，见 MeltySynthPlayer.Transport.cs）。
+	bridge.call("request_audio_focus")
+
+## 供打歌页调用：PlayView 开局走的是"seek + resume"而不是本门面的 play()，
+## 若不显式申请焦点，打歌期间就没有焦点会话 —— 来电时依旧只有事后停滞检测。
+func ensure_audio_focus() -> void:
+	request_audio_focus()
+
+func abandon_audio_focus() -> void:
+	var bridge := _android_bridge()
+	if bridge == null:
+		return
+	bridge.call("abandon_audio_focus")
+
+func _ensure_focus_listener() -> void:
+	if _focus_listener_ready:
+		return
+	var bridge := _android_bridge()
+	if bridge == null:
+		return
+	if not bridge.has_signal("audio_focus_changed"):
+		return
+	if not bridge.is_connected("audio_focus_changed", _on_java_audio_focus_changed):
+		var err: int = bridge.connect("audio_focus_changed", _on_java_audio_focus_changed)
+		if err != OK:
+			return
+	_focus_listener_ready = true
+	GLogger.info("Audio focus listener attached (AndroidBridge.audio_focus_changed)", "PlaybackDisplay")
+
+## Java 侧焦点事件 → 本 autoload 信号（PlayView 消费）
+func _on_java_audio_focus_changed(state: int) -> void:
+	GLogger.info("Audio focus changed: state=%d (%s)" % [
+		state,
+		"GAIN" if state == _ANDROID_FOCUS_GAIN else ("LOSS" if state == 3 else "LOSS_TRANSIENT/DUCK"),
+	], "PlaybackDisplay")
+	audio_focus_changed.emit(state)
+
+## 主动回收托管堆（C# CoreCLR）。供 Core/MemoryGC.gd 在后台内存压力时调用。
+## 停顿在几十毫秒级，只在后台/无实时性要求的时机调用。
+func collect_managed_garbage() -> void:
+	if MeltySynth != null and MeltySynth.has_method("collect_managed_garbage"):
+		MeltySynth.collect_managed_garbage()
+
 func seek(pos: float) -> void:
 	if MeltySynth != null: MeltySynth.seek_ms(pos)
 func handle_media_command(action: String, pos_ms: float = -1.0) -> bool:
@@ -937,10 +1035,9 @@ func unregister_view(_view: Node) -> void:
 		MeltySynth.clear_media_notification()
 
 # ---- 杂项后端 ----
-func recover_audio_output() -> void:
-	if MeltySynth != null: MeltySynth.recover_audio_output()
-func recreate_audio_output() -> void:
-	if MeltySynth != null: MeltySynth.recreate_audio_output()
+# 【已移除 recover_audio_output() / recreate_audio_output() 两个转发】
+# 设备恢复只有 evaluate_audio_device_health() 一个入口：上层在正确时机触发，
+# 由 C# 判断"就地重启还是整桥重建"。留着这两个转发等于给设备决策又开了后门。
 func set_sync_threshold(ms: float) -> void:
 	if MeltySynth != null: MeltySynth.set_sync_threshold(ms)
 func is_soundfont_reload_pending() -> bool:
