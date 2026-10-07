@@ -189,6 +189,10 @@ func _apply(level: int) -> void:
 	# 最后才要一次托管堆回收：上面前四步刚把一批引用放掉，此刻回收才收得掉那些对象。
 	# （C# 侧 CoreCLR 不主动把已提交页还给 OS，空闲进程会长期占着 —— 见
 	#   MeltySynthPlayer.collect_managed_garbage 的说明。）
+	# 【注意】"后台"不等于"没有实时性要求"：后台正在听歌时播放是活的，而阻塞式 gen2 回收
+	# 会 STW 挂住音频回调线程（→ 设备欠载"卡一下"，并让按墙钟派发的 MIDI 抢跑到人声前面）。
+	# C# 侧因此会在**播放期间自动降级为非阻塞后台回收**（见该方法内的 audioLive 分支），
+	# 这里不需要（也无法）判断播放状态。
 	_collect_managed_garbage()
 
 	GLogger.info("[MEMGC] apply done in %.1f ms" % ((Time.get_ticks_usec() - t0) / 1000.0), "MemoryGC")
@@ -298,7 +302,8 @@ func _playback_display() -> Node:
 
 ## 主动要一次 C# 托管堆回收（把刚放掉的引用真正还给系统）。
 ## 放在清理流程最末：上面的引用释放要先发生，否则收不到那批对象。
-## 停顿几十毫秒，仅在后台内存压力时执行，不在对局/切曲关键路径上。
+## 是否阻塞由 C# 侧按"播放是否活着"决定：播放中走非阻塞后台回收（不打断音频回调），
+## 设备停着时才做阻塞式全回收（几十毫秒停顿），故调用点无需关心。
 func _collect_managed_garbage() -> void:
 	var pd := _playback_display()
 	if pd == null or not pd.has_method("collect_managed_garbage"):

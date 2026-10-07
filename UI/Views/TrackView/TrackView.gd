@@ -41,6 +41,9 @@ var current_tick: int = 0
 var last_position_ms: float = 0.0  # 用于检测循环播放重置
 # 显式 seek（进度条/返回续播）后短暂抑制循环检测：避免 seek 越过循环尾回绕被误判为循环而重置到 0
 var _seek_suppress_loop_frames: int = 0
+# 进页前的播放位置（毫秒，<0 = 不恢复）：同一首歌从播放器页切过来时保持进度用，
+# 见 _load_midi 里的捕获与恢复；音源未就绪被推迟续播时挂起，等 deferred_play_resumed 再落。
+var _pending_resume_pos_ms: float = -1.0
 
 # 给midi轨道访问的默认值，临时占位用。
 var instrument_options: Array = [] # 全局乐器列表（会被 _extract_instruments_from_midi() 填充）
@@ -195,9 +198,28 @@ func _load_midi(midi: MidiData) -> void:
 	# 预解析 MIDI（同步，命中缓存时几乎零开销），让 load_midi 跳过重复解析
 	if not midi_playback_manager.ensure_parsed(midi):
 		push_error("Failed to preparse MIDI: " + midi.name)
-	# 加载MIDI到播放管理器（此时已命中解析缓存，仅做配置应用 + 后端加载）
-	if not midi_playback_manager.load_midi(midi):
-		push_error("Failed to load MIDI: " + midi.name)
+
+	# 【同一首歌：免重载快速路径】后端此刻已经加载/正在播这一首、运行配置也已应用，再 load_midi()
+	# 只会把播放整体拆掉（C# load_midi 第一句就是 stop()：sequencer/位置记账/人声全清）—— 于是必须先停、
+	# 等音轨列表建完、再从头起播、最后 seek 回原位；听感上就是"初始化那一下 + 重新定位"的卡顿。
+	# 返回播放器页那条路之所以毫无顿挫，正是因为它根本不碰播放。这里与返回路径对齐到底：
+	# 在播 → 一动不动只对齐显示；暂停 → 只续播；换歌/本页主动重载 → 才走完整路径。
+	var same_song := _is_same_song_loaded(midi)
+	var reuse_playback := same_song and midi_playback_manager.is_playing
+	var reuse_paused := same_song and not reuse_playback and midi_playback_manager.is_paused
+	var resume_pos_ms := -1.0
+	if reuse_playback:
+		GLogger.info("TrackView: same song already playing -> reuse playback (no reload / no seek)", "TrackView")
+	elif reuse_paused:
+		GLogger.info("TrackView: same song paused -> resume in place (no reload / no seek)", "TrackView")
+	else:
+		# 【保持进度】load_midi 会把后端整体停掉重来（C# load_midi 第一句就是 stop()：
+		# sequencer/位置记账/人声全清），于是"同一首歌从播放器页切到本页"会从头重播。
+		# 这里在停掉之前先记下当前可听位置，等 play() 之后再 seek 回去（见本函数末尾）。
+		resume_pos_ms = _capture_resume_position(midi)
+		# 加载MIDI到播放管理器（此时已命中解析缓存，仅做配置应用 + 后端加载）
+		if not midi_playback_manager.load_midi(midi):
+			push_error("Failed to load MIDI: " + midi.name)
 	await get_tree().process_frame
 
 	# 更新进度条最大范围
@@ -254,7 +276,43 @@ func _load_midi(midi: MidiData) -> void:
 	_init_latency_edit()
 
 	# 启动播放（UI 已完全加载，避免 _prepare_to_play 阻塞 UI 渲染）
-	midi_playback_manager.play()
+	#
+	# 三条路：同一首歌在播 → 不动播放；同一首歌暂停 → 只续播；否则重载 + 起播 + 定位。
+	if reuse_playback:
+		# 后端一直在播（同一首歌）：不 play()、不 seek，只把显示侧对齐到当前可听位置。
+		# 人声也不用重定位 —— init_vocal_btn_display 只动 UI，而它触发的
+		# start_vocal_playback 本身就按当前 MIDI 位置对齐（不是归零）。
+		_sync_playheads(midi_playback_manager.get_audible_position_ms())
+	elif reuse_paused:
+		# 同一首歌但暂停着：只续播（不重载、不 seek）。音源异步加载时 resume() 会被推迟，
+		# 那就把暂停位置挂起到 deferred_play_resumed 再定位（与 _resume_after_settings_return 同款
+		# —— 门面的 resume() 是 void，推迟与否只能看 deferred_play_pending）。
+		var paused_pos_ms: float = midi_playback_manager.get_audible_position_ms()
+		midi_playback_manager.resume()
+		if midi_playback_manager.deferred_play_pending:
+			_pending_resume_pos_ms = paused_pos_ms
+			GLogger.info("TrackView: deferred resume pending at %.1f ms" % paused_pos_ms, "TrackView")
+		else:
+			_sync_playheads(paused_pos_ms)
+	else:
+		# 【保持进度·先定位再起播】顺序很重要：设备停着时 C# 的 seek_ms 会把目标直接落到
+		# sequencer 上**并同时排队**（Play() 之后回调会再消费一次，幂等），于是设备第一份渲染
+		# 出来的缓冲就是恢复位置；反过来"先 play 再 seek"会先渲染出一份 0 位置（曲首）的音频
+		# —— 进页时那一下"开了个头"的来源。（排队 seek 已在回调内提前到 Render 之前消费，
+		# 见 MiniaudioBridge 注释。）
+		if resume_pos_ms >= 0.0:
+			midi_playback_manager.seek(resume_pos_ms)
+		midi_playback_manager.play()
+
+		# 显示侧对齐：last_position_ms / current_tick / 所有播放头 + 抑制若干帧循环检测。
+		# 音源异步加载时 play() 被推迟（位置会被后续重载再清一次），故这种情况挂起到
+		# deferred_play_resumed 再落（与 _resume_after_settings_return 同款处理）。
+		if resume_pos_ms >= 0.0:
+			if midi_playback_manager.deferred_play_pending:
+				_pending_resume_pos_ms = resume_pos_ms
+				GLogger.info("TrackView: deferred play pending, will resume at %.1f ms" % resume_pos_ms, "TrackView")
+			else:
+				_sync_playheads(resume_pos_ms)
 
 	# 启用 TrackView 进度更新和音符显示器
 	set_process(true)
@@ -265,6 +323,49 @@ func _load_midi(midi: MidiData) -> void:
 	# 等容器尺寸更新，再增加上下边距 （这个不是一定会触发，请勿在后面加总是需要执行的代码）
 	await get_tree().process_frame
 	container.custom_minimum_size.y = container.size.y + 300
+
+## 后端是否"已经加载/正在播这一首"：对象同一个或 id 相同。
+##
+## 满足时进页**不需要重载**：占位、音色、静音、音量、人声这些运行配置都是随这首歌的加载一起
+## 下发到后端的，切视图并不会让它们失效。真正需要重载的只有"用户在本页改了配置想看效果"
+## （见 _update_preview）与"换了一首歌"（MidiView 选曲 / 后台自动换曲），那时才走完整路径
+## （load_midi + 起播 + 定位）。
+func _is_same_song_loaded(midi: MidiData) -> bool:
+	if midi_playback_manager == null or midi == null:
+		return false
+	var loaded_midi: MidiData = midi_playback_manager.current_midi_data
+	if loaded_midi == null:
+		return false
+	return loaded_midi == midi \
+		or (not loaded_midi.id.is_empty() and loaded_midi.id == midi.id)
+
+## 进页前记下"该不该保持进度、保持到哪里"（毫秒；返回 <0 表示不恢复）。
+##
+## 只在**后端当前挂的就是这一首**时才恢复：从播放器页进来时后端在播的就是同一份 MidiData
+## （对象同一个，或 id 相同），而 MidiView 选曲、后台自动换曲（_reload_for_song）传进来的是
+## 另一首 —— 那种情况恢复上一首的位置毫无意义，必须拒绝。
+## 取的是**可听位置**（get_audible_position_ms）而不是 position_ms：后者带"视觉校准延迟"
+## （audio_playback_delay，蓝牙 200ms），拿它当恢复点会把音频往回倒一个校准延迟 ——
+## 听感上就是进页时"小小地回退了一下"。
+## 曲尾附近也不恢复：本页是文件级循环的单曲会话，seek 到末尾会被 C# 钳到 duration-100ms，
+## 于是立刻回绕到 0，表现为"想保持进度反而从头开始"。
+func _capture_resume_position(midi: MidiData) -> float:
+	if midi_playback_manager == null or midi == null:
+		return -1.0
+	var playing_midi: MidiData = midi_playback_manager.current_midi_data
+	if playing_midi == null:
+		return -1.0
+	var same_song: bool = playing_midi == midi \
+		or (not playing_midi.id.is_empty() and playing_midi.id == midi.id)
+	if not same_song:
+		return -1.0
+	var pos_ms: float = midi_playback_manager.get_audible_position_ms()
+	if pos_ms <= 1.0:
+		return -1.0
+	var duration_ms: float = midi.duration_ms
+	if duration_ms > 0.0 and pos_ms > duration_ms - 1500.0:
+		return -1.0
+	return pos_ms
 
 # 创建轨道视图
 func _create_track_views() -> void:
@@ -328,7 +429,11 @@ func _seek_to(target_ms: float) -> void:
 
 	# 执行跳转
 	midi_playback_manager.seek(target_ms)
+	_sync_playheads(target_ms)
 
+## 只把 GDScript 侧的位置基线/播放头对齐到 target_ms（不含后端 seek 本身）。
+## 与 _seek_to 分开是因为"先定位再起播"路径要先 seek 再 play，之后再调这里做显示同步。
+func _sync_playheads(target_ms: float) -> void:
 	# 【关键】更新 last_position_ms 和 current_tick，防止下一帧循环检测误判
 	last_position_ms = target_ms
 	current_tick = int(midi_playback_manager.position)
@@ -1229,6 +1334,11 @@ func _on_soundfont_changed(soundfont_path: String) -> void:
 func _on_deferred_play_resumed() -> void:
 	if _owns_session():
 		_set_note_displayers_process(true)
+	# 进页时因音源未就绪而被推迟的"保持进度"在这里落地（见 _load_midi 末尾）
+	if _pending_resume_pos_ms >= 0.0:
+		var pos := _pending_resume_pos_ms
+		_pending_resume_pos_ms = -1.0
+		_seek_to(pos)
 
 ## 当乐器列表变更时，快速更新所有MidiTrack的选项
 func _refresh_all_track_instruments() -> void:

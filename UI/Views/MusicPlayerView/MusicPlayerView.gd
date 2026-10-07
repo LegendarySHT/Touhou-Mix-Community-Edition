@@ -116,6 +116,11 @@ func _on_ui_state_changed(_old: int, new: int) -> void:
 	elif _old == WORK_STATE:
 		# 离开本页停掉每帧进度刷新，并恢复默认帧率（0 = vsync 主导）
 		set_process(false)
+		# 交叉淡入到一半就离场：杀掉 tween 并把两侧视图归位 —— 被 kill 的 tween 不会触发
+		# 收尾回调，不收就会留下两个半透明的视图（且 NoteRollView 会一直每帧重绘）。
+		# 注意顺序：归位会按舞台态设一次帧率，下面紧接着恢复 0，别调换。
+		AniMGR.stop_tween(STAGE_FADE_TWEEN_ID)
+		_snap_stage_views(_stage_switch_btn != null and _stage_switch_btn.button_pressed)
 		Engine.max_fps = 0
 		var mgr := PlaybackDisplay.instance
 		# 去 TrackView（同一首歌的另一种视图）与设置页都保留媒体会话：
@@ -277,6 +282,12 @@ var _entry_pending: bool = false
 const FPS_COVER_MODE := 30
 const FPS_STAGE_MODE := 60
 
+## 封面 ↔ 可视化交叉淡入：tween id 与时长。
+## id 必须独立于入场动画的 "mpv_stage"/"mpv_exit"/封面翻面的 "mpv_cover_flip"——
+## create_managed_tween 同名会 kill，混用会互相打断（被 kill 的属性会停在设定值上）。
+const STAGE_FADE_TWEEN_ID := "mpv_stage_fade"
+const STAGE_FADE_SEC := 0.22
+
 ## 进入页面时确保在播。列表权威在 C# MidiCore（唯一事实来源），
 ## 跨重启由 MidiCore 落盘 / restore_playlist 读回，这里不再做第二份副本的同步。
 ## 判据只看 is_playing：stop() 不清 current_midi_data，用它判断会永远不重播。
@@ -311,18 +322,79 @@ func _ensure_playing(mgr) -> void:
 # ── 舞台 ──────────────────────────────────────────────
 
 func _on_stage_switch_pressed() -> void:
-	_apply_stage_mode()
+	_fade_stage_to(_stage_switch_btn.button_pressed)
+
+## 封面 ↔ 可视化交叉淡入（唯一带过渡的切换入口：用户点击）。
+##
+## 【为什么不用 AniMGR.animate_fade_in/out】那两个方法会写 visible（fade_out 收尾时隐藏）
+## 并调 TextScrollMGR.resume/suspend_page —— 那是**页面级**语义，用在 Stage 子视图上会让
+## 淡出的一方当场消失、还会误动页面文字滚动（同 NoteSkinAdjust 里记下的教训）。
+## 这里只补 modulate:a，避开三处属性所有权：
+##   - Stage 自己的 modulate 归入场动画（"mpv_stage"）
+##   - _cover_view.offset_transform_scale 归封面翻面（"mpv_cover_flip"）
+##   - Engine.max_fps 归 _apply_stage_mode / _on_ui_state_changed
+##
+## 【收尾必须 visible=false】NoteRollView 的 _process 只看 is_visible_in_tree()：
+## 只把 alpha 归 0 会让它继续每帧 queue_redraw（白白重扫窗口 + 绘制）。
+func _fade_stage_to(show_roll: bool) -> void:
+	var incoming: Control = _note_roll if show_roll else _cover_view
+	var outgoing: Control = _cover_view if show_roll else _note_roll
+	if incoming == null or outgoing == null:
+		return
+
+	# 同名 tween 会被 create_managed_tween 直接 kill，而被 kill 的属性停在当前插值处：
+	# 不假设两侧 alpha，直接从当前值续跑到目标（快速连点也不会跳变）。
+	AniMGR.stop_tween(STAGE_FADE_TWEEN_ID)
+	incoming.visible = true
+	outgoing.visible = true
+	# 可视化侧必须"可见 + alpha 0"才谈得上淡入：_draw 在不可见时根本不会被调用
+	if show_roll:
+		incoming.queue_redraw()
+	# 过渡期间钉 60fps（封面态本身 30fps 够用，但淡入要顺）
+	_apply_stage_fps(FPS_STAGE_MODE)
+
+	var tw := AniMGR.create_managed_tween(self, STAGE_FADE_TWEEN_ID)
+	if tw == null:
+		# 拿不到 tween（管理器异常）：退回瞬时切换，别把页面留在两个视图重叠的状态
+		_apply_stage_mode()
+		return
+	tw.set_parallel(true)
+	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(incoming, "modulate:a", 1.0, STAGE_FADE_SEC)
+	tw.tween_property(outgoing, "modulate:a", 0.0, STAGE_FADE_SEC)
+	tw.chain()
+	tw.tween_callback(func() -> void:
+		_snap_stage_views(show_roll)
+		_apply_stage_fps(FPS_STAGE_MODE if show_roll else FPS_COVER_MODE)
+	)
+
+## 把两侧视图直接摆到目标态（无动画）：活动方可见且 alpha=1，非活动方 alpha=0 **且隐藏**。
+## 被 kill 的 tween 不会触发收尾回调，所以"进页面复位 / 离场打断 / 无 tween 兜底"都要显式调它。
+func _snap_stage_views(show_roll: bool) -> void:
+	if _cover_view == null or _note_roll == null:
+		return
+	_cover_view.visible = not show_roll
+	_note_roll.visible = show_roll
+	_cover_view.modulate.a = 0.0 if show_roll else 1.0
+	_note_roll.modulate.a = 1.0 if show_roll else 0.0
+
+## 帧率上限落定。本页未激活（预加载等场景）时不抢全局帧率，交给 _activate_page 在入场时设置。
+func _apply_stage_fps(fps: int) -> void:
+	if is_inside_tree() and is_visible_in_tree():
+		Engine.max_fps = fps
 
 ## 舞台模式由 StageSwitchBtn 的 button_pressed 表达：未按下=封面，按下=可视化。
 ## 按钮是 toggle_mode，两态贴图（texture_normal / texture_pressed）已由 tscn 给好。
 ## 帧率随内容定：封面态近乎静态 30fps 足够（高刷设备上省一半以上渲染功耗），
 ## 可视化态音符跟拍滚动保 60；离开本页时恢复 0 交还 vsync 主导。
+##
+## 本函数是**瞬时**路径（初值同步 / 每次进页面复位），用户点击走 _fade_stage_to。
 func _apply_stage_mode() -> void:
-	_cover_view.visible = not _stage_switch_btn.button_pressed
-	_note_roll.visible = _stage_switch_btn.button_pressed
-	# 本页未激活（预加载等场景）时不抢全局帧率，交给 _activate_page 在入场时设置
-	if is_inside_tree() and is_visible_in_tree():
-		Engine.max_fps = FPS_STAGE_MODE if _stage_switch_btn.button_pressed else FPS_COVER_MODE
+	var show_roll: bool = _stage_switch_btn.button_pressed
+	# 淡入到一半被叫回（进页面复位）时先杀掉在飞的 tween 并归位，否则会停在两侧半透明
+	AniMGR.stop_tween(STAGE_FADE_TWEEN_ID)
+	_snap_stage_views(show_roll)
+	_apply_stage_fps(FPS_STAGE_MODE if show_roll else FPS_COVER_MODE)
 
 # ── 底部控制 ──────────────────────────────────────────
 

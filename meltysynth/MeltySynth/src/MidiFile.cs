@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -380,7 +380,37 @@ namespace MeltySynth
                 indices[minIndex]++;
             }
 
+            TrimTrailingSilence(mergedMessages, mergedTimes, mergedTicks);
             return (mergedMessages.ToArray(), mergedTimes.ToArray(), mergedTicks.ToArray());
+        }
+
+        /// <summary>
+        /// 丢掉"最后一个发声事件之后的纯元事件尾巴"，并把 message/time/tick 三个列表一起裁齐。
+        /// 裁剪判据只保留"发声事件"（channel 消息）与循环标记（LoopStart/LoopEnd），
+        /// 因此不会误删任何实际内容：被删的本来就只在音乐结束之后。
+        /// （TempoChange 在这一步之前就已不进 mergedMessages，故不在此列。）
+        /// </summary>
+        private static void TrimTrailingSilence(List<Message> messages, List<TimeSpan> times, List<int> ticks)
+        {
+            var lastSoundingIndex = -1;
+            for (var i = messages.Count - 1; i >= 0; i--)
+            {
+                var type = messages[i].Type;
+                if (type == MessageType.Normal || type == MessageType.LoopStart || type == MessageType.LoopEnd)
+                {
+                    lastSoundingIndex = i;
+                    break;
+                }
+            }
+
+            // 全曲没有任何发声事件（异常/空文件）：保持原样，别裁成空数组
+            if (lastSoundingIndex >= 0 && lastSoundingIndex < messages.Count - 1)
+            {
+                var removeCount = messages.Count - 1 - lastSoundingIndex;
+                messages.RemoveRange(lastSoundingIndex + 1, removeCount);
+                times.RemoveRange(lastSoundingIndex + 1, removeCount);
+                ticks.RemoveRange(lastSoundingIndex + 1, removeCount);
+            }
         }
 
         private static int ReadTempo(BinaryReader reader)

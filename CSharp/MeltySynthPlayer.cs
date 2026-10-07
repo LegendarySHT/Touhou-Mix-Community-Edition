@@ -43,7 +43,7 @@ public partial class MeltySynthPlayer : Node
 		void PauseVocal();
 		void ResumeVocal();
 		void StopVocal();
-		void SeekVocal(double positionMs);
+		bool SeekVocal(double positionMs);
 		void SetVocalVolume(float volumeLinear);
 		double GetVocalPositionMs();
 		double GetVocalLengthMs();
@@ -511,7 +511,11 @@ public partial class MeltySynthPlayer : Node
 			vocalRestored = _audioOutput.LoadVocalFile(_loadedVocalFilePath);
 			if (vocalRestored)
 			{
-				_audioOutput.SeekVocal(Math.Max(0.0, vocalPositionMs));
+				if (_audioOutput.SeekVocal(Math.Max(0.0, vocalPositionMs)))
+				{
+					// 新桥上重新定位成功：清掉旧桥留下的"目标不可达"闩锁
+					ClearVocalSeekSuspension();
+				}
 				_vocalFinishedSignaled = false;
 				ThreadSafeLog.Print($"[MeltySynthPlayer] Vocal restored after audio bridge recreation: {vocalPositionMs:F1}ms");
 			}
@@ -804,6 +808,12 @@ public partial class MeltySynthPlayer : Node
 			result["vocal_underrun_count"] = (int)maBridge.GetVocalUnderrunCount();
 			result["vocal_underrun_frames"] = (long)maBridge.GetVocalUnderrunFrames();
 			result["vocal_catchup_frames"] = (int)maBridge.GetVocalCatchupFrames();
+			// 设备停顿（阻塞式 GC / 被系统抢占 / 路由切换）统计：人声弃帧追平按它触发
+			result["device_stall_count"] = maBridge.StallCount;
+			result["device_stall_last_ms"] = maBridge.LastStallMs;
+			// 人声定位是否被挂起（目标越过人声末尾 / 解码器 seek 连续失败）
+			result["vocal_seek_suspended"] = _vocalSeekSuspended;
+			result["vocal_seek_fail_streak"] = maBridge.VocalSeekFailStreak;
 			result["extrapolation_ms"] = maBridge.GetExtrapolationMs();
 		}
 		return result;
@@ -846,6 +856,20 @@ public partial class MeltySynthPlayer : Node
 			if (!_vocalFinishedSignaled)
 			{
 				_vocalFinishedSignaled = true;
+				// 【顺手学到人声总长】人声自然唱完时，它自己的位置记账就停在总长上 ——
+				// native 对 ogg 恒报 -1（stb_vorbis push 模式拿不到长度），而"目标越过人声末尾"
+				// 恰恰是 seek 失败的常见原因（实测某谱：vocal.ogg 只有 121s、谱面 3 分半以上）。
+				// 学到之后再遇到越界目标就能**直接预判并跳过**：否则每次都要下发一次注定失败的
+				// seek，而 push 模式下它得先"一路解码到 EOF"才知道越界（几十~几百毫秒）。
+				if (_audioOutput is MiniaudioAudioOutputBridge maEnd)
+				{
+					double endPosMs = maEnd.GetVocalPositionMs();
+					if (endPosMs > _vocalLengthLearnedMs)
+					{
+						_vocalLengthLearnedMs = endPosMs;
+						ThreadSafeLog.Print($"[MeltySynthPlayer] vocal length learned at natural end: {endPosMs:F0}ms");
+					}
+				}
 				EmitSignal(SignalName.vocal_finished);
 			}
 		}
@@ -1227,6 +1251,8 @@ public partial class MeltySynthPlayer : Node
 		{
 			maStop.StopVocal();
 		}
+		// 停止/换曲 = 新会话起点：清掉"人声目标不可达"闩锁（下次 seek 重新尝试定位）
+		ClearVocalSeekSuspension();
 		_vocalFinishedSignaled = false;
 		// 换曲/显式停止：人声的"用户显式关闭"状态回到由配置决定
 		// （在某首歌里关掉人声不该影响下一首）
@@ -1371,7 +1397,31 @@ public partial class MeltySynthPlayer : Node
 			ma.SeekVocal(0.0);
 			return;
 		}
-		ma.SeekVocal(vocalPos);
+
+		// 【已知长度就先判越界】mp3/wav 能拿到真实长度（native 已换算到设备采样率）；
+		// ogg 走 GetVocalLengthForClampMs（native 报 -1，但"自然唱完时学到"的长度能补上）。
+		// 越界意味着"这个位置之后人声没有内容"（伴奏尾奏比人声长 / 人声只覆盖前半段）——
+		// 正常情形，不该出声，更不该把这次注定失败的 seek 下发下去：push 模式下越界 seek
+		// 要先把剩余文件一路解码到 EOF 才知道（实测某 121s 人声 seek 到 178s：35ms 白解一遍）。
+		double vocalLengthMs = GetVocalLengthForClampMs();
+		if (vocalLengthMs > 0.0 && vocalPos > vocalLengthMs)
+		{
+			SuspendVocalPositioning("target beyond vocal length", vocalPos, vocalLengthMs);
+			return;
+		}
+
+		if (!ma.SeekVocal(vocalPos))
+		{
+			// 失败一次不急着放弃（可能是偶发）；连续失败说明这个目标根本定位不了 ——
+			// ogg 越界在下层是"解码到 EOF 才发现"，每试一次都要付这个代价，
+			// 而漂移同步每 1.5s 就会再来一次（真机日志里那串递增的失败正是它）。
+			if (ma.VocalSeekFailStreak >= VocalSeekFailStreakLimit)
+			{
+				SuspendVocalPositioning("decoder seek failed", vocalPos, vocalLengthMs);
+			}
+			return;
+		}
+		_vocalSeekSuspended = false;
 		if (playing)
 		{
 			ma.ResumeVocal();
@@ -1379,6 +1429,71 @@ public partial class MeltySynthPlayer : Node
 		else
 		{
 			ma.PauseVocal();
+		}
+	}
+
+	/// <summary>人声 seek 连续失败到几次就认定"这个目标定位不了"（见 SuspendVocalPositioning）</summary>
+	private const int VocalSeekFailStreakLimit = 3;
+
+	/// <summary>
+	/// 学到的人声总长（毫秒；-1 = 未知）。native 只对 mp3/wav 报得出长度，ogg 一律 -1；
+	/// 这里在"人声自然唱完"时用它自己的位置记账补上（见 _Process 的人声结束分支）。
+	/// 换人声文件时重置。
+	/// </summary>
+	private double _vocalLengthLearnedMs = -1.0;
+
+	/// <summary>用于"目标是否越过人声末尾"判断的长度：native 精确长度与学到的长度取大者（&lt;0 = 未知）。</summary>
+	private double GetVocalLengthForClampMs()
+	{
+		return Math.Max(get_vocal_length_ms(), _vocalLengthLearnedMs);
+	}
+
+	/// <summary>
+	/// "人声目标不可达"闩锁：seek 连续失败（越界 / 解码器异常）后置位。
+	///
+	/// 【为什么需要】置位前每次尝试的代价都不小：ogg 是 stb_vorbis push 模式，越界 seek 只能靠
+	/// "从游标一路解码到 EOF"才发现；而判定到"位置错开"的是每 1.5s 一次的漂移同步
+	/// （TickVocalSync），于是变成"每 1.5s 干一次注定失败的解码"—— 后台听歌时表现为持续卡顿，
+	/// 日志里那串 217863 → 219474 → 221074 → 222658ms 就是这么来的。
+	///
+	/// 处置：**静音人声 + 挂起重试**（不当作设备故障，也不重建音频桥）。
+	/// 一次成功的 seek（用户拖动 / 回绕 / 换曲 / 从设置页返回）或重载人声即清除，
+	/// 所以把人声拖回内容范围内会自然恢复。
+	/// </summary>
+	private bool _vocalSeekSuspended = false;
+
+	/// <summary>上一次挂起时的原因（诊断与去重用）</summary>
+	private string _vocalSeekSuspendReason = "";
+
+	/// <summary>
+	/// 把"这个目标定位不了"的后果收到自洽状态：静音人声（暂停而非回卷）+ 停止后续重试 + 记一条日志。
+	/// 人声比伴奏短是正常情形（纯 instrumental 尾奏），静音才是正确行为。
+	/// </summary>
+	private void SuspendVocalPositioning(string reason, double targetMs, double vocalLengthMs)
+	{
+		if (_audioOutput is MiniaudioAudioOutputBridge ma)
+		{
+			if (!_vocalSeekSuspended || _vocalSeekSuspendReason != reason)
+			{
+				ThreadSafeLog.Print($"[MeltySynthPlayer] vocal seek suspended ({reason}): target={targetMs:F0}ms, " +
+					$"vocalLength={(vocalLengthMs > 0.0 ? vocalLengthMs.ToString("F0") + "ms" : "unknown")} " +
+					"— keep silent & stop retrying until a successful seek / new song");
+			}
+			ma.ResetVocalSeekFailStreak();
+			ma.PauseVocal();   // 暂停（保留解码器位置）：不让错位内容继续出声
+		}
+		_vocalSeekSuspended = true;
+		_vocalSeekSuspendReason = reason;
+	}
+
+	/// <summary>清除人声目标不可达闩锁（成功 seek / 重载人声 / 停止播放时调用）。</summary>
+	private void ClearVocalSeekSuspension()
+	{
+		_vocalSeekSuspended = false;
+		_vocalSeekSuspendReason = "";
+		if (_audioOutput is MiniaudioAudioOutputBridge ma)
+		{
+			ma.ResetVocalSeekFailStreak();
 		}
 	}
 
@@ -1435,6 +1550,9 @@ public partial class MeltySynthPlayer : Node
 		_loadedVocalFilePath = loaded ? path : "";
 		if (loaded)
 		{
+			// 新装载的人声 = 新会话：清掉"目标不可达"闩锁与失败计数，并丢弃上一份人声学到的长度
+			ClearVocalSeekSuspension();
+			_vocalLengthLearnedMs = -1.0;
 			_audioOutput.SetVocalVolume(_vocalVolumeLinear);
 		}
 		return loaded;
@@ -1444,6 +1562,7 @@ public partial class MeltySynthPlayer : Node
 	{
 		_vocalFinishedSignaled = false;
 		_loadedVocalFilePath = "";
+		_vocalLengthLearnedMs = -1.0;
 		_audioOutput?.UnloadVocal();
 	}
 
@@ -1481,7 +1600,11 @@ public partial class MeltySynthPlayer : Node
 	public void seek_vocal(double positionMs)
 	{
 		_vocalFinishedSignaled = false;
-		_audioOutput?.SeekVocal(positionMs);
+		// 外部显式指定的人声位置（GDScript 直调）：成功即清掉"目标不可达"闩锁
+		if (_audioOutput != null && _audioOutput.SeekVocal(positionMs))
+		{
+			ClearVocalSeekSuspension();
+		}
 	}
 
 	public void set_vocal_volume(double volumeLinear)
@@ -1977,10 +2100,14 @@ public partial class MeltySynthPlayer : Node
 				return;
 			}
 			_loadedVocalFilePath = path;
+			// 换了人声文件：上一份学到的长度作废
+			_vocalLengthLearnedMs = -1.0;
 		}
 		_vocalVolumeLinear = vol;
 		ma.SetVocalVolume(vol);
 		ma.SeekVocal(0.0);
+		// 这是"新起一次人声播放"的入口：清掉上一首/上一次留下的"目标不可达"闩锁
+		ClearVocalSeekSuspension();
 		// 偏移门控：MIDI 未走到 vocal_offset_ms 时人声保持静音，由音频回调放行。
 		// 必须在 PlayVocal 之前设置——门控未放行时它会自行起播。
 		ma.SetVocalOffsetMs(offsetMs);
@@ -3601,8 +3728,33 @@ public partial class MeltySynthPlayer : Node
 		{
 			return;
 		}
-		double posMs = _sequencer != null ? _sequencer.RenderedPosition.TotalMilliseconds : 0.0;
+		double posMs = GetMidiContentClockMs();
 		SeekVocalToMidi(posMs);
+	}
+
+	/// <summary>
+	/// MIDI 当前**可听内容**的位置（毫秒）—— 人声对齐/漂移判定必须用它，而不是
+	/// <see cref="get_raw_position_ms"/>（后者恒为渲染帧钟 RenderedPosition）。
+	///
+	/// 【为什么两者不等价】系统时钟模式（默认开启）下 sequencer 的**事件派发按墙钟**进行
+	/// （MidiFileSequencer.GetSystemClockPosition），而 RenderedPosition 只是"已渲染帧数"。
+	/// 平时两者同速推进、差不了几毫秒；但一次设备停顿（阻塞式 GC / 系统抢占 / 路由切换）
+	/// 之后，墙钟已经走过停顿长度，回调恢复时会把停顿期间到点的事件一次性补发 ——
+	/// 于是**可听内容跳到了墙钟位置，而渲染帧钟还停在停顿前**。人声的环形缓冲内容与位置
+	/// 记账同样停在停顿前，所以"人声位置 vs RenderedPosition"看着是一致的，
+	/// 按它判定的漂移同步（TickVocalSync，阈值 200ms）永远不会触发，错位只能靠手动 seek 纠正。
+	/// 用可听内容位置作基准，这类停顿才会被判成"人声落后"并自动追平。
+	/// 渲染帧驱动的模式（use_system_stopwatch 关闭）下事件随渲染帧派发，两者本就同源。
+	/// </summary>
+	private double GetMidiContentClockMs()
+	{
+		if (_sequencer == null)
+		{
+			return _lastPositionMs;
+		}
+		return _sequencer.UseSystemClock
+			? _sequencer.Position.TotalMilliseconds
+			: _sequencer.RenderedPosition.TotalMilliseconds;
 	}
 	private void ResetManualVoices()
 	{

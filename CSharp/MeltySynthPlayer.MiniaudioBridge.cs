@@ -129,6 +129,19 @@ public partial class MeltySynthPlayer
 			// 记录最后一次渲染的墙钟时间戳，get_position_ms 据此外推消除锯齿滞后。
 			private long _lastRenderTimestampTicks = Stopwatch.GetTimestamp();
 
+			// ---- 设备停顿检测（回调间隔异常 → 人声弃帧追平，见 DetectStallGap / CatchUpVocalAfterStall） ----
+			/// <summary>上一次回调**进入**的时刻。必须在 FillDataDirect 最前面更新：
+			/// 任何早退分支（静音、post-seek）都不能漏掉基准，否则下次回调会被误判成停顿。</summary>
+			private long _lastCallbackEntryTicks = 0;
+			/// <summary>停顿判定下限（毫秒）。回调周期 256/48000 ≈ 5.3ms，取 40ms ≈ 7 个周期：
+			/// 正常调度抖动到不了，而一次阻塞式 GC 级别的事件远超它。</summary>
+			private const double StallDetectThresholdMs = 40.0;
+			/// <summary>累计检出的停顿次数 / 最近一次停顿长度（诊断）</summary>
+			private int _stallCount = 0;
+			private double _lastStallMs = 0.0;
+			public int StallCount => _stallCount;
+			public double LastStallMs => _lastStallMs;
+
 			// ---- 无锁事件队列 ----
 			private struct NoteEvent
 			{
@@ -292,9 +305,16 @@ public partial class MeltySynthPlayer
 				}
 			}
 
-			public void SeekVocal(double positionMs)
+			/// <summary>
+			/// 人声定位到指定毫秒。返回 false 表示解码器 seek 失败（典型是目标越过人声文件末尾 ——
+			/// 伴奏尾奏比人声长，属于正常情形；ogg 走 stb_vorbis 的 push 模式，越界只能靠
+			/// "一路解码到 EOF" 才发现，所以**一次失败代价不小**，调用方必须据此停止重试）。
+			/// 注意 native 的返回值语义是"设备故障"是历史误名（它其实是解码器 seek 失败），
+			/// 这里只当作"没定位成功"，绝不据此重建音频桥。
+			/// </summary>
+			public bool SeekVocal(double positionMs)
 			{
-				if (_bridgeHandle == IntPtr.Zero || !_vocalLoaded) return;
+				if (_bridgeHandle == IntPtr.Zero || !_vocalLoaded) return false;
 				// The native decoder is configured with the device's actual rate. This can
 				// differ from the requested synth rate when WASAPI applies a device format.
 				int vocalSampleRate = _actualSampleRate > 0 ? (int)_actualSampleRate : _sampleRate;
@@ -303,9 +323,28 @@ public partial class MeltySynthPlayer
 				var r = MiniaudioNative.ma_bridge_vocal_seek(_bridgeHandle, (ulong)Math.Round(frames));
 				if (r != MiniaudioNative.Result.Ok)
 				{
-					ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] ma_bridge_vocal_seek failed: {r} ({positionMs}ms)");
+					VocalSeekFailStreak++;
+					// 同一处反复失败（漂移同步每 1.5s 会再来一次）只打前几条，避免刷屏。
+					// 带上"人声实际内容位置/是否已结束"，用来判断失败到底是
+					// 「人声比伴奏短，目标越界」还是「解码器异常」—— 后者才需要看别的线索。
+					if (VocalSeekFailStreak <= 3 || VocalSeekFailStreak % 30 == 0)
+					{
+						ThreadSafeLog.PrintErr($"[MeltySynthPlayer][miniaudio] vocal seek failed: {r} " +
+							$"(target={positionMs:F0}ms, streak={VocalSeekFailStreak}, " +
+							$"vocalPos={GetVocalPositionMs():F0}ms, vocalFinished={IsVocalFinished()}, " +
+							$"nativeVocalLenMs={GetVocalLengthMs():F0})");
+					}
+					return false;
 				}
+				VocalSeekFailStreak = 0;
+				return true;
 			}
+
+			/// <summary>人声 seek 的连续失败次数（成功即清零）。上层据此判断"这个目标定位不了"。</summary>
+			public int VocalSeekFailStreak { get; private set; } = 0;
+
+			/// <summary>清零失败计数（换曲/重载人声等新会话起点调用）</summary>
+			public void ResetVocalSeekFailStreak() => VocalSeekFailStreak = 0;
 
 			public void SetVocalVolume(float volumeLinear)
 			{
@@ -512,7 +551,7 @@ public void ResetEndOfSequence()
 			_startupAlignRequested = _startupAlignPendingFrames > 0;
 		}
 
-		/// <summary>推进起播对齐计时；到点后排队一次原地 seek（同一回调内立即被消费）</summary>
+		/// <summary>推进起播对齐计时；到点后排队一次原地 seek（下一次回调开头被消费）</summary>
 		private void TickStartupAlignInCallback(int framesRequested)
 		{
 			if (!_startupAlignRequested)
@@ -533,6 +572,8 @@ public void ResetEndOfSequence()
 		/// <summary>
 		/// 在音频回调内消费 seek 请求。回绕检测与进度条自走共用此处，
 		/// 保证 seek 与人声循环在同一时序内一致。
+		/// **调用点在 Render 之前**（见 FillDataDirect）：排队的 seek 若留到渲染之后再落，
+		/// 那一整份缓冲渲染的仍是旧位置内容（起播路径上表现为"先冒出一点曲首"）。
 		/// </summary>
 		private void ProcessPendingSeekInCallback()
 		{
@@ -836,6 +877,9 @@ public void ResetEndOfSequence()
 					_perfTotalCallbackCount = 0;
 					_perfSlowCallbackCount = 0;
 
+					// 停顿检测基准：设备起跑这件事本身的耗时不代表停顿（启动可能要几十毫秒），
+					// 先置 0 让"起跑前的间隔"失效，成功起跑后再取一次当前时刻。
+					_lastCallbackEntryTicks = 0;
 					var r = MiniaudioNative.ma_bridge_start(_bridgeHandle);
 					if (r != MiniaudioNative.Result.Ok)
 					{
@@ -850,6 +894,7 @@ public void ResetEndOfSequence()
 					}
 					AudioStartFailed = false;
 					_playing = true;
+					_lastCallbackEntryTicks = Stopwatch.GetTimestamp();
 
 				ThreadSafeLog.Print("[MeltySynthPlayer][miniaudio] Playback started (DIRECT MODE)");
 				}
@@ -869,6 +914,8 @@ public void ResetEndOfSequence()
 				_lastSampleL = 0;
 				_lastSampleR = 0;
 				_playing = false;
+				// 清掉停顿检测基准：设备停着的这段时长不是停顿（下次 Play() 会重新取基准）
+				_lastCallbackEntryTicks = 0;
 				// 停设备不代表流失效；下一次 Play() 会重新尝试并如实置位
 				AudioStartFailed = false;
 			}
@@ -956,6 +1003,78 @@ public void ResetEndOfSequence()
 			}
 
 			/// <summary>
+			/// 记录并返回"上一次回调到现在"超出期望周期的毫秒数（&lt;= 0 表示正常）。
+			/// 必须在 FillDataDirect 最前面调用（更新基准时间戳）。
+			/// </summary>
+			private double MeasureCallbackGap(int framesRequested)
+			{
+				long now = Stopwatch.GetTimestamp();
+				long prev = _lastCallbackEntryTicks;
+				_lastCallbackEntryTicks = now;
+				if (prev <= 0 || _sampleRate <= 0)
+				{
+					return 0.0;
+				}
+				double elapsedMs = (now - prev) * 1000.0 / Stopwatch.Frequency;
+				double expectedMs = framesRequested * 1000.0 / _sampleRate;
+				return elapsedMs - expectedMs;
+			}
+
+			/// <summary>
+			/// 设备停顿恢复：把停顿长度的人声内容直接丢弃（"弃帧"），让人声追平 MIDI 的墙钟位置。
+			///
+			/// 【为什么需要】回调停摆（阻塞式 GC / 系统抢占 / 路由切换）期间：
+			///   - 设备把已排队缓冲播完后就是静音（听感"卡一下"）；
+			///   - 系统时钟模式（默认开启）下 sequencer 的事件按**墙钟**派发，回调恢复时会把
+			///     停顿期间到点的事件一次性补发 —— MIDI 内容因此直接抢跑到停顿后的墙钟位置；
+			///   - 人声走自己的解码环形缓冲，内容与位置记账都停在停顿前。
+			/// 于是"MIDI 比人声快了一个停顿长度"。而两者**上报的位置**此时看起来是一致的
+			/// （人声位置=已混音帧，同样停在停顿前），前台那套按位置比较的漂移同步
+			/// （TickVocalSync，阈值 200ms）看不见它，只有 seek 才能纠正 —— 但后台主循环停摆，
+			/// TickVocalSync 与 _tickAudioWatchdog 根本不会跑，于是错位会一直留到用户手动 seek。
+			///
+			/// 这里的做法等价于"替用户 seek 一下"，但代价小得多：native 的
+			/// ma_bridge_vocal_skip_frames 只是丢弃环形缓冲里对应长度的内容并同步推进
+			/// 已消费帧（位置记账随之与设备时钟一致），不动解码器、不做 O(消息数) 的状态重建、
+			/// 不打断在响的声部。渲染帧驱动的模式（use_system_stopwatch 关闭）里两边都随渲染帧
+			/// 走，停顿后天然对齐，故只在系统时钟模式下动手。
+			/// </summary>
+			private void CatchUpVocalAfterStall(double gapMs)
+			{
+				if (gapMs < StallDetectThresholdMs)
+				{
+					return;
+				}
+
+				_stallCount++;
+				_lastStallMs = gapMs;
+
+				bool systemClock = _sequencer != null && _sequencer.UseSystemClock;
+				bool seqRunning = _sequencer != null && !_sequencer.IsPaused;
+				double renderMs = _sequencer != null ? _sequencer.RenderedPosition.TotalMilliseconds : -1.0;
+				bool skipped = false;
+				uint skipFrames = 0;
+				// 上限 5s：异常巨大的 gap（如设备长时间失联）交由重连/重载路径处理，
+				// 这里只负责"卡一下"级别的追平，避免一次丢掉整段人声。
+				double appliedSkipMs = Math.Min(gapMs, 5000.0);
+				if (systemClock && seqRunning && _vocalLoaded && IsVocalPlaying() && _sampleRate > 0)
+				{
+					skipFrames = (uint)(appliedSkipMs * _sampleRate / 1000.0);
+					if (skipFrames > 0)
+					{
+						MiniaudioNative.ma_bridge_vocal_skip_frames(_bridgeHandle, skipFrames);
+						skipped = true;
+					}
+				}
+
+				_audioLogQueue.Enqueue($"[MeltySynthPlayer][miniaudio] device stall {gapMs:F0}ms detected " +
+					$"(clock={(systemClock ? "system" : "rendered")}, seqRunning={seqRunning}): " +
+					$"midi render={renderMs:F0}ms, vocalPos={GetVocalPositionMs():F0}ms, " +
+					(skipped ? $"vocal catch-up: skip {skipFrames} frames ({appliedSkipMs:F0}ms), " : "vocal untouched, ") +
+					$"total stalls={_stallCount}");
+			}
+
+			/// <summary>
 			/// 直接在 miniaudio 回调中渲染音频 (无 RingBuffer, 无渲染线程).
 			/// 设计:
 			///   - 回调线程直接调用 _sequencer.Render 和 _manualSynth.Render
@@ -972,6 +1091,9 @@ public void ResetEndOfSequence()
 			/// </summary>
 			private void FillDataDirect(IntPtr pOutput, int framesRequested)
 			{
+				// 设备停顿检测：基准时间戳必须在最前面更新（早退分支也不能漏）
+				double stallGapMs = MeasureCallbackGap(framesRequested);
+
 				// 防御性: 若 native 回调请求量超过 _outputBuffer 容量, 截断避免越界
 				if (framesRequested > MAX_DECODE_FRAMES)
 				{
@@ -1016,6 +1138,15 @@ public void ResetEndOfSequence()
 							_manualRight = new float[framesRequested];
 						}
 
+						// 【排队中的 seek 必须在 Render 之前落盘】否则这一整份缓冲（256~480 帧 ≈ 5~10ms）
+						// 渲染的还是**旧位置**的内容，seek 之后才生效 —— 听感上就是"切换/拖动的一瞬间
+						// 先冒出一点旧位置的声音"。起播路径尤其明显：`seek(pos)` + `play()` 同帧调用时，
+						// 设备第一份缓冲会先渲染出 0 位置（曲首），然后才跳到 pos（进 TrackView 时
+						// "听到一小段开头"的来源）。这里提前消费，第一份渲染出来的就是目标位置内容。
+						// （`TickStartupAlignInCallback` 在回调末尾排的原地 seek 会顺延到下一次回调，
+						//   只晚一个周期，语义不变。）
+						ProcessPendingSeekInCallback();
+
 						// Post-seek silence: 渲染到 discard 缓冲区消耗瞬态, 输出静音衰减
 						if (_postSeekSilenceFrames > 0)
 						{
@@ -1032,6 +1163,12 @@ public void ResetEndOfSequence()
 							Marshal.Copy(_outputBuffer, 0, pOutput, framesRequested * 2);
 							return;
 						}
+
+						// 设备停顿后的相对错位修复：人声弃帧追平 MIDI 的墙钟位置。
+						// 放在 post-seek 分支之后：那一段已经在按静音帧数同步丢弃人声，
+						// 两条路径叠加会重复丢帧。必须在 Render 之前执行 —— native 的
+						// vocal_mix 在本回调返回后立即消费这批 skipFrames。
+						CatchUpVocalAfterStall(stallGapMs);
 
 						// 清零渲染缓冲区
 						Array.Clear(_tempLeft, 0, framesRequested);
@@ -1069,8 +1206,8 @@ public void ResetEndOfSequence()
 
 // 后台 seek 与 MIDI 回绕后人声重播。此处必须在音频回调内：
                                        // Android 切后台后 Godot 主循环挂起，GDScript 与 _Process 均无法执行。
+                                       // 排队 seek 的消费已提前到 Render 之前（见上面的 ProcessPendingSeekInCallback）。
                                        TickStartupAlignInCallback(framesRequested);
-                                       ProcessPendingSeekInCallback();
                                        TickVocalOffsetGateInCallback();
                                        TickEndOfSequenceInCallback();
 				}

@@ -758,6 +758,14 @@ func handle_media_command(action: String, pos_ms: float = -1.0) -> bool:
 	return MeltySynth.handle_media_command(action, pos_ms) if MeltySynth != null else false
 func get_position_ms() -> float:
 	return MeltySynth.get_visual_position_ms() if MeltySynth != null else 0.0
+## 音频当前**可听**位置（毫秒）＝ C# 判定钟（墙钟锚点推进 + 音源参考慢速校准，已扣设备延迟）。
+##
+## 与 position_ms / get_visual_position_ms 的区别：那两个额外扣了**视觉校准延迟**
+## （`[Gameplay] audio_playback_delay`，蓝牙预设 200ms）—— 那是给判定/显示对齐用的。
+## 用带校准延迟的位置去"从哪儿继续播"，会把音频往回倒一个校准延迟（听感上的小回退），
+## 所以"切视图保持进度""暂停后续播"这类**恢复播放位置**的场景必须用本访问器。
+func get_audible_position_ms() -> float:
+	return MeltySynth.get_position_ms() if MeltySynth != null else 0.0
 func get_realtime_position_ms() -> float:
 	return MeltySynth.get_visual_position_ms() if MeltySynth != null else 0.0
 func get_raw_position_ms() -> float:

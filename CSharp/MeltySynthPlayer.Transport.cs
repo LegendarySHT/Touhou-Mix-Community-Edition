@@ -687,9 +687,30 @@ public partial class MeltySynthPlayer
 		{
 			return;
 		}
+		// 【目标不可达闩锁】seek 连续失败（典型：目标越过了人声文件末尾）期间不要再来一次：
+		// ogg 走 stb_vorbis push 模式，越界 seek 得把剩余文件解码到 EOF 才发现失败，
+		// 而这里是每 1.5s 触发一次的漂移同步 —— 旧实现就在这上面反复付代价（真机日志里
+		// 217863 → 219474 → 221074 → 222658ms 那串递增的失败），后台听歌时表现为持续卡顿。
+		// 闩锁由一次成功 seek / 重载人声 / 换曲清除，所以用户把人声拖回范围内会自然恢复。
+		if (_vocalSeekSuspended)
+		{
+			// 闩锁期间不做漂移重对齐（每次尝试都注定失败且代价高），但要把人声按住：
+			// 音频回调里的偏移门控（TickVocalOffsetGateInCallback）在 MIDI 走到
+			// vocal_offset_ms 时会放行一次 PlayVocal，这里兜住它，避免错位内容出声。
+			if (ma.IsVocalPlaying())
+			{
+				ma.PauseVocal();
+			}
+			return;
+		}
 		double rawMs = get_raw_position_ms();
 		double offsetMs = get_vocal_offset_ms();
-		double expected = rawMs - offsetMs;
+		// 【比较基准 = MIDI **可听内容**位置，不是渲染帧钟】rawMs（= RenderedPosition）在系统时钟
+		// 模式下与"实际听到的 MIDI 内容"会在一次设备停顿后差出整个停顿长度（详见 GetMidiContentClockMs）：
+		// 那时人声位置与 RenderedPosition 看着一致、实际内容却错开，按它比较永远不会触发纠正。
+		// 用可听内容位置做基准，停顿才会被判成"人声落后"并自动追平（与音频回调内的
+		// CatchUpVocalAfterStall 同一套判据，两者不会互相打架）。
+		double expected = GetMidiContentClockMs() - offsetMs;
 
 		if (!ma.IsVocalPlaying())
 		{
@@ -724,7 +745,11 @@ public partial class MeltySynthPlayer
 		double nowMs = Time.GetTicksMsec();
 		if (_vocalSyncOffense >= VocalSyncOffenseNeeded && nowMs - _lastVocalSyncAtMs >= VocalSyncCooldownMs)
 		{
-			ma.SeekVocal(expected);
+			if (!ma.SeekVocal(expected) && ma.VocalSeekFailStreak >= VocalSeekFailStreakLimit)
+			{
+				// 这里就是我们自己每 1.5s 触发一次失败的地方：连续失败即挂起（静音人声 + 停止重试）
+				SuspendVocalPositioning("drift realign failed", expected, get_vocal_length_ms());
+			}
 			_lastVocalSyncAtMs = nowMs;
 			_vocalSyncOffense = 0;
 		}
@@ -908,16 +933,37 @@ public partial class MeltySynthPlayer
 	///
 	/// 代价：gen2 全回收 + LOH 压缩会停顿几十毫秒级，**绝不能放在对局中或切曲关键路径上**；
 	/// 调用点是后台内存回收，那个时机没有实时性要求。
+	///
+	/// 【但"后台"不等于"没有实时性要求"】后台正在听歌时（熄屏/挂留），播放是活的、
+	/// 实时性要求与前台完全相同。阻塞式 gen2 + WaitForPendingFinalizers 是**全托管线程 STW**：
+	/// 音频回调线程（native→managed 反向 P/Invoke）会在进入 managed 的安全点上被一起挂住，
+	/// 设备缓冲（256×2 ≈ 5.3ms）立刻耗尽 → 听感上"突然卡一下"。而卡顿期间墙钟仍在走，
+	/// 系统时钟模式下 sequencer 会把这段时间的事件一次性补发（MIDI 内容抢跑到墙钟位置），
+	/// 人声却停在原地 —— 这正是后台播放"卡一下之后 MIDI 与人声不同步"的来源。
+	/// 因此**播放期间只请求后台非阻塞回收**（只有极短的 gen0/gen1 停顿），
+	/// 真正阻塞式的全回收留给"设备停着"的时机（内存回收在暂停/停止后仍会再来）。
 	/// </summary>
 	public void collect_managed_garbage()
 	{
+		bool audioLive = playing && !_paused
+			&& _audioOutput is MiniaudioAudioOutputBridge { IsPlaying: true };
 		var before = System.GC.GetTotalMemory(false);
-		System.GC.Collect();
-		System.GC.WaitForPendingFinalizers();
-		// 再收一次：第一次回收触发的 finalizer 可能又释放了新的可回收对象
-		System.GC.Collect();
+		if (audioLive)
+		{
+			// blocking:false = 后台 GC（标记阶段与用户线程并发，只有极短的 gen0/gen1 停顿）；
+			// compacting:false 是后台回收的硬性要求（非阻塞就不能搬 LOH）。
+			System.GC.Collect(2, System.GCCollectionMode.Optimized, blocking: false, compacting: false);
+		}
+		else
+		{
+			System.GC.Collect();
+			System.GC.WaitForPendingFinalizers();
+			// 再收一次：第一次回收触发的 finalizer 可能又释放了新的可回收对象
+			System.GC.Collect();
+		}
 		var after = System.GC.GetTotalMemory(false);
-		ThreadSafeLog.Print($"[MeltySynthPlayer] managed GC: {before / 1048576.0:F1}MB -> {after / 1048576.0:F1}MB");
+		ThreadSafeLog.Print($"[MeltySynthPlayer] managed GC: {before / 1048576.0:F1}MB -> {after / 1048576.0:F1}MB" +
+			(audioLive ? " (non-blocking: audio is live)" : ""));
 	}
 
 	private void OnMediaCommandSignal(string action, double posMs)
@@ -951,6 +997,11 @@ public partial class MeltySynthPlayer
 		if (action == "bg_tick")
 		{
 			TickEndOfSequenceOnMainThread();
+			// 后台每秒一次的"人声漂移自检"：熄屏/后台时 _Process 不跑，前台那套
+			// TickVocalSync 也就不会执行 —— 而设备停顿（阻塞式 GC、音频焦点被别的 App 抢走、
+			// 路由切换）恰恰最容易发生在后台。这里借 Java ticker 每秒叫醒主线程的机会补一次，
+			// 让后台也能自愈（前台照旧每帧跑，两条路径同一份实现，不会互相干扰）。
+			TickVocalSync();
 			return;
 		}
 		// 【媒体门控：未注册媒体会话就丢弃 —— 等价旧 `SystemMediaSession` 的
@@ -1266,8 +1317,13 @@ public partial class MeltySynthPlayer
 			}
 			_loadedVocalFilePath = native;
 		}
-		ma.SeekVocal(Math.Max(0.0, offsetMs));
+		bool positioned = ma.SeekVocal(Math.Max(0.0, offsetMs));
 		ma.ResumeVocal();
+		if (positioned)
+		{
+			// 起播前定位成功 = 新会话：清掉"目标不可达"闩锁（失败则保留，由上层判断）
+			ClearVocalSeekSuspension();
+		}
 		return true;
 	}
 
