@@ -489,7 +489,7 @@ func _locate_midi_file(midi_data: MidiData) -> String:
 
 var current_soundfont_path: String = ""
 const DEFAULT_SOUNDFONT_PATH := "res://Resources/Soundfont/GeneralUser-GS.sf2"
-## MIDI 播放参数的**初值投影**（兼容旧 MidiPlaybackManager 的同名字段名）。
+## MIDI 播放参数的**初值投影**（沿用旧门面时代的字段名，仅为少改调用点）。
 ## 只保留 `max_polyphony`（由 set_max_polyphony 维护，与 C# 同步）；
 ## 原先还有 `volume_db`，已删除：它永远是 -20（重构后没人再同步它），
 ## 而 DelayAdjust / TrackView 都曾拿它当"当前音量"用 —— DelayAdjust 因此在校准结束时
@@ -1017,11 +1017,10 @@ func reset_sync_state() -> void:
 	if MeltySynth != null: MeltySynth.reset_vocal_sync()
 
 ## 列表导航 / 杂项
-## 人声漂移同步阈值（毫秒）：真值在 C#，这里只读。
-## 旧实现是普通 var，重构后没人再写它 —— 留着普通 var 会变成"看着像真值、其实是常量"的陷阱。
-var sync_threshold_ms: float:
-	get: return float(MeltySynth.get_sync_threshold_ms()) if MeltySynth != null else 200.0
-const default_soundfont_path := "res://Resources/Soundfont/GeneralUser-GS.sf2"
+## 【本轮删除两处死符号】
+##   - `sync_threshold_ms`：只声明、零引用（真值在 C#，且已由 push_global_playback_config
+##     在启动时下发，无需只读投影）
+##   - `default_soundfont_path`：与本文件常量 `DEFAULT_SOUNDFONT_PATH` 完全重复且无人引用
 ## 偏移设置变化而播放继续时重新对齐人声（TrackView 的延迟输入框提交后调用）。
 ## 守卫与旧实现的 _seek_vocal_to_midi_position 一致：没配置/未启用人声时什么都不做，
 ## 否则"改一下偏移"会把用户已禁用的人声又放出来。
@@ -1157,8 +1156,8 @@ func _key_of(m: MidiData) -> String:
 	return m.chart_key if not m.chart_key.is_empty() else m.id
 
 ## 显式卸载当前 MIDI 资源（释放原生人声、停止后端、清理显示数据）。
-## 与旧实现的 unload_midi 对齐：旧版会 AudioManager.unload_vocal() 释放原生 decoder /
-## ring buffer，重构后只 stop_transport，人声资源会一直驻留到下次换曲。
+## 历史对照：旧实现（已删除的 AudioManager 门面）在同一位置调 unload_vocal() 释放原生
+## decoder / ring buffer；现在直接走 C# 播放器，故此处显式调 MeltySynth.unload_vocal()。
 func unload_midi() -> void:
 	if MeltySynth != null:
 		MeltySynth.stop_transport()

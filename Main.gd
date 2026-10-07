@@ -10,7 +10,6 @@ var state_manager: UIStateManager
 var animation_manager: AnimationManager
 var sorting_engine: SortingEngine
 var score_calculator: ScoreCalculator
-var audio_manager: AudioManager
 var key_sequence_manager: KeySequenceManager
 var config_loader: ConfigManager
 var logger: GameLogger
@@ -230,12 +229,12 @@ func _initialize_core_systems() -> void:
 	if logger:
 		logger.info("ScoreCalculator initialized", "Main")
 	
-	# 10. 初始化音频管理器
-	audio_manager = AudioManager.new()
-	audio_manager.name = "AudioManager"
-	add_child(audio_manager)
-	if logger:
-		logger.info("AudioManager initialized", "Main")
+	# 10. 音频管理器已删除。
+	# 原 MidiPlaybackManager 时代的 AudioManager 只是"人声门面 → MeltySynth"的纯转发壳，
+	# 重构后人声统一走 C# 播放器（autoload MeltySynth / 门面 PlaybackDisplay），
+	# 该壳既无调用者、Main 里创建后也从未使用（连 add_child 的实例都没人引用），故移除。
+	# 注意：Android 系统侧的 AudioManager 与本次删除无关（AudioBtDetector 经
+	# JavaClassWrapper 查询它做蓝牙判定）。
 	
 	# 11. MIDI 播放器已改为 autoload（MeltySynth 传输权威 / PlaybackDisplay 显示层）
 
