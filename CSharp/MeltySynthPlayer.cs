@@ -109,6 +109,37 @@ public partial class MeltySynthPlayer : Node
 	/// 与设计方案里的 PlaybackInterruptReason.DeviceLost 对应（暂用常量，待该 enum 正式引入后替换）。</summary>
 	public const int DEVICE_LOST_REASON_DEVICE_LOST = 2;
 
+	/// <summary>预卷在"音符下落时长"之外额外留的余量（毫秒）。</summary>
+	public const double PrerollMarginMs = 1000.0;
+
+	/// <summary>消费方（FlowArea）解析音符配置后推来的"音符生成提前量"（= 下落窗口时长）。
+	/// 见 get_pre_roll_duration_ms 的说明。</summary>
+	private double _noteGenerationLeadMs = 0.0;
+
+	/// <summary>
+	/// 开局预卷时长（毫秒，正值表示"提前量"）。
+	///
+	/// 【为什么计算收在这里】预卷时长是**播放时序知识**，原先有两条独立读数：
+	/// PlayView 用 `ConfigManager.get_float("Generator","note_fall_time")` 算
+	/// `-(1000 + fall*1000)`；FlowArea 又把同一个配置读一遍、按
+	/// `max(1.0, fall*1000)` 算出音符生成提前量。两条规则并不等价（前者恒加 1s 余量、
+	/// 后者有 1s 下限），默认配置（0.7s）下恰好都不显形，一旦 note_fall_time > 1.0
+	/// 就会分叉 —— 生成窗口与预卷不一致时，第一批音符会"生成即过线"。
+	///
+	/// 现在以**消费方实际使用的生成窗口**为准（`set_note_generation_lead_ms` 推入），
+	/// 预卷 = 生成窗口 + 余量，两者错配在结构上不可能发生。
+	/// 消费方尚未推送时退回 1.5s 下落时长（与历史默认一致）。
+	/// </summary>
+	public double get_pre_roll_duration_ms()
+	{
+		double fallMs = _noteGenerationLeadMs > 0.0 ? _noteGenerationLeadMs : 1500.0;
+		return PrerollMarginMs + fallMs;
+	}
+
+	/// <summary>消费方（FlowArea）解析完音符配置后，把实际使用的"生成提前量"（= 下落窗口时长，
+	/// 毫秒）推来。传 &lt;= 0 表示清除。见 get_pre_roll_duration_ms。</summary>
+	public void set_note_generation_lead_ms(double ms) => _noteGenerationLeadMs = ms;
+
 	private double _pendingSeekMs = double.NaN;  // 待处理的 seek 位置（NaN 表示无待处理的 seek）
 	private double _currentOffsetMs = 0.0;  // 当前相对于 sequencer 的时间偏移（支持负数 pre-roll）
 	private double _lastPositionMs = 0.0;  // 最后已知播放位置（暂停/seek 后保持，供 get_position_ms 读取）

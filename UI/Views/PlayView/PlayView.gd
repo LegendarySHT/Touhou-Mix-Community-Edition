@@ -671,10 +671,10 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	# 加载 MIDI（此时已命中解析缓存，仅做配置应用 + 后端加载）
 	_load_and_convert_midi_notes(midi)
 
-	# 演奏：写「正常通道的单曲槽」(不落盘、不碰用户播放列表) + 关闭文件级循环
-	# （旧实现就是 start_session(..., persist=false, loop_file=false) 的第 4 个参数；
-	#  少了它，曲终会原地重播 —— 打完一首歌在结算界面里还会从头再放一遍）
-	playback_mgr.start_session([midi] as Array[MidiData], 0, false, false)
+	# 演奏：写「正常通道的单曲槽」(不落盘、不碰用户播放列表) + 关闭文件级循环。
+	# 用意图方法而不是 start_session(..., false, false)：后者要靠位置参数表达语义，
+	# 而 loop_file 传错的后果正是"打完一首歌在结算界面里还会从头再放一遍"。
+	playback_mgr.start_performance([midi] as Array[MidiData], 0)
 	# 认领会话所有权：本局由本页驱动，故后端全局信号（midi_finished / 设备类）归本页响应。
 	# 判据是"所有权"而非"页面可见" —— 后台播放时页面可以不可见却仍归它管，反之亦然。
 	playback_mgr.claim_session(self)
@@ -886,8 +886,12 @@ func _start_pre_roll_now(stage: String) -> void:
 	if playback_mgr == null:
 		return
 	if _pre_roll_ms == 0.0:
-		var note_fall_time: float = ConfigManager.instance.get_float("Generator", "note_fall_time", 1.5)
-		_pre_roll_ms = -(1000.0 + note_fall_time * 1000.0)
+		# 【时长由播放器算，本页不再读配置】此前这里自己读
+		# [Generator] note_fall_time 算 `-(1000 + fall*1000)`，而 FlowArea 又按同一配置
+		# 独立算一份"生成提前量"（规则不同：那边有 1s 下限），两条读数在
+		# note_fall_time > 1.0 时会分叉 → 生成窗口与预卷错配 → 第一批音符"生成即过线"。
+		# 现在以 FlowArea 实际使用的生成窗口为准，预卷 = 该窗口 + 1s 余量（C# 内部计算）。
+		_pre_roll_ms = -playback_mgr.get_pre_roll_duration_ms()
 	playback_mgr.seek(_pre_roll_ms)
 	# 立刻回读：后端若把这次负 seek 吞掉/钳成 0（历史上有过负值被 clamp 的情况），
 	# position 会不认识 -1700，预卷就会整个失效 —— 这是本类最需要一眼看到的数值。

@@ -76,6 +76,12 @@ public partial class MeltySynthPlayer
 		EmitSignal(SignalName.playlist_changed);
 	}
 
+	/// <summary>开始一次播放会话。
+	///
+	/// 【新代码请用下面的意图方法，不要直接调本方法】本方法把"哪种会话"编码成两个位置布尔
+	/// （`persist` / `loopFile`），调用方必须知道第几个参数是什么；而 `loopFile` 恰好决定
+	/// "曲终干什么"，传错就是结算页里从头再放一遍。意图方法把语义写进方法名，页面不必再数参数。
+	/// 保留本方法仅为过渡期兼容。</summary>
 	public void start_session(Godot.Collections.Array items, int startIndex = 0, bool persist = true, bool loopFile = true)
 	{
 		var keys = KeysOfItems(items);
@@ -92,6 +98,25 @@ public partial class MeltySynthPlayer
 		core?.SetSessionSingle(true);
 		core?.SetSessionKey(keys.Count > 0 ? keys[0].AsString() : "");
 	}
+
+	// ===== 意图化的会话装配 =====
+	//
+	// 三个消费方的真正区别只有两维：写不写用户列表 A（persist）、曲终要不要文件级循环（loopFile）。
+	// 组合本来是 4 种，业务上只有 3 种，故收敛成三个方法名：
+
+	/// <summary>打歌一局：写单曲槽 B（不落盘、不碰用户列表 A），曲终即曲终、不循环。
+	/// 曲终交给结算流程（非循环会话会 latch end-of-sequence）。</summary>
+	public void start_performance(Godot.Collections.Array items, int startIndex = 0)
+		=> start_session(items, startIndex, persist: false, loopFile: false);
+
+	/// <summary>音轨试听：写单曲槽 B（不落盘），文件级循环（试听时单曲原地重播）。</summary>
+	public void start_preview(Godot.Collections.Array items, int startIndex = 0)
+		=> start_session(items, startIndex, persist: false, loopFile: true);
+
+	/// <summary>播放器页会话：用户列表 A 生效（可落盘/可推进），文件级循环；
+	/// 列表多于一首时仍由列表前进接管。</summary>
+	public void start_player_session(Godot.Collections.Array items, int startIndex = 0)
+		=> start_session(items, startIndex, persist: true, loopFile: true);
 
 	public void start_session_keys(Godot.Collections.Array keys, int startIndex = 0)
 	{

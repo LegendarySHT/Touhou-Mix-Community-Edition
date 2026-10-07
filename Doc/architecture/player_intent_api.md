@@ -904,14 +904,14 @@ Get-ChildItem -Recurse -Filter *.gd | Where-Object { $_.FullName -notmatch '\\(a
 
 > **实施进度（随代码更新）**
 >
-> | 阶段 | 状态 | 对应提交 |
+> | 阶段 | 状态 | 说明 |
 > |---|---|---|
-> | 阶段 0 只加不改 | **已完成**（R7 实测通过，见下） | `e835e907 新增播放状态快照类型` |
-> | 阶段 1 设备恢复收归 C# | **已完成** | `5378826c`、`44a85941 设备健康评估补暂停门` |
-> | （额外）后端全局信号跨页误触发修复 + 会话所有权 | **已完成** | `c6d8ee39` |
-> | 阶段 2 意图动词 + 会话装配 | 未开始 | — |
-> | 阶段 3 位置读取统一 | **部分完成**：判定入口已改为每帧读一次（`FlowArea._judge_time_ms`，由 `PlayView._process` 推进）；`PlaybackDisplay.get_playback_snapshot()` 转发已就位，但**调用点尚未迁移**到快照字段 | — |
-> | 阶段 4 收紧与清理 | 未开始 | — |
+> | 阶段 0 只加不改 | **已完成**（R7 实测通过，见下） | 快照类型 + 转发 + 枚举镜像 |
+> | 阶段 1 设备恢复收归 C# | **已完成** | 唯一决策点 `EvaluateAudioDeviceHealth`（含 `_paused` 门） |
+> | （额外）后端全局信号跨页误触发修复 + 会话所有权 | **已完成** | `claim_session` / `is_session_owner`，订阅跟随页面活跃 |
+> | 阶段 2 意图动词 + 会话装配 | **部分完成**：会话装配的意图化已完成（`start_performance` / `start_preview` / `start_player_session` 取代 `start_session` 的位置布尔，页面侧调用点已全部迁移）；传输类意图动词（`begin_playback` / `resume_from_pause` / `end_session` 等）与 `PlaybackStartMode`（消除负 seek 泄漏到视图层）**未开始** |
+> | 阶段 3 位置读取统一 | **部分完成**：判定入口已改为每帧读一次（`FlowArea._judge_time_ms`，由 `PlayView._process` 推进）；`PlaybackDisplay.get_playback_snapshot()` 转发已就位，但**调用点尚未迁移**到快照字段 |
+> | 阶段 4 收紧与清理 | 未开始 |
 >
 > **阶段 0 的 R7 实测结论（已解除该风险）**：`[GlobalClass]` + `[Export]` 的 RefCounted，
 > GDScript **可以**直读字段（double / int / bool / string 与 `NaN` 均可跨语言，写回再读回双向 OK），

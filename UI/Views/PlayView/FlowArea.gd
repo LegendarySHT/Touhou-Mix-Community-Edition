@@ -369,6 +369,13 @@ func _apply_judge_line_thickness() -> void:
 func _apply_note_fall_config_from_settings() -> void:
 	var note_fall_time = ConfigManager.instance.get_float("Generator", "note_fall_time", 1.5)
 	note_generation_lead_time = max(1.0, note_fall_time * 1000.0)
+	# 把本页实际使用的"生成提前量"推给播放器：开局预卷时长由它推出（+1s 余量），
+	# 保证"音符生成窗口"与"预卷"恒等对齐。此前预卷由 PlayView 按同一配置独立算一遍，
+	# 两条规则不等价（本处有 1s 下限、那里恒加 1s），note_fall_time > 1.0 时会分叉。
+	# 幂等；C# 侧只存一个标量，重复推送无副作用。
+	var _mgr = PlaybackDisplay.instance
+	if _mgr != null:
+		_mgr.set_note_generation_lead_ms(note_generation_lead_time)
 
 	var note_fall_mode = ConfigManager.instance.get_int("Generator", "note_fall_mode", 0)
 	var note_fall_speed_after_judge_multiplier = ConfigManager.instance.get_float("Generator", "note_fall_speed_after_judge_multiplier", -1.0)

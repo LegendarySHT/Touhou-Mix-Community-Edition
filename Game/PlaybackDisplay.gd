@@ -837,11 +837,33 @@ func enter_user_playlist_from_head() -> bool:
 func align_index_to_current() -> void:
 	if MeltySynth != null: MeltySynth.align_index_to_current()
 ## 开始一次会话。
-## persist=true → 写用户播放列表 A；persist=false → 只写单曲槽 B。
-## loop_file：曲终是否"文件级循环"（原地重播）。与旧 start_session 的第 4 个参数同义：
-##   打歌页 PlayView 传 false（曲终交给结算，不要重播）；音轨试听 TrackView / 播放器页保持 true。
+## 【新代码请用下面的意图方法】本方法把"哪种会话"编码成两个位置布尔（persist/loop_file），
+## 而 loop_file 恰好决定"曲终干什么"，传错就是结算页里从头再放一遍。意图方法把语义写进名字。
+## 保留本方法仅为过渡期兼容。
 func start_session(items: Array, start_index: int = 0, persist: bool = true, loop_file: bool = true) -> void:
 	if MeltySynth != null: MeltySynth.start_session(items, start_index, persist, loop_file)
+
+# ---- 意图化的会话装配（三个消费方的唯一区别就是这两维，故收敛成三个方法名）----
+## 打歌一局：写单曲槽 B（不落盘、不碰用户列表 A），曲终即曲终、不循环 → 交给结算
+func start_performance(items: Array, start_index: int = 0) -> void:
+	if MeltySynth != null: MeltySynth.start_performance(items, start_index)
+## 音轨试听：写单曲槽 B（不落盘），文件级循环（单曲原地重播）
+func start_preview(items: Array, start_index: int = 0) -> void:
+	if MeltySynth != null: MeltySynth.start_preview(items, start_index)
+## 播放器页会话：用户列表 A 生效（可落盘/可推进），文件级循环
+func start_player_session(items: Array, start_index: int = 0) -> void:
+	if MeltySynth != null: MeltySynth.start_player_session(items, start_index)
+
+## 消费方（FlowArea）解析完音符配置后推来"生成提前量"（= 下落窗口时长，毫秒）
+func set_note_generation_lead_ms(ms: float) -> void:
+	if MeltySynth != null and MeltySynth.has_method("set_note_generation_lead_ms"):
+		MeltySynth.set_note_generation_lead_ms(ms)
+## 开局预卷时长（正值 = 提前量，毫秒）。由 C# 按"生成窗口 + 余量"推出，见 C# 侧说明。
+func get_pre_roll_duration_ms() -> float:
+	if MeltySynth != null and MeltySynth.has_method("get_pre_roll_duration_ms"):
+		return float(MeltySynth.get_pre_roll_duration_ms())
+	return 1500.0
+
 func start_session_keys(keys: Array, start_index: int = 0) -> void:
 	if MeltySynth != null: MeltySynth.start_session_keys(keys, start_index)
 func set_repeat_mode(mode: int) -> void:
