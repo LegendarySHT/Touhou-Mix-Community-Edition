@@ -1,5 +1,22 @@
 # MIDI 播放实现说明
 
+> ## ⚠️ 本文档描述的是**重构前**架构，多数内容已失效
+>
+> 下列组件**已被删除**，正文中仍以它们为主语，请勿据此改代码：
+> `Game/MidiPlaybackManager.gd`、`Game/MidiPlaybackInterfaces.gd`、
+> `CSharp/MeltySynthPlayerWrapper.gd`、`Game/AudioManager.gd`。
+>
+> **当前权威文档**：
+> - 播放器分层设计与播放相关改动 → `Doc/architecture/player_intent_api.md`
+> - 现状总览（autoload / 手动单例 / 音频架构）→ `CLAUDE.md`
+>
+> 现状速览：播放真值是 **autoload `MeltySynth`（C# 播放器，分部 Transport / Playlist /
+> BackgroundAdvance / MiniaudioBridge）**；GDScript 侧经 **autoload `PlaybackDisplay`**
+> 访问；播放列表权威在 `MidiCore`（C#）；音频输出走 miniaudio 原生库，不经 Godot 音频总线。
+>
+> 本文档保留仅供参考（历史上的后端切换与时间同步思路）。若要恢复为"活文档"，
+> 应整体改写而不是局部修补。
+
 ## 目标
 
 统一描述当前 MIDI 播放链路：后端初始化、音源加载和时间同步。

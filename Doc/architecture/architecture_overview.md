@@ -36,10 +36,13 @@
 
 ### Game 层（Main.gd 手动创建）
 - `ScoreCalculator`：判定、准确率、评级
-- `AudioManager`：全局音量与音频通道
-- `MidiPlaybackManager`：MIDI 后端（addons / meltysynth）与音源管理
 - `KeySequenceManager`：按键序列分类与可视化输入数据
 - `NoteFallCalculator`：音符下落计算
+
+> **播放侧已不在本层**：`MidiPlaybackManager` / `AudioManager` / `MidiPlaybackInterfaces` /
+> `MeltySynthPlayerWrapper` 均已删除。播放真值在 **autoload `MeltySynth`（C# 播放器）**，
+> GDScript 侧经 **autoload `PlaybackDisplay`** 访问；播放列表权威在 `MidiCore`（C#）。
+> 播放器的分层设计见 `Doc/architecture/player_intent_api.md`。
 
 ### Utilities 层（懒加载）
 - `ConfigManager`：唯一懒加载单例（`ConfigManager.instance`），统一 INI 读取/写入与通知
@@ -85,7 +88,7 @@ enum UIState {
 - `ConfigManager` 是唯一懒加载单例特例，其他 Manager 按初始化流程就位。
 - `DataManager.load_all_midis_async()` 前必须保证 `FileSystemManager` 资源扫描已完成或超时兜底（`Main._load_midi_data()` 内含等待逻辑）。
 - 与播放时间有关的模块要明确单位（tick / ms / 秒），避免混用。
-- 项目当前**不存在** `GameplayManager`，游戏流程由 `PlayView.gd`、`ScoreCalculator`、`MidiPlaybackManager`、`KeySequenceManager` 协同承担；文档中历史性地提及 `GameplayManager` 的内容已废弃。
+- 项目当前**不存在** `GameplayManager`，游戏流程由 `PlayView.gd`、`ScoreCalculator`、`KeySequenceManager` 协同承担（播放侧已移至 autoload `MeltySynth` / `PlaybackDisplay`）；文档中历史性地提及 `GameplayManager` 的内容已废弃。
 
 ## 关联文档
 
