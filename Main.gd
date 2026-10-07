@@ -154,9 +154,15 @@ func _initialize_core_systems() -> void:
 		if logger:
 			logger.info("Storage config committed to settings.ini", "Main")
 
-	# 2.75. ThemeManager 已通过 autoload 自动实例化
+	# 2.75. ThemeManager 已通过 autoload 自动实例化（首次加载在其 _ready 里完成）
+	#
+	# 【它为何能读到正确的存储根】主题路径依赖 PathHelper.get_files_dir()，而存储根到
+	# 步骤 1.5 才注入 —— autoload 的 _ready 早于这里。为此 PathHelper.get_storage_root()
+	# 会惰性从引导指针（storage_pointer.ini）解析一次 override（见其注释），
+	# 故主题无需在这里二次加载。这条日志用于对表"启动后实际生效的外观模式"。
 	if ThemeMGR and ThemeMGR.is_loaded():
-		logger.info("ThemeManager initialized with theme: %s" % ThemeMGR.get_theme_name(), "Main")
+		logger.info("ThemeManager initialized with theme: %s (appearance=%s)" %
+			[ThemeMGR.get_theme_name(), ThemeMGR.get_appearance()], "Main")
 
 	# 3. 初始化文件系统管理器（单例，已自动管理）
 	filesystem_manager = FileSystemManager.new()
@@ -472,7 +478,7 @@ func _reload_all_settings() -> void:
 
 	# 应用Gameplay设置（包括SoundFont）
 	if PlaybackDisplay.instance:
-		var soundfont_name = config_loader.get_value("Gameplay", "soundfont_file", "GeneralUser-GS.sf2")
+		var soundfont_name = config_loader.get_value("Gameplay", "soundfont_file")
 		var cur_basename = PlaybackDisplay.instance.current_soundfont_path.get_file().get_basename()
 		var new_basename = soundfont_name.replace(".sf2", "").replace("[内置]", "").strip_edges()
 		if new_basename != cur_basename:
@@ -524,6 +530,11 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 	# 处理单个配置项变更
 	logger.debug("Configuration changed: [%s] %s = %s" % [section, key, str(value)], "Main")
 
+	# 播放器相关配置：查声明式设置表（Game/PlayerSettings.gd）统一下发，不再逐键 elif。
+	# 新增播放器设置只需在表里加一条 —— 漏加分支导致"改了不生效要重启"的旧坑由此关闭。
+	if _apply_player_setting(key, section, value):
+		return
+
 	# 根据 section 和 key 应用相应的配置
 	match section:
 		"General":
@@ -531,35 +542,10 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 				net_manager.set_online_mode(int(value) == 1)
 
 		"Gameplay":
-			# MIDI播放管理器监听这些配置
-			if key == "soundfont_file" and PlaybackDisplay.instance:
-				PlaybackDisplay.instance.set_soundfont(str(value))
-			# 全局播放配置：推给 C# 播放器（ConfigManager 不入场景树，C# 取不到）
-			elif key == "default_midi_volume" or key == "audio_sync_threshold":
-				if PlaybackDisplay.instance:
-					PlaybackDisplay.instance.push_global_playback_config()
-			# 音频校准延迟：只在该键是"当前激活预设"时下发（另一套预设的改动不应影响当前输出）。
-			# 旧实现在 MidiPlaybackManager._on_config_changed 里做，重构后丢了这个入口，
-			# 导致校准完不生效、要等失焦回归或重启。
-			elif (key == "audio_playback_delay" or key == "audio_playback_delay_bt") \
-					and PlaybackDisplay.instance:
-				if key == PlaybackDisplay.instance.active_delay_key():
-					PlaybackDisplay.instance.apply_audio_delay_from_config()
-					logger.info("Audio playback delay applied live: %s = %s" % [key, str(value)], "Main")
-				else:
-					logger.debug("Delay preset %s updated but inactive, not applied" % key, "Main")
+			pass
 
 		"Playback":
-			# 全局播放配置：系统时钟等
-			if key == "use_system_stopwatch":
-				if PlaybackDisplay.instance:
-					PlaybackDisplay.instance.push_global_playback_config()
-			# 复音数是合成器创建期参数：置新值后必须重建音源才生效（旧实现同样如此）。
-			# 重建走 C# 的保位置版本，避免"从头重播 / 停在原地静音"。
-			elif key == "max_polyphony" and PlaybackDisplay.instance:
-				PlaybackDisplay.instance.set_max_polyphony(int(value))
-				PlaybackDisplay.instance.reload_soundfont_preserving_position()
-				logger.info("Max polyphony applied live: %s" % str(value), "Main")
+			pass
 		
 		"Display":
 			if key == "fullscreen":
@@ -571,3 +557,37 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 			elif key == "vsync_enabled":
 				var is_vsync = ConfigManager.parse_bool(value)
 				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if is_vsync else DisplayServer.VSYNC_DISABLED)
+
+## 播放器相关配置的统一下发入口。声明在 Game/PlayerSettings.gd，此处只做分发。
+## 返回 true 表示该键由本函数处理（调用方不再往下走 section match）。
+func _apply_player_setting(key: String, _section: String, value: Variant) -> bool:
+	if not PlayerSettings.affects(key):
+		return false
+	var display := PlaybackDisplay.instance
+	if display == null:
+		return true   # 已声明为播放器设置，但播放器未就绪：吞掉即可，稍后 push_global 会带全量
+	match str(PlayerSettings.entry(key).get("apply", "")):
+		"push_global":
+			display.push_global_playback_config()
+		"delay_if_active":
+			# 只在该键是"当前生效的延迟预设"时下发：另一套预设的改动不应影响当前输出
+			if key == display.active_delay_key():
+				display.apply_audio_delay_from_config()
+				logger.info("Audio playback delay applied live: %s = %s" % [key, str(value)], "Main")
+			else:
+				logger.debug("Delay preset %s updated but inactive, not applied" % key, "Main")
+		"polyphony":
+			# 复音数是合成器创建期参数：置新值后必须重建音源才生效。
+			# 重建走 C# 的保位置版本，避免"从头重播 / 停在原地静音"。
+			display.set_max_polyphony(int(value))
+			display.reload_soundfont_preserving_position()
+			logger.info("Max polyphony applied live: %s" % str(value), "Main")
+		"soundfont":
+			display.set_soundfont(str(value))
+		"preroll":
+			# 下落窗口/预卷时长的真值由消费方（FlowArea）在解析音符配置后推给 C#
+			# （PlaybackDisplay.set_note_generation_lead_ms）；此处无需动作。
+			pass
+		_:
+			logger.warning("PlayerSettings entry has unknown apply: %s" % key, "Main")
+	return true

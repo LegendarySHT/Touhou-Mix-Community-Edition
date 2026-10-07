@@ -117,6 +117,16 @@ public class AndroidBridge extends GodotPlugin {
 	private static MediaSessionService s_pending_service;
 	/** 上次提交给前台服务的通知内容标识，内容不变则不重复提交 */
 	private String lastNotifiedKey = "";
+	/**
+	 * 引擎（C# 播放器）是否已下发过一次真实播放状态。
+	 *
+	 * 【为什么需要】冷启动时本类比 Godot 引擎早约 2s 起来（见 onMainCreate 注释），
+	 * 而上次运行落盘的 media_state.json 还在。ticker 第一拍读到它、发现 version 与
+	 * 初始值 0 不同 → 覆盖 lastTitle/lastDurationMs，而 lastPlaying 仍是默认 true
+	 * → pushState() 下发 STATE_PLAYING → 前台服务与通知在"其实什么都没播"时就被拉起。
+	 * 故在引擎下发过一次 update_state 之前，只记录元数据、不碰前台服务与通知。
+	 */
+	private boolean godotStateSeen = false;
 	/** 上次尝试拉起前台服务的时间戳与退避间隔（后台拉起必被拒，退避避免日志刷屏） */
 	private long _lastFgsAttemptUptimeMs = 0L;
 	private static final long FGS_RETRY_BACKOFF_MS = 5000L;
@@ -718,6 +728,7 @@ public class AndroidBridge extends GodotPlugin {
 			lastTitle = title == null ? "" : title;
 			lastAlbum = album == null ? "" : album;
 			foregroundWanted = true;
+			godotStateSeen = true;   // 引擎已下发真实状态，此后才允许拉通知/前台服务
 			setCoverPng(coverPng);
 			pushState();
 		});
@@ -869,9 +880,11 @@ public class AndroidBridge extends GodotPlugin {
 		// 暂停态它只轮询文件、不做进度外推，开销极低。只在播放页注销（clear）时才停。
 		schedulePositionTick();
 
-		if (foregroundWanted) {
+		if (foregroundWanted && godotStateSeen) {
 			// 播放或暂停都保持前台与通知（暂停只把通知换成播放图标），
-			// 只在播放页注销（clear）时才撤下
+			// 只在播放页注销（clear）时才撤下。
+			// godotStateSeen 门闩：引擎下发过真实状态之前不拉通知 —— 否则冷启动时
+			// 上一轮残留的 media_state.json 会被当成"正在播放"重放出来。
 			startForegroundPlayback();
 		} else if (service != null) {
 			service.stopForegroundPlayback();
@@ -1088,7 +1101,10 @@ public class AndroidBridge extends GodotPlugin {
 			// 后台换曲：C# 推进线程换了歌但主循环挂起、无法下发 update_state，
 			// 这里主动检测 C# 写下的元数据并同步（换歌时重推一次状态）。
 			// 暂停态同样要轮询——换曲可能就发生在暂停/曲终那一刻。
-			boolean mediaStateChanged = pollMediaStateFile();
+			//
+			// godotStateSeen 门闩：引擎下发真实状态之前不读文件 —— 冷启动时那份文件是
+			// 上一轮残留，读了只会把旧曲目当成当前曲目。
+			boolean mediaStateChanged = godotStateSeen && pollMediaStateFile();
 			if (mediaStateChanged) {
 				pushState();
 			}

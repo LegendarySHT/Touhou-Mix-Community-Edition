@@ -15,6 +15,12 @@ extends Node
 
 func _ready() -> void:
 	add_to_group("singletons")
+	# 【为什么这里能安全读取】USER_THEME_PATH 依赖 PathHelper.get_files_dir()，而存储根在
+	# Main._ready 步骤 1.5 才由 StorageManager 注入 —— autoload 的 _ready 早于它。
+	# 为此 PathHelper.get_storage_root() 会**惰性**从引导指针（storage_pointer.ini）
+	# 解析一次 override，故此处已能拿到真实存储根（Android 自定义存储位置亦然）。
+	# 否则读到的是默认引导目录下的另一个 theme.ini：用户切浅色写进自定义根、
+	# 启动却读那份旧文件 → 外观模式永远回默认深色（桌面端两路径相同，只在 Android 复现）。
 	load_theme()
 	_save_timer = Timer.new()
 	_save_timer.one_shot = true

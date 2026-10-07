@@ -54,13 +54,46 @@ static func get_boot_dir() -> String:
 ## 由 StorageManager 在启动恢复/迁移后通过 set_storage_root() 注入，
 ## 保持本类"纯静态、不依赖任何 Manager"的设计约束
 static var _storage_root_override: String = ""
+## 是否已尝试过"从引导指针提前解析"（见 _resolve_override_from_pointer）
+static var _pointer_probed: bool = false
 
 ## 获取可移动存储根（用户数据根）
 ## 已配置自定义路径时返回 override，否则回退固定引导目录（默认行为与旧版本一致）
+##
+## 【为什么读之前先探一次指针】autoload 的 _ready 全部早于 Main._ready，而存储根由
+## StorageManager 在 Main._ready 步骤 1.5 才注入 —— 于是"引擎刚起来就按 user:// 路径
+## 读文件"的 autoload（主题 ThemeMGR）读到的是**默认引导目录下的另一个文件**：
+## 用户切浅色写进 <存储根>/theme.ini，启动却读 Android/data/<pkg>/files/theme.ini，
+## 外观模式永远回默认深色（桌面端两个路径恰好相同，故只在 Android 自定义存储位置复现）。
+##
+## 这里只做**非破坏性**读取（读指针 → 注入 override），不校验、不写、不迁移 ——
+## 那些仍归 StorageManager.recover_and_resolve()（稍后照常执行并按需覆盖本值）。
 static func get_storage_root() -> String:
+	if _storage_root_override.is_empty() and not _pointer_probed:
+		_resolve_override_from_pointer()
 	if not _storage_root_override.is_empty():
 		return _storage_root_override
 	return get_boot_dir()
+
+## 惰性解析：读固定引导目录下的 storage_pointer.ini（[Storage] custom_storage_path）。
+## 只为让"早于 StorageManager 的读取方"拿到正确路径；失败/无指针则保持默认。
+static func _resolve_override_from_pointer() -> void:
+	_pointer_probed = true
+	var pointer_path := get_boot_dir() + "storage_pointer.ini"
+	if not FileAccess.file_exists(pointer_path):
+		return
+	var parsed: Dictionary = IniParser.parse(FileAccess.get_file_as_string(pointer_path))
+	var sec: Variant = parsed.get("Storage", {})
+	if not (sec is Dictionary):
+		return
+	var cfg := normalize_storage_path(str((sec as Dictionary).get("custom_storage_path", "")))
+	if cfg.is_empty():
+		return
+	# 指针指向的目录不存在（外置存储未挂载/被删）时**不采纳**：宁可用默认根，也不要
+	# 让全应用指向一个不存在的路径。StorageManager 稍后仍会按自己的规则做完整判定。
+	if not DirAccess.dir_exists_absolute(cfg):
+		return
+	_storage_root_override = cfg
 
 ## 设置存储根 override（空值/空串清除，回退固定引导目录）
 static func set_storage_root(path: String) -> void:
