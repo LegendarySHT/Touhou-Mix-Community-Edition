@@ -618,3 +618,19 @@ func _start_cover_flip(tex: Texture2D) -> void:
 	)
 	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tw.tween_property(flip_node, "offset_transform_scale:x", 1.0, COVER_FLIP_EXPAND_SEC)
+
+## 打断翻面并把封面缩放复位（换曲/离开页面时调用，避免停在压扁状态）
+func _kill_cover_flip() -> void:
+	AniMGR.stop_tween(COVER_FLIP_TWEEN_ID)
+	if _cover_view != null:
+		_cover_view.offset_transform_scale = Vector2.ONE
+
+## 全局封面缓存被后台回收（见 Core/MemoryGC.gd）后复位本页封面状态。
+## 关键是把 _cover_chart_id 清掉：回页面时 _refresh_cover 才算"换了一首"→ 走直出分支，
+## 否则会被判为"同一首"而跳过（本该重载的那次不重载）。
+func invalidate_cover_state() -> void:
+	_kill_cover_flip()
+	_cover_chart_id = ""
+	_cover_first_load = true
+	if _cover != null:
+		_cover.texture = null
