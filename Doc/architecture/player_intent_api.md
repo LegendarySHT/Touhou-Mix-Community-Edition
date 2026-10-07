@@ -544,8 +544,21 @@ private bool EvaluateAudioDeviceHealth(DeviceTrigger trigger);
 | `playback_interrupted` | phase 因外部原因变化时 | `reason`, `at_position_ms`, `phase` | PlayView：`_show_pause_menu()` + 记录"是被打断的"（**不再调任何恢复方法**） |
 | `playback_resumed` | C# 自行恢复成功后 | `reason`, `at_position_ms` | PlayView：关菜单 + `_visual_time_needs_anchor = true` + 强制重读快照 |
 | `playback_device_state_changed` | 设备状态变化 / 整桥重建完成 | `state`, `rebuilt` | **无人需要响应**（诊断用）；`rebuilt == true` 时 PlayView 可打一条日志便于对表 |
-| `midi_finished` | sequencer 自然曲终（`FinishPlayback`） | — | PlayView：`_on_game_finished()`（不变） |
+| `midi_finished` | 后端自然曲终（**全局信号，不区分是谁在放**） | — | PlayView：`_on_game_finished()`。⚠️ **订阅必须跟随本页活跃状态**，见下方「跨页误触发」 |
 | `audio_focus_changed` | 焦点变化 | `state` | **降级为纯诊断**。PlayView 不再据此做任何动作（C# 已自行处理），仅日志 |
+
+#### ⚠️ 原则：后端全局信号必须由"活跃页"订阅，不能常驻
+
+`midi_finished` / `vocal_finished` / `audio_device_*` 这类信号由**播放后端**发出，**不区分是谁在放**。
+而本项目里"谁在放"至少有两种合法情形：打歌页（PlayView 驱动）与播放器页（背景播放 + 列表推进）。
+
+**若消费方在 `_ready()` 里常驻订阅，就会跨页误触发。** 已发生的真实案例：
+PlayView 常驻订阅 `midi_finished` → 播放器页一首放完 → PlayView 的 `_on_game_finished` 被触发 →
+内部 `playback_mgr.stop()` 把后端停掉 → **播放器页不再自动切下一首**。
+
+**规则**：这类信号的订阅必须在 `state == 本页对应状态` 时建立、离开时解除；
+并且 handler 内部还要再判一次"当前播放是否归本页驱动"（双保险，防止状态切换时序窗口）。
+新增后端信号时请一并遵守 —— 这是本方案要消除的"一个东西混了不同地方的特殊逻辑"的典型。
 
 ### 4.3 信号顺序保证
 
@@ -617,6 +630,21 @@ playback_state_changed()          ← 兼容旧消费方
 
 > **数值等价性验收（必须有）**：阶段 0 落地的 `JudgeMs` 必须与今天的 `get_visual_position_ms()`（去掉 `Math.Max` 钳制后）**在同一时刻逐毫秒相等**；`RawTimelineMs` 必须与今天的 `get_raw_position_ms()` 逐毫秒相等。这是本节的唯一硬指标——若不等，说明分支顺序或扣减项抄错了。
 
+> ### ⚠️ 阶段 0 实测更正：「不钳制负值」目前只做到一部分
+>
+> 阶段 0 用真机路径实测后发现，上面几处写的"任何 phase 都不钳制负值"**比现状严格**：
+>
+> | 位置来源 | 现状 | 说明 |
+> |---|---|---|
+> | 预卷分支（`_currentOffsetMs < 0`） | **已原样透出负值** ✓ | 早前修过，`get_position_ms()` / `get_raw_position_ms()` / `get_visual_position_ms()` 三者逐值相等（实测 `-400.0`） |
+> | `get_visual_position_ms()` 的 `Math.Max(0.0, pos - _audioDelayMs)` | 仅剩 `0 <= pos < _audioDelayMs` 这一段被钳成 0 | 实测样本：`JudgeMs=-116.85` 而 `visual=0.00`。阶段 3 去掉这处钳制即达标 |
+> | `get_position_ms()` **正常分支**内的 `Math.Max(0.0, wallRawMs - latencyMs)` | **仍在**，阶段 0 不允许改（属改行为） | 这是与 §5.1 第 6 行"永不钳制"的**最后一处差距**，留待阶段 2/3 处理 |
+>
+> 另有一条实现约束（阶段 0 踩到）：文档要求的"seek-hold 帧内所有字段返回 `_lastPositionMs`"与现状不符 ——
+> `get_raw_position_ms()` 在 playing && sequencerStarted 时直接返回 `sequencer.RenderedPosition`，**不看 hold 帧**。
+> 阶段 0 按代码取（故 `RawTimelineMs`/`AudioMs` 在 hold 窗口内可能是渲染钟≈0 而非 seek 目标）。
+> 若要让两者一致，必须改既有 getter，属改行为，须在阶段 3 明确决策。
+
 ### 5.2 快照查询
 
 ```gdscript
@@ -663,7 +691,7 @@ func get_playback_snapshot() -> PlaybackSnapshot:
 
 | 行 | 旧调用 | 新调用 | 为什么 |
 |---|---|---|---|
-| 168-169 | `playback_mgr.midi_finished.connect(_on_game_finished)` | 不变 | 语义已正确 |
+| 168-169 | `playback_mgr.midi_finished.connect(_on_game_finished)` | **订阅跟随本页活跃状态**（进入 PLAY_VIEW 订阅、离开退订） | ⚠️ 初稿写"不变/语义已正确"是**漏判**：`midi_finished` 是后端全局信号，播放器页放完一首同样会发，而 `_on_game_finished` 内部会 `stop()` 掉后端播放 → 真机表现为"在播放器页一首放完直接不切歌了"。另在 `_on_game_finished` 内加"不归本页管就直接返回"的守卫 |
 | 172-174 | `audio_focus_changed.connect(_on_audio_focus_changed)` | 删除，改连 `playback_interrupted` + `playback_resumed` + `playback_phase_changed` | **本方案核心改动**：焦点决策收归 C# |
 | 214 | `current_time = playback_mgr.get_position_ms()` | `current_time = _snap.JudgeMs` | **保持扣延迟口径，仅改名**。`get_position_ms()` 转发到扣延迟口径是**正确的**（见 §1.2）；改动纯粹是"别名 → 有名字的字段" |
 | 215 | `hud.set_progress(current_time)` | `hud.set_progress(_snap.JudgeMs)` | 与判定同源（判定/画面必须同步），数值不变 |

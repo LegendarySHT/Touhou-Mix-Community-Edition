@@ -150,7 +150,6 @@ func _ready() -> void:
 	# HUD 展示层回调（结算检测 / 背景闪光请求）
 	hud.game_finished_requested.connect(_on_game_finished)
 	hud.flash_requested.connect(bg_ctrl.flash)
-
 	retry_btn.pressed.connect(func ():
 		_prepare_game()
 	)
@@ -163,10 +162,11 @@ func _ready() -> void:
 		push_error("PlaybackDisplay not initialized!")
 		return
 
-	# 播放自然结束时立即触发游戏结算（C# 后端 finished → midi_finished）
-	# 原"位置停滞"启发式检测保留作为兜底
-	if not playback_mgr.midi_finished.is_connected(_on_game_finished):
-		playback_mgr.midi_finished.connect(_on_game_finished)
+	# 【midi_finished 的订阅跟随"本页是否活跃"，见 _set_game_signal_subscribed】
+	# 它是**后端全局**信号：播放器页（唯一合法的背景播放页）放完一首时同样会发。
+	# 常驻订阅会让播放器页的歌一放完就触发本页的结算流程 —— 它内部会 stop() 掉
+	# 后端播放，直接把播放器页的"播完自动下一首"杀死。故进入本页才订阅、离开即退订。
+	_set_game_signal_subscribed(UiStatMGR.current_state == UIStateManager.UIState.PLAY_VIEW)
 	# 音频焦点（Android）：焦点丢失即刻暂停，焦点归还时才恢复 —— 后者是恢复音频设备
 	# 唯一可能成功的时刻，比"音频钟停滞 0.5s 后拆桥重建"既快又准。
 	if playback_mgr.has_signal("audio_focus_changed") \
@@ -323,11 +323,27 @@ func get_mid_lane_gap() -> int:
 func get_lane_separator_enabled() -> bool:
 	return keyboard_mode and keyboard_lane_separator
 
+## 订阅/退订"后端自然曲终"信号。只在打歌页活跃期间订阅。
+##
+## 为什么必须跟随活跃状态：`midi_finished` 是**后端全局**信号，不区分是谁在放。
+## 而播放器页是唯一合法的背景播放页（放完会自动切下一首），它放完时同样会发这个信号。
+## 若本页常驻订阅，播放器页的歌一放完就会触发本页的结算流程，而 `_on_game_finished`
+## 内部会 `playback_mgr.stop()` —— 表现就是"在播放器页听着歌，一首放完直接不切歌了"。
+func _set_game_signal_subscribed(on: bool) -> void:
+	if playback_mgr == null or not playback_mgr.has_signal("midi_finished"):
+		return
+	var connected := playback_mgr.midi_finished.is_connected(_on_game_finished)
+	if on and not connected:
+		playback_mgr.midi_finished.connect(_on_game_finished)
+	elif not on and connected:
+		playback_mgr.midi_finished.disconnect(_on_game_finished)
+
 func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.UIState) -> void:
 	var enable:bool = state == UIStateManager.UIState.PLAY_VIEW
 	_apply_input_low_latency(enable)
 	set_process(enable)
 	get_node("Layer").visible = enable
+	_set_game_signal_subscribed(enable)
 
 	# 离开播放视图时统一清理所有资源（无论从哪条路径退出都走这里）
 	if _oldState == UIStateManager.UIState.PLAY_VIEW and state != UIStateManager.UIState.PLAY_VIEW:
@@ -654,6 +670,9 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	# （旧实现就是 start_session(..., persist=false, loop_file=false) 的第 4 个参数；
 	#  少了它，曲终会原地重播 —— 打完一首歌在结算界面里还会从头再放一遍）
 	playback_mgr.start_session([midi] as Array[MidiData], 0, false, false)
+	# 认领会话所有权：本局由本页驱动，故后端全局信号（midi_finished / 设备类）归本页响应。
+	# 判据是"所有权"而非"页面可见" —— 后台播放时页面可以不可见却仍归它管，反之亦然。
+	playback_mgr.claim_session(self)
 
 	# 新增：从配置读取演奏模式
 	var performing_mode = ConfigManager.instance.get_int("Playback", "performing_mode", 1)
@@ -1109,9 +1128,18 @@ func _on_game_finished() -> void:
 
 	GLogger.info("Game finished!", "PlayView")
 
-	# 停止MIDI播放但不暂停FlowArea，让剩余音符继续自然下落
-	if playback_mgr:
+	# 【只有本页在驱动这次播放时才允许碰后端】本函数可能被后端全局事件触发，
+	# 而播放器页正在背景播放时那播放不归本页管 —— 停掉它等于把"播完自动下一首"杀死
+	#（真机表现：在播放器页一首放完直接不切歌了）。
+	# 判据是**会话所有权**而非"页面是否可见"：后台播放时页面可以不可见却仍归它管。
+	var owns_playback: bool = playback_mgr != null and playback_mgr.is_session_owner(self)
+	if playback_mgr and owns_playback:
 		playback_mgr.stop()
+	elif not owns_playback:
+		# 不归本页管：不碰后端也不跳结算（后端会自行推进下一首）
+		_is_finishing_game = false
+		GLogger.info("Game finished ignored: session is owned by another view", "PlayView")
+		return
 
 	# 等待所有音符自然消除（被判定或落出屏幕），最长等待10秒
 	var safety_timer := get_tree().create_timer(10.0)

@@ -648,6 +648,52 @@ func evaluate_audio_device_health(trigger: String) -> bool:
 		return false
 	return bool(MeltySynth.evaluate_audio_device_health(trigger, true, true))
 
+# ===================== 播放状态快照（重构阶段 0 引入） =====================
+#
+# 设计见 Doc/architecture/player_intent_api.md §5.2。目的：让 GDScript 一次拿到完整状态，
+# 不再靠 is_playing/is_paused 两个布尔去猜"现在是预卷、在播、还是设备已失效"。
+#
+# 【枚举镜像：数值即契约】C# 侧快照字段一律是 int，GDScript 用下面这些同序常量比较，
+# 不依赖任何跨语言的枚举名解析。**改 C# 枚举时必须同步改这里**（顺序即数值，不可重排）。
+
+## PlaybackPhase（对应 CSharp/PlaybackEnums.cs）
+const PHASE_IDLE := 0
+const PHASE_PREPARING := 1
+const PHASE_PRE_ROLLING := 2
+const PHASE_PLAYING := 3
+const PHASE_PAUSED := 4
+const PHASE_ENDED := 5
+const PHASE_STOPPED := 6
+
+## AudioDeviceState（对应 CSharp/PlaybackEnums.cs）
+const DEVICE_STATE_ABSENT := 0
+const DEVICE_STATE_STOPPED := 1
+const DEVICE_STATE_RUNNING := 2
+const DEVICE_STATE_START_FAILED := 3
+
+## PlaybackInterruptReason（对应 CSharp/PlaybackEnums.cs）
+const INTERRUPT_NONE := 0
+const INTERRUPT_AUDIO_FOCUS_LOSS := 1
+const INTERRUPT_DEVICE_LOST := 2
+const INTERRUPT_APP_BACKGROUNDED := 3
+const INTERRUPT_OUTPUT_ENDPOINT_CHANGED := 4
+
+## 一次取全当前播放状态（C# `PlaybackSnapshot`，[GlobalClass] + [Export] 字段可直读）。
+##
+## ⚠️ 每次调用会**新建一个 RefCounted**：请在每帧开头取一次并缓存整个对象，
+## 不要在每个判定入口里现取（判定入口每帧可能调用多次）。
+## 返回 null 表示播放器尚未就绪。
+func get_playback_snapshot() -> RefCounted:
+	if MeltySynth == null or not MeltySynth.has_method("get_playback_snapshot"):
+		return null
+	return MeltySynth.get_playback_snapshot()
+
+## 只要位置时用这个（同样每次新建对象，理由同上）
+func get_playback_position() -> RefCounted:
+	if MeltySynth == null or not MeltySynth.has_method("get_playback_position"):
+		return null
+	return MeltySynth.get_playback_position()
+
 func resume() -> void:
 	request_audio_focus()
 	# 【不要在 GDScript 侧决定"要不要拉起音频设备"】C# 的 resume() 自己已经分好了：
@@ -1016,9 +1062,11 @@ func prepare_vocal_playback() -> void:
 # ---- 页面生命周期（旧 SystemMediaSession 语义：注册=通知可见，注销=退出播放并撤下通知）----
 ## 注册播放页面：立刻推一次媒体状态，让通知/锁屏卡片马上出现
 ## （否则要等 TickTransport 的下一个 0.5s 节拍）
-func register_view(_view: Node) -> void:
+func register_view(view: Node = null) -> void:
 	# 注册 = 允许推送媒体状态（旧 SystemMediaSession.has_view() 的等价物）；
 	# C# 侧置位后立刻推一次，并让周期推送重新生效。
+	if view != null:
+		claim_session(view)
 	if MeltySynth == null:
 		return
 	if MeltySynth.has_method("register_media_view"):
@@ -1029,10 +1077,60 @@ func register_view(_view: Node) -> void:
 ## 注销播放页面：停播 + **撤下媒体通知**。
 ## 旧 SystemMediaSession.unregister_view 在 stop() 之后还会调后端 clear()；
 ## 重构后只 stop()，通知会以 STOPPED 状态一直挂在通知栏（前台服务也不退）。
-func unregister_view(_view: Node) -> void:
+func unregister_view(view: Node = null) -> void:
+	# 注销自己时一并交出会话所有权（别的页面接管时会自行 claim）
+	if view != null and _session_owner != null and _session_owner.get_ref() == view:
+		_session_owner = null
 	stop()
 	if MeltySynth != null and MeltySynth.has_method("clear_media_notification"):
 		MeltySynth.clear_media_notification()
+
+# ---- 会话所有权 ----------------------------------------------------------
+#
+# 【为什么需要它】后端事件（`midi_finished`、设备类信号）是**全局**的，不区分是谁在放；
+# 而"谁在放"至少有三种合法情形（打歌页 / 音轨试听 / 播放器页背景播放）。
+# 之前各页面只能靠 `current_state == 本页` 去猜"这个事件归不归我管"，
+# 于是 PlayView 常驻订阅 `midi_finished` 就把播放器页的"播完自动下一首"杀死了。
+#
+# 【判据是"会话所有权"而不是"页面是否可见"】后台播放时页面可以不可见却仍归它管；
+# 反过来页面可见时播放也可能归别人管（媒体命令/后台推进）。故显式记录"谁起的这次会话"。
+#
+# 【谁该 claim】在"页面开始驱动播放"的那一步：PlayView._prepare_game（装配一局）、
+# TrackView 打开/重载、MusicPlayerView 激活页与接管用户会话。
+# 本类里所有"起会话"的转发（start_session / begin_user_session / prepare_vocal_playback）
+# 会自动把最近一次发起者记为 owner，调用方不必额外写。
+
+var _session_owner: WeakRef = null
+
+## 认领当前播放会话（谁起会话谁调用）。多次调用以最后一次为准。
+func claim_session(view: Node) -> void:
+	if view == null:
+		return
+	_session_owner = weakref(view)
+
+## 当前这次播放是否归 `view` 管。后端全局信号的 handler 应据此门控。
+##
+## 判据顺序：
+##   1. 有页面显式 claim 过 → 只认它（页面接管场景，如播放器页接管用户会话）
+##   2. 无人 claim（典型：后端被媒体命令/后台推进自行起播）→ **当前活跃页即 owner**
+## 第 2 条退化的意义：正常路径永远不被误挡，而"非活跃页"仍然会被挡下 ——
+## 这正是要修的那类跨页误触发（PlayView 曾常驻订阅，把播放器页的自动切歌杀死）。
+func is_session_owner(view: Node) -> bool:
+	if view == null:
+		return false
+	if _session_owner != null:
+		var owner: Node = _session_owner.get_ref() as Node
+		if owner != null:
+			return owner == view
+		_session_owner = null   # 页面已释放
+	if UiStatMGR == null or not ("work_state" in view):
+		return false
+	return UiStatMGR.current_state == view.work_state
+
+## 会话是否已被任何页面认领（诊断用）
+func has_session_owner() -> bool:
+	return _session_owner != null and _session_owner.get_ref() != null
+
 
 # ---- 杂项后端 ----
 # 【已移除 recover_audio_output() / recreate_audio_output() 两个转发】

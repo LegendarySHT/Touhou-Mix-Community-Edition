@@ -205,6 +205,8 @@ func _load_midi(midi: MidiData) -> void:
 		_set_display_total_time(midi.duration_ms)
 	# TrackView 试听：写「正常通道的单曲槽」(不落盘、不碰用户播放列表) + 文件级循环
 	midi_playback_manager.start_session([midi] as Array[MidiData], 0, false)
+	# 认领会话所有权（判据是"谁在驱动播放"，不是"页面是否可见"）
+	midi_playback_manager.claim_session(self)
 
 	# 新增：从加载的 MIDI 和 SoundFont 提取可用乐器选项
 	_extract_instruments_from_midi()
@@ -1009,6 +1011,7 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 		if current_midi_data:
 			# 回到本页续听：保持「正常通道单曲槽 + 文件级循环」的会话语义
 			midi_playback_manager.start_session([current_midi_data] as Array[MidiData], 0, false)
+			midi_playback_manager.claim_session(self)
 			# 若本次退出设置触发了音源重载（settings_changed 已在退场前同步发出），
 			# 须等重载完成后再 resume：否则重载完成回调会在已启动的人声之上再次重启人声（"多放一下"）。
 			# 重载多在退场动画期间完成；若仍进行中则挂起续播，待 soundfont_reload_completed 再启动。
