@@ -11,6 +11,10 @@ func setup(track_view: TrackView) -> void:
 
 
 ## 保存当前MIDI配置到 chart_runtime（权威 DB，替代 JSON 写回）
+##
+## 内容与上次落盘完全一致时直接跳过：LiteDB 写是同步的，退场那帧写盘会顶掉
+## 出场动画的首帧（表现为"出场动画基本没有"）。多数退出（只是看了看、按了返回）
+## 实际什么都没改，没必要每次进页都写一次库。
 func save_midi_config() -> void:
 	var current_midi_data = _track_view.current_midi_data
 	if current_midi_data == null:
@@ -36,11 +40,69 @@ func save_midi_config() -> void:
 	# 保存到 chart_runtime（权威 DB）。经 MidiCore.UpdateConfig 走配置权威入口，
 	# 与播放侧/后台换曲读的是同一份数据。
 	var chart_id = current_midi_data.file_hash if not current_midi_data.file_hash.is_empty() else current_midi_data.id
+
+	# 脏检查：与上次真正落盘的内容一致就什么都不做
+	var sig := _config_signature(runtime_config)
+	if chart_id == _last_saved_chart_id and sig == _last_saved_sig:
+		GLogger.debug("[TrackView] MIDI config unchanged, skip DB write", "TrackView")
+		return
+
+	var t0 := Time.get_ticks_usec()
 	if MidiCore != null and MidiCore.UpdateConfig(chart_id, runtime_config):
-		GLogger.info("Successfully saved MIDI config to DB (volume: %d/%d, solo: %d, track_enabled: %s, vocal: %s)" %
-			[current_midi_data.midi_volume, current_midi_data.vocal_volume, _track_view.solo_pairs.size(), current_midi_data.selected_track_configs, _track_view._vocal_controller.vocal_file_path], "TrackView")
+		_last_saved_chart_id = chart_id
+		_last_saved_sig = sig
+		GLogger.info("MIDI config saved to DB in %.1f ms (volume: %d/%d, solo: %d, track_enabled: %s, vocal: %s)" %
+			[(Time.get_ticks_usec() - t0) / 1000.0, current_midi_data.midi_volume, current_midi_data.vocal_volume,
+			_track_view.solo_pairs.size(), current_midi_data.selected_track_configs, _track_view._vocal_controller.vocal_file_path], "TrackView")
 	else:
 		push_error("[TrackView] MidiCore.UpdateConfig failed for: %s" % current_midi_data.id)
+
+
+## 上次真正写入 DB 的曲子与内容签名
+var _last_saved_chart_id: String = ""
+var _last_saved_sig: String = ""
+
+## 落盘延迟（秒）。退场动画约 0.3s：把同步的 LiteDB 写排到动画结束之后，
+## 否则写盘会占掉出场动画的首帧，看起来就是"出场动画基本没有"。
+## 0.6s 末仍有内容判重兜底——期间没有新编辑就不会重复写。
+const SAVE_DELAY_SEC := 0.6
+const SAVE_TWEEN_ID := "track_cfg_save"
+
+## 退场时使用：延迟落盘，避开出场动画
+func schedule_save_midi_config() -> void:
+	if AniMGR != null:
+		AniMGR.delay_call(save_midi_config, SAVE_DELAY_SEC, SAVE_TWEEN_ID)
+	else:
+		save_midi_config.call_deferred()
+
+## 把运行时配置压成与键序无关、与时间戳无关的稳定字符串，用于"内容是否变了"的比较。
+## 必须排除 saved_at：它每次导出都不同，带上就永远判定为"有变化"。
+func _config_signature(cfg: Dictionary) -> String:
+	var keys: Array = cfg.keys()
+	keys.sort()
+	var parts := PackedStringArray()
+	for k in keys:
+		var key := str(k)
+		if key == "saved_at":
+			continue
+		parts.append("%s=%s" % [key, _value_signature(cfg[k])])
+	return "|".join(parts)
+
+## 单个值的稳定表示：嵌套字典同样按键排序递归展开（轨道号是 int 键，先转字符串再排）
+func _value_signature(v) -> String:
+	if v is Dictionary:
+		var keys: Array = (v as Dictionary).keys()
+		keys.sort()
+		var parts := PackedStringArray()
+		for k in keys:
+			parts.append("%s:%s" % [str(k), _value_signature((v as Dictionary)[k])])
+		return "{" + ",".join(parts) + "}"
+	if v is Array:
+		var parts := PackedStringArray()
+		for e in (v as Array):
+			parts.append(_value_signature(e))
+		return "[" + ",".join(parts) + "]"
+	return str(v)
 
 
 ## 恢复MIDI配置的数据部分（音量、进度条、独奏状态）

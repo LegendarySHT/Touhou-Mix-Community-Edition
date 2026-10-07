@@ -187,6 +187,19 @@ func animate_offset_back(target: Node, duration: float = DURATION_NORMAL,
 	tween.tween_property(target, "offset_transform_position", Vector2.ZERO, duration)
 	return tween
 
+## 创建 offset_transform_position_ratio 位移动画（比例位移：1.0 = 自身尺寸）。
+## 与 animate_offset_to 的区别是位移量随节点尺寸/分辨率自适应，"整屏滑出"这类
+## 语义用它才在各种窗口尺寸下都成立（固定像素在别的分辨率下可能位移不足）。
+func animate_offset_ratio_to(target: Node, to_ratio: Vector2, duration: float = DURATION_NORMAL,
+							 tween_id: String = "") -> Tween:
+	var tween = _create_tween(tween_id)
+	tween.set_ease(EASING_STANDARD)
+	tween.set_trans(Tween.TRANS_CUBIC)
+	target.offset_transform_enabled = true
+	target.offset_transform_visual_only = false
+	tween.tween_property(target, "offset_transform_position_ratio", to_ratio, duration)
+	return tween
+
 ## 创建 offset_transform_scale 缩放动画（用于 Control 节点的非破坏性缩放，不影响布局）
 func animate_offset_scale(target: Node, to_scale: Vector2, duration: float = DURATION_NORMAL,
 						  tween_id: String = "") -> Tween:
@@ -637,8 +650,15 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 		"Store_View":
 			tween = animate_fade_out(ani_comp, 0.35, tween_id)
 		"Track_List":
-			tween = animate_fade_out(ani_comp, 0.35, tween_id)
-			animate_offset_to(ani_comp, Vector2(0, 1080), 0.25, "track_pos")
+			# 整屏滑出：位移用 ratio 表达（ratio 1.0 = 自身高度），与入场对称，
+			# 也避免固定像素在别的分辨率/窗口尺寸下位移不足而看不出来。
+			# 先归零再滑出，保证快速来回切换（入场 tween 被 kill 在半路）时起点干净。
+			ani_comp.offset_transform_enabled = true
+			ani_comp.offset_transform_visual_only = false
+			ani_comp.offset_transform_position_ratio = Vector2.ZERO
+			ani_comp.offset_transform_position = Vector2.ZERO
+			tween = animate_fade_out(ani_comp, 0.3, tween_id)
+			animate_offset_ratio_to(ani_comp, Vector2(0, 1), 0.3, "track_pos")
 		"Play_View":
 			tween = animate_fade_out(ani_comp, 0.45, tween_id)
 		"Setting_View":
@@ -800,7 +820,12 @@ func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween
 		"Track_List":
 			ani_comp.scroll_vertical = 300
 			tween = animate_fade_in(ani_comp, 0.45, tween_id)
-			animate_offset_back(ani_comp, 0.25, "track_pos")
+			# 与退出对称：从整屏下方滑回（ratio 1.0 → 0）
+			ani_comp.offset_transform_enabled = true
+			ani_comp.offset_transform_visual_only = false
+			ani_comp.offset_transform_position = Vector2.ZERO
+			ani_comp.offset_transform_position_ratio = Vector2(0, 1)
+			animate_offset_ratio_to(ani_comp, Vector2.ZERO, 0.3, "track_pos")
 		"Play_View":
 			tween = animate_fade_in(ani_comp, 0.45, tween_id)
 		"Setting_View":

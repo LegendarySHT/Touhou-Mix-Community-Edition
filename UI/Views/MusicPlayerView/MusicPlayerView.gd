@@ -547,19 +547,74 @@ func _sync_repeat_btn() -> void:
 
 const COVER_ITEM_ID := "music_player_cover"
 
+## 翻面动画时长：前半程收窄（贴图还在旧的），后半程展开（已换成新的）。
+## 两段用同一个 tween 串行驱动，不能并行——并行的话会在贴图还没换时就展开。
+const COVER_FLIP_SHRINK_SEC := 0.15
+const COVER_FLIP_EXPAND_SEC := 0.19
+const COVER_FLIP_TWEEN_ID := "mpv_cover_flip"
+const COVER_FLIP_MIN_SCALE_X := 0.03
+
+## 首张封面直出不翻面（还没有"上一张"可翻）；换曲才翻
+var _cover_first_load: bool = true
+
+## 当前封面所属曲子（file_hash/id）。翻面的语义是"换了一首歌"，不是"重新请求了封面"：
+## 离开页面再回来、或 CoverLoader 命中缓存同步回调时，曲子没变就不该翻。
+var _cover_chart_id: String = ""
+
 func _refresh_cover() -> void:
 	var mgr := PlaybackDisplay.instance
 	var data: MidiData = mgr.current_midi_data if mgr != null else null
 	if data == null:
 		CoverLoader.cancel(COVER_ITEM_ID)
+		_kill_cover_flip()
+		_cover_first_load = true
+		_cover_chart_id = ""
 		_cover.texture = null
 		_cover_placeholder.visible = true
 		return
 	var fs_mgr := FileSystemManager.instance
 	if fs_mgr == null:
 		return
-	CoverLoader.request_load(COVER_ITEM_ID, fs_mgr.get_cover_path_by_midiData(data), _on_cover_loaded)
+	var chart_id := data.file_hash if not data.file_hash.is_empty() else data.id
+	var song_changed := chart_id != _cover_chart_id
+	_cover_chart_id = chart_id
+	CoverLoader.request_load(COVER_ITEM_ID, fs_mgr.get_cover_path_by_midiData(data),
+		_on_cover_loaded.bind(song_changed))
 
-func _on_cover_loaded(_path: String, tex: Texture2D, _version: int) -> void:
-	_cover.texture = tex
-	_cover_placeholder.visible = tex == null
+## song_changed 由 _refresh_cover 绑定传入（CoverLoader 固定只回传三个参数）。
+## 这里不写默认值：默认值只在直接调用时生效，callv/bind 路径下不参与，留着反而误导。
+func _on_cover_loaded(_path: String, tex: Texture2D, _version: int, song_changed: bool) -> void:
+	# 首次（进页面）或仍是同一首（回页面复用缓存/重复刷新）直接换图
+	if _cover_first_load or not song_changed or not is_inside_tree():
+		_cover_first_load = false
+		_kill_cover_flip()
+		_cover.texture = tex
+		_cover_placeholder.visible = tex == null
+		return
+	_start_cover_flip(tex)
+
+## 封面左右翻转：缩放到 x≈0 → 换贴图 → 展开回 1。
+## 作用在 CoverView（Stage/CoverView，含 AspectRatio 与占位文字）而不是 Cover 本身：
+## 整块内容一起翻，"新封面从侧棱展开"的感觉才成立，也顺带翻掉了占位标签。
+## 用 offset_transform_scale（纯视觉，不动布局）——改 size 会触发 AspectRatioContainer
+## 重排 + 圆角 shader 重算，翻一次就是一次布局抖动。
+func _start_cover_flip(tex: Texture2D) -> void:
+	_kill_cover_flip()
+	var flip_node := _cover_view
+	flip_node.offset_transform_enabled = true
+	flip_node.offset_transform_scale = Vector2.ONE
+	var tw := AniMGR.create_managed_tween(flip_node, COVER_FLIP_TWEEN_ID)
+	if tw == null:
+		_cover.texture = tex
+		_cover_placeholder.visible = tex == null
+		return
+	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tw.tween_property(flip_node, "offset_transform_scale:x", COVER_FLIP_MIN_SCALE_X, COVER_FLIP_SHRINK_SEC)
+	# 收窄到棱边时换图：这一刻宽度只有几个像素，看不到跳变。
+	# set_trans/set_ease 只作用于"之后追加"的 tweener，故换图后要重新设一遍。
+	tw.tween_callback(func() -> void:
+		_cover.texture = tex
+		_cover_placeholder.visible = tex == null
+	)
+	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tw.tween_property(flip_node, "offset_transform_scale:x", 1.0, COVER_FLIP_EXPAND_SEC)

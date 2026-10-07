@@ -978,9 +978,11 @@ func _initialize_track_volumes_for_new_midi() -> void:
 
 # 页面状态回调
 func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateManager.UIState) -> void:
-	# 保存当前MIDI配置到JSON文件
+	# 保存当前MIDI配置到JSON文件。
+	# 用"延迟落盘"而不是 call_deferred：LiteDB 写是同步的，压在本帧等于占掉出场
+	# 动画的首帧（动画看着像没播）；内容与上次一致时内部还会直接跳过，不白写。
 	if current_midi_data != null:
-		_config_persistence.call_deferred("save_midi_config")
+		_config_persistence.schedule_save_midi_config()
 
 	# 去播放器页 / 设置页都不算退出播放：前者是同一首歌的另一种视图，后者只是配置页。
 	# 这两种情况保留媒体会话（不清通知、不 stop）——避免"清掉再重建"的闪烁，

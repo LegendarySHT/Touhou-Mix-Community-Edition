@@ -116,11 +116,13 @@ func _process(delta: float) -> void:
 		_follow_accum = 0.0
 		_follow_current_song_if_needed()
 
-## 面板打开且用户 4 秒内没碰过滚动，当前歌不在可视区时滚到居中
-func _follow_current_song_if_needed() -> void:
+## 面板打开且用户 4 秒内没碰过滚动，当前歌不在可视区时滚到居中。
+## force=true 跳过"用户刚操作过"的等待（刚展开面板时不跳，等于要等满 10s 才归位），
+## 并把滚动改为瞬时——刚展开时面板自己还在滑入，再叠一段滚动动画会显得很乱。
+func _follow_current_song_if_needed(force: bool = false) -> void:
 	if _pl_dragging or _pl_flinging or _row_stride_px <= 0.0:
 		return
-	if Time.get_ticks_msec() - _last_user_scroll_ms < FOLLOW_IDLE_MS:
+	if not force and Time.get_ticks_msec() - _last_user_scroll_ms < FOLLOW_IDLE_MS:
 		return
 	var mgr := PlaybackDisplay.instance
 	if mgr == null:
@@ -136,8 +138,14 @@ func _follow_current_song_if_needed() -> void:
 		return
 	var bar := _pl_scroll.get_v_scroll_bar()
 	var target := clampf(top - (view_h - _row_stride_px) * 0.5, 0.0, maxf(bar.max_value - bar.page, 0.0))
-	# 带动画滚过去；动画期间 _auto_scrolling 保持置位
 	_kill_follow_tween()
+	if force:
+		# 瞬时归位：面板正在滑入，跟着滚一段动画会和面板动画抢视线
+		_auto_scrolling = true
+		_pl_scroll.scroll_vertical = int(round(target))
+		_auto_scrolling = false
+		return
+	# 带动画滚过去；动画期间 _auto_scrolling 保持置位
 	_auto_scrolling = true
 	var dist := absf(target - float(_pl_scroll.scroll_vertical))
 	var dur := clampf(dist / FOLLOW_SCROLL_SPEED, FOLLOW_SCROLL_MIN, FOLLOW_SCROLL_MAX)
@@ -169,10 +177,30 @@ func open() -> void:
 	# 从右侧滑入。走 AnimationManager 统一管理 tween，避免快速连点时叠加冲突
 	offset_transform_position.x = get_viewport_rect().size.x
 	AniMGR.animate_offset_to(self, Vector2.ZERO, 0.25, "PlaylistPanelIn")
+	_snap_to_current_song_soon()
+
+## 展开即把当前播放项带进视野。不看"用户最近滚过没有"，否则要等满 _process 的
+## 空转周期才归位；也刻意不写 _last_user_scroll_ms —— 那是"用户操作过滚动"的时间戳，
+## 不该由程序化滚动伪造。
+## 必须等布局：面板刚 visible 当帧 ScrollContainer 的 size / scrollbar.max_value 还是旧值
+## （甚至为 0），此时算出来的目标位与钳制上限都不对，会被钳到 0 而什么都不做。
+func _snap_to_current_song_soon() -> void:
+	var my_gen := _snap_generation + 1
+	_snap_generation = my_gen
+	await get_tree().process_frame
+	await get_tree().process_frame
+	# 期间被重新 open 或被 close 都不要继续
+	if my_gen != _snap_generation or not visible:
+		return
+	_follow_current_song_if_needed(true)
+
+## 展开归位的代次守卫：连续开合 / 关闭时作废在途的等待
+var _snap_generation: int = 0
 
 func close() -> void:
 	if not visible:
 		return
+	_snap_generation += 1   # 作废在途的展开归位
 	AniMGR.animate_offset_to(self, Vector2(get_viewport_rect().size.x, 0), 0.2, "PlaylistPanelOut")
 	await get_tree().create_timer(0.2).timeout
 	# 正在被拖动的项会继续收 gui_input，先停掉再隐藏
