@@ -25,10 +25,6 @@ border_color = Color(0.1216, 0.149, 0.2039, 1)
 atlas = ExtResource("4_fcfq2")
 region = Rect2(320, 240, 80, 80)
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_3y6u5"]
-content_margin_left = 30.0
-content_margin_right = 10.0
-
 [node name="SettingView" type="Control" unique_id=151413608]
 layout_mode = 3
 anchors_preset = 15
@@ -201,13 +197,22 @@ size_flags_vertical = 3
 size_flags_stretch_ratio = 5.0
 theme_override_constants/separation = -1
 
-[node name="PC" type="PanelContainer" parent="DelView/Content" unique_id=1406969164]
+[node name="PC" type="Panel" parent="DelView/Content" unique_id=1487945404]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
+size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_07r5k")
 
 [node name="TopBar" type="HBoxContainer" parent="DelView/Content/PC" unique_id=654010268]
-layout_mode = 2
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 100.0
+grow_horizontal = 2
+size_flags_vertical = 0
 theme_override_constants/separation = 10
 alignment = 1
 
@@ -253,77 +258,30 @@ texture = SubResource("AtlasTexture_xcqgn")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="PageContainer" type="TabContainer" parent="DelView/Content" unique_id=918887222]
-clip_contents = true
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-current_tab = 0
-tabs_visible = false
+[node name="PageContainer" type="Control" parent="DelView/Content/PC" unique_id=1328938414]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 140.0
+offset_right = -20.0
+grow_horizontal = 2
+grow_vertical = 2
 
-[node name="MidiPage2" type="ScrollContainer" parent="DelView/Content/PageContainer" unique_id=1044227542]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_styles/panel = SubResource("StyleBoxEmpty_3y6u5")
+[node name="PageScroll" type="ScrollContainer" parent="DelView/Content/PC/PageContainer" unique_id=632662446]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 horizontal_scroll_mode = 0
-metadata/_tab_index = 0
 
-[node name="MidiList" type="VBoxContainer" parent="DelView/Content/PageContainer/MidiPage2" unique_id=898260115]
+[node name="PageList" type="VBoxContainer" parent="DelView/Content/PC/PageContainer/PageScroll" unique_id=512843258]
 layout_mode = 2
 size_flags_horizontal = 3
-
-[node name="AudioPage" type="ScrollContainer" parent="DelView/Content/PageContainer" unique_id=-2000000002]
-visible = false
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_styles/panel = SubResource("StyleBoxEmpty_3y6u5")
-horizontal_scroll_mode = 0
-metadata/_tab_index = 1
-
-[node name="AudioList" type="VBoxContainer" parent="DelView/Content/PageContainer/AudioPage" unique_id=-2000000003]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="Sf2Page" type="ScrollContainer" parent="DelView/Content/PageContainer" unique_id=1294967294]
-visible = false
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_styles/panel = SubResource("StyleBoxEmpty_3y6u5")
-horizontal_scroll_mode = 0
-metadata/_tab_index = 2
-
-[node name="Sf2List" type="VBoxContainer" parent="DelView/Content/PageContainer/Sf2Page" unique_id=1294967293]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="SkinPage" type="ScrollContainer" parent="DelView/Content/PageContainer" unique_id=294967294]
-visible = false
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_styles/panel = SubResource("StyleBoxEmpty_3y6u5")
-horizontal_scroll_mode = 0
-metadata/_tab_index = 3
-
-[node name="SkinList" type="VBoxContainer" parent="DelView/Content/PageContainer/SkinPage" unique_id=294967293]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="BgPage" type="ScrollContainer" parent="DelView/Content/PageContainer" unique_id=-705032706]
-visible = false
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-theme_override_styles/panel = SubResource("StyleBoxEmpty_3y6u5")
-horizontal_scroll_mode = 0
-metadata/_tab_index = 4
-
-[node name="BgList" type="VBoxContainer" parent="DelView/Content/PageContainer/BgPage" unique_id=-705032707]
-layout_mode = 2
-size_flags_horizontal = 3
+theme_override_constants/separation = 0
 
 [node name="BottomBarPC" type="PanelContainer" parent="DelView/Content" unique_id=2038911109]
 custom_minimum_size = Vector2(0, 100)

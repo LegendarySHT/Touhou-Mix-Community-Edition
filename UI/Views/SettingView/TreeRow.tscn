@@ -1,0 +1,49 @@
+[gd_scene format=3 uid="uid://c0wedpf66xhip"]
+
+[ext_resource type="Script" path="res://UI/Components/TextScrollHelper.gd" id="1_textscroll"]
+[ext_resource type="Script" path="res://UI/Views/SettingView/TreeRow.gd" id="2_treerow"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_underline"]
+draw_center = false
+border_width_bottom = 1
+border_color = Color(1, 1, 1, 0.2)
+expand_margin_right = 10.0
+
+[node name="TreeRow" type="HBoxContainer"]
+custom_minimum_size = Vector2(0, 72)
+theme_override_constants/separation = 20
+script = ExtResource("2_treerow")
+
+[node name="Indent" type="Control" parent="."]
+custom_minimum_size = Vector2(0, 0)
+visible = false
+mouse_filter = 2
+
+[node name="CheckBox" type="CheckBox" parent="."]
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+size_flags_vertical = 4
+
+[node name="LeftLabel" type="Label" parent="."]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 1
+size_flags_stretch_ratio = 8.0
+theme_override_font_sizes/font_size = 40
+theme_override_styles/normal = SubResource("StyleBoxFlat_underline")
+text = "Row"
+vertical_alignment = 1
+clip_text = true
+script = ExtResource("1_textscroll")
+end_padding = 0.0
+
+[node name="RightLabel" type="Label" parent="."]
+custom_minimum_size = Vector2(180, 0)
+layout_mode = 2
+size_flags_vertical = 1
+theme_override_font_sizes/font_size = 38
+text = ""
+vertical_alignment = 1
+clip_text = true
+script = ExtResource("1_textscroll")
+end_padding = 0.0
