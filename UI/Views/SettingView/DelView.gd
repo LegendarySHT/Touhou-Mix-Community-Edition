@@ -850,7 +850,7 @@ func _create_audio_group(group_index: int) -> Variant:
 
 
 func _scan_audio_files() -> Array[Dictionary]:
-	# 优先从 FileSystemManager 索引读取
+	# 1. 优先从 FileSystemManager 索引读取（扫描过一次后常驻内存，零 I/O）
 	var result: Array[Dictionary] = []
 	var fs_mgr = FileSystemManager.instance
 	if fs_mgr and not fs_mgr.audio_files_index.is_empty():
@@ -864,7 +864,21 @@ func _scan_audio_files() -> Array[Dictionary]:
 			})
 		return result
 
-	# 回退：独立扫描文件系统
+	# 2. 回退一：DB 速查库（audio_files 集合）—— 一次表扫描，远快于遍历 Charts/ 全部子目录
+	if fs_mgr and ChartDB != null and ChartDB.IsOpen():
+		for entry in fs_mgr.load_audio_files_from_db():
+			result.append({
+				"file_name": entry["file_name"],
+				"path": entry["path"],
+				"format": entry["format"],
+				"song_name": entry["song_name"],
+				"selected": false,
+			})
+		if not result.is_empty():
+			GLogger.info("DelView 音频列表取自 DB 速查库：%d 项" % result.size(), "DelView")
+			return result
+
+	# 3. 回退二：独立扫描文件系统（单遍遍历，每个谱面目录只开一次）
 	var charts_dir := PathHelper.get_charts_dir()
 	if not DirAccess.dir_exists_absolute(charts_dir):
 		return result
@@ -884,16 +898,23 @@ func _scan_audio_files() -> Array[Dictionary]:
 			var hash_idx := song_name.find("_")
 			if hash_idx >= 0:
 				song_name = song_name.substr(hash_idx + 1)
-			for ext in audio_exts:
-				var files := FileSystemManager.instance.find_files_in_dir(chart_path, "*." + ext)
-				for f in files:
-					result.append({
-						"file_name": f,
-						"path": chart_path.path_join(f),
-						"format": ext,
-						"song_name": song_name,
-						"selected": false,
-					})
+			var sub := DirAccess.open(chart_path)
+			if sub:
+				sub.list_dir_begin()
+				var fn := sub.get_next()
+				while fn != "":
+					if not sub.current_is_dir():
+						var ext := fn.get_extension().to_lower()
+						if audio_exts.has(ext):
+							result.append({
+								"file_name": fn,
+								"path": chart_path.path_join(fn),
+								"format": ext,
+								"song_name": song_name,
+								"selected": false,
+							})
+					fn = sub.get_next()
+				sub.list_dir_end()
 			dir_count += 1
 			if dir_count % 5 == 0:
 				await get_tree().process_frame

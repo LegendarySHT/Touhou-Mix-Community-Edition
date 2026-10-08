@@ -223,6 +223,14 @@ static func resolve_vocal_path(midi_data: MidiData) -> String:
 	var filesystem_mgr = FileSystemManager.instance
 	var chart_id = midi_data.chart_key if not midi_data.chart_key.is_empty() \
 		else (midi_data.file_hash if not midi_data.file_hash.is_empty() else midi_data.id)
+
+	# 先走人声速查索引（扫描时构建，标准 vocal.<ext> 优先；内存未命中回退 DB 速查库）
+	var indexed_vocal := "" if filesystem_mgr == null else filesystem_mgr.get_vocal_path(chart_id)
+	if not indexed_vocal.is_empty():
+		midi_data.vocal_file_path = indexed_vocal
+		GLogger.info("Vocal file resolved from index: %s" % indexed_vocal, "TrackView")
+		return indexed_vocal
+
 	var lookup = filesystem_mgr.lookup_chart(chart_id)
 	if not lookup.is_empty():
 		var metadata: ChartMetadata = lookup["metadata"]

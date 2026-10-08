@@ -89,7 +89,8 @@ func _launch_generate_task(run: Callable) -> int:
 			_generate_task_id = -1
 			break
 		await Engine.get_main_loop().process_frame
-	var task_id := WorkerThreadPool.add_task(run, false, "KSM generate_keys")
+	# high_priority=true：这是"用户正盯着等结果"的交互任务，不能排在大批量后台任务后面
+	var task_id := WorkerThreadPool.add_task(run, true, "KSM generate_keys")
 	_generate_task_id = task_id
 	return task_id
 

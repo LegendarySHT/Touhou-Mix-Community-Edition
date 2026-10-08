@@ -25,6 +25,8 @@ const PROFILE_PAGE := "/root/Main/PlayerInfo/InfoPanelBtn/TabC/ProfilePage"
 const CHARACTER := "/root/Main/Chara"
 
 const POPUP_WINDOW_SHADER := "/root/Main/PopupWindowShader"
+## 顶部细条进度（后台校验/重扫等"界面仍可操作"的后台任务，无遮罩）
+const TASK_PROGRESS := "/root/Main/TaskProgress"
 ## 通用加载/导入提示（根节点下，ProgressBar 为 ProcessTip 子节点）
 const PROCESS_TIP := "/root/Main/ProcessTip"
 const PROCESS_PROGRESS := "/root/Main/ProcessTip/ProcessProgress"

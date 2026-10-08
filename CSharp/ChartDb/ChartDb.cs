@@ -35,6 +35,7 @@ public partial class ChartDb : Node
     private ILiteCollection<BsonDocument> _meta;
     private ILiteCollection<BsonDocument> _localScores;
     private ILiteCollection<BsonDocument> _communityCounts;
+    private ILiteCollection<BsonDocument> _audioFiles;
 
     private readonly object _lock = new();
     private bool _isOpen;
@@ -1193,6 +1194,167 @@ public partial class ChartDb : Node
         }
     }
 
+    // ========== 音频 / 人声文件速查（audio_files 集合） ==========
+    // 谱面文件夹内的音频文件（标准命名 vocal.<ext>，旧命名 {hash}.<ext>）在扫描时就地收集，
+    // 独立成表供 DelView 音频页与人声解析按 folder_name O(1) 查询 —— 免去每次遍历 Charts/ 全盘。
+    // _id = 文件绝对路径（唯一）；is_vocal 标记是否标准人声命名（人声解析优先取它）。
+    // 该集合不参与谱面 schema 重建（charts/albums/songs drop 时保留），随扫描结果增量校正。
+
+    /// <summary>全量覆盖写入（全量扫描后调用）：DeleteAll + 逐条 Upsert，单事务。</summary>
+    public void ReplaceAudioFiles(Godot.Collections.Array entries)
+    {
+        if (!IsOpen()) return;
+        lock (_lock)
+        {
+            _db.BeginTrans();
+            try
+            {
+                _audioFiles.DeleteAll();
+                InsertAudioEntries(entries);
+                _db.Commit();
+            }
+            catch { _db.Rollback(); throw; }
+        }
+    }
+
+    /// <summary>
+    /// 增量校正（后台缓存校验后调用）：先删掉这些谱面的旧条目，再插入新扫描到的条目。
+    /// entries 为空即等价于「删除这些谱面的全部音频条目」。
+    /// </summary>
+    public void UpsertAudioFiles(Godot.Collections.Array folderNames, Godot.Collections.Array entries)
+    {
+        if (!IsOpen()) return;
+        lock (_lock)
+        {
+            _db.BeginTrans();
+            try
+            {
+                DeleteAudioFilesLocked(folderNames);
+                InsertAudioEntries(entries);
+                _db.Commit();
+            }
+            catch { _db.Rollback(); throw; }
+        }
+    }
+
+    /// <summary>删除若干谱面的全部音频条目（谱面/音频删除后同步）。</summary>
+    public void RemoveAudioFiles(Godot.Collections.Array folderNames)
+    {
+        if (!IsOpen()) return;
+        lock (_lock)
+        {
+            _db.BeginTrans();
+            try
+            {
+                DeleteAudioFilesLocked(folderNames);
+                _db.Commit();
+            }
+            catch { _db.Rollback(); throw; }
+        }
+    }
+
+    /// <summary>按绝对路径删除单条音频条目（DelView 删除单个音频文件后同步）。</summary>
+    public void RemoveAudioFileByPath(string path)
+    {
+        if (!IsOpen() || string.IsNullOrEmpty(path)) return;
+        lock (_lock)
+        {
+            _audioFiles.Delete(path);
+        }
+    }
+
+    /// <summary>全部音频文件条目（DelView 音频页速查，替代全盘扫描）。
+    /// 每项：{path, folder_name, chart_id, file_name, format, song_name, size, mtime, is_vocal}。</summary>
+    public Godot.Collections.Array GetAllAudioFiles()
+    {
+        var arr = new Godot.Collections.Array();
+        if (!IsOpen()) return arr;
+        lock (_lock)
+        {
+            foreach (var d in _audioFiles.FindAll().ToList())
+                arr.Add(AudioFileDict(d));
+            return arr;
+        }
+    }
+
+    /// <summary>
+    /// 按任意别名（folder_name / folder_hash / midi_id / file_hash / hash）查谱面的人声文件路径。
+    /// 优先返回标准 vocal.* 命名条目，没有则回退该谱面首个音频文件；无音频返回 ""。
+    /// </summary>
+    public string GetVocalPath(string key)
+    {
+        if (!IsOpen() || string.IsNullOrEmpty(key)) return "";
+        lock (_lock)
+        {
+            var folderName = LookupChartKey(key);
+            if (string.IsNullOrEmpty(folderName)) folderName = key;
+            var list = _audioFiles.Find(Query.EQ("folder_name", folderName)).ToList();
+            foreach (var d in list)
+            {
+                if (d.TryGetValue("is_vocal", out var vb) && vb.IsBoolean && vb.AsBoolean)
+                    return BsonConvert.GetStr(d, "path");
+            }
+            return list.Count > 0 ? BsonConvert.GetStr(list[0], "path") : "";
+        }
+    }
+
+    private void InsertAudioEntries(Godot.Collections.Array entries)
+    {
+        if (entries == null) return;
+        foreach (var e in entries)
+        {
+            if (e.VariantType != Godot.Variant.Type.Dictionary) continue;
+            var doc = AudioEntryToDoc(e.AsGodotDictionary());
+            if (doc != null) _audioFiles.Upsert(doc);
+        }
+    }
+
+    private void DeleteAudioFilesLocked(Godot.Collections.Array folderNames)
+    {
+        if (folderNames == null) return;
+        foreach (var f in folderNames)
+        {
+            var fn = f.VariantType == Godot.Variant.Type.String || f.VariantType == Godot.Variant.Type.StringName
+                ? f.AsString() : "";
+            if (string.IsNullOrEmpty(fn)) continue;
+            _audioFiles.DeleteMany(Query.EQ("folder_name", fn));
+        }
+    }
+
+    private static BsonDocument AudioEntryToDoc(Godot.Collections.Dictionary d)
+    {
+        var path = d.TryGetValue("path", out var pv) ? pv.AsString() : "";
+        if (string.IsNullOrEmpty(path)) return null;
+        return new BsonDocument
+        {
+            ["_id"] = path,
+            ["path"] = path,
+            ["folder_name"] = d.TryGetValue("folder_name", out var f) ? f.AsString() : "",
+            ["chart_id"] = d.TryGetValue("chart_id", out var c) ? c.AsString() : "",
+            ["file_name"] = d.TryGetValue("file_name", out var n) ? n.AsString() : "",
+            ["format"] = d.TryGetValue("format", out var fm) ? fm.AsString() : "",
+            ["song_name"] = d.TryGetValue("song_name", out var s) ? s.AsString() : "",
+            ["size"] = d.TryGetValue("size", out var sz) && sz.VariantType == Godot.Variant.Type.Int ? sz.AsInt64() : (long)0,
+            ["mtime"] = d.TryGetValue("mtime", out var mt) && mt.VariantType == Godot.Variant.Type.Int ? mt.AsInt64() : (long)0,
+            ["is_vocal"] = d.TryGetValue("is_vocal", out var iv) && iv.VariantType == Godot.Variant.Type.Bool && iv.AsBool(),
+        };
+    }
+
+    private static Godot.Collections.Dictionary AudioFileDict(BsonDocument d)
+    {
+        var item = new Godot.Collections.Dictionary();
+        item["path"] = BsonConvert.GetStr(d, "path");
+        item["folder_name"] = BsonConvert.GetStr(d, "folder_name");
+        item["chart_id"] = BsonConvert.GetStr(d, "chart_id");
+        item["file_name"] = BsonConvert.GetStr(d, "file_name");
+        item["format"] = BsonConvert.GetStr(d, "format");
+        item["song_name"] = BsonConvert.GetStr(d, "song_name");
+        item["size"] = BsonConvert.GetLong(d, "size");
+        item["mtime"] = BsonConvert.GetLong(d, "mtime");
+        item["is_vocal"] = d.TryGetValue("is_vocal", out var vb) && vb.IsBoolean && vb.AsBoolean;
+        return item;
+    }
+
     // ========== 本地最佳成绩（local_scores 集合） ==========
     // 每首 MIDI（_id = midi_hash）只保留一条 pp 最高的记录，供离线排行榜使用。
     // 该集合不参与 schema 迁移（不随 charts/albums/songs 一起 drop），跨版本保留。
@@ -1379,6 +1541,7 @@ public partial class ChartDb : Node
         _meta = _db.GetCollection("meta");
         _localScores = _db.GetCollection("local_scores");
         _communityCounts = _db.GetCollection("community_counts");
+        _audioFiles = _db.GetCollection("audio_files");
     }
 
     private void EnsureIndexes()
@@ -1396,6 +1559,7 @@ public partial class ChartDb : Node
         _charts.EnsureIndex("album_id", "$.album_id");
         _charts.EnsureIndex("sort_name", "$.sort_name");
         _songs.EnsureIndex("album_id", "$.album_id");
+        _audioFiles.EnsureIndex("folder_name", "$.folder_name");
     }
 
     /// <summary>

@@ -89,6 +89,16 @@ var _hash_to_folder: Dictionary = {}
 ## [{file_name, path, format, chart_id, song_name}]
 var audio_files_index: Array[Dictionary] = []
 
+## ========== 人声文件速查索引 ==========
+## {folder_name: vocal_path} —— 扫描时同步构建（标准 vocal.<ext> 优先，回退该谱面首个音频），
+## 供人声解析 / 播放侧 O(1) 查询，不再逐个目录遍历
+var vocal_files_index: Dictionary = {}
+
+## 音频文件条目（DB 速查库 audio_files 集合的落盘形状，含 is_vocal 标记）
+## [{path, folder_name, chart_id, file_name, format, song_name, size, mtime, is_vocal}]
+## 与 audio_files_index 同源同时构建，只用于写库，运行时查询走上面两个索引
+var _audio_file_entries: Array[Dictionary] = []
+
 ## ========== 状态标志 ==========
 var is_initialized: bool = false
 var is_scanning: bool = false
@@ -363,6 +373,34 @@ func show_progress_ui(text: String, max_value: int) -> Dictionary:
 		bar.value = 0
 		bar.show_percentage = true
 	return ui
+
+## ========== 顶部细条进度（Main.tscn 的 TaskProgress） ==========
+## 与 show_progress_ui 的「遮罩 + 居中提示」互补：这里只有顶部一条细进度，无遮罩、不拦交互，
+## 专供"界面仍可操作但后台在跑"的场景（启动后的缓存校验、DelView 删除后的重扫），
+## 解决"看不到进度、界面内容突然刷新"的观感问题
+func _task_progress_begin(total: int) -> void:
+	var bar := get_node_or_null(PathRegistry.TASK_PROGRESS) as ProgressBar
+	if bar == null:
+		return
+	bar.min_value = 0
+	bar.max_value = maxi(total, 1)
+	bar.value = 0
+	bar.visible = true
+
+## 推进顶部细条进度（已处理项 / 总数由 begin 时给定）
+func _task_progress_set(done: int) -> void:
+	var bar := get_node_or_null(PathRegistry.TASK_PROGRESS) as ProgressBar
+	if bar == null:
+		return
+	bar.value = clampi(done, 0, int(bar.max_value))
+
+## 收尾：走满后隐藏（避免残留一条空进度条常驻顶部）
+func _task_progress_end() -> void:
+	var bar := get_node_or_null(PathRegistry.TASK_PROGRESS) as ProgressBar
+	if bar == null:
+		return
+	bar.value = bar.max_value
+	bar.visible = false
 
 ## 隐藏统一进度 UI 并复位提示文案
 func hide_progress_ui() -> void:
@@ -941,30 +979,111 @@ func _scan_all_resources() -> void:
 			soundfonts_index.size(), backgrounds_index.size()
 		], "FileSystemMGR")
 
-## 启动 charts 缓存后台校验（worker 线程）
-## 校验缓存条目有效性 + 扫描新增文件夹 → 主线程合并差异 → emit charts_cache_validated
+## 启动 charts 缓存后台校验（分片并行 + 顶部细条进度）
+## 主线程先做 O(N) 纯内存集合运算（removed / new / 待校验集），再按 CHART_SCAN_CHUNK_SIZE 分片
+## 交给 worker 校验 mTime；主线程逐帧累计已完成分片数推进 TaskProgress，
+## 校验完合并差异后交 _await_cache_validation 扫描增量 → emit charts_cache_validated
 ## 不阻塞启动流程，用户在 resources_ready 后即可操作
 func _start_charts_cache_validation(all_chart_folders: Array, cached_charts: Dictionary) -> void:
-	var rw: Dictionary = {}
-	var task_id := WorkerThreadPool.add_task(
-		func(): _validate_charts_cache_worker(cached_charts, all_chart_folders, rw),
-		false, "ValidateChartsCache"
-	)
-	# 后台轮询，不阻塞启动主流程
-	_await_cache_validation(task_id, rw, cached_charts)
+	_is_validating = true
+	var folder_set: Dictionary = {}
+	for f in all_chart_folders:
+		folder_set[f] = true
+
+	# 1. 缓存里有、磁盘上没了 → removed；仍在 → 待 worker 校验 mTime
+	var removed_folders: Array = []
+	var pending_folders: Array = []
+	for folder_name in cached_charts.keys():
+		if folder_set.has(folder_name):
+			pending_folders.append(folder_name)
+		else:
+			removed_folders.append(folder_name)
+	# 2. 磁盘上有、缓存里没有 → new（新增谱面，直接扫）
+	var new_folders: Array = []
+	for f in all_chart_folders:
+		if not cached_charts.has(f):
+			new_folders.append(f)
+
+	var validate_tasks := _start_cache_validation_tasks(pending_folders, cached_charts)
+	var total_units: int = pending_folders.size() + new_folders.size()
+	_task_progress_begin(total_units)
+	# 新增文件夹无需校验，但会紧接着被扫描，先按"已确认"计入进度更贴近真实体感
+	var confirmed: int = new_folders.size()
+	_task_progress_set(confirmed)
+	while not _all_chart_tasks_completed(validate_tasks):
+		var checked: int = confirmed
+		for t in validate_tasks:
+			if WorkerThreadPool.is_task_completed(t.id):
+				checked += int(t.get("count", 0))
+		_task_progress_set(checked)
+		await get_tree().process_frame
+	for t in validate_tasks:
+		WorkerThreadPool.wait_for_task_completion(t.id)
+	_task_progress_end()
+
+	var changed_folders: Array = []
+	for t in validate_tasks:
+		changed_folders.append_array(t.result.get("changed_folders", []))
+
+	_await_cache_validation({
+		"changed_folders": changed_folders,
+		"removed_folders": removed_folders,
+		"new_folders": new_folders,
+	}, cached_charts)
+
+## 启动缓存校验的分片 worker：每片只校验自己那部分缓存条目（存在性 + 文件夹/json/mid mTime）
+## 返回 [{id, result, count}, ...]，主线程按已完成片的 count 累计进度
+func _start_cache_validation_tasks(pending_folders: Array, cached_charts: Dictionary) -> Array:
+	var tasks: Array = []
+	if pending_folders.is_empty():
+		return tasks
+	for i in range(0, pending_folders.size(), CHART_SCAN_CHUNK_SIZE):
+		var chunk: Array = pending_folders.slice(i, i + CHART_SCAN_CHUNK_SIZE)
+		var rw: Dictionary = {}
+		var tid := WorkerThreadPool.add_task(
+			func(): _validate_charts_chunk_worker(chunk, cached_charts, rw),
+			false, "ValidateChartsChunk"
+		)
+		tasks.append({"id": tid, "result": rw, "count": chunk.size()})
+	return tasks
+
+## 在 worker 线程中校验一组缓存条目（纯文件 stat，无引擎 API 调用）
+## 结果：{changed_folders} —— mTime 变化或 json/mid 缺失、需重扫的文件夹
+func _validate_charts_chunk_worker(folder_names: Array, cached_charts: Dictionary, result_wrapper: Dictionary) -> void:
+	var changed: Array = []
+	for folder_name in folder_names:
+		var meta: Dictionary = cached_charts[folder_name]
+		var chart_path := CHARTS_DIR.path_join(folder_name)
+		var chart_id: String = folder_name.split("_")[0]
+		var json_path := chart_path.path_join("info.json")
+		if not FileAccess.file_exists(json_path):
+			json_path = chart_path.path_join(chart_id + ".json")
+		var mid_path := chart_path.path_join("song.mid")
+		if not FileAccess.file_exists(mid_path):
+			mid_path = chart_path.path_join(chart_id + ".mid")
+		if not FileAccess.file_exists(json_path) or not FileAccess.file_exists(mid_path):
+			changed.append(folder_name)
+			continue
+		# 两级 mTime：文件夹 mTime 变 → 必有增删改名；未变仍可能就地改内容 → 再比 json/mid
+		var cached_folder_mtime: int = int(meta.get("_folder_mtime", 0))
+		var cur_folder_mtime := FileAccess.get_modified_time(chart_path)
+		if cached_folder_mtime != 0 and cur_folder_mtime != cached_folder_mtime:
+			changed.append(folder_name)
+			continue
+		if FileAccess.get_modified_time(json_path) != int(meta.get("_json_mtime", 0)) \
+				or FileAccess.get_modified_time(mid_path) != int(meta.get("_mid_mtime", 0)):
+			changed.append(folder_name)
+	result_wrapper["changed_folders"] = changed
 
 ## 后台 await 缓存校验完成，处理差异后 emit 信号
 ## 通过 _is_validating 标志保护：期间 DelView / rescan 等可通过 await_busy_done() 等待
-func _await_cache_validation(task_id: int, rw: Dictionary, cached_charts: Dictionary) -> void:
+func _await_cache_validation(rw: Dictionary, cached_charts: Dictionary) -> void:
 	_is_validating = true
-	while not WorkerThreadPool.is_task_completed(task_id):
-		await get_tree().process_frame
-	WorkerThreadPool.wait_for_task_completion(task_id)
 
 	var changed_folders: Array = rw.get("changed_folders", [])
 	var removed_folders: Array = rw.get("removed_folders", [])
 	var new_folders: Array = rw.get("new_folders", [])
-	var is_clean: bool = rw.get("is_clean", true)
+	var is_clean: bool = changed_folders.is_empty() and removed_folders.is_empty() and new_folders.is_empty()
 
 	GLogger.info("Charts cache validation: %d changed, %d removed, %d new (clean=%s)" % [
 		changed_folders.size(), removed_folders.size(), new_folders.size(), is_clean
@@ -1016,9 +1135,22 @@ func _await_cache_validation(task_id: int, rw: Dictionary, cached_charts: Dictio
 
 	# 保存更新后的缓存（SaveChartsCache 只写带 _is_full 标记的新增/变化条目，轻量投影条目自动跳过不覆盖）
 	_save_charts_cache(cached_charts)
+	# 音频/人声速查库：变化 + 删除的谱面先清旧条目，再用重建后的全量条目 upsert 校正
+	var audio_dirty: Array = []
+	for f in changed_folders:
+		audio_dirty.append(f)
+	for f in new_folders:
+		audio_dirty.append(f)
+	for f in removed_folders:
+		audio_dirty.append(f)
+	_update_audio_files_cache(audio_dirty)
 	# 已删除文件夹同步移除 DB 中的 chart（含 chart_runtime + 聚合重算）
 	if ChartDB and ChartDB.IsOpen() and not removed_folders.is_empty():
 		ChartDB.RemoveCharts(removed_folders)
+
+	# 人声路径自愈：变化/新增的谱面按新索引重指失效路径、补齐空缺路径
+	# 传 changed+new 供第 2 层校正未水合谱面持久化配置里的脏路径（removed 已随 RemoveCharts 清掉）
+	_refresh_vocal_paths(changed_folders + new_folders)
 
 	# 结构变更检测：SaveChartsCache + RemoveCharts 均已触发 RebuildAlbumsSongs，
 	# 此时与扫描前快照对比，不一致才通知 UI 刷新 AlbumView + SongView（避免无意义卡顿）
@@ -1065,16 +1197,20 @@ func _scan_charts_full_sync(progress_cb: Callable = Callable()) -> float:
 
 	var chart_tasks := _start_charts_scan_tasks(all_chart_folders)
 	var total_folders: int = all_chart_folders.size()
+	# 顶部细条同步推进（DelView 删除后的重扫没有遮罩 UI，全靠它给反馈）
+	_task_progress_begin(total_folders)
 
 	# 主线程轮询 await，保持 UI 响应；每帧累计已完成片数用于进度
 	while not _all_chart_tasks_completed(chart_tasks):
+		var done: int = 0
+		for t in chart_tasks:
+			if WorkerThreadPool.is_task_completed(t.id):
+				done += int(t.get("count", 0))
+		_task_progress_set(done)
 		if progress_cb.is_valid():
-			var done: int = 0
-			for t in chart_tasks:
-				if WorkerThreadPool.is_task_completed(t.id):
-					done += int(t.get("count", 0))
 			progress_cb.call(done, total_folders)
 		await get_tree().process_frame
+	_task_progress_end()
 	if progress_cb.is_valid():
 		progress_cb.call(total_folders, total_folders)
 
@@ -1099,6 +1235,8 @@ func _scan_charts_full_sync(progress_cb: Callable = Callable()) -> float:
 
 	# 保存缓存（DelView 重扫后也更新缓存，保持一致）
 	_save_charts_cache(all_charts_data)
+	# 音频/人声速查库全量覆盖（扫描结果即权威，旧的残留条目一并清掉）
+	_save_audio_files_cache()
 
 	# 清理 DB 中已不在磁盘上的谱面（全量重扫不跑缓存校验，需手动 diff，防止删除残留）
 	if ChartDB and ChartDB.IsOpen():
@@ -1112,7 +1250,12 @@ func _scan_charts_full_sync(progress_cb: Callable = Callable()) -> float:
 				removed_from_db.append(k)
 		if not removed_from_db.is_empty():
 			ChartDB.RemoveCharts(removed_from_db)
+			ChartDB.RemoveAudioFiles(removed_from_db)
 			GLogger.info("Rescan: pruned %d stale charts from DB" % removed_from_db.size(), "FileSystemMGR")
+
+	# 人声路径自愈：已水合谱面里失效/空缺的 vocal_file_path 按新索引重指
+	# 不传 dirty：全量重扫变化面过大，增删已由 RemoveCharts / hydrate 覆盖
+	_refresh_vocal_paths()
 
 	var elapsed_ms := (Time.get_ticks_usec() - t_start) / 1000.0
 	GLogger.info("Scanned %d charts in %.0fms" % [
@@ -1165,65 +1308,24 @@ func _save_charts_cache(charts_data: Dictionary) -> void:
 	ChartDB.SaveChartsCache(charts_data)
 	GLogger.info("Saved charts cache to DB: %d entries" % charts_data.size(), "FileSystemMGR")
 
-## 后台校验缓存 worker：检查每个缓存条目的文件夹是否仍然存在 + json/mid mTime 是否变化
-## 纯文件 I/O，不调 GLogger / 不写全局字段，结果通过 result_wrapper 回传
-## result_wrapper 返回字段：
-##   - changed_folders: Array[String] — 缓存失效的文件夹名（mTime 变化或 json/mid 缺失），需重扫
-##   - removed_folders: Array[String] — 文件夹已被删除的，需从缓存移除
-##   - new_folders: Array[String] — 当前存在但缓存中没有的新文件夹，需扫描
-##   - is_clean: bool — true 表示无任何变化（完全干净，无需刷新 UI）
-func _validate_charts_cache_worker(cached_charts: Dictionary, current_folders: Array, result_wrapper: Dictionary) -> void:
-	var changed: Array = []
-	var removed: Array = []
-	var new_set: Dictionary = {}  # current_folders 转 set 加速查询
-	for f in current_folders:
-		new_set[f] = true
+## 全量覆盖写入音频/人声速查库（全量扫描后调用）
+func _save_audio_files_cache() -> void:
+	if ChartDB == null or not ChartDB.IsOpen():
+		return
+	ChartDB.ReplaceAudioFiles(_audio_file_entries)
+	GLogger.info("Saved audio files index to DB: %d entries (vocal=%d)" % [
+		_audio_file_entries.size(), vocal_files_index.size()
+	], "FileSystemMGR")
 
-	# 1. 检查缓存中的文件夹：是否存在 + mTime 是否变化
-	for folder_name in cached_charts.keys():
-		if not new_set.has(folder_name):
-			removed.append(folder_name)
-			continue
-		var meta: Dictionary = cached_charts[folder_name]
-		var chart_path = CHARTS_DIR.path_join(folder_name)
-		var chart_id = folder_name.split("_")[0]
-		# 标准命名优先，旧命名回退（json/mid 判存在，供增删/变更检测）
-		var json_path := chart_path.path_join("info.json")
-		if not FileAccess.file_exists(json_path):
-			json_path = chart_path.path_join(chart_id + ".json")
-		var mid_path := chart_path.path_join("song.mid")
-		if not FileAccess.file_exists(mid_path):
-			mid_path = chart_path.path_join(chart_id + ".mid")
-		# 检查 json/mid 是否存在
-		if not FileAccess.file_exists(json_path) or not FileAccess.file_exists(mid_path):
-			changed.append(folder_name)
-			new_set.erase(folder_name)
-			continue
-		# 对比 mTime（两级，先快后全）：
-		# 1. 文件夹 mTime（一次性 stat）变化 → 必有增/删/改文件，直接标记重扫
-		# 2. 文件夹 mTime 未变 → 仍可能"文件内容就地修改"（Linux/Android 文件夹 mTime 不感知），回退文件级对比
-		var cached_folder_mtime: int = int(meta.get("_folder_mtime", 0))
-		var cur_folder_mtime := FileAccess.get_modified_time(chart_path)
-		if cached_folder_mtime != 0 and cur_folder_mtime != cached_folder_mtime:
-			changed.append(folder_name)
-			new_set.erase(folder_name)
-			continue
-		# 对比 json/mid 文件 mTime（内容变化 → 标记需重扫）
-		var cached_json_mtime: int = int(meta.get("_json_mtime", 0))
-		var cached_mid_mtime: int = int(meta.get("_mid_mtime", 0))
-		var cur_json_mtime := FileAccess.get_modified_time(json_path)
-		var cur_mid_mtime := FileAccess.get_modified_time(mid_path)
-		if cur_json_mtime != cached_json_mtime or cur_mid_mtime != cached_mid_mtime:
-			changed.append(folder_name)
-		new_set.erase(folder_name)  # 从 new_set 移除，剩余的就是新增文件夹
-
-	# 2. new_set 中剩余的是新增文件夹（缓存中没有的）
-	var new_folders: Array = new_set.keys()
-
-	result_wrapper["changed_folders"] = changed
-	result_wrapper["removed_folders"] = removed
-	result_wrapper["new_folders"] = new_folders
-	result_wrapper["is_clean"] = changed.is_empty() and removed.is_empty() and new_folders.is_empty()
+## 增量校正音频/人声速查库（后台校验合并后调用）
+## folders：本次发生变化的谱面文件夹（先删其旧条目），entries 为重建后的全量条目（upsert 覆盖）
+func _update_audio_files_cache(folders: Array) -> void:
+	if ChartDB == null or not ChartDB.IsOpen() or folders.is_empty():
+		return
+	ChartDB.UpsertAudioFiles(folders, _audio_file_entries)
+	GLogger.info("Updated audio files index in DB: %d folders, %d entries (vocal=%d)" % [
+		folders.size(), _audio_file_entries.size(), vocal_files_index.size()
+	], "FileSystemMGR")
 
 ## 快速变更检测：基于文件夹 mTime 一次性找出 新增/删除/修改 的谱面文件夹
 ## 只做轻量 stat（每文件夹 1 次），绝不读 JSON —— 供运行时自动检测歌曲变更复用
@@ -1231,7 +1333,7 @@ func _validate_charts_cache_worker(cached_charts: Dictionary, current_folders: A
 ## 返回 {new_folders, removed_folders, changed_folders, is_clean}
 ##
 ## 局限：Linux/Android 上文件夹 mTime 只随"增/删/改名"变化，不感知"文件内容就地修改"
-##   —— 需要捕捉就地编辑（如直接改 chart JSON）时，用 _validate_charts_cache_worker 的
+##   —— 需要捕捉就地编辑（如直接改 chart JSON）时，用 _validate_charts_chunk_worker 的
 ##      文件级 _json_mtime/_mid_mtime 校验兜底。本函数适合运行时轮询的快速第一道闸。
 func detect_chart_folder_changes_fast(cached_charts: Dictionary) -> Dictionary:
 	var current_folders := _list_chart_folder_names()
@@ -1338,6 +1440,11 @@ func _scan_charts_chunk_worker(folder_names: Array, result_wrapper: Dictionary) 
 ## all_charts_data: {folder_name: metadata_dict}（缓存恢复 + worker 新扫描合并后的完整集合）
 ## chart_tasks: worker 结果（用于打印性能诊断 + warnings）
 func _build_charts_index_from_data(all_charts_data: Dictionary, chart_tasks: Array) -> void:
+	# charts_index 重建 ⇒ 音频/人声派生索引一并重建（三者同源，避免残留旧谱面的条目）
+	audio_files_index.clear()
+	vocal_files_index.clear()
+	_audio_file_entries.clear()
+
 	# 性能诊断：打印新增文件夹的扫描耗时（缓存命中的不计时）
 	var total_chunk_ms := 0.0
 	var max_chunk_ms := 0.0
@@ -1386,9 +1493,32 @@ func _build_charts_index_from_data(all_charts_data: Dictionary, chart_tasks: Arr
 			_hash_to_folder[ah] = folder_name
 
 		# 收集 audio 条目（统一从 metadata dict 提取，不再依赖 worker 的单独 audio 数组）
+		# 同步产出人声速查索引（标准 vocal.<ext> 优先，回退该谱面首个音频）与 DB 落库条目
 		var entries = meta_dict.get("audio_entries", [])
+		var fallback_vocal := ""
 		for e in entries:
 			audio_files_index.append(e)
+			var e_path := str(e.get("path", ""))
+			var e_name := str(e.get("file_name", ""))
+			var is_vocal := e_name.to_lower().begins_with("vocal.")
+			_audio_file_entries.append({
+				"path": e_path,
+				"folder_name": folder_name,
+				"chart_id": str(e.get("chart_id", "")),
+				"file_name": e_name,
+				"format": str(e.get("format", "")),
+				"song_name": str(e.get("song_name", "")),
+				"size": 0,
+				"mtime": 0,
+				"is_vocal": is_vocal,
+			})
+			if is_vocal:
+				if not vocal_files_index.has(folder_name):
+					vocal_files_index[folder_name] = e_path
+			elif fallback_vocal.is_empty():
+				fallback_vocal = e_path
+		if not vocal_files_index.has(folder_name) and not fallback_vocal.is_empty():
+			vocal_files_index[folder_name] = fallback_vocal
 
 	# 打印 worker 收集的 warnings（主线程安全调用 GLogger）
 	for t in chart_tasks:
@@ -1749,6 +1879,118 @@ func get_backgrounds_index() -> Dictionary:
 ## 返回: Array[Dictionary] 含 file_name/path/format/chart_id/song_name
 func get_audio_files_index() -> Array[Dictionary]:
 	return audio_files_index
+
+## 从 DB 速查库（audio_files 集合）读全部音频文件条目
+## 内存索引为空时的兜底：一次表扫描远快于遍历 Charts/ 全部子目录
+## 返回: Array[Dictionary] 含 path/file_name/format/song_name/chart_id/folder_name/is_vocal
+func load_audio_files_from_db() -> Array:
+	if ChartDB == null or not ChartDB.IsOpen():
+		return []
+	return ChartDB.GetAllAudioFiles()
+
+## 查询谱面的人声文件路径：先查内存 vocal_files_index（O(1)），未命中回退 DB 速查库
+## 返回的路径已校验存在；无可用人声返回空串
+func get_vocal_path(chart_id: String) -> String:
+	var p := _vocal_path_of_folder(chart_id)
+	if not p.is_empty():
+		return p
+	if ChartDB == null or not ChartDB.IsOpen():
+		return ""
+	var db_path: String = ChartDB.GetVocalPath(chart_id)
+	if db_path.is_empty() or not FileAccess.file_exists(db_path):
+		return ""
+	return db_path
+
+## 按谱面键（folder_name 或任意别名）取人声路径，未命中返回空串
+func _vocal_path_of_folder(chart_key: String) -> String:
+	var folder := chart_key
+	if not vocal_files_index.has(folder):
+		var res := lookup_chart(chart_key)
+		if not res.is_empty():
+			folder = str(res["folder_name"])
+	var p := str(vocal_files_index.get(folder, ""))
+	if p.is_empty() or not FileAccess.file_exists(p):
+		return ""
+	return p
+
+## 人声路径自愈（扫描重建索引后调用）：让「谱面里记着的人声路径」跟上磁盘现状。
+## 覆盖两类：
+##   - **失效**：路径指向的文件已不存在（换人声文件 / 存储根迁移 / 文件改名）→ 按新索引重指
+##   - **空缺**：路径为空但索引里现在有人声（当初导入时没音频、后来补上了）→ 补上
+## 两者都按「用户是否显式配置过 vocal_enabled」决定是否连带改人声开关，避免覆盖用户选择。
+## 落盘只 patch 人声字段，不用 export_runtime_config() 整包覆盖——
+## 后者会把 _track_config_initialized / selected_track_configs 一并写死，破坏"未初始化=默认全启用"语义。
+##
+## dirty_folders：本次发生变化的谱面（后台缓存校验传入），用于第 2 层。
+## 全量重扫传空：变化面过大，且增删已由 RemoveCharts / hydrate 覆盖。
+func _refresh_vocal_paths(dirty_folders: Array = []) -> void:
+	if DataMGR == null:
+		return
+	var fixed := 0
+	var filled := 0
+	var cleared := 0
+	var persisted := 0
+
+	# ---- 第 1 层：已水合谱面（内存 MidiData，走 DataMGR.midis 水合缓存，数量很小）----
+	for chart_key: String in DataMGR.midis:
+		var midi = DataMGR.midis[chart_key]
+		if midi == null:
+			continue
+		var cur: String = midi.vocal_file_path
+		if not cur.is_empty() and FileAccess.file_exists(cur):
+			continue  # 路径有效，不动
+		var new_path := _vocal_path_of_folder(chart_key)
+		if new_path.is_empty():
+			midi.vocal_file_path = ""
+			cleared += 1
+		else:
+			if cur.is_empty():
+				filled += 1
+			else:
+				fixed += 1
+			midi.vocal_file_path = new_path
+		# 人声开关：用户显式配置过（runtime 里存着 vocal_enabled）就尊重，否则跟随文件有无自动判定
+		if not _has_saved_vocal_enabled(chart_key):
+			midi.vocal_enabled = not new_path.is_empty()
+		# 只 patch 人声字段，不动轨道配置
+		if MidiCore != null:
+			MidiCore.UpdateConfig(chart_key, {"vocal_file_path": midi.vocal_file_path})
+
+	# ---- 第 2 层：未水合、但持久化配置里存过人声路径的变更谱面 ----
+	# 未水合的谱面其路径只存在于 chart_runtime，自己不会刷新；不处理的话下次水合会拿到失效旧路径，
+	# 靠 resolve_vocal_path / ApplyChartVocal 兜底虽能播，但库里一直留着脏路径。
+	if MidiCore != null:
+		for folder in dirty_folders:
+			var key := str(folder)
+			if DataMGR.midis.has(key):
+				continue  # 第 1 层已处理
+			var cfg: Variant = MidiCore.GetConfig(key)
+			if not (cfg is Dictionary):
+				continue
+			var c := cfg as Dictionary
+			if not c.has("vocal_file_path"):
+				continue  # 从未配置过人声 → 交给 hydrate 的自动判定，不落盘
+			var saved: String = str(c.get("vocal_file_path", ""))
+			if not saved.is_empty() and FileAccess.file_exists(saved):
+				continue
+			var new_path := _vocal_path_of_folder(key)
+			if new_path.is_empty() or new_path == saved:
+				continue
+			MidiCore.UpdateConfig(key, {"vocal_file_path": new_path})
+			persisted += 1
+
+	if fixed > 0 or filled > 0 or cleared > 0 or persisted > 0:
+		GLogger.info("Vocal path refresh: %d re-pointed, %d filled, %d cleared, %d persisted" % [
+			fixed, filled, cleared, persisted
+		], "FileSystemMGR")
+
+## 该谱面的 vocal_enabled 是否被用户显式配置过（runtime 配置里存在该键）
+## 用于区分「用户选过」与「系统按有无音频自动判定的默认值」，后者可随文件变化自动翻转
+func _has_saved_vocal_enabled(chart_key: String) -> bool:
+	if MidiCore == null:
+		return false
+	var cfg: Variant = MidiCore.GetConfig(chart_key)
+	return cfg is Dictionary and (cfg as Dictionary).has("vocal_enabled")
 
 ## 获取谱面目录路径
 func get_charts_directory() -> String:
@@ -2160,6 +2402,13 @@ func _delete_single_chart_files(chart_id: String) -> Dictionary:
 	for i in range(audio_files_index.size() - 1, -1, -1):
 		if audio_files_index[i].get("chart_id", "") == chart_id:
 			audio_files_index.remove_at(i)
+	# 人声速查索引 + DB 速查库同步（该谱面的音频条目随目录一起消失）
+	vocal_files_index.erase(folder_name)
+	for i in range(_audio_file_entries.size() - 1, -1, -1):
+		if _audio_file_entries[i].get("folder_name", "") == folder_name:
+			_audio_file_entries.remove_at(i)
+	if ChartDB and ChartDB.IsOpen():
+		ChartDB.RemoveAudioFiles([folder_name])
 
 	# 删除目录
 	if not delete_directory_recursive(folder_path):
@@ -2177,12 +2426,34 @@ func delete_audio(file_path: String) -> bool:
 	if not delete_file(file_path):
 		return false
 	var affected_chart_ids: Array[String] = []
+	var affected_folders: Array = []
 	for i in range(audio_files_index.size() - 1, -1, -1):
 		if audio_files_index[i].get("path", "") == file_path:
 			var chart_id := str(audio_files_index[i].get("chart_id", ""))
 			if not chart_id.is_empty() and not affected_chart_ids.has(chart_id):
 				affected_chart_ids.append(chart_id)
 			audio_files_index.remove_at(i)
+	# 人声速查索引 / 落库条目 / DB 速查库同步移除该音频
+	for i in range(_audio_file_entries.size() - 1, -1, -1):
+		if _audio_file_entries[i].get("path", "") == file_path:
+			var fn := str(_audio_file_entries[i].get("folder_name", ""))
+			if not fn.is_empty() and not affected_folders.has(fn):
+				affected_folders.append(fn)
+			_audio_file_entries.remove_at(i)
+	for fn: String in affected_folders:
+		if vocal_files_index.get(fn, "") == file_path:
+			# 该谱面还有其它音频（旧命名多格式）则改指其一，否则移除
+			var next_path := ""
+			for e in _audio_file_entries:
+				if str(e.get("folder_name", "")) == fn:
+					next_path = str(e.get("path", ""))
+					break
+			if next_path.is_empty():
+				vocal_files_index.erase(fn)
+			else:
+				vocal_files_index[fn] = next_path
+	if ChartDB and ChartDB.IsOpen():
+		ChartDB.RemoveAudioFileByPath(file_path)
 	_clear_vocal_config_for_deleted_audio(file_path, affected_chart_ids)
 	return true
 
