@@ -24,7 +24,7 @@ const TREE_ROW_SCENE := preload("res://UI/Views/SettingView/TreeRow.tscn")
 
 # ── 共用列表（5 个 tab 同一个 ScrollContainer + 同一个池）──
 @onready var _page_scroll := $Content/PC/PageContainer/PageScroll as ScrollContainer
-@onready var _page_list := $Content/PC/PageContainer/PageScroll/PageList as VBoxContainer
+@onready var _page_list := $Content/PC/PageContainer/PageScroll/PageList as Control
 
 # ── 共享底栏 ──
 @onready var _select_toggle := $Content/BottomBarPC/BottomBar/SelectToggle as Button
@@ -44,7 +44,7 @@ var _search_query: String = ""
 #   _vlist        虚拟化渲染器，只把 _visible_rows 里落在滚动窗口的那几十条绑到池行上
 # 5 个 tab 共用同一套 _rows / _vlist，切 tab 只是换数据，不再有 5 份列表容器。
 # ════════════════════════════════════════════════════════════
-var _vlist: VirtualRowList
+var _vlist: VirtualList
 var _rows: Array[Dictionary] = []
 var _visible_rows: Array = []
 
@@ -81,8 +81,9 @@ var _midi_checked: Dictionary = {}
 
 
 func _ready() -> void:
-	_vlist = VirtualRowList.new()
+	_vlist = VirtualList.new()
 	_vlist.setup(_page_scroll, _page_list, TREE_ROW_SCENE)
+	_vlist.row_gap = 0.0   # 还原旧 PageList(VBox) 的 separation=0
 	_vlist.on_row_ready = _on_row_ready
 	_vlist.on_row_bind = _on_row_bind
 
@@ -280,7 +281,7 @@ func _recompute_visible(keep_scroll: bool = false) -> void:
 		else:
 			if _row_matches(row):
 				_visible_rows.append(i)
-	# 容器尚未布局时 VirtualRowList 会自行延后建池（滚动/resized 触发时补上），这里无需重试
+	# 容器尚未布局时 VirtualList 会自行延后建池（滚动/resized 触发时补上），这里无需重试
 	_vlist.set_total(_visible_rows.size(), not keep_scroll)
 	# 锚点行还在（没被折叠/过滤掉）→ 按新下标复位；找不到了就沿用 set_total 夹过的值
 	if keep_scroll and not anchor_key.is_empty():
@@ -509,9 +510,9 @@ func _update_focus_relations() -> void:
 	for b in _tab_buttons:
 		b.focus_neighbor_right = right_path
 	if _vlist:
-		for node in _vlist.pool:
-			if node.visible:
-				node.focus_neighbor_left = tab_path
+		# 只遍历真在显示的槽位；pool 里含已解绑但仍在树上（平移出视口）的行
+		for node in _vlist.bound_nodes():
+			node.focus_neighbor_left = tab_path
 
 
 func _on_bottom_btn_focus_entered() -> void:

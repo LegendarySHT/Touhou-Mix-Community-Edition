@@ -15,9 +15,10 @@ const PL_ITEM_SCENE := preload("res://UI/Views/MusicPlayerView/PlaylistItem.tscn
 ## 那样本脚本会在解析期直接报错。preload 不依赖全局类表。
 const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
 const RepeatMode := PlaybackTypesLib.RepeatMode
+## 通用虚拟化列表（与 DelView/曲库/SortedMidi 共用）。preload 而非全局类名，理由同 ITEM_SCRIPT
+const VirtualListLib := preload("res://UI/Components/VirtualList.gd")
 
-## 行对象池（照曲库的池化思路）：只保留「视窗 ± margin」的行节点，滚动时换绑数据。
-## 行高一致，PlList 里用上下两个 spacer 撑出滚动总高，池行夹在中间占住可视窗口的位置
+## 视窗外保留的缓冲行数
 const POOL_MARGIN_ROWS := 3
 ## 页面一次能显示 ~15 行，池 = 可见 + margin 就够；上限只防窗口异常大时无节制膨胀
 const POOL_MAX_ROWS := 24
@@ -62,19 +63,23 @@ var _follow_tween: Tween = null
 ## 程序化滚动标志：置位期间 scrollbar 的 value_changed 不算用户操作
 var _auto_scrolling: bool = false
 
-## 行池状态。行高在建池时实测一次（行 + separation），窗口 = [first, first+行数)
-var _row_stride_px: float = 0.0
-var _top_spacer: Control = null
-var _bottom_spacer: Control = null
-var _pool_rows: Array = []
-var _window_first: int = 0
+## 行池（ScrollContainer + 纯 Control 内容层 + offset_transform 换绑，与 DelView/曲库/SortedMidi 共用）
+var _vlist: VirtualListLib = null
+## 列表总条目数（跟随逻辑用；池的 total 由 _sync_row_window 按 manager 校正）
 var _playlist_total: int = 0
 
 func _ready() -> void:
 	ThemeMGR.register_theme_applier(self)
 	apply_theme()
+	_vlist = VirtualListLib.new()
+	_vlist.setup(_pl_scroll, _pl_list, PL_ITEM_SCENE)
+	_vlist.margin_rows = POOL_MARGIN_ROWS
+	_vlist.max_slots = POOL_MAX_ROWS
+	_vlist.row_gap = 5.0   # 还原旧 PlList(VBox) 的 separation=5
+	_vlist.on_row_ready = _on_row_ready
+	_vlist.on_row_bind = _on_row_bind
+	# resized（建池/补行）由 VirtualList 内部接管，这里只跟用户滚动
 	_pl_scroll.get_v_scroll_bar().value_changed.connect(_on_scroll_moved)
-	_pl_scroll.resized.connect(_on_pl_scroll_resized)
 	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		mgr.playlist_index_changed.connect(_refresh_playlist_highlight)
@@ -84,14 +89,24 @@ func _ready() -> void:
 		mgr.playlist_changed.connect(_on_playlist_list_changed)
 		# 打乱按钮只在随机模式下显示（顺序/循环模式下没有意义）
 		mgr.repeat_mode_changed.connect(_on_repeat_mode_changed)
-		_reshuffle_btn.visible = mgr.repeat_mode == RepeatMode.SHUFFLE
+		_refresh_mode_ui()
+	# 收藏夹是异步就绪的（先发 favorites_loaded 占位、扫描完再发 favorites_updated）：
+	# 期间重建下拉会找不到当前来源歌单的条目，于是选择框停在「未选择歌单」，
+	# 而列表内容仍是那个歌单的 —— 看起来就是"默认显示了别的歌单"。故跟着一起重建
+	EvtBus.favorites_loaded.connect(_rebuild_fav_select)
+	EvtBus.favorites_updated.connect(_rebuild_fav_select)
 	if not visible:
 		TextScrollMGR.suspend_page(self)
 
-## 打乱按钮跟随播放模式显隐
-func _on_repeat_mode_changed(_mode: int) -> void:
+## 打乱按钮跟随播放模式显隐。
+## 播放模式存在盘里、由 MidiCore 懒加载读回，所以本面板建好那一刻读到的可能还是默认模式；
+## _ready / 打开面板 / 收到 playlist_changed 都刷一次，保证显示的是当前模式
+func _refresh_mode_ui() -> void:
 	var mgr := PlaybackDisplay.instance
 	_reshuffle_btn.visible = mgr != null and mgr.repeat_mode == RepeatMode.SHUFFLE
+
+func _on_repeat_mode_changed(_mode: int) -> void:
+	_refresh_mode_ui()
 
 ## 「打乱列表」：整表打乱并从头播（manager 侧清空历史/重放栈，全新收听会话）
 func _on_reshuffle_pressed() -> void:
@@ -120,7 +135,7 @@ func _process(delta: float) -> void:
 ## force=true 跳过"用户刚操作过"的等待（刚展开面板时不跳，等于要等满 10s 才归位），
 ## 并把滚动改为瞬时——刚展开时面板自己还在滑入，再叠一段滚动动画会显得很乱。
 func _follow_current_song_if_needed(force: bool = false) -> void:
-	if _pl_dragging or _pl_flinging or _row_stride_px <= 0.0:
+	if _pl_dragging or _pl_flinging or _vlist == null or _vlist.row_stride <= 0.0:
 		return
 	if not force and Time.get_ticks_msec() - _last_user_scroll_ms < FOLLOW_IDLE_MS:
 		return
@@ -130,14 +145,15 @@ func _follow_current_song_if_needed(force: bool = false) -> void:
 	var idx := mgr.playlist_index
 	if idx < 0 or idx >= _playlist_total:
 		return
-	var top := float(idx) * _row_stride_px
+	var stride := _vlist.row_stride
+	var top := float(idx) * stride
 	var view_h := _pl_scroll.size.y
 	var scroll := float(_pl_scroll.scroll_vertical)
 	# 已完整可见（含一点余量）就不动
-	if top >= scroll and top + _row_stride_px <= scroll + view_h:
+	if top >= scroll and top + stride <= scroll + view_h:
 		return
 	var bar := _pl_scroll.get_v_scroll_bar()
-	var target := clampf(top - (view_h - _row_stride_px) * 0.5, 0.0, maxf(bar.max_value - bar.page, 0.0))
+	var target := clampf(top - (view_h - stride) * 0.5, 0.0, maxf(bar.max_value - bar.page, 0.0))
 	_kill_follow_tween()
 	if force:
 		# 瞬时归位：面板正在滑入，跟着滚一段动画会和面板动画抢视线
@@ -165,13 +181,10 @@ func _on_scroll_moved(_value: float) -> void:
 		_last_user_scroll_ms = Time.get_ticks_msec()
 	_sync_row_window()
 
-func _on_pl_scroll_resized() -> void:
-	_grow_row_pool()
-	_sync_row_window()
-
 func open() -> void:
 	visible = true
 	TextScrollMGR.resume_page(self)
+	_refresh_mode_ui()
 	_rebuild_fav_select()
 	_rebuild_playlist_list()
 	# 从右侧滑入。走 AnimationManager 统一管理 tween，避免快速连点时叠加冲突
@@ -210,87 +223,36 @@ func close() -> void:
 
 # ── 行池 ──────────────────────────────────────────────
 
-## 建池：实测行高 → 按视窗行数建池行 + 上下 spacer。行高拿不到（首帧未布局）返回 false
-func _ensure_row_pool() -> bool:
-	if _row_stride_px > 0.0:
-		return true
-	if _pl_scroll.size.y <= 0.0:
-		return false
-	var sample: ITEM_SCRIPT = PL_ITEM_SCENE.instantiate()
-	_pl_list.add_child(sample)
-	var row_h := sample.get_combined_minimum_size().y
-	_pl_list.remove_child(sample)
-	sample.queue_free()
-	if row_h <= 0.0:
-		return false
-	_row_stride_px = row_h + float(_pl_list.get_theme_constant("separation"))
-	_top_spacer = _make_spacer()
-	_pl_list.add_child(_top_spacer)
-	_grow_row_pool()
-	_bottom_spacer = _make_spacer()
-	_pl_list.add_child(_bottom_spacer)
-	return true
+## 池行首次创建：连信号（池行复用，只能连一次）
+func _on_row_ready(node) -> void:
+	var item: ITEM_SCRIPT = node
+	item.remove_requested.connect(_on_pl_remove)
+	item.activated.connect(_on_pl_activated)
 
-func _make_spacer() -> Control:
-	var sp := Control.new()
-	sp.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return sp
 
-## 池行数对齐视窗（窗口拉伸/首建补行、缩小裁行）。补行后把底 spacer 挪回末尾
-func _grow_row_pool() -> void:
-	if _row_stride_px <= 0.0:
-		return
-	var need := int(ceil(_pl_scroll.size.y / _row_stride_px)) + 1 + POOL_MARGIN_ROWS * 2
-	need = clampi(need, 1, POOL_MAX_ROWS)
-	while _pool_rows.size() < need:
-		var item: ITEM_SCRIPT = PL_ITEM_SCENE.instantiate()
-		item.visible = false
-		_pl_list.add_child(item)
-		item.remove_requested.connect(_on_pl_remove)
-		item.activated.connect(_on_pl_activated)
-		_pool_rows.append(item)
-	while _pool_rows.size() > need:
-		var row: ITEM_SCRIPT = _pool_rows.pop_back()
-		_pl_list.remove_child(row)
-		row.queue_free()
-	_window_first = -1   # 池成员变了，下轮同步强制重算窗口
-	if _bottom_spacer != null:
-		_pl_list.move_child(_bottom_spacer, _pl_list.get_child_count() - 1)
+## 池行换绑到数据索引 idx：按 key 惰性水合并填入。
+## 已绑同一索引的行由 VirtualList 直接跳过（文字测宽是重绑的大头）；
+## 落在视窗 ±margin 之外的行不参与绘制，否则长歌名的字形（阴影+描边+填充三遍）
+## 会把图元数顶上去
+func _on_row_bind(node, idx: int) -> void:
+	var item: ITEM_SCRIPT = node
+	var mgr := PlaybackDisplay.instance
+	var cur := mgr.playlist_index if mgr != null else -1
+	item.setup_with(_midi_for_key(MidiCore.GetKeyAt(idx)), idx, idx == cur)
 
-## 把池行对准当前滚动窗口：更新 spacer 高度 + 换绑窗口内行。
-## 已绑同一条目的行直接跳过（文字测宽是重绑的大头）。
-## 显示与绑定是两回事：池可能大于视窗（POOL_MAX 上限/历史超长窗口建大过），
-## 只有真正落在滚动视窗 ±margin 的行才 visible——可视区外的行不参与绘制，
-## 否则长歌名的字形（阴影+描边+填充三遍）会把图元数顶上去
+
+## 把池行对准当前滚动窗口。
+## 总数以 manager 为唯一事实来源（增删/打乱不走 set_total 也会变），故每次先校正再 sync。
+## 传 reset_scroll=false：列表本体变化不该把视图拽回顶部
 func _sync_row_window(force: bool = false) -> void:
-	if _row_stride_px <= 0.0:
+	if _vlist == null or _vlist.row_stride <= 0.0:
 		return
 	var mgr := PlaybackDisplay.instance
-	var total: int = mgr.playlist_count() if mgr != null else 0
-	var cur: int = mgr.playlist_index if mgr != null else -1
-	var first := 0
-	if total > _pool_rows.size():
-		first = clampi(int(_pl_scroll.scroll_vertical / _row_stride_px) - POOL_MARGIN_ROWS,
-			0, total - _pool_rows.size())
-	if first != _window_first:
-		_window_first = first
-		if _top_spacer != null:
-			_top_spacer.custom_minimum_size.y = float(first) * _row_stride_px
-		if _bottom_spacer != null:
-			_bottom_spacer.custom_minimum_size.y = float(maxi(total - first - _pool_rows.size(), 0)) * _row_stride_px
-	var vis_first := int(floor(_pl_scroll.scroll_vertical / _row_stride_px)) - POOL_MARGIN_ROWS
-	var vis_last := int(ceil((_pl_scroll.scroll_vertical + _pl_scroll.size.y) / _row_stride_px)) + POOL_MARGIN_ROWS
-	for k in _pool_rows.size():
-		var item: ITEM_SCRIPT = _pool_rows[k]
-		var idx := first + k
-		if idx >= total or idx < vis_first or idx > vis_last:
-			item.visible = false
-			continue
-		item.visible = true
-		if not force and item.index == idx:
-			continue
-		var data: MidiData = _midi_for_key(MidiCore.GetKeyAt(idx))
-		item.setup_with(data, idx, idx == cur)
+	var n := mgr.playlist_count() if mgr != null else 0
+	if n != _vlist.total:
+		_vlist.set_total(n, false)
+	_pl_list.row_stride_px = _vlist.row_stride   # 调序拖拽按实测行距换算目标行
+	_vlist.sync(force)
 
 # ── 列表重建 ──────────────────────────────────────────
 
@@ -323,13 +285,13 @@ func _rebuild_playlist_list() -> void:
 	var sig := _playlist_sig(keys)
 	# 内容没变且池已就绪才走复用；池未建（首次打开当帧 PlScroll 尚未布局，建池失败
 	# 走 deferred 重试）时必须放行，否则重试被这里挡死，面板永远空白
-	if sig == _pl_last_sig and _row_stride_px > 0.0:
+	if sig == _pl_last_sig and _vlist.row_stride > 0.0:
 		# 内容没变：行节点全部复用，只同步高亮 + 窗口
 		_refresh_playlist_highlight()
 		_sync_row_window()
 		return
 	_pl_last_sig = sig
-	if not _ensure_row_pool():
+	if not _vlist.ensure():
 		# 行高还没量出来（首帧未布局），下一帧再试
 		_rebuild_playlist_list.call_deferred()
 		return
@@ -338,10 +300,11 @@ func _rebuild_playlist_list() -> void:
 	_pl_empty.visible = keys.is_empty()
 	_sync_row_window(true)
 
-## 列表本体变化（切随机/顺序重排、外部增删）→ 强制重绑池行内容
+## 列表本体变化（切随机/顺序重排、外部增删）→ 强制重绑池行内容 + 同步模式显示
 func _on_playlist_list_changed() -> void:
 	if not visible:
 		return
+	_refresh_mode_ui()
 	_sync_row_window(true)
 	_refresh_playlist_highlight()
 
@@ -353,9 +316,8 @@ func _refresh_playlist_highlight(_changed_index: int = -1) -> void:
 		return
 	var mgr := PlaybackDisplay.instance
 	var cur: int = mgr.playlist_index if mgr != null else -1
-	for item in _pool_rows:
-		if not item.visible:
-			continue
+	# 只遍历真在显示的槽位：pool 里含已解绑但仍在树上（平移出视口）的行
+	for item in _vlist.bound_nodes():
 		# 行内容没变，只切高亮；走 setup_with 会触发 set_scroll_text 重新测宽
 		var is_cur: bool = item.index == cur
 		item.is_current = is_cur
@@ -519,5 +481,6 @@ func _stop_all_dragging() -> void:
 	_pl_dragging = false
 	_stop_pl_fling()
 	_pl_list.end_handle_drag()   # 拖拽状态在列表上，面板收起时一并收尾
-	for item in _pool_rows:
+	# 遍历整个池：正在被拖动的行可能刚好在收起前滚出窗口而解绑
+	for item in _vlist.pool:
 		item.cancel_drag()

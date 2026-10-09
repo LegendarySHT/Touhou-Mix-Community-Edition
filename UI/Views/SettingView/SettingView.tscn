@@ -278,10 +278,10 @@ grow_horizontal = 2
 grow_vertical = 2
 horizontal_scroll_mode = 0
 
-[node name="PageList" type="VBoxContainer" parent="DelView/Content/PC/PageContainer/PageScroll" unique_id=512843258]
+[node name="PageList" type="Control" parent="DelView/Content/PC/PageContainer/PageScroll" unique_id=512843258]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 0
+mouse_filter = 1
 
 [node name="BottomBarPC" type="PanelContainer" parent="DelView/Content" unique_id=2038911109]
 custom_minimum_size = Vector2(0, 100)

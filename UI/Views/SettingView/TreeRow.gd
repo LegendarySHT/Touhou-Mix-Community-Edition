@@ -7,7 +7,7 @@
 ##
 ## 本脚本只管"长什么样"，数据填充由 DelView 在换绑时通过 set_content() 完成。
 ## 行是池化复用的，任何"属于某条数据"的状态都不能存在节点里 —— 一律走
-## node.get_meta(&"row_index") 反查（见 VirtualRowList 的说明）。
+## node.get_meta(&"row_index") 反查（见 VirtualList 的说明）。
 extends HBoxContainer
 class_name TreeRow
 

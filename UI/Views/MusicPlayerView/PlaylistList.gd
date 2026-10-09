@@ -1,6 +1,10 @@
-extends VBoxContainer
+extends Control
 
 ## 播放列表的列表容器：项的排序拖拽在这里统一处理。
+##
+## 注意：这里必须是**纯 Control**而不是 VBoxContainer —— 虚拟化列表用 offset_transform_position
+## 把行搬到各自的数据行位置（见 VirtualList），Container 会强制布局子节点、把偏移覆盖掉。
+## 容器不做任何布局，行位置完全由行池写；PlEmpty 用锚点自行居中。
 ##
 ## 拖拽状态放在列表上、不放项上——调序会触发整表重建（项被释放重建），
 ## 状态挂在项上会随重建丢失，表现为「移动一位后就跟丢」。
@@ -18,6 +22,10 @@ const DRAG_THRESHOLD := 8.0
 ## 数据集总条目数（面板在换绑时写入）。行是池化的，children 数 ≠ 列表长度，
 ## 调序目标的钳制必须用它
 var total_count: int = 0
+
+## 行步进（像素）= 行高 + 行距，由面板在建池后写入 VirtualList 的实测值。
+## 未写入时退回「已绑行高」近似（差一个 row_gap，不影响手感）
+var row_stride_px: float = 0.0
 
 var _dragging: bool = false
 var _from_index: int = -1
@@ -82,11 +90,14 @@ func _move_by_drag() -> void:
 	_from_index = to
 	move_requested.emit(from, to)
 
-## 行步进 = 项高 + 容器 separation（行是池化的，只看可见的已绑行；spacer 无脚本自动跳过）
+## 行步进：优先用面板写入的实测值（行高 + 行距）；没有则退回已绑行高
+## （行是池化的，只看可见的已绑行；PlEmpty 无行脚本自动跳过）
 func _row_stride() -> float:
+	if row_stride_px > 0.0:
+		return row_stride_px
 	for c in get_children():
 		if c.get_script() == ITEM_SCRIPT:
 			var item := c as Control
 			if item.visible and item.size.y > 0.0:
-				return maxf(item.size.y + float(get_theme_constant("separation")), 1.0)
+				return maxf(item.size.y, 1.0)
 	return 1.0

@@ -29,140 +29,6 @@ signal _init_fin
 
 var _has_ready: bool = false
 
-## 拖拽滚动手势（引擎单点路由的变通）：
-## 项(Button)按下后即独占该指针流，同级的滚动容器收不到、无法启动其原生拖动。
-## 故由项按"位移超阈值即拖动"手动代理滚动容器：位移不足视为点击、交还基类 Button；
-## 超阈值转拖动，累计相对位移驱动 scroll_vertical，并用 0.1s 窗口采样松开时初速度，
-## 交给视图（ScrollContainer 本体）统一驱动的惯性（1000px/s 衰减）。拖开时吞掉松开事件
-## 避免误触点击/选择，但手动补齐松开弹起动画。
-## 注意：惯性状态必须由视图统一持有驱动——项池会复用，挂在单项上刹停不了全局反拖。
-const DRAG_SCROLL_THRESHOLD := 16.0
-
-# 当前独占的输入流（引擎可能在同时下发触摸与被模拟的鼠标事件，用流锁去重）
-enum TStream { NONE, TOUCH, MOUSE }
-
-var _stream: int = TStream.NONE
-var _pressing := false        # 指针是否在本项按下并持有
-var _drag_accum := 0.0        # 按下后累计的局部 y 位移
-var _drag_scrolling := false  # 是否已判为拖动(超过阈值)，需吞掉本次点击
-var _launch_velocity := 0.0   # 松开时采样出的惯性初速度(px/s)，交给视图启动惯性
-var _sample_accum := 0.0      # 上次速度采样时的累计位移
-var _sample_time := 0.0       # 距上次采样经过的时间
-
-## 处理输入：触摸/鼠标统一，低阈值点击、高阈值拖动；两流并存时仅首个持有
-func _gui_input(event: InputEvent) -> void:
-	if event is InputEventScreenTouch:
-		if event.pressed:
-			if _stream == TStream.NONE:
-				_stream = TStream.TOUCH
-				_drag_begin()
-		elif _stream == TStream.TOUCH:
-			_stream = TStream.NONE
-			_drag_end()
-		return
-	if event is InputEventScreenDrag:
-		if _stream == TStream.TOUCH and _pressing:
-			_drag_move(event.relative.y)
-		return
-
-	var mb := event as InputEventMouseButton
-	if mb and mb.get_button_index() == MOUSE_BUTTON_LEFT:
-		if _stream == TStream.NONE:
-			if mb.pressed:
-				_stream = TStream.MOUSE
-				_drag_begin()
-			else:
-				_stream = TStream.MOUSE
-				_drag_end()
-				_stream = TStream.NONE
-		elif _stream == TStream.MOUSE and not mb.pressed:
-			_stream = TStream.NONE
-			_drag_end()
-		return
-
-	var mm := event as InputEventMouseMotion
-	if _stream == TStream.MOUSE and mm and _pressing and (mm.get_button_mask() & MOUSE_BUTTON_MASK_LEFT):
-		_drag_move(mm.relative.y)
-
-func _drag_begin() -> void:
-	_pressing = true
-	_drag_accum = 0.0
-	_drag_scrolling = false
-	_sample_accum = 0.0
-	_sample_time = 0.0
-	_launch_velocity = 0.0
-	# 按下即刹停全局惯性：惯性由视图统一驱动，任意项按下立停，反拖才能刹住
-	var v := parent_node as SortedMidiView
-	if v:
-		v.item_stop_fling()
-	set_process(true)
-
-func _drag_move(dy: float) -> void:
-	_drag_accum += dy
-	if _drag_scrolling:
-		_scroll_by_drag(dy)
-		accept_event()
-		return
-	# 位移超阈值且存在可滚动范围，才转拖动；否则保持点击（如列表不满屏时）
-	if abs(_drag_accum) > DRAG_SCROLL_THRESHOLD and _can_drag_scroll():
-		_drag_scrolling = true
-		_scroll_by_drag(dy)
-		accept_event()
-
-func _drag_end() -> void:
-	_pressing = false
-	if not _drag_scrolling:
-		return  # 未拖动：交还基类 Button 处理点击
-	_drag_scrolling = false
-	button.set_pressed_no_signal(false)
-	# 用最后一段采样窗口补全速度（快速轻扫也拿到惯性），交给视图启动
-	if _sample_time > 0.0:
-		_launch_velocity = (_drag_accum - _sample_accum) / maxf(_sample_time, 0.001)
-	var v := parent_node as SortedMidiView
-	if v:
-		v.item_launch_fling(_launch_velocity)
-	_on_button_up()  # 手动补齐松开弹起动画（吞掉信号时不触发点击/选择）
-	accept_event()  # 吞掉本次松开，避免误触点击/选择
-
-func _process(delta: float) -> void:
-	# 拖动中：0.1s 窗口采样速度（同原生 ScrollContainer._process）；惯性由视图 _step_fling 驱动
-	if _pressing:
-		_sample_time += delta
-		if _sample_time >= 0.1:
-			_launch_velocity = (_drag_accum - _sample_accum) / _sample_time
-			_sample_accum = _drag_accum
-			_sample_time = 0.0
-	else:
-		set_process(false)
-
-func _scroll_container() -> ScrollContainer:
-	return parent_node as ScrollContainer
-
-func _can_drag_scroll() -> bool:
-	var sc := _scroll_container()
-	return is_instance_valid(sc) and sc.get_v_scroll_bar().max_value > 0.0
-
-func _scroll_by_drag(dy: float) -> void:
-	var sc := _scroll_container()
-	if is_instance_valid(sc):
-		sc.scroll_vertical = roundi(sc.scroll_vertical - dy)
-
-## 焦点滚入视口：项在覆盖层上、非滚动容器子节点，自动滚动失效，
-## 故聚焦时手动把项滚进可见区（越界方向补正 scroll_vertical）
-func _on_focus_scroll_into_view() -> void:
-	var sc := _scroll_container()
-	if not is_instance_valid(sc):
-		return
-	var vsz := sc.size.y
-	if vsz <= 0.0:
-		return
-	var top := position.y
-	var bottom := position.y + size.y
-	if top < 0.0:
-		sc.scroll_vertical = roundi(sc.scroll_vertical + top)
-	elif bottom > vsz:
-		sc.scroll_vertical = roundi(sc.scroll_vertical + bottom - vsz)
-
 func _ready() -> void:
 	cover_texture = $cover
 	await _init_fin
@@ -221,16 +87,18 @@ func _play_refresh_slide_in() -> void:
 		# 不可见：保持 0，无动画
 		offset_transform_position_ratio.x = 0.0
 
-## 检测自身是否与父级（ScrollContainer）当前可视视窗相交
-## 覆盖层项 position 为"屏幕局部"坐标（覆盖层不被滚动平移，项 y 已含滚动偏移 -vtop），
-## 故直接与覆盖层可视高度 [0, size.y] 比较判定可视即可（与 BaseScrollList._bound_visible 语义一致）。
+## 检测自身是否与父级（ScrollContainer）当前可视视窗相交。
+## 项位置写在 offset_transform_position 里（内容坐标，还没被滚动容器平移），
+## 故用 global_position 换算回「相对滚动容器的屏幕局部 y」再比较。
+## 项目启用了"鼠标模拟触摸"，Godot ScrollContainer 自带惯性滚动，无需手动处理
 func _is_in_viewport() -> bool:
 	if not parent_node or not is_instance_valid(parent_node):
 		return false
 	var sc := parent_node as ScrollContainer
 	if not sc or sc.size.y <= 0.0:
 		return false
-	return (position.y + size.y > 0.0) and (position.y < sc.size.y)
+	var y := global_position.y - sc.global_position.y
+	return (y + size.y > 0.0) and (y < sc.size.y)
 
 ## 重写基类虚函数：返回 MIDI 封面 Texture2D
 func _get_cover_texture() -> Texture2D:
@@ -266,8 +134,6 @@ func setup_with_dict(d: Dictionary, index: int, bg:ButtonGroup) -> void:
 	if not button:
 		button = self
 		enable_selected_animation(button, get_node(PathRegistry.SORTED_MIDIS_LIST))
-		# 焦点滚入视口（覆盖层项非滚动容器子节点，自动滚动失效，需手动补正）
-		button.focus_entered.connect(_on_focus_scroll_into_view)
 	button.button_group = bg
 
 	if _has_ready:

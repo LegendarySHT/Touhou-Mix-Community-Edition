@@ -1178,7 +1178,6 @@ alignment = 1
 [node name="SortedMidisList" type="ScrollContainer" parent="skew/C" unique_id=1679713169]
 physics_interpolation_mode = 1
 visible = false
-clip_contents = false
 layout_mode = 1
 anchors_preset = -1
 anchor_bottom = 1.0
@@ -1190,19 +1189,12 @@ offset_transform_position = Vector2(-1500, 0)
 follow_focus = true
 horizontal_scroll_mode = 0
 script = ExtResource("26_5mvff")
-container_path = NodePath("VBox")
 list_item_class = "res://UI/Views/SortedMidiView/sortedMidiNode.tscn"
 
-[node name="VBox" type="VBoxContainer" parent="skew/C/SortedMidisList" unique_id=430529324]
+[node name="ListContent" type="Control" parent="skew/C/SortedMidisList" unique_id=1834154471]
 layout_mode = 2
-
-[node name="SortedMidiContainer" type="Control" parent="skew/C" unique_id=1834154471]
-visible = false
-layout_mode = 1
-anchors_preset = 0
-offset_right = 1020.0
-offset_bottom = 1080.0
-offset_transform_position = Vector2(-1500, 0)
+size_flags_horizontal = 3
+size_flags_vertical = 3
 mouse_filter = 2
 
 [node name="NoItems" type="Label" parent="skew/C" unique_id=756567896]

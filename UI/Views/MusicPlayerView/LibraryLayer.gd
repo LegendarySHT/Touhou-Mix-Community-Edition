@@ -9,29 +9,23 @@ signal opened
 signal closed
 
 const CARD_SCENE := preload("res://UI/Views/MusicPlayerView/LibraryCard.tscn")
+## 通用虚拟化列表（与 DelView/播放列表/SortedMidi 共用）。preload 而非全局类名，避免类缓存问题
+const VirtualListLib := preload("res://UI/Components/VirtualList.gd")
 ## 网格列数
 const LIBRARY_COLUMNS := 3
 ## 行间距 / 列间距
 const LIBRARY_ROW_GAP := 25.0
 const LIBRARY_COL_GAP := 20.0
-## 固定槽位数：只创建这么多卡片，滚动时换绑数据（照搬 SortedMidiView 的对象池思路）
-const LIBRARY_POOL_SIZE := 36
-
-## 卡片高度由 LibraryCard.tscn 的 custom_minimum_size.y 指定（宽度交给锚点自适应屏幕）；
-## 建池时读取，兜底值仅防未初始化
-var _lib_card_h: float = 250.0
+## 视窗上下各多绑几行卡片（滑得快时不留白）
+const LIBRARY_MARGIN_ROWS := 2
 
 var _lib_items: Array = []
-var _lib_slots: Array = []          # LibraryCard 节点（槽位）
-## 空闲槽池（存槽位下标）+ 占用表（槽位下标 → 数据索引）。
-## 不变量：两者并集恒为全部槽位、互不相交；绑定 = 从空闲池 pop 后写入占用表。
-var _lib_free_slots: Array = []
-var _lib_occupied: Dictionary = {}
+## 卡片池（滚动容器 + 内容层 + 自由槽位复用，见 VirtualList 头注释）
+var _vlist: VirtualListLib = null
+## 下次绑定是否播入场动画（全量重绑时置位，滚动补位不播）
+var _lib_animate_next: bool = false
 ## 卡片池封面纹理被后台回收放掉过（见 release_cover_state）：下次 open 需全量重绑才会重新加载
 var _cover_released: bool = false
-## 曲库滚动值（像素）。由 LibraryOverlay 经 Callable 读写，自己持有，
-## 不再依赖 ScrollContainer——卡片位置是锚点/像素混合表达，转 scroll_vertical 不划算
-var _lib_scroll_y: float = 0.0
 ## 筛选状态（按状态过滤，照 AlbumView 的做法）
 var _lib_status: int = SortingEngine.SortStatField.ALL
 var _lib_field: int = SortingEngine.SortDataField.DOWNLOAD_COUNT
@@ -53,8 +47,9 @@ var _open: bool = false
 @onready var _filter_status_btn: Button = $SearchRow/FilterStatusBtn
 @onready var _filter_data_btn: Button = $SearchRow/FilterDataBtn
 @onready var _sort_order_btn: Button = $SearchRow/SortOrderBtn
-@onready var _library_empty: Label = $Content/LibraryEmpty
-@onready var _lib_overlay: Control = $Content/LibraryOverlay
+@onready var _library_empty: Label = $LibraryList/ListContent/ListEmpty
+@onready var _lib_scroll: ScrollContainer = $LibraryList
+@onready var _list_content: Control = $LibraryList/ListContent
 
 func _ready() -> void:
 	ThemeMGR.register_theme_applier(self)
@@ -86,9 +81,9 @@ func prewarm() -> void:
 ## 等于把刚释放的内存又装回去。重绑留给下次 open()：
 ## 那时以"可见窗口只有十几张卡"重绑，代价可接受，且只加载真正要看的那几张。
 func release_cover_state() -> void:
-	if _lib_slots.is_empty():
+	if _vlist == null or _vlist.pool.is_empty():
 		return
-	for card in _lib_slots:
+	for card in _vlist.pool:
 		if is_instance_valid(card) and card.has_method("release_cover_state"):
 			card.call("release_cover_state")
 	_cover_released = true
@@ -99,14 +94,14 @@ func open() -> void:
 	_apply_sort_icon()
 	_request_sort()
 	# 排序签名没变时 _request_sort 会直接复用，不会发 items_ready；
-	# 这里补一次窗口绑定，保证打开时按当前覆盖层尺寸铺满可见行
-	_reconcile_library_pool.call_deferred(false)
+	# 这里补一次窗口绑定，保证打开时按当前视窗尺寸铺满可见行
+	_reconcile.call_deferred(false)
 	# 池内卡片可能刚被后台回收放掉过封面纹理（release_cover_state），
 	# 此时窗口内槽位都还"已绑定"，上面那次补位不会给它们重绑 → 封面会一直是空的。
-	# 故再补一次全量重绑（animate_in=true 会先归还全部槽位再按可见窗口重绑）。
+	# 故再补一次全量重绑（force 会先归还全部槽位再按可见窗口重绑）。
 	if _cover_released:
 		_cover_released = false
-		_reconcile_library_pool.call_deferred(true)
+		_reconcile.call_deferred(true, true)
 
 	visible = true
 	TextScrollMGR.resume_page(self)
@@ -133,161 +128,45 @@ func _animate_closed() -> void:
 	visible = false
 	TextScrollMGR.suspend_page(self)
 
-## 节点池：卡片挂在覆盖层上（机制同 SortedMidiView——只固定数量的卡片，
-## 滚动时换绑数据），这样才能池化复用而不是每首歌一个节点。
+## 节点池：卡片挂在滚动容器的内容层上，只建视窗需要的那些，滚动时换绑数据（见 VirtualList 头注释）
 func _ensure_library_pool() -> void:
-	if not _lib_slots.is_empty():
+	if _vlist != null:
 		return
-	if _lib_overlay == null:
+	if _lib_scroll == null or _list_content == null:
 		return
-	if not _lib_overlay.resized.is_connected(_on_overlay_resized):
-		_lib_overlay.resized.connect(_on_overlay_resized)
-	_lib_overlay.get_scroll_y = Callable(self, "_get_scroll_y")
-	_lib_overlay.set_scroll_y = Callable(self, "_set_scroll_y")
-	_lib_overlay.get_scroll_max = Callable(self, "_max_scroll_y")
-	_lib_overlay.scrolled = Callable(self, "_on_overlay_scrolled")
-	for i in LIBRARY_POOL_SIZE:
-		var card: PanelContainer = CARD_SCENE.instantiate()
-		if i == 0:
-			# 高度以 tscn 的 custom_minimum_size.y 为准（宽度交给锚点自适应）
-			_lib_card_h = maxf(card.custom_minimum_size.y, 1.0)
-		_lib_overlay.add_child(card)
-		card.visible = false   # 池内未绑定的卡片必须隐藏，否则会全部堆在左上角重叠
-		card.play_next_requested.connect(_on_card_play_next)
-		card.add_to_playlist_requested.connect(_on_card_add)
-		card.add_to_favorite_requested.connect(_on_card_favorite)
-		_lib_slots.append(card)
-		_lib_free_slots.append(i)
+	_vlist = VirtualListLib.new()
+	_vlist.columns = LIBRARY_COLUMNS
+	_vlist.row_gap = LIBRARY_ROW_GAP
+	_vlist.col_gap = LIBRARY_COL_GAP
+	_vlist.margin_rows = LIBRARY_MARGIN_ROWS
+	_vlist.on_row_ready = _on_card_ready
+	_vlist.on_row_bind = _on_card_bind
+	_vlist.setup(_lib_scroll, _list_content, CARD_SCENE)
 
-## 供 LibraryOverlay 经 Callable 读写滚动值（自己持有像素滚动量，不再依赖 ScrollContainer）
-func _get_scroll_y() -> float:
-	return _lib_scroll_y
 
-func _set_scroll_y(v: float) -> void:
-	_lib_scroll_y = clampf(v, 0.0, _max_scroll_y())
-	_translate_lib_to_scroll()
+## 池卡首次创建：只连信号（位置/尺寸/offset_transform 由 VirtualList 统一接管）
+func _on_card_ready(node) -> void:
+	var card: PanelContainer = node
+	card.play_next_requested.connect(_on_card_play_next)
+	card.add_to_playlist_requested.connect(_on_card_add)
+	card.add_to_favorite_requested.connect(_on_card_favorite)
 
-func _max_scroll_y() -> float:
-	var view_h := _lib_overlay.size.y if _lib_overlay != null else 0.0
-	return maxf(0.0, _lib_content_height() - view_h)
 
-## 滚动入口：把每张已绑定卡片整体上移（offset_transform），零重排
-func _on_overlay_scrolled(_v: float) -> void:
-	_translate_lib_to_scroll()
-
-## 滚动只改卡片自身的 offset_transform_position（视觉与命中区一起跟随），
-## 不重排、不重算卡位——只有当前可见的那十几张需要写
-func _translate_lib_to_scroll() -> void:
-	for slot in _lib_occupied.keys():
-		_lib_slots[slot].offset_transform_position = Vector2(0.0, -_lib_scroll_y)
-	# 可见窗口变化后补位/释放，deferred 摊开，避免拖动帧里抢占
-	_reconcile_library_pool.call_deferred(false)
-
-## 覆盖层尺寸变化：曲库隐藏时容器不给它排布（size 为 0），显示后这里才拿到真实尺寸，
-## 故必须重跑一次可见窗口计算，否则只会绑到最初那一行
-func _on_overlay_resized() -> void:
-	_lib_scroll_y = clampf(_lib_scroll_y, 0.0, _max_scroll_y())
-	_relayout_library_cards()
-	_reconcile_library_pool.call_deferred(false)
-
-func _lib_row_count() -> int:
-	var cols := maxi(1, LIBRARY_COLUMNS)
-	return int(ceil(float(_lib_items.size()) / float(cols)))
-
-## 真实内容高度：行数张卡 + 行间空隙（供滚动范围用）
-func _lib_content_height() -> float:
-	var rows := _lib_row_count()
-	if rows <= 0:
-		return 0.0
-	return float(rows) * _lib_card_h + float(rows - 1) * LIBRARY_ROW_GAP
-
-## 卡片位置由【数据索引】决定（列 = idx % 列数，行 = idx / 列数）：
-##   横向用锚点分数定列宽（列/列数 ~ (列+1)/列数），随覆盖层宽度自适应不同屏幕；
-##     两侧各缩 half 列间距，使整排左右留白相等（居中），相邻卡之间恰好一个列间距。
-##   纵向固定高度，按行号像素排（行步进 = 卡片高 + 行间距），滚动量由 offset_transform 叠加。
-func _place_library_card(card: Control, idx: int) -> void:
-	var n := maxi(1, LIBRARY_COLUMNS)
-	var col := idx % n
-	var row := idx / n
-	var half_gap := LIBRARY_COL_GAP * 0.5
-	card.anchor_left = float(col) / float(n)
-	card.anchor_right = float(col + 1) / float(n)
-	card.offset_left = half_gap
-	card.offset_right = -half_gap
-	var y := float(row) * (_lib_card_h + LIBRARY_ROW_GAP)
-	card.anchor_top = 0.0
-	card.anchor_bottom = 0.0
-	card.offset_top = y
-	card.offset_bottom = y + _lib_card_h
-	# 宽度交给锚点（置 0 不被 tscn 的 custom_minimum_size.x 卡住），高度固定
-	card.custom_minimum_size = Vector2(0.0, _lib_card_h)
-	card.offset_transform_enabled = true
-	card.offset_transform_position = Vector2(0.0, -_lib_scroll_y)
-	card.offset_transform_position_ratio = Vector2.ZERO
-
-## 尺寸变化时重排所有已绑定卡片（空闲槽位无需定位）
-func _relayout_library_cards() -> void:
-	for slot in _lib_occupied.keys():
-		_place_library_card(_lib_slots[slot], _lib_occupied[slot])
-
-## 定位并绑定可见窗口。数据刷新时全量重绑（增量对齐会残留旧数据），滚动时只补位/释放。
-func _reconcile_library_pool(animate_in: bool = false) -> void:
-	if _lib_slots.is_empty():
+## 换绑到数据索引：定位由模块做，这里只填内容
+func _on_card_bind(node, idx: int) -> void:
+	var card: PanelContainer = node
+	if idx >= _lib_items.size():
 		return
-	var n := maxi(1, LIBRARY_COLUMNS)
-	var row_step := _lib_card_h + LIBRARY_ROW_GAP
-	var vtop := _lib_scroll_y
-	var view_h := _lib_overlay.size.y if _lib_overlay != null else 0.0
+	card.setup_with(_lib_items[idx] as Dictionary, idx, _lib_animate_next)
 
-	# 可见数据索引区间：按行换算成二维索引
-	var first_row := maxi(0, floori(vtop / row_step))
-	var vis_rows := int(ceil(view_h / row_step)) + 1
-	var lo := first_row * n
-	var hi := mini(lo + vis_rows * n - 1, _lib_items.size() - 1)
 
-	# 全部归还到空闲池（数据刷新时按视觉顺序重绑，避免残留旧数据）
-	if animate_in:
-		for slot in _lib_occupied.keys():
-			_lib_slots[slot].visible = false
-			_lib_free_slots.append(slot)
-		_lib_occupied.clear()
-		for idx in range(lo, hi + 1):
-			if idx >= _lib_items.size() or _lib_free_slots.is_empty():
-				break
-			var slot: int = _lib_free_slots.pop_back()
-			_lib_occupied[slot] = idx
-			_assign_library_slot(slot, idx, true)
+## 对齐槽位与可见窗口。force=true 全量重绑（数据刷新 / 封面重载后），animate 控制入场动画
+func _reconcile(force: bool = false, animate: bool = false) -> void:
+	if _vlist == null:
 		return
-
-	# 滚动：把移出窗口的槽归还空闲池，并记下窗口内已绑定的索引
-	var bound := {}
-	for slot in _lib_occupied.keys():
-		var idx: int = _lib_occupied[slot]
-		if idx < lo or idx > hi:
-			_lib_occupied.erase(slot)
-			_lib_slots[slot].visible = false
-			_lib_free_slots.append(slot)
-		else:
-			bound[idx] = true
-	# 只给「窗口内尚未绑定」的索引补空槽——已绑定的不能再绑一次，
-	# 否则同一索引会落到多张卡上，它们位置相同 → 重叠
-	for idx in range(lo, hi + 1):
-		if idx >= _lib_items.size():
-			break
-		if bound.has(idx):
-			continue
-		if _lib_free_slots.is_empty():
-			break
-		var slot: int = _lib_free_slots.pop_back()
-		_lib_occupied[slot] = idx
-		_assign_library_slot(slot, idx, false)
-
-## 把数据绑到槽上：先按数据索引定位卡位，再换绑内容
-func _assign_library_slot(slot: int, idx: int, animate: bool) -> void:
-	var card: PanelContainer = _lib_slots[slot]
-	_place_library_card(card, idx)
-	card.visible = true
-	card.setup_with(_lib_items[idx] as Dictionary, idx, animate)
+	_lib_animate_next = animate
+	_vlist.sync(force)
+	_lib_animate_next = false
 
 ## 搜索词变化即重查（搜索基于当前筛选字段，由 DB 侧 FilterSearch 完成）
 func _on_search_changed(_t: String) -> void:
@@ -341,10 +220,11 @@ func _request_sort() -> void:
 func _on_library_items_ready() -> void:
 	_lib_items = SortEngine.get_items()
 	_library_empty.visible = _lib_items.is_empty()
-	# 跳回顶部 + 归位锚点平移（否则新结果会停在旧滚动位移上），再全量重绑
-	_lib_scroll_y = 0.0
-	_translate_lib_to_scroll()
-	_reconcile_library_pool(true)
+	if _vlist == null:
+		return
+	# reset_scroll=true：内容换了一批，带着旧滚动位置会停在莫名其妙的段；再全量重绑（含入场动画）
+	_vlist.set_total(_lib_items.size(), true)
+	_reconcile(true, true)
 
 ## 图标区域表（照 ShortCutMenu.shortcut_menu.gd）
 const STATUS_REGION := {

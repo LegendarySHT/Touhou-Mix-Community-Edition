@@ -568,6 +568,12 @@ public partial class MeltySynthPlayer
 		{
 			core.SetPersistEnabled(true);
 			core.SetSessionSingle(false);
+			// 读回磁盘后必须把「模式」广播一次：UI（播放器页的播放方式按钮、播放列表面板的
+			// 打乱按钮）是在 MidiCore 读盘之前建的，不广播就会一直停在默认的顺序模式，
+			// 要用户手动切一次模式才对得上。
+			EmitSignal(SignalName.repeat_mode_changed, core.GetRepeatMode());
+			// 排列也要跟上模式：随机模式下盘里若还是顺序排列，这里真正打乱一次
+			ApplyRepeatModeArrangement();
 		}
 		EmitSignal(SignalName.playlist_changed);
 		return core.GetCount() > 0;
@@ -575,8 +581,16 @@ public partial class MeltySynthPlayer
 
 	public void restore_playlist()
 	{
-		MidiCore.Instance?.EnsureLoaded();
-		MidiCore.Instance?.Prune();
+		var core = MidiCore.Instance;
+		if (core == null)
+		{
+			return;
+		}
+		core.EnsureLoaded();
+		core.Prune();
+		// 同 ensure_user_playlist：读盘后把模式广播给 UI，并让排列与模式一致
+		EmitSignal(SignalName.repeat_mode_changed, core.GetRepeatMode());
+		ApplyRepeatModeArrangement();
 		EmitSignal(SignalName.playlist_changed);
 	}
 

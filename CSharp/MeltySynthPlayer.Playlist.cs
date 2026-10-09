@@ -325,6 +325,44 @@ public partial class MeltySynthPlayer
 
 	// ===== 播放模式 / 排列 =====
 
+	/// <summary>把列表排列对齐「当前播放模式」。随机 → 打乱；非随机不动
+	/// （盘里的顺序就是顺序排列）。
+	///
+	/// **读回磁盘列表后必须调一次**：盘里存的是"上次的排列 + 上次的模式"，两者可能不一致
+	/// （模式记的是随机、盘里那版却是顺序排列）。不补这一步，面板/播放顺序会停在顺序排列，
+	/// 用户得手动把模式切走再切回来（那一步会走 set_repeat_mode → BecomeShuffled）才对得上。
+	///
+	/// _seqOrder/_shufOrder 是本次运行的排列快照：非空表示本次运行已经排过，不重复打乱
+	/// （同一进程内多次进页面不会每次都换顺序）。</summary>
+	public void ApplyRepeatModeArrangement()
+	{
+		var core = MidiCore.Instance;
+		if (core == null || core.GetCount() == 0)
+		{
+			return;
+		}
+		if (core.GetRepeatMode() != MidiCore.REPEAT_SHUFFLE)
+		{
+			return;
+		}
+		if (_seqOrder.Count == 0)
+		{
+			// 记下"切回顺序时该还原成什么"：此刻盘里那版就是对照基准
+			foreach (var k in core.GetKeys())
+			{
+				_seqOrder.Add(k);
+			}
+		}
+		if (_shufOrder.Count == 0)
+		{
+			BecomeShuffled();
+		}
+		else
+		{
+			ApplyArrangement(_shufOrder);
+		}
+	}
+
 	public void set_repeat_mode(int mode)
 	{
 		var core = MidiCore.Instance;

@@ -12,7 +12,9 @@ enum ScrollControlState {
 	SNAP_ANIMATION,    # 吸附动画播放中
 }
 
-## 容器（放置列表项的VBox或HBox）
+## 容器（放置列表项的VBox或HBox）。
+## 虚拟化列表（SortedMidiView）不挂容器——池项由 VirtualList 自己摆，此时保持 null 即可，
+## 此时依赖 container 的吸附/封面/视差驱动不参与（该视图自己按池项处理）
 @export var container_path: NodePath
 @onready var container: Container = get_node(container_path) if container_path else null
 
@@ -105,7 +107,7 @@ var _scroll_stable: bool = true
 var _scroll_stable_timer: Timer = null
 
 func _ready() -> void:
-	if container == null:
+	if container_path and container == null:
 		push_error("Container not found at path: %s" % container_path)
 		return
 
@@ -382,9 +384,6 @@ func _load_covers_in_range(first: int, last: int, my_gen: int) -> void:
 				await get_tree().process_frame
 
 func _process(delta: float) -> void:
-	if container == null:
-		return
-	
 	# TRACK_VIEW 和 SETTINGS_VIEW 不需要 BaseScrollList 的触摸/滚动逻辑
 	if work_state in [UIStateManager.UIState.TRACK_VIEW, UIStateManager.UIState.SETTINGS_VIEW]:
 		return
@@ -411,6 +410,11 @@ func _process(delta: float) -> void:
 	# （松手事件被吞 / 惯性残留），也解除 _drag_scrolling，保证吸附能恢复
 	if _drag_scrolling and _pointer_release_observed and not _pointer_pressed and _scroll_stable:
 		_drag_scrolling = false
+
+	# 吸附与封面/视差驱动都按 container 的子项索引工作，虚拟化列表没有 container：
+	# 池项由各自的虚拟化模块驱动，这里到此为止
+	if container == null:
+		return
 
 	# 吸附（逐帧 lerp，每帧重新计算目标位置以应对项展开/收起导致的布局变化）
 	# 仅当滚动已稳定、未拖拽滚动条、且用户未在拖拽列表内容时执行

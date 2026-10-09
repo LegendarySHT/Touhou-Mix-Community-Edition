@@ -6,7 +6,6 @@
 [ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="3_df07l"]
 [ext_resource type="Script" uid="uid://ck64tyl2tgn3n" path="res://UI/Views/MusicPlayerView/FavoritePicker.gd" id="3_favpick"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="4_omuun"]
-[ext_resource type="Script" uid="uid://ceef0gfqu0lbm" path="res://UI/Views/MusicPlayerView/LibraryOverlay.gd" id="4_ovl"]
 [ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="4_wihuv"]
 [ext_resource type="Texture2D" uid="uid://cug51b3m7pnnr" path="res://Resources/icon/instruments_icon.png" id="5_omuun"]
 [ext_resource type="Script" uid="uid://dkr4cp4lsqqll" path="res://UI/Views/MusicPlayerView/PlaylistList.gd" id="7_ia34b"]
@@ -112,7 +111,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_main")
-
 
 [node name="BackBtn" type="TextureButton" parent="." unique_id=373800642]
 custom_minimum_size = Vector2(72, 48)
@@ -495,14 +493,23 @@ size_flags_vertical = 3
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 3
 
-[node name="PlList" type="VBoxContainer" parent="PlaylistPanel/PlColumn/PlScroll" unique_id=1597765906]
+[node name="PlList" type="Control" parent="PlaylistPanel/PlColumn/PlScroll" unique_id=1597765906]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 5
+size_flags_vertical = 3
+mouse_filter = 1
 script = ExtResource("7_ia34b")
 
 [node name="PlEmpty" type="Label" parent="PlaylistPanel/PlColumn/PlScroll/PlList" unique_id=1811985564]
-layout_mode = 2
+layout_mode = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -60.0
+offset_top = -10.0
+offset_right = 60.0
+offset_bottom = 10.0
 text = "播放列表为空"
 horizontal_alignment = 1
 
@@ -519,7 +526,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("21_lib")
 
-[node name="Content" type="PanelContainer" parent="LibraryLayer" unique_id=1726261784]
+[node name="LibraryList" type="ScrollContainer" parent="LibraryLayer" unique_id=574099047]
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -530,21 +537,25 @@ offset_right = -30.0
 grow_horizontal = 2
 grow_vertical = 2
 size_flags_vertical = 3
+horizontal_scroll_mode = 0
 theme_override_styles/panel = SubResource("StyleBoxEmpty_sy7yx")
 
-[node name="LibraryOverlay" type="Control" parent="LibraryLayer/Content" unique_id=950609886]
-clip_contents = true
+[node name="ListContent" type="Control" parent="LibraryLayer/LibraryList" unique_id=950609886]
 layout_mode = 2
+size_flags_horizontal = 3
 size_flags_vertical = 3
-offset_transform_enabled = true
-offset_transform_visual_only = false
 mouse_filter = 1
-script = ExtResource("4_ovl")
 
-[node name="LibraryEmpty" type="Label" parent="LibraryLayer/Content" unique_id=1127244638]
-layout_mode = 2
+[node name="ListEmpty" type="Label" parent="LibraryLayer/LibraryList/ListContent" unique_id=1127244638]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 text = "没有匹配的歌曲"
 horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="SearchRow" type="HBoxContainer" parent="LibraryLayer" unique_id=1723017834]
 custom_minimum_size = Vector2(0, 80)
