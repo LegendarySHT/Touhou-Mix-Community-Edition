@@ -102,7 +102,8 @@ signal long_holding(long_instance_id: int)
 # 音符相关
 var lane_width: float = 0
 # 音符按 类型(Block/Slide/Long) → 颜色 → Array[int] 三级分桶存储
-# 桶元素为 seq 索引（而非对象），_draw/_process 免逐音符类型分发；同色音符同桶连续绘制利于贴图批处理
+# 桶元素为 seq 索引（而非对象），_process 免逐音符类型分发；同色桶供 GlowLayer 共用一份 modulate
+# （音符本体的绘制顺序改由下面的 _draw_order 决定，不再按颜色桶顺序绘制）
 const _TYPE_ORDER: Array = [FlowNote.NoteType.Block, FlowNote.NoteType.Slide, FlowNote.NoteType.Long]
 ## _process 热路径遍历用：Block/Slide 共用 _update_block_note_fall，避免每帧分配 [Block, Slide] 数组
 const _BLOCK_SLIDE_TYPES: Array = [FlowNote.NoteType.Block, FlowNote.NoteType.Slide]
@@ -110,6 +111,16 @@ var _note_buckets: Dictionary = {
 	FlowNote.NoteType.Block: {},
 	FlowNote.NoteType.Slide: {},
 	FlowNote.NoteType.Long: {},
+}
+
+## 绘制顺序（=覆盖顺序）：每种类型一个 seq 索引数组，按 _st_start 升序存放（先出现=靠下=靠前）。
+## NoteBatchDrawer 逆序遍历它绘制：后画者覆盖先画者，于是"先出现的（靠下）"盖在"后出现的"上方。
+## 与 _note_buckets（按颜色分桶）并存：spawn 时同时登记（_add_to_bucket / _add_to_draw_order），
+## 帧末 _sweep_removed_from_buckets 一起清理已移除项。
+var _draw_order: Dictionary = {
+	FlowNote.NoteType.Block: [],
+	FlowNote.NoteType.Slide: [],
+	FlowNote.NoteType.Long: [],
 }
 var _active_note_count: int = 0  # 活跃音符计数
 var _notes_by_lane: Dictionary = {}  # 按轨道分组索引：{lane: Array[int]}，加速音符判定查找
@@ -286,6 +297,8 @@ func init_flow_area():
 	clear_flow_area()
 	# 分桶模型：drawer 直接遍历 _note_buckets（按引用共享字典），增删无需再同步到 drawer
 	_note_drawer.set_notes_source(_note_buckets)
+	# 绘制顺序数组（按引用共享）：drawer 逆序遍历它决定覆盖层序
+	_note_drawer.set_draw_order_source(_draw_order)
 	# 注入本对象引用（drawer/GlowLayer 分桶现在存 int 索引，需经本对象读平行数组）
 	_note_drawer.flow_area = self
 	# NoteJudger 平行数组版同样需要宿主读取 _rt_cx/_rt_cy/_rt_flags
@@ -607,6 +620,7 @@ func clear_flow_area():
 
 	for type_key in _TYPE_ORDER:
 		_note_buckets[type_key].clear()
+		_draw_order[type_key].clear()
 	_active_note_count = 0
 	_clear_lane_index()
 	active_holds.clear()
@@ -685,6 +699,8 @@ func _spawn_note(note_index: int) -> void:
 		_rt_half[note_index] = _note_drawer.get_half_height(tp)
 		_rt_claimed[note_index] = -1
 	_add_to_bucket(note_index)
+	# 绘制顺序只在 spawn 时登记：换色（_move_note_to_bucket → _add_to_bucket）不改变时序，不重复插入
+	_add_to_draw_order(note_index)
 	_add_note_to_lane_index(note_index)
 	_update_block_note_fall(note_index, _synced_current_time, _render_time_ms)
 
@@ -883,6 +899,17 @@ func _add_to_bucket(note_index: int) -> void:
 	type_bucket[color_key].append(note_index)
 	_active_note_count += 1
 
+## 把音符索引按 _st_start 升序插入该类型的绘制顺序数组（先出现 = 更靠下 = 位于数组更前）。
+## drawer 逆序遍历绘制，因此先出现的最后画、盖在后出现的上方。
+## 序列几乎总是按时间有序，插入点基本就是末尾，从尾部向前线性查找即可（摊销 O(1)）。
+func _add_to_draw_order(note_index: int) -> void:
+	var order: Array = _draw_order[_st_type[note_index]]
+	var start_ms: float = _st_start[note_index]
+	var pos: int = order.size()
+	while pos > 0 and _st_start[order[pos - 1]] > start_ms:
+		pos -= 1
+	order.insert(pos, note_index)
+
 ## 全量预热：把本局判定特效引用的粒子包精灵图在开局前加载（ParticleMGR 模板/纹理缓存），
 ## 首次判定 spawn 粒子时的同步 load() + GPU 上传前移到面板遮罩期。
 ## spark_presets/spark_emitters 已由 init_flow_area → _reload_spark_config 解析，本方法直接取用。
@@ -948,6 +975,14 @@ func _sweep_removed_from_buckets() -> void:
 				if _rt_flags[idx] & F_REMOVED == 0:
 					alive.append(idx)
 			_note_buckets[type_key][color_key] = alive
+		# 绘制顺序数组同步清理（保持 _st_start 升序，仅剔除已移除项）
+		var order: Array = _draw_order[type_key]
+		if not order.is_empty():
+			var alive_order: Array = []
+			for idx in order:
+				if _rt_flags[idx] & F_REMOVED == 0:
+					alive_order.append(idx)
+			_draw_order[type_key] = alive_order
 	_needs_bucket_sweep = false
 
 # ========== 轨道索引维护（用于加速音符判定） ==========

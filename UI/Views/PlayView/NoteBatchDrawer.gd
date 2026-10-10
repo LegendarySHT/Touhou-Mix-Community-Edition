@@ -49,9 +49,23 @@ var _cull_margin_top: float = 120.0
 var _cull_margin_bottom: float = 180.0
 var _viewport_height: float = 0.0
 
-# 活跃音符来源：FlowArea._note_buckets 引用（set_notes_source 注入，_draw 直接遍历同一字典，省去同步簿记）
+# 活跃音符来源：FlowArea._note_buckets 引用（set_notes_source 注入）
 # 结构：type_key(Block/Slide/Long) -> { color -> Array[int] }  桶元素为 seq 索引
+# 颜色分桶供 GlowLayer 遍历（同色桶共用一份 modulate）；音符本体绘制改走 _draw_order
 var _note_buckets: Dictionary = {}
+
+# 绘制顺序来源：FlowArea._draw_order 引用（set_draw_order_source 注入）
+# 结构：type_key -> Array[int]，按 _st_start 升序（先出现=靠下=靠前）
+# _draw 逆序遍历它：后画者覆盖先画者。绘制层序 = 类型层序 + 同类型内"先出现者在上"
+var _draw_order: Dictionary = {}
+
+# 类型覆盖顺序（先画=在下，后画=在上）：Long 最底 → Slide → Block 最上
+# 固定层序解决"长条遮挡点块/滑块影响游玩"的问题，与音符生成/判定顺序无关
+const _DRAW_TYPE_ORDER: Array = [
+	FlowNote.NoteType.Long,
+	FlowNote.NoteType.Slide,
+	FlowNote.NoteType.Block,
+]
 
 # 平行数组宿主（FlowArea 注入）：_draw 读 flow_area._rt_* 取运行态，无需音符对象
 var flow_area: Object = null
@@ -65,9 +79,6 @@ var _transparent_tex: Texture2D = null
 # 注意：不要用 Image.blend_rect_mask 预合成 —— 该 API 只判 mask.a != 0 做二值门整体覆盖，
 # 会把 core 的软边与亮度渐变全部涂成纯色（整片色块、轮廓丢失）。
 
-# _draw 遍历用：复用常量，避免每帧分配 [Block, Slide] 数组字面量
-const _BLOCK_SLIDE_TYPES: Array = [FlowNote.NoteType.Block, FlowNote.NoteType.Slide]
-
 
 func _ready() -> void:
 	_transparent_tex = _create_transparent_texture()
@@ -78,9 +89,14 @@ func _ready() -> void:
 # ========== 公共 API ==========
 
 ## 注入活跃音符来源分桶字典（FlowArea._note_buckets，按引用共享）。
-## 之后 _draw 直接遍历该字典，FlowArea 的增删无需再同步到 drawer。
+## 颜色分桶供 GlowLayer 遍历；音符本体的绘制顺序改由 _draw_order 决定。
 func set_notes_source(notes: Dictionary) -> void:
 	_note_buckets = notes
+
+## 注入绘制顺序字典（FlowArea._draw_order，按引用共享）。
+## 每个类型一个按 _st_start 升序的 seq 索引数组，_draw 逆序遍历以获得正确的覆盖层序。
+func set_draw_order_source(order: Dictionary) -> void:
+	_draw_order = order
 
 func clear() -> void:
 	# 字典本身由 FlowArea.clear_flow_area 清空（_note_buckets 是同一引用），此处只触发重绘
@@ -218,8 +234,15 @@ func _setup_glow_layer() -> void:
 	_glow_layer._drawer = self
 	_glow_layer.visible = _glow_enabled
 
+## 绘制层序（后画者覆盖先画者）：
+##   1) 类型层序固定为 Long（最底）→ Slide → Block（最上）—— 点块不被滑块/长条遮挡，
+##      滑块不被长条遮挡，与音符生成顺序无关。
+##   2) 同类型内逆序遍历 _draw_order（按 _st_start 升序存放）→ 先出现的（靠下方）最后画，
+##      盖在同类型后出现的（靠上方）音符之上。
+## 只跳过已移除音符：Long 被按住时 is_judged=true 但仍需显示，不能按 is_judged 跳过。
+## 每音符 2 次绘制：base（固定色结构层）+ core（modulate 音符色）
 func _draw() -> void:
-	if _note_buckets.is_empty():
+	if _draw_order.is_empty():
 		return
 	var view_h = _viewport_height
 	var top_limit = -_cull_margin_top
@@ -232,41 +255,32 @@ func _draw() -> void:
 	var rt_cy: PackedFloat32Array = fa._rt_cy
 	var rt_x: PackedFloat32Array = fa._rt_x
 	var rt_half: PackedFloat32Array = fa._rt_half
+	var rt_color: PackedColorArray = fa._rt_color
 	var REMOVED: int = fa.F_REMOVED
 
-	# 绘制音符贴图（short / instant / long）
-	# 只跳过已移除音符：Long 被按住时 is_judged=true 但仍需显示，不能按 is_judged 跳过
-	# 分桶遍历：类型桶 → 颜色桶，同色连续绘制同一 core（利于 CanvasItem 批处理）
-	# 每个音符 2 次绘制：base（固定色结构层）+ core（modulate 音符色）
-	for type_key in _BLOCK_SLIDE_TYPES:
-		var type_bucket: Dictionary = _note_buckets[type_key]  # set_notes_source 后三级键必存在，免 .get 每次构造空字典
+	for type_key in _DRAW_TYPE_ORDER:
+		var order: Array = _draw_order[type_key]
+		var is_long: bool = type_key == FlowNote.NoteType.Long
 		var base_tex: Texture2D = _block_tex if type_key == FlowNote.NoteType.Block else _slide_tex
 		var core_tex: Texture2D = _block_core_tex if type_key == FlowNote.NoteType.Block else _slide_core_tex
-		for color_key in type_bucket:
-			var bucket: Array = type_bucket[color_key]
-			for note_index in bucket:
-				if flags[note_index] & REMOVED:
-					continue
-				var cy: float = rt_cy[note_index]
-				var half_h: float = rt_half[note_index]
-				if cy + half_h < top_limit or cy - half_h > bottom_limit:
-					continue
-				_draw_note_layers(base_tex, core_tex,
-					Rect2(rt_x[note_index], cy - half_h, _note_width, half_h * 2.0), color_key)
-
-	# Long：同色桶内 body→tail→head 三遍绘制，最大化同贴图批处理（每音符自身层序仍 body<tail<head）
-	var long_bucket: Dictionary = _note_buckets[FlowNote.NoteType.Long]
-	for color_key in long_bucket:
-		var bucket: Array = long_bucket[color_key]
-		for note_index in bucket:
-			if not flags[note_index] & REMOVED:
-				_draw_long_body(note_index, fa, top_limit, bottom_limit, color_key)
-		for note_index in bucket:
-			if not flags[note_index] & REMOVED:
-				_draw_long_tail(note_index, fa, top_limit, bottom_limit, color_key)
-		for note_index in bucket:
-			if not flags[note_index] & REMOVED:
-				_draw_long_head(note_index, fa, top_limit, bottom_limit, color_key)
+		for i in range(order.size() - 1, -1, -1):
+			var note_index: int = order[i]
+			if flags[note_index] & REMOVED:
+				continue
+			# 逐音符取色（不再按颜色桶分组）：绘制顺序由层序规则决定，不能为批处理重排
+			var color: Color = rt_color[note_index]
+			if is_long:
+				# 长条自身层序：body（最底）→ tail → head（最上）
+				_draw_long_body(note_index, fa, top_limit, bottom_limit, color)
+				_draw_long_tail(note_index, fa, top_limit, bottom_limit, color)
+				_draw_long_head(note_index, fa, top_limit, bottom_limit, color)
+				continue
+			var cy: float = rt_cy[note_index]
+			var half_h: float = rt_half[note_index]
+			if cy + half_h < top_limit or cy - half_h > bottom_limit:
+				continue
+			_draw_note_layers(base_tex, core_tex,
+				Rect2(rt_x[note_index], cy - half_h, _note_width, half_h * 2.0), color)
 
 ## 绘制 Long body（长条连接部分）：
 ## repeat → 按贴图原始高度分条重复；stretch → 整体竖直拉伸。
