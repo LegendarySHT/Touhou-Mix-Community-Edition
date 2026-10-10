@@ -60,6 +60,13 @@ mouse_filter = 2
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
+; 故意给一个远高于条目本身的高度：stretch_mode=6(KEEP_ASPECT) 以矩形高度为基准缩放，
+; 横向溢出部分由父级 C 的 clip_contents 裁掉；该高度同时作为视差滚动余量
+; （CoverListItemBase._apply_parallax_offset 用 cover.size.y - 条目高 计算滚动范围）。
+; 若此处退化为 EXPAND_FIT_HEIGHT_PROPORTIONAL 的适配高度，宽幅长条图会画不满并在底部留空。
+; 与 songNode.tscn(740) / CharaView(1920) 同一套路。
+; 592 = 旧版相对条目的 600 - 8 上边距，精确还原收起/展开两态的封面几何。
+offset_bottom = 592.0
 grow_horizontal = 2
 pivot_offset = Vector2(0, 350)
 size_flags_vertical = 0
