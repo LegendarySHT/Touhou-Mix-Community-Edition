@@ -25,7 +25,7 @@ const POOL_MAX_ROWS := 24
 
 @onready var _pl_list: LIST_SCRIPT = $PlColumn/PlScroll/PlList
 @onready var _pl_empty: Label = $PlColumn/PlScroll/PlList/PlEmpty
-@onready var _fav_select_btn: OptionButton = $PlColumn/PlCtrl/FavSelectBtn
+@onready var _fav_select_btn: OptionButton = $PlColumn/PlCtrlRow/PlCtrl/FavSelectBtn
 @onready var _pl_scroll: ScrollContainer = $PlColumn/PlScroll
 @onready var _reshuffle_btn: Button = $PlColumn/PlTitle/ReshuffleBtn
 

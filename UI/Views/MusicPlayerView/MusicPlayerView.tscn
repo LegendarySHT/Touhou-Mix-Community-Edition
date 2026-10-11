@@ -424,6 +424,9 @@ grow_vertical = 2
 offset_transform_enabled = true
 offset_transform_visual_only = false
 mouse_filter = 2
+; 裁剪到面板矩形：面板里任何一层内容的最小宽度被撑爆时，绘制都不越到面板外
+; （结构性防护，见 PlColumn/PlCtrlRow 说明）
+clip_contents = true
 script = ExtResource("20_panel")
 
 [node name="PlColumn" type="VBoxContainer" parent="PlaylistPanel" unique_id=1948461757]
@@ -458,30 +461,47 @@ grow_vertical = 2
 theme_override_font_sizes/font_size = 25
 text = "打乱列表"
 
-[node name="PlCtrl" type="HBoxContainer" parent="PlaylistPanel/PlColumn" unique_id=785455701]
+[node name="PlCtrlRow" type="Control" parent="PlaylistPanel/PlColumn"]
+; 最小尺寸隔离层：必须是**纯 Control**（不能是 Container）。
+; Godot 的锚点布局控件会被自己的 combined minimum size 撑大，而 VBoxContainer 会把
+; 子节点的最小宽度往上累加——PlCtrl 行的按钮一多 / 高 DPI 缩放下宽了一挡，
+; 这行的最小宽度就会超过列宽，把 PlColumn 顶到 PlaylistPanel 左边外面（Grow=BOTH 还会左右各溢出一半）。
+; 纯 Control 不累加子节点的最小尺寸（min size 恒为 0），于是 PlColumn 重新只由锚点决定宽度；
+; 万一 PlCtrl 自己还是放不下，由本层的 clip_contents 裁掉，不会越界。
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
+mouse_filter = 2
+clip_contents = true
+
+[node name="PlCtrl" type="HBoxContainer" parent="PlaylistPanel/PlColumn/PlCtrlRow" unique_id=785455701]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 1
+grow_vertical = 1
 mouse_filter = 2
 theme_override_constants/separation = 8
 
-[node name="FavSelectLabel" type="Label" parent="PlaylistPanel/PlColumn/PlCtrl" unique_id=1686245534]
+[node name="FavSelectLabel" type="Label" parent="PlaylistPanel/PlColumn/PlCtrlRow/PlCtrl" unique_id=1686245534]
 layout_mode = 2
 text = "歌单："
 vertical_alignment = 1
 
-[node name="FavSelectBtn" type="OptionButton" parent="PlaylistPanel/PlColumn/PlCtrl" unique_id=2078702074]
+[node name="FavSelectBtn" type="OptionButton" parent="PlaylistPanel/PlColumn/PlCtrlRow/PlCtrl" unique_id=2078702074]
 custom_minimum_size = Vector2(160, 40)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 25
 
-[node name="PlAddFavBtn" type="Button" parent="PlaylistPanel/PlColumn/PlCtrl" unique_id=75394059]
+[node name="PlAddFavBtn" type="Button" parent="PlaylistPanel/PlColumn/PlCtrlRow/PlCtrl" unique_id=75394059]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 tooltip_text = "把播放列表里的歌曲加入某一收藏夹"
 theme_override_font_sizes/font_size = 25
 text = "加入收藏夹"
 
-[node name="PlClearBtn" type="Button" parent="PlaylistPanel/PlColumn/PlCtrl" unique_id=394908992]
+[node name="PlClearBtn" type="Button" parent="PlaylistPanel/PlColumn/PlCtrlRow/PlCtrl" unique_id=394908992]
 custom_minimum_size = Vector2(80, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 25
@@ -695,9 +715,9 @@ horizontal_alignment = 1
 [connection signal="toggled" from="MainColumn/BottomBar/RightBts/PlaylistBtn" to="." method="_on_playlist_toggled" flags=3]
 [connection signal="pressed" from="MainColumn/BottomBar/RightBts/StageSwitchBtn" to="." method="_on_stage_switch_pressed" flags=3]
 [connection signal="pressed" from="PlaylistPanel/PlColumn/PlTitle/ReshuffleBtn" to="PlaylistPanel" method="_on_reshuffle_pressed" flags=3]
-[connection signal="item_selected" from="PlaylistPanel/PlColumn/PlCtrl/FavSelectBtn" to="PlaylistPanel" method="_on_fav_select_selected" flags=3]
-[connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrl/PlAddFavBtn" to="PlaylistPanel" method="_on_pl_add_fav_pressed" flags=3]
-[connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrl/PlClearBtn" to="PlaylistPanel" method="_on_pl_clear_pressed" flags=3]
+[connection signal="item_selected" from="PlaylistPanel/PlColumn/PlCtrlRow/PlCtrl/FavSelectBtn" to="PlaylistPanel" method="_on_fav_select_selected" flags=3]
+[connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrlRow/PlCtrl/PlAddFavBtn" to="PlaylistPanel" method="_on_pl_add_fav_pressed" flags=3]
+[connection signal="pressed" from="PlaylistPanel/PlColumn/PlCtrlRow/PlCtrl/PlClearBtn" to="PlaylistPanel" method="_on_pl_clear_pressed" flags=3]
 [connection signal="gui_input" from="PlaylistPanel/PlColumn/PlScroll" to="PlaylistPanel" method="_on_pl_scroll_gui_input" flags=3]
 [connection signal="move_requested" from="PlaylistPanel/PlColumn/PlScroll/PlList" to="PlaylistPanel" method="_on_pl_move" flags=3]
 [connection signal="text_changed" from="LibraryLayer/SearchRow/SearchEdit" to="LibraryLayer" method="_on_search_changed" flags=3]
