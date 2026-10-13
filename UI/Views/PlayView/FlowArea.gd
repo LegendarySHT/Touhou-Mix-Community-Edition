@@ -38,8 +38,10 @@ var _skin_config: Dictionary = {}
 # 光效总开关（来自 [general] enable_glow）
 var _is_glow_enabled: bool = false
 
-# long-f 中部贴图应用方式："repeat"（水平拉伸+垂直重复）或 "stretch"（竖直拉伸）
+# long-f 中部贴图应用方式："repeat"（水平拉伸+垂直重复）或 "stretch"（固定比例映射，不随身体压缩）
 var _long_f_mode: String = "repeat"
+# stretch 模式的贴图映射方式："screen"（方案 A：屏幕固定映射）或 "length"（方案 B：按身体基准长度映射）
+var _long_stretch_mode: String = "length"
 
 # 长条连接模式："edge"（边缘连接，默认）或 "center"（中心连接）
 var _long_connect_mode: String = "edge"
@@ -176,6 +178,7 @@ var _rt_head_half: PackedFloat32Array = PackedFloat32Array()     # Long 头部�
 var _rt_tail_half: PackedFloat32Array = PackedFloat32Array()     # Long 尾部半高
 var _rt_body_top: PackedFloat32Array = PackedFloat32Array()      # Long body 顶部 y
 var _rt_body_h: PackedFloat32Array = PackedFloat32Array()        # Long body 高度
+var _rt_body_ref_len: PackedFloat32Array = PackedFloat32Array()  # Long body 基准长度（stretch=length 映射的固定比例基准）
 var _rt_cooldown: PackedFloat32Array = PackedFloat32Array()      # 长按触发计时器
 var _rt_hold_press_x: PackedFloat32Array = PackedFloat32Array()  # 长按记录触摸 x（NAN=非触摸来源）
 var _rt_long_id: PackedInt32Array = PackedInt32Array()           # 长条唯一实例 ID
@@ -214,6 +217,7 @@ func build_seq_data() -> void:
 	_rt_tail_half.resize(cnt)
 	_rt_body_top.resize(cnt)
 	_rt_body_h.resize(cnt)
+	_rt_body_ref_len.resize(cnt)
 	_rt_cooldown.resize(cnt)
 	_rt_hold_press_x.resize(cnt)
 	_rt_long_id.resize(cnt)
@@ -257,7 +261,7 @@ func _reset_seq_arrays() -> void:
 	for arr in [
 		_rt_flags, _rt_x, _rt_cx, _rt_cy, _rt_half, _rt_color,
 		_rt_x_base, _rt_head_cy, _rt_tail_cy, _rt_head_half, _rt_tail_half,
-		_rt_body_top, _rt_body_h, _rt_cooldown, _rt_hold_press_x,
+		_rt_body_top, _rt_body_h, _rt_body_ref_len, _rt_cooldown, _rt_hold_press_x,
 		_rt_long_id, _rt_claimed, _rt_held_by
 	]:
 		arr.clear()
@@ -517,6 +521,7 @@ func set_note_texture(texture_array: Array):
 			texture_array[8] if texture_array.size() > 8 else null,
 			texture_array[9] if texture_array.size() > 9 else null)
 		_note_drawer.set_long_body_mode(_long_f_mode)
+		_note_drawer.set_long_stretch_mode(_long_stretch_mode)
 		# 贴图变化会重算各类型半高：同步刷新最大全高，保证 _note_fall_distance/速度在换肤后不过期
 		_note_max_size_y = _note_drawer.get_max_half_height() * 2.0
 		_recompute_fall_constants()
@@ -591,15 +596,21 @@ func refresh_note_colors() -> void:
 		_note_drawer.request_redraw()
 
 # 根据皮肤配置设置 long-f 中部贴图的应用方式
-# repeat → 水平拉伸+垂直重复（drawer 分条绘制）；stretch → 竖直拉伸
+# repeat → 水平拉伸+垂直重复（drawer 分条绘制）；stretch → 固定比例映射（映射方式见 long_stretch_mode）
 func _apply_long_f_mode() -> void:
 	var mode = "repeat"
 	if _skin_config.has("long") and _skin_config["long"].has("long_f_mode"):
 		mode = _skin_config["long"]["long_f_mode"]
 	_long_f_mode = mode
+	# 拉伸映射方式：screen=屏幕固定映射（方案 A）/ length=按身体基准长度映射（方案 B）
+	var stretch_mode = SkinManager.LONG_STRETCH_MODE_LENGTH
+	if _skin_config.has("long") and _skin_config["long"].has("long_stretch_mode"):
+		stretch_mode = _skin_config["long"]["long_stretch_mode"]
+	_long_stretch_mode = stretch_mode
 	# 同步到批量绘制器（皮肤热切换时实时更新）
 	if _note_drawer:
 		_note_drawer.set_long_body_mode(_long_f_mode)
+		_note_drawer.set_long_stretch_mode(_long_stretch_mode)
 
 # 修改音符宽度
 func set_note_width(wid: float):
@@ -827,6 +838,13 @@ func _update_long_note_fall(note_index: int, current_time_ms: float, render_time
 		# 边缘连接（默认）：body 从 tail_bottom（tail_center+tail_half）到 head_top（head_center-head_half）
 		_rt_body_top[note_index] = tail_center + tail_half
 		_rt_body_h[note_index] = max(0.0, (head_center - head_half) - (tail_center + tail_half))
+
+	# body 基准长度（stretch=length 映射的固定比例基准）：恒速下落时身体的自然像素长度。
+	# edge 模式身体两端各内缩头/尾半高；center 模式取头尾中心距。每帧重算，跟随速度配置变化
+	var ref_len: float = _st_dur[note_index] * _note_fall_speed
+	if not _long_connect_center:
+		ref_len -= head_half + tail_half
+	_rt_body_ref_len[note_index] = maxf(ref_len, 1.0)
 
 	if not (_rt_flags[note_index] & F_JUDGED) and not (_rt_flags[note_index] & F_HELD) and _rt_held_by[note_index] < 0:
 		if tail_center >= _cached_viewport_height:

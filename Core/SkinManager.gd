@@ -26,6 +26,11 @@ const LONG_CONNECT_MODE_EDGE = "edge"
 const LONG_CONNECT_MODE_CENTER = "center"
 const LONG_F_MODE_REPEAT = "repeat"
 const LONG_F_MODE_STRETCH = "stretch"
+## 长条拉伸（long_f_mode=stretch）的贴图映射方式常量
+## screen = 方案 A：贴图按屏幕区间固定映射，身体按实际位置裁剪（同屏幕高度样式一致）
+## length = 方案 B：贴图按长条实际长度固定比例映射，随长条整体移动（不随收缩挤扁）
+const LONG_STRETCH_MODE_SCREEN = "screen"
+const LONG_STRETCH_MODE_LENGTH = "length"
 
 ## ========== 资源索引 ==========
 ## 皮肤索引 {skin_name: SkinMetadata}
@@ -236,6 +241,7 @@ func _default_note_section(is_long: bool = false) -> Dictionary:
 	if is_long:
 		sec["long_connect_mode"] = LONG_CONNECT_MODE_EDGE
 		sec["long_f_mode"] = LONG_F_MODE_REPEAT
+		sec["long_stretch_mode"] = LONG_STRETCH_MODE_LENGTH
 	return sec
 
 ## 将解析得到的 {section: {key: str}} 规范化为带类型的结构化 Dictionary
@@ -267,6 +273,8 @@ func _normalize_note_section(section_raw: Dictionary, is_long: bool) -> Dictiona
 		result["long_connect_mode"] = LONG_CONNECT_MODE_CENTER if connect_mode == LONG_CONNECT_MODE_CENTER else LONG_CONNECT_MODE_EDGE
 		var f_mode = section_raw.get("long_f_mode", LONG_F_MODE_REPEAT)
 		result["long_f_mode"] = LONG_F_MODE_STRETCH if f_mode == LONG_F_MODE_STRETCH else LONG_F_MODE_REPEAT
+		var stretch_mode = section_raw.get("long_stretch_mode", LONG_STRETCH_MODE_LENGTH)
+		result["long_stretch_mode"] = LONG_STRETCH_MODE_SCREEN if stretch_mode == LONG_STRETCH_MODE_SCREEN else LONG_STRETCH_MODE_LENGTH
 	return result
 
 ## 将字符串解析为 bool（接受 "true"/"false"/"1"/"0"）
@@ -325,6 +333,7 @@ func _serialize_skin_config(config: Dictionary) -> String:
 		if section == "long":
 			lines.append("long_connect_mode=%s" % str(sec.get("long_connect_mode", LONG_CONNECT_MODE_EDGE)))
 			lines.append("long_f_mode=%s" % str(sec.get("long_f_mode", LONG_F_MODE_REPEAT)))
+			lines.append("long_stretch_mode=%s" % str(sec.get("long_stretch_mode", LONG_STRETCH_MODE_LENGTH)))
 		lines.append("")
 	return "\n".join(lines)
 
@@ -363,6 +372,16 @@ func get_long_f_mode(skin_name: String) -> String:
 	var long_sec: Dictionary = config.get("long", {})
 	var mode = long_sec.get("long_f_mode", LONG_F_MODE_REPEAT)
 	return LONG_F_MODE_STRETCH if mode == LONG_F_MODE_STRETCH else LONG_F_MODE_REPEAT
+
+## 获取长条拉伸的贴图映射方式（"screen" 屏幕固定映射 / "length" 按实际长度映射）
+## 仅当 long_f_mode = stretch 时有意义
+func get_long_stretch_mode(skin_name: String) -> String:
+	var config = get_skin_config(skin_name)
+	if config.is_empty():
+		return LONG_STRETCH_MODE_LENGTH
+	var long_sec: Dictionary = config.get("long", {})
+	var mode = long_sec.get("long_stretch_mode", LONG_STRETCH_MODE_LENGTH)
+	return LONG_STRETCH_MODE_SCREEN if mode == LONG_STRETCH_MODE_SCREEN else LONG_STRETCH_MODE_LENGTH
 
 ## 判断皮肤是否启用光效（[general] enable_glow）
 func is_glow_enabled(skin_name: String) -> bool:

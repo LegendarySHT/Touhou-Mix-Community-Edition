@@ -14,6 +14,7 @@ const LONG_BODY_REPEAT_SHADER: Shader = preload("res://UI/Components/PopupWindow
 # 新增设置项控件
 @onready var _l_conn_mode_btn: OptionButton = $VBoxC/OtherOptions/LConnMode
 @onready var _l_repeat_mode_btn: OptionButton = $VBoxC/OtherOptions/LRepeatMode
+@onready var _l_stretch_mode_btn: OptionButton = $VBoxC/OtherOptions/LStretchMode
 @onready var _enable_glow_cb: CheckBox = $VBoxC/OtherOptions/EnableLightEffect
 @onready var _custom_color_cb: CheckBox = $VBoxC/OtherOptions/CustomColor
 @onready var _block_color_cb: CheckBox = $VBoxC/OtherOptions/BlockColor/CheckBox
@@ -30,12 +31,18 @@ const LONG_BODY_REPEAT_SHADER: Shader = preload("res://UI/Components/PopupWindow
 var _working_config: Dictionary = {}
 # 当前选中的皮肤名（含 [内置] 后缀）
 var _current_skin_name: String = ""
+# 预览 body/core 的原始贴图（screen 拉伸模式预览需包一层 AtlasTexture，切模式/换肤时恢复原图）
+var _preview_long_body_tex: Texture2D = null
+var _preview_long_body_core_tex: Texture2D = null
 
 func _ready() -> void:
 	_skin_option_btn.item_selected.connect(_on_skin_option_selected)
 	# 新增控件信号 — 任意变化都触发：读 UI → 更新工作副本 → 刷新预览
 	_l_conn_mode_btn.item_selected.connect(_on_setting_changed)
 	_l_repeat_mode_btn.item_selected.connect(_on_setting_changed)
+	_l_stretch_mode_btn.item_selected.connect(_on_setting_changed)
+	# 预览长条容器尺寸变化：screen 拉伸模式的 AtlasTexture 裁剪区域需按新尺寸重算
+	_note_long_node.resized.connect(_on_long_preview_resized)
 	_enable_glow_cb.toggled.connect(_on_setting_changed)
 	# 自定义颜色总开关：单独处理，联动启用/禁用后续颜色子项
 	_custom_color_cb.toggled.connect(_on_custom_color_toggled)
@@ -118,7 +125,7 @@ func _build_default_working_config() -> Dictionary:
 		"general": {"enable_glow": false, "custom_color": false},
 		"short": {"enable_color": false, "color": Color.WHITE, "random_color": false},
 		"instant": {"enable_color": false, "color": Color.WHITE, "random_color": false},
-		"long": {"enable_color": false, "color": Color.WHITE, "random_color": false, "long_connect_mode": SkinMGR.LONG_CONNECT_MODE_EDGE, "long_f_mode": SkinMGR.LONG_F_MODE_REPEAT}
+		"long": {"enable_color": false, "color": Color.WHITE, "random_color": false, "long_connect_mode": SkinMGR.LONG_CONNECT_MODE_EDGE, "long_f_mode": SkinMGR.LONG_F_MODE_REPEAT, "long_stretch_mode": SkinMGR.LONG_STRETCH_MODE_LENGTH}
 	}
 
 ## 将 _working_config 同步到所有 UI 控件（不触发信号）
@@ -148,6 +155,9 @@ func _sync_ui_from_config() -> void:
 	# 长条延伸模式：UI 0=stretch, 1=repeat（注意顺序与 conn_mode 相反）
 	var f_mode = long_sec.get("long_f_mode", SkinMGR.LONG_F_MODE_REPEAT)
 	_l_repeat_mode_btn.select(1 if f_mode == SkinMGR.LONG_F_MODE_REPEAT else 0)
+	# 长条拉伸方式：UI 0=屏幕固定（方案 A）, 1=按实际长度（方案 B）
+	var stretch_mode = long_sec.get("long_stretch_mode", SkinMGR.LONG_STRETCH_MODE_LENGTH)
+	_l_stretch_mode_btn.select(0 if stretch_mode == SkinMGR.LONG_STRETCH_MODE_SCREEN else 1)
 
 	# 根据 CustomColor 总开关状态联动启用/禁用颜色子项
 	# set_pressed_no_signal 不触发 toggled，需手动同步一次控件可用状态
@@ -168,6 +178,7 @@ func _read_ui_to_config() -> void:
 		_working_config["long"] = {}
 	_working_config["long"]["long_connect_mode"] = SkinMGR.LONG_CONNECT_MODE_CENTER if _l_conn_mode_btn.selected == 1 else SkinMGR.LONG_CONNECT_MODE_EDGE
 	_working_config["long"]["long_f_mode"] = SkinMGR.LONG_F_MODE_REPEAT if _l_repeat_mode_btn.selected == 1 else SkinMGR.LONG_F_MODE_STRETCH
+	_working_config["long"]["long_stretch_mode"] = SkinMGR.LONG_STRETCH_MODE_SCREEN if _l_stretch_mode_btn.selected == 0 else SkinMGR.LONG_STRETCH_MODE_LENGTH
 
 func _read_note_section_to_config(key: String, enable_cb: CheckBox, picker: ColorPickerButton, random_cb: CheckBox) -> void:
 	if not _working_config.has(key):
@@ -239,12 +250,9 @@ func _apply_preview_from_config() -> void:
 			head_node.offset_transform_position.y = 0.0
 			tail_node.offset_transform_position.y = 0.0
 
-	# 4. 长条延伸模式：repeat → 挂 LongBodyRepeat shader；stretch → 清除 material
-	var f_mode = long_sec.get("long_f_mode", SkinMGR.LONG_F_MODE_REPEAT)
-	var body_node = _note_long_node.get_node_or_null("VBoxC/body")
-	var body_core_node = _note_long_node.get_node_or_null("VBoxC/body/core")
-	_apply_preview_long_f_mode(body_node, f_mode)
-	_apply_preview_long_f_mode(body_core_node, f_mode)
+	# 4. 长条延伸模式：repeat → LongBodyRepeat shader；stretch → 固定比例映射
+	#    （stretch 的映射方式：screen 用 AtlasTexture 裁出身体对应段，length 显示整图）
+	_refresh_long_body_preview()
 
 ## 解析预览颜色：随机模式时生成一个临时随机色（仅用于预览，不写回配置）
 func _resolve_preview_color(key: String, enable_cb: CheckBox, picker: ColorPickerButton, random_cb: CheckBox) -> Color:
@@ -340,18 +348,74 @@ func _fit_glow_quad(glow: Node, note_root: Node) -> void:
 	glow_ctrl.offset_right = 0.0
 	glow_ctrl.offset_bottom = 0.0
 
-## 给预览 body 节点应用或清除 LongBodyRepeat shader
-func _apply_preview_long_f_mode(body_node: Node, f_mode: String) -> void:
+## 应用预览 body/core 的 long-f 中部贴图样式（延伸模式 + 拉伸映射方式）。
+## 抽出为独立入口：预览容器尺寸变化时，screen 模式的 AtlasTexture 裁剪区域需重算
+func _refresh_long_body_preview() -> void:
+	var long_sec: Dictionary = _working_config.get("long", {})
+	var f_mode = long_sec.get("long_f_mode", SkinMGR.LONG_F_MODE_REPEAT)
+	var stretch_mode = long_sec.get("long_stretch_mode", SkinMGR.LONG_STRETCH_MODE_LENGTH)
+	_apply_preview_long_f_mode(_note_long_node.get_node_or_null("VBoxC/body"),
+		_preview_long_body_tex, f_mode, stretch_mode)
+	_apply_preview_long_f_mode(_note_long_node.get_node_or_null("VBoxC/body/core"),
+		_preview_long_body_core_tex, f_mode, stretch_mode)
+
+## 给预览 body 节点应用 long-f 中部贴图样式：
+## repeat → 挂 LongBodyRepeat shader（垂直重复，分条周期=节点高/贴图高；
+##          屏幕固定时相位按参考容器锚定，与运行时同机制）
+## stretch + screen → 包 AtlasTexture，按"预览长条容器"参考区间裁出身体对应的贴图段（与运行时同机制）
+## stretch + length → 原始贴图整体填充（运行时按身体基准长度映射，恒速下落时即为整图铺满）
+func _apply_preview_long_f_mode(body_node: Node, base_tex: Texture2D, f_mode: String, stretch_mode: String) -> void:
 	if not (body_node is TextureRect):
 		return
+	var rect: TextureRect = body_node
+	# 恢复原始贴图，避免上次 screen 模式包装的 AtlasTexture 残留在本次模式上
+	rect.texture = base_tex if base_tex else _create_transparent_texture()
+	var is_screen: bool = stretch_mode == SkinMGR.LONG_STRETCH_MODE_SCREEN
 	if f_mode == SkinMGR.LONG_F_MODE_REPEAT:
-		var mat = body_node.material
-		if mat == null or not (mat is ShaderMaterial) or (mat as ShaderMaterial).shader != LONG_BODY_REPEAT_SHADER:
-			var new_mat := ShaderMaterial.new()
-			new_mat.shader = LONG_BODY_REPEAT_SHADER
-			body_node.material = new_mat
-	else:
-		body_node.material = null
+		var mat := rect.material as ShaderMaterial
+		if mat == null or mat.shader != LONG_BODY_REPEAT_SHADER:
+			mat = ShaderMaterial.new()
+			mat.shader = LONG_BODY_REPEAT_SHADER
+			rect.material = mat
+		# 分条周期：节点高 / 贴图高（与运行时 1:1 分条一致）
+		var tex_h: float = float(rect.texture.get_height())
+		if tex_h > 0.0 and rect.size.y > 0.0:
+			mat.set_shader_parameter("v_repeat", rect.size.y / tex_h)
+			var v_offset: float = 0.0
+			if is_screen:
+				# 屏幕固定：分条网格锚定参考容器（预览容器左上），图案固定于参考系
+				var top: float = rect.global_position.y - _note_long_node.global_position.y
+				v_offset = fposmod(top, tex_h) / tex_h
+			mat.set_shader_parameter("v_offset", v_offset)
+		return
+	# stretch：清除 shader，按映射方式处理贴图
+	rect.material = null
+	if is_screen:
+		rect.texture = _make_preview_screen_atlas(rect, rect.texture)
+
+## 构造 screen 模式预览用的 AtlasTexture：把"预览长条容器"当参考区间，
+## 取身体在区间中覆盖的那段贴图（与运行时屏幕固定映射同机制，只是参考区间用预览容器高度）
+func _make_preview_screen_atlas(node: Control, base_tex: Texture2D) -> AtlasTexture:
+	var tex_w: float = float(base_tex.get_width())
+	var tex_h: float = float(base_tex.get_height())
+	var ref_h: float = maxf(_note_long_node.size.y, 1.0)
+	var top: float = node.global_position.y - _note_long_node.global_position.y
+	var v0: float = clampf(top / ref_h, 0.0, 1.0)
+	var v1: float = clampf((top + node.size.y) / ref_h, 0.0, 1.0)
+	var max_h: float = maxf(tex_h - v0 * tex_h, 1.0)
+	var region_h: float = clampf((v1 - v0) * tex_h, 1.0, max_h)
+	var atlas := AtlasTexture.new()
+	atlas.atlas = base_tex
+	atlas.filter_clip = true
+	atlas.region = Rect2(0.0, v0 * tex_h, tex_w, region_h)
+	return atlas
+
+## 预览长条容器尺寸变化：屏幕固定模式下分条/裁剪的锚点依赖容器高度与节点位置，需重算
+func _on_long_preview_resized() -> void:
+	var long_sec: Dictionary = _working_config.get("long", {})
+	if long_sec.get("long_stretch_mode", SkinMGR.LONG_STRETCH_MODE_LENGTH) != SkinMGR.LONG_STRETCH_MODE_SCREEN:
+		return
+	_refresh_long_body_preview()
 
 ## 不触发信号设置 CheckBox 状态
 func _set_checkbox_no_signal(cb: CheckBox, pressed: bool) -> void:
@@ -399,6 +463,9 @@ func _apply_skin_to_preview(skin_name: String) -> void:
 	_note_long_node.get_node("VBoxC/head/core").texture = tex_arr[5] if tex_arr[5] else _transparent
 	_note_long_node.get_node("VBoxC/body").texture = tex_arr[6] if tex_arr[6] else _transparent
 	_note_long_node.get_node("VBoxC/body/core").texture = tex_arr[7] if tex_arr[7] else _transparent
+	# 记录原始 body/core 贴图：screen 拉伸模式预览需包一层 AtlasTexture，切模式/换肤时恢复原图
+	_preview_long_body_tex = tex_arr[6] if tex_arr[6] else _transparent
+	_preview_long_body_core_tex = tex_arr[7] if tex_arr[7] else _transparent
 	_note_long_node.get_node("VBoxC/tail").texture = tex_arr[8] if tex_arr[8] else _transparent
 	_note_long_node.get_node("VBoxC/tail/core").texture = tex_arr[9] if tex_arr[9] else _transparent
 

@@ -80,3 +80,54 @@ func compute_long_total_height_with_easing(
 ## @return 长条主体高度（像素）
 func compute_long_body_height(duration_ms: float, speed_px_per_ms: float, head_tail_total_px: float) -> float:
 	return max(0.0, speed_px_per_ms * max(0.0, duration_ms) - max(0.0, head_tail_total_px))
+
+## 方案 A（屏幕固定映射）：贴图纵向一次性映射到 [0, ref_h] 屏幕区间，再按 body 区间裁剪。
+## 结果：任意身体高度下缩放系数恒为 tex_h/ref_h，且同一屏幕高度处显示的贴图内容一致。
+## @param x 绘制左缘（屏幕坐标）
+## @param w 绘制宽度
+## @param body_top body 顶部 y（屏幕坐标，绘制区间上界）
+## @param body_h body 高度（<=0 视为不可见）
+## @param ref_h 参考区间高度（通常为屏幕高度，<=0 视为无效）
+## @param tex_w 贴图宽度（像素）
+## @param tex_h 贴图高度（像素）
+## @return {src: Rect2, dst: Rect2}；body 完全在参考区间外或参数无效时返回空 Dictionary（调用方跳过绘制）
+static func compute_screen_span_rect(x: float, w: float, body_top: float, body_h: float,
+		ref_h: float, tex_w: float, tex_h: float) -> Dictionary:
+	if body_h <= 0.0 or ref_h <= 0.0 or tex_w <= 0.0 or tex_h <= 0.0:
+		return {}
+	# 屏幕 y → 贴图 v（线性，与屏幕高度绑定）
+	var v0 := body_top / ref_h
+	var v1 := (body_top + body_h) / ref_h
+	# 越出参考区间的部分裁掉（该部分在屏幕外，本来就不可见）
+	var cv0 := clampf(v0, 0.0, 1.0)
+	var cv1 := clampf(v1, 0.0, 1.0)
+	if cv1 - cv0 <= 0.0:
+		return {}
+	var span_ratio := cv1 - cv0
+	var src := Rect2(0.0, cv0 * tex_h, tex_w, span_ratio * tex_h)
+	# 裁剪后绘制区间的起点相应内缩（cv0 - v0 为顶部被裁掉的比例）
+	var dst := Rect2(x, body_top + (cv0 - v0) * ref_h, w, span_ratio * ref_h)
+	return {"src": src, "dst": dst}
+
+## 方案 B（按实际长度映射）：贴图按 ref_len 固定比例纵向映射，贴图顶部对齐身体上端（尾端）。
+## 结果：贴图缩放系数恒为 tex_h/ref_len，不随身体收缩变形；贴图随长条整体下移，
+## 向下越出身体的部分（屏幕下方 / 被判定线吞掉）直接裁掉。
+## 身体长度超过基准长度时（缓动拉长等），贴图会被拉伸填满身体，保证不留空洞。
+## @param x 绘制左缘（屏幕坐标）
+## @param w 绘制宽度
+## @param body_top body 顶部 y（屏幕坐标）
+## @param body_h body 高度（<=0 视为不可见）
+## @param ref_len 映射基准长度（长条恒速下落时身体的自然像素长度）
+## @param tex_w 贴图宽度（像素）
+## @param tex_h 贴图高度（像素）
+## @return {src: Rect2, dst: Rect2}；参数无效时返回空 Dictionary（调用方跳过绘制）
+static func compute_length_span_rect(x: float, w: float, body_top: float, body_h: float,
+		ref_len: float, tex_w: float, tex_h: float) -> Dictionary:
+	if body_h <= 0.0 or ref_len <= 0.0 or tex_w <= 0.0 or tex_h <= 0.0:
+		return {}
+	var scale := tex_h / ref_len  # 贴图像素 / 屏幕像素（固定比例）
+	var visible_tex_h := minf(body_h * scale, tex_h)
+	# 贴图顶部锚定身体上端（尾端），随长条下移；向下越出的部分裁掉
+	var src := Rect2(0.0, 0.0, tex_w, visible_tex_h)
+	var dst := Rect2(x, body_top, w, body_h)
+	return {"src": src, "dst": dst}

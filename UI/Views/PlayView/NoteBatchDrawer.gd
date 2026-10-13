@@ -41,8 +41,11 @@ var _slide_half_height: float = 50.0
 var _long_head_half_height: float = 50.0
 var _long_tail_half_height: float = 50.0
 var _long_body_tex_height: float = 50.0
-# body 中部贴图应用方式："repeat"（水平拉伸+垂直重复）或 "stretch"（竖直拉伸）
+# body 中部贴图应用方式："repeat"（水平拉伸+垂直重复）或 "stretch"（固定比例映射，不随身体压缩）
 var _long_body_mode: String = "repeat"
+# stretch 模式的贴图映射方式："screen"（方案 A：屏幕固定映射，按位置裁剪）
+# 或 "length"（方案 B：按身体基准长度固定比例映射，随长条移动）
+var _long_stretch_mode: String = "length"
 
 # 渲染裁剪参数（与 FlowArea._note_cull_margin_* 对齐）
 var _cull_margin_top: float = 120.0
@@ -132,6 +135,10 @@ func set_long_textures(head_tex: Texture2D, head_core_tex: Texture2D,
 ## 设置 body 中部贴图应用方式（"repeat" / "stretch"）
 func set_long_body_mode(mode: String) -> void:
 	_long_body_mode = mode
+
+## 设置 stretch 模式的贴图映射方式（"screen" 屏幕固定映射 / "length" 按身体基准长度映射）
+func set_long_stretch_mode(mode: String) -> void:
+	_long_stretch_mode = mode
 
 ## Long 头/尾半高（spawn 时由 FlowArea 读取）
 func get_long_head_half_height() -> float:
@@ -283,7 +290,7 @@ func _draw() -> void:
 				Rect2(rt_x[note_index], cy - half_h, _note_width, half_h * 2.0), color)
 
 ## 绘制 Long body（长条连接部分）：
-## repeat → 按贴图原始高度分条重复；stretch → 整体竖直拉伸。
+## repeat → 按贴图原始高度分条重复；stretch → 固定比例映射 + 按身体区间裁剪（不随身体压缩/拉伸）。
 ## 每部分都按 base（固定色）→ core（modulate 音符色）两层绘制。
 ## note_index 为平行数组 seq 索引，运行态经 fa（FlowArea）读取
 func _draw_long_body(note_index: int, fa: Object, top_limit: float, bottom_limit: float, color: Color) -> void:
@@ -291,12 +298,49 @@ func _draw_long_body(note_index: int, fa: Object, top_limit: float, bottom_limit
 	var body_h: float = fa._rt_body_h[note_index]
 	if body_h <= 0.0 or body_top + body_h < top_limit or body_top > bottom_limit:
 		return
-	var body_rect := Rect2(fa._rt_x[note_index], body_top, _note_width, body_h)
+	var body_x: float = fa._rt_x[note_index]
 	if _long_body_mode == "repeat":
-		_draw_long_body_repeat(_long_body_tex, _long_body_core_tex, body_rect, color)
+		# 拉伸方式对重复模式同样生效，只改变分条的相位锚点（分条周期恒为贴图原始高度）：
+		# 屏幕固定 → 分条网格锚定屏幕坐标（图案固定于屏幕，长条滚过其上）
+		# 按实际长度 → 分条锚定身体上端（图案随长条整体下移，向下部分被判定线吞掉）
+		var phase: float = 0.0
+		if _long_stretch_mode == "screen" and _long_body_tex_height > 0.0:
+			phase = fposmod(body_top, _long_body_tex_height)
+		_draw_long_body_repeat(_long_body_tex, _long_body_core_tex,
+			Rect2(body_x, body_top, _note_width, body_h), color, phase)
+		return
+	_draw_long_body_stretch(note_index, fa, body_x, body_top, body_h, color)
+
+## stretch 模式：固定比例映射 + 按身体区间裁剪（拉伸幅度恒定，不随身体压缩/拉伸）。
+## screen（方案 A）→ 贴图按 [0, 屏幕高] 区间固定映射，同一屏幕高度处样式一致；
+## length（方案 B）→ 贴图顶部锚定身体上端（尾端）并随长条整体下移，向下越出身体的部分
+## （屏幕下方 / 被判定线吞掉）直接裁掉。
+## 极端情况（视口/基准长度未就绪）回退整图缩放填充，避免出现空洞
+func _draw_long_body_stretch(note_index: int, fa: Object, x: float, body_top: float, body_h: float, color: Color) -> void:
+	var tex_w := float(_long_body_tex.get_width())
+	var tex_h := float(_long_body_tex.get_height())
+	var mapped: Dictionary
+	if _long_stretch_mode == "screen":
+		if _viewport_height <= 0.0:
+			_draw_note_layers(_long_body_tex, _long_body_core_tex,
+				Rect2(x, body_top, _note_width, body_h), color)
+			return
+		mapped = NoteFallCalculator.compute_screen_span_rect(
+			x, _note_width, body_top, body_h, _viewport_height, tex_w, tex_h)
 	else:
-		# stretch：整体竖直拉伸
-		_draw_note_layers(_long_body_tex, _long_body_core_tex, body_rect, color)
+		var ref_len: float = fa._rt_body_ref_len[note_index]
+		if ref_len <= 0.0:
+			_draw_note_layers(_long_body_tex, _long_body_core_tex,
+				Rect2(x, body_top, _note_width, body_h), color)
+			return
+		mapped = NoteFallCalculator.compute_length_span_rect(
+			x, _note_width, body_top, body_h, ref_len, tex_w, tex_h)
+	if mapped.is_empty():
+		return
+	var src: Rect2 = mapped["src"]
+	var dst: Rect2 = mapped["dst"]
+	draw_texture_rect_region(_long_body_tex, dst, src)
+	draw_texture_rect_region(_long_body_core_tex, dst, src, color)
 
 ## 绘制 Long tail（尾部）
 func _draw_long_tail(note_index: int, fa: Object, top_limit: float, bottom_limit: float, color: Color) -> void:
@@ -316,10 +360,12 @@ func _draw_long_head(note_index: int, fa: Object, top_limit: float, bottom_limit
 	_draw_note_layers(_long_head_tex, _long_head_core_tex,
 		Rect2(fa._rt_x[note_index], head_cy - head_half, _note_width, head_half * 2.0), color)
 
-## repeat 模式下分条绘制 body：水平拉伸（0-1），垂直按贴图原始高度逐条重复
-## 最后一条不足贴图高度时只取贴图顶部剩余部分（与 LongBodyRepeat shader 的 fract(UV.y*v_repeat) 一致）
-## 分条周期取 base body 原始高度 _long_body_tex_height；base/core 两层逐条分别绘制
-func _draw_long_body_repeat(base_tex: Texture2D, core_tex: Texture2D, rect: Rect2, color: Color) -> void:
+## repeat 模式下分条绘制 body：水平拉伸（0-1），垂直按贴图原始高度逐条重复。
+## phase = 身体上端在分条周期内已越过的贴图高度（像素，范围 [0, tex_h)）：
+##   0（默认）= 分条锚定身体上端 → 图案随长条整体下移（与 LongBodyRepeat shader v_offset=0 一致）
+##   >0       = 分条网格锚定屏幕 → 图案固定于屏幕，长条滚过其上
+## 最后一条不足贴图高度时只取该条剩余的贴图部分；base/core 两层逐条分别绘制
+func _draw_long_body_repeat(base_tex: Texture2D, core_tex: Texture2D, rect: Rect2, color: Color, phase: float = 0.0) -> void:
 	var tex_h := _long_body_tex_height
 	if tex_h <= 0.0:
 		_draw_note_layers(base_tex, core_tex, rect, color)
@@ -327,15 +373,19 @@ func _draw_long_body_repeat(base_tex: Texture2D, core_tex: Texture2D, rect: Rect
 	var tex_w := base_tex.get_width()
 	var top := rect.position.y
 	var remain := rect.size.y
+	var src_y: float = fposmod(phase, tex_h)
+	if tex_h - src_y < 0.01:
+		src_y = 0.0
 	var guard := 0
 	while remain > 0.01:
-		var h := minf(tex_h, remain)
+		var h := minf(tex_h - src_y, remain)
 		var dst := Rect2(rect.position.x, top, rect.size.x, h)
-		var src := Rect2(0, 0, tex_w, h)
+		var src := Rect2(0, src_y, tex_w, h)
 		draw_texture_rect_region(base_tex, dst, src)
 		draw_texture_rect_region(core_tex, dst, src, color)
 		top += h
 		remain -= h
+		src_y = 0.0
 		guard += 1
 		if guard > 256:
 			break
