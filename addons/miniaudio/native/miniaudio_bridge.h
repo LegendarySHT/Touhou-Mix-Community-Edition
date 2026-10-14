@@ -200,6 +200,18 @@ MA_BRIDGE_API uint32_t ma_bridge_vocal_get_catchup_frames(void* pBridge);
 // vocal aligned with MIDI post-seek silence.
 MA_BRIDGE_API ma_bridge_result ma_bridge_vocal_skip_frames(void* pBridge, uint32_t frames);
 
+// 一次性「时齐」：把位置记账【瞬时】前推 N 帧，并从 ring 丢弃等量内容（最多丢到环被排空）。
+// 返回实际应用的帧数（0 = 无内容可丢 / 状态不允许）。线程安全，与 vocal_mix 共用 vocalLock。
+//
+// 【为什么不能复用 ma_bridge_vocal_skip_frames】它的丢弃量被输出槽位封顶（每回调 ≤ frameCount），
+// 于是位置推进只能按 1x 实时速率走 —— 与墙钟同速，净闭合为零（实测 Δlag ≈ 0）。
+// 漂移必须【瞬时】闭合，否则绝对重定位的自身耗时会把"纠正 → 新偏差 → 再纠正"的闭环永久维持下去。
+//
+// 【调用方】主线程漂移纠正（TickVocalSync）与音频线程停顿补偿（CatchUpVocalAfterStall）。
+// 【返回值约定】刻意返回 uint32_t（实际应用帧数）而非 ma_bridge_result，使调用方一次调用
+// 即可判断"是否完全闭合"，避免二次查询与竞态。
+MA_BRIDGE_API uint32_t ma_bridge_vocal_realign_frames(void* pBridge, uint32_t frames);
+
 // 获取 miniaudio 版本字符串 (用于日志)
 MA_BRIDGE_API const char* ma_bridge_get_version(void);
 

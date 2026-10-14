@@ -664,11 +664,30 @@ public partial class MeltySynthPlayer
 	private int _vocalSyncOffense = 0;
 	private double _lastVocalSyncAtMs = 0.0;
 
+	/// <summary>
+	/// realign 连续"补不齐"（环内可用内容不足）多少轮后，才回落一次绝对 seek。
+	/// 每轮间隔 = VocalSyncCooldownMs(1.5s)，故最坏 ≈4.5s 才发生一次昂贵 seek。
+	/// 环容量：96kHz ≈1365ms、48kHz ≈682ms —— 观察到的漂移量（60~600ms）都落在环容量内，
+	/// 故实际极少走到这条回落路径。
+	/// </summary>
+	private const int VocalRealignPartialStreakLimit = 3;
+	/// <summary>realign 一次最多接受多少毫秒的滞后（防御性上限 ≈41s @96kHz），避免异常巨大的
+	/// 滞后把 uint 撑爆；更大的 gap 由 CatchUpVocalAfterStall 的 5s 上限负责。</summary>
+	private const double VocalRealignMaxLagMs = 40000.0;
+	/// <summary>人声"超前"（lag&lt;0）时绝对 seek 的最短间隔。realign 只能前推，超前必须回退，
+	/// 而回退没有廉价手段 → 用限流把它压成低频事件，避免退化成每 1.5s 一次的昂贵循环。</summary>
+	private const double VocalBackwardSeekMinIntervalMs = 10000.0;
+	private int _vocalRealignPartialStreak = 0;
+	private double _lastVocalBackwardSeekAtMs = 0.0;
+
 	public void reset_vocal_sync()
 	{
 		_lastVocalSyncCheckMs = -1000.0;
 		_vocalSyncOffense = 0;
 		_lastVocalSyncAtMs = 0.0;
+		// realign 的连续失败计数与"超前 seek 限流"也归零：play/resume/换曲都是新起点
+		_vocalRealignPartialStreak = 0;
+		_lastVocalBackwardSeekAtMs = 0.0;
 	}
 
 	private void TickVocalSync()
@@ -759,13 +778,53 @@ public partial class MeltySynthPlayer
 		double nowMs = Time.GetTicksMsec();
 		if (_vocalSyncOffense >= VocalSyncOffenseNeeded && nowMs - _lastVocalSyncAtMs >= VocalSyncCooldownMs)
 		{
-			if (!ma.SeekVocal(expected) && ma.VocalSeekFailStreak >= VocalSeekFailStreakLimit)
-			{
-				// 这里就是我们自己每 1.5s 触发一次失败的地方：连续失败即挂起（静音人声 + 停止重试）
-				SuspendVocalPositioning("drift realign failed", expected, get_vocal_length_ms());
-			}
 			_lastVocalSyncAtMs = nowMs;
 			_vocalSyncOffense = 0;
+
+			// 【纠正动词】lag > 0（人声落后）走 O(1) 一次性时齐；lag <= 0（人声超前）只能限流绝对 seek。
+			// 旧的"一律 ma.SeekVocal(expected)"之所以会自持：绝对重定位把 seek 自身耗时变成一个新的
+			// 滞后（实测 19~593ms，且 ∝ 目标位置），于是 diff 永远超阈值、每 1.5s 必然再来一次。
+			double lagMs = expected - vocalPos;
+			if (lagMs > 0.0)
+			{
+				int sr = ma.VocalSampleRate;
+				uint want = sr > 0
+					? (uint)Math.Min(lagMs, VocalRealignMaxLagMs) * (uint)sr / 1000u
+					: 0u;
+				uint applied = want > 0 ? ma.RealignVocalFrames(want) : 0u;
+
+				if (want == 0)
+				{
+					// 滞后不足 1ms（不足一帧）：无需任何动作
+					_vocalRealignPartialStreak = 0;
+				}
+				else if (applied == want)
+				{
+					_vocalRealignPartialStreak = 0;      // 完全闭合：本轮结束，闭环被打破
+				}
+				else if (++_vocalRealignPartialStreak >= VocalRealignPartialStreakLimit)
+				{
+					// 环内可用内容不足以一次闭合（大滞后，通常来自一次长停顿）：连续多轮补不齐
+					// 才回落一次绝对 seek。它的自身耗时会在下一轮被 realign 收掉，故不会自持。
+					_vocalRealignPartialStreak = 0;
+					if (!ma.SeekVocal(expected) && ma.VocalSeekFailStreak >= VocalSeekFailStreakLimit)
+					{
+						SuspendVocalPositioning("drift seek failed", expected, get_vocal_length_ms());
+					}
+				}
+			}
+			else
+			{
+				// 人声超前：realign 只能前推，帮不上；限流绝对 seek（最短间隔 10s）
+				if (nowMs - _lastVocalBackwardSeekAtMs >= VocalBackwardSeekMinIntervalMs)
+				{
+					_lastVocalBackwardSeekAtMs = nowMs;
+					if (!ma.SeekVocal(expected) && ma.VocalSeekFailStreak >= VocalSeekFailStreakLimit)
+					{
+						SuspendVocalPositioning("drift seek failed", expected, get_vocal_length_ms());
+					}
+				}
+			}
 		}
 		_lastVocalSyncCheckMs = rawMs;
 	}

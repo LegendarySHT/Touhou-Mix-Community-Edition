@@ -1136,6 +1136,47 @@ ma_bridge_result ma_bridge_vocal_skip_frames(void* pBridge, uint32_t frames)
     return MA_BRIDGE_OK;
 }
 
+/*
+一次性「时齐」：位置记账 +N 且丢弃 N 帧内容，两者都在同一个 vocalLock 临界区内完成。
+与 ma_bridge_vocal_skip_frames 的本质差别：后者只是排一个 pending 计数，交给 vocal_mix Phase 1
+按输出槽位（每回调 ≤ frameCount）慢慢消费，位置推进被迫按 1x 实时速率走 ——
+与墙钟同速，净闭合为 0。这里必须【瞬时】把位置与内容一起对齐，否则
+"纠正动作自身耗时 → 新的滞后 → 再次纠正"的闭环无法打破。
+*/
+uint32_t ma_bridge_vocal_realign_frames(void* pBridge, uint32_t frames)
+{
+    ma_bridge* p = (ma_bridge*)pBridge;
+    ma_uint32 applied = 0;
+
+    if (p == NULL || !p->initialized) {
+        return 0;
+    }
+    if (!p->vocalLoaded || p->vocalEndReached || frames == 0) {
+        return 0;
+    }
+    /* 已有 pending 的 skip / catchup 时不动作：否则与 Phase 0/1 的记账叠加，位置被推两次 */
+    if (p->vocalSkipFrames > 0 || p->vocalCatchupFrames > 0) {
+        return 0;
+    }
+
+    /* vocalReadIndex 非 volatile，受 vocalLock 保护；读索引与位置记账必须同临界区，
+     * 否则会与音频线程的 vocal_mix 并发撕裂。 */
+    ma_spinlock_lock(&p->vocalLock);
+    {
+        ma_uint32 used = (p->vocalWriteIndex - p->vocalReadIndex) & p->vocalRingMask;
+        applied = (frames < used) ? frames : used;
+        if (applied > 0) {
+            p->vocalReadIndex = (p->vocalReadIndex + applied) & p->vocalRingMask;
+            /* 用 vocalConsumedFrames（"设备已消费帧"）而非 vocalUnderrunFrames：
+             * 后者是欠载路径自己的记账口径，由 vocal_mix Phase 2 维护，外部不应改动。 */
+            p->vocalConsumedFrames += applied;
+        }
+    }
+    ma_spinlock_unlock(&p->vocalLock);
+
+    return applied;
+}
+
 // ---------------------------------------------------------------------------
 // 销毁
 // ---------------------------------------------------------------------------

@@ -1389,6 +1389,11 @@ public partial class MeltySynthPlayer : Node
 			return;
 		}
 		_vocalFinishedSignaled = false;
+		// 显式重定位 = 新起点（拖动进度条 / start_vocal_at / 回绕 / watchdog 重对齐都经本函数）：
+		// 清掉 realign 的连续失败计数与"超前 seek 限流"，使下一次漂移评估重新开始
+		//（否则拖动后会带着旧的限流状态，恢复变慢）。
+		_vocalRealignPartialStreak = 0;
+		_lastVocalBackwardSeekAtMs = 0.0;
 		double vocalPos = midiPositionMs - get_vocal_offset_ms();
 		ThreadSafeLog.Print($"[MeltySynthPlayer] vocal seek: midi={midiPositionMs:F0}ms offset={get_vocal_offset_ms():F0}ms -> vocal={vocalPos:F0}ms playing={playing}");
 		if (vocalPos < 0.0)
@@ -2160,6 +2165,7 @@ public partial class MeltySynthPlayer : Node
 	{
 		return _audioOutput?.GetVocalUnderrunCount() ?? 0u;
 	}
+
 
 
 	public void set_bus(StringName targetBus)
