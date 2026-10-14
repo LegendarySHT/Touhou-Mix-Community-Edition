@@ -183,6 +183,37 @@ namespace TouhouMix.Midi
         /// <summary>是否已成功加载 native 库.</summary>
         internal static bool IsAvailable => _loadSucceeded;
 
+        private static int _realignProbe = -1;   // -1 未探测 / 0 不可用 / 1 可用
+
+        /// <summary>
+        /// 新增导出 <c>ma_bridge_vocal_realign_frames</c> 是否可用。
+        ///
+        /// 【为什么必须探测】该导出只重编了 Windows 库；已入库的 Android/iOS 原生库（.so/.aar）
+        /// 仍是旧版，直接调用会抛 EntryPointNotFoundException。探测失败时调用方回落到旧的
+        /// 昂贵 seek 路径（行为退化为修复前，但不会崩）。
+        /// </summary>
+        internal static bool HasVocalRealign
+        {
+            get
+            {
+                if (_realignProbe >= 0) return _realignProbe == 1;
+                _realignProbe = 0;
+                try
+                {
+                    if (_libraryHandle != IntPtr.Zero &&
+                        NativeLibrary.GetExport(_libraryHandle, "ma_bridge_vocal_realign_frames") != IntPtr.Zero)
+                    {
+                        _realignProbe = 1;
+                    }
+                }
+                catch (Exception)
+                {
+                    _realignProbe = 0;
+                }
+                return _realignProbe == 1;
+            }
+        }
+
         private static IntPtr ResolveLibrary(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
             // 仅处理我们自己的库名
@@ -315,6 +346,9 @@ namespace TouhouMix.Midi
 
         [DllImport("miniaudio_bridge", CallingConvention = CallingConvention.Cdecl)]
         internal static extern Result ma_bridge_vocal_skip_frames(IntPtr pBridge, uint frames);
+
+        [DllImport("miniaudio_bridge", CallingConvention = CallingConvention.Cdecl)]
+        internal static extern uint ma_bridge_vocal_realign_frames(IntPtr pBridge, uint frames);
 
         [DllImport("miniaudio_bridge", CallingConvention = CallingConvention.Cdecl)]
         internal static extern void ma_bridge_uninit(IntPtr pBridge);

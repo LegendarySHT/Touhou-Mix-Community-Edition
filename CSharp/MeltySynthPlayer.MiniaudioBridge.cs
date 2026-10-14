@@ -637,6 +637,21 @@ public void ResetEndOfSequence()
 					: 0u;
 			}
 
+			/// <summary>
+			/// 一次性时齐：位置记账瞬时 +N 帧且丢弃 N 帧内容，返回实际应用帧数。
+			/// 缺符号（Android/iOS 等尚未重编的旧平台库）时返回 0，调用方据此回落旧的昂贵 seek 路径。
+			/// O(1)、只短暂持 vocalLock，可在音频回调内调用。
+			/// </summary>
+			public uint RealignVocalFrames(uint frames)
+			{
+				if (_bridgeHandle == IntPtr.Zero || !_vocalLoaded) return 0u;
+				if (!MiniaudioNative.HasVocalRealign) return 0u;
+				return MiniaudioNative.ma_bridge_vocal_realign_frames(_bridgeHandle, frames);
+			}
+
+			/// <summary>人声解码器使用的采样率（ms ↔ 帧换算用；与 SeekVocal 同一口径）。</summary>
+			public int VocalSampleRate => _actualSampleRate > 0 ? (int)_actualSampleRate : _sampleRate;
+
 			// ====================================================================
 			// Initialize
 			// ====================================================================
@@ -1034,9 +1049,16 @@ public void ResetEndOfSequence()
 			/// TickVocalSync 与 _tickAudioWatchdog 根本不会跑，于是错位会一直留到用户手动 seek。
 			///
 			/// 这里的做法等价于"替用户 seek 一下"，但代价小得多：native 的
-			/// ma_bridge_vocal_skip_frames 只是丢弃环形缓冲里对应长度的内容并同步推进
-			/// 已消费帧（位置记账随之与设备时钟一致），不动解码器、不做 O(消息数) 的状态重建、
-			/// 不打断在响的声部。渲染帧驱动的模式（use_system_stopwatch 关闭）里两边都随渲染帧
+			/// ma_bridge_vocal_realign_frames 在**同一次调用内**丢弃环形缓冲里对应长度的内容
+			/// 并把已消费帧瞬时前推（位置记账随之与设备时钟一致），O(1)、不动解码器、
+			/// 不做 O(消息数) 的状态重建、不打断在响的声部。
+			///
+			/// 【为什么从 skip_frames 换成 realign】skip 只是排一个 pending 计数，其丢弃量被
+			/// 输出槽位封顶（每回调 ≤ frameCount），位置推进被迫按 1x 实时速率走 —— 与墙钟同速，
+			/// 净闭合为零（实测 Δlag ≈ 0）。那样每次停顿都会在位置记账上留下一个**永久偏差**，
+			/// 随后主线程的 TickVocalSync 会拿它当"漂移"去纠正，而绝对 seek 的自身耗时会再造一个
+			/// 同量级偏差 → 形成自持的昂贵 seek 循环。realign 瞬时闭合，从源头断掉这条链。
+			/// 渲染帧驱动的模式（use_system_stopwatch 关闭）里两边都随渲染帧
 			/// 走，停顿后天然对齐，故只在系统时钟模式下动手。
 			/// </summary>
 			private void CatchUpVocalAfterStall(double gapMs)
@@ -1052,26 +1074,31 @@ public void ResetEndOfSequence()
 				bool systemClock = _sequencer != null && _sequencer.UseSystemClock;
 				bool seqRunning = _sequencer != null && !_sequencer.IsPaused;
 				double renderMs = _sequencer != null ? _sequencer.RenderedPosition.TotalMilliseconds : -1.0;
-				bool skipped = false;
-				uint skipFrames = 0;
+				bool realigned = false;
+				uint wantFrames = 0;
+				uint appliedFrames = 0;
 				// 上限 5s：异常巨大的 gap（如设备长时间失联）交由重连/重载路径处理，
 				// 这里只负责"卡一下"级别的追平，避免一次丢掉整段人声。
-				double appliedSkipMs = Math.Min(gapMs, 5000.0);
-				if (systemClock && seqRunning && _vocalLoaded && IsVocalPlaying() && _sampleRate > 0)
+				double appliedMs = Math.Min(gapMs, 5000.0);
+				if (systemClock && seqRunning && _vocalLoaded && IsVocalPlaying() && VocalSampleRate > 0)
 				{
-					skipFrames = (uint)(appliedSkipMs * _sampleRate / 1000.0);
-					if (skipFrames > 0)
+					wantFrames = (uint)(appliedMs * VocalSampleRate / 1000.0);
+					if (wantFrames > 0)
 					{
-						MiniaudioNative.ma_bridge_vocal_skip_frames(_bridgeHandle, skipFrames);
-						skipped = true;
+						// 【改用 realign 而非 skip_frames】停顿注入的滞后必须【瞬时】闭合：
+						// skip 的位置推进被输出槽位封顶，只能按实时速率走，净闭合为零
+						//（实测 Δlag ≈ 0），于是每次停顿都会留下一个永久偏差 —— 正是主线程
+						// 漂移循环被"武装"的来源。realign 在 O(1) 内把位置与内容同时对齐。
+						appliedFrames = RealignVocalFrames(wantFrames);
+						realigned = appliedFrames > 0;
 					}
 				}
 
 				_audioLogQueue.Enqueue($"[MeltySynthPlayer][miniaudio] device stall {gapMs:F0}ms detected " +
 					$"(clock={(systemClock ? "system" : "rendered")}, seqRunning={seqRunning}): " +
 					$"midi render={renderMs:F0}ms, vocalPos={GetVocalPositionMs():F0}ms, " +
-					(skipped ? $"vocal catch-up: skip {skipFrames} frames ({appliedSkipMs:F0}ms), " : "vocal untouched, ") +
-					$"total stalls={_stallCount}");
+					(realigned ? $"vocal realign: applied {appliedFrames}/{wantFrames} frames ({appliedMs:F0}ms), " : "vocal untouched, ") +
+					$"total stalls={_stallCount} t={System.Environment.TickCount64}");
 			}
 
 			/// <summary>
@@ -1158,6 +1185,9 @@ public void ResetEndOfSequence()
 							_lastRenderTimestampTicks = Stopwatch.GetTimestamp();
 							if (IsVocalPlaying())
 							{
+								// 【此处刻意保留 skip_frames】post-seek 静音需要"接下来 N 帧输出静音、
+								// 位置随之推进"，这正是 skip 的语义（与 MIDI 的 post-seek 静音帧数逐帧
+								// 对齐）；换成 realign 会**丢弃内容**，破坏这条对齐。不要误改。
 								MiniaudioNative.ma_bridge_vocal_skip_frames(_bridgeHandle, (uint)silence);
 							}
 							Marshal.Copy(_outputBuffer, 0, pOutput, framesRequested * 2);

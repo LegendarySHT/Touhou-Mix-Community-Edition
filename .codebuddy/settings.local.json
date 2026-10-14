@@ -1,8 +1,0 @@
-{
-  "enabledMcpjsonServers": [
-    "godot-docs",
-    "godot-engine",
-    "godotlsp"
-  ],
-  "disabledMcpjsonServers": []
-}
