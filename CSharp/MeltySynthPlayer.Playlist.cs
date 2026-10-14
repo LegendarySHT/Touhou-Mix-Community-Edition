@@ -210,6 +210,10 @@ public partial class MeltySynthPlayer
 	{
 		MarkUserEdited();
 		var core = MidiCore.Instance;
+		// 加之前列表是空的（典型：清空列表后又加歌）→ 加完直接起播新歌。
+		// 没有"无曲可播"的界面状态：清空列表只清 A、不停当前曲，此时加歌若不起播，
+		// 面板显示新歌、放的还是被清掉的那首，媒体卡片与播放器页长期和实际内容不一致。
+		bool fromEmpty = core != null && core.GetCount() == 0;
 		foreach (var it in items)
 		{
 			var k = KeyOfVariant(it);
@@ -220,6 +224,11 @@ public partial class MeltySynthPlayer
 			}
 		}
 		EmitSignal(SignalName.playlist_changed);
+		if (fromEmpty && core != null && core.GetCount() > 0)
+		{
+			// 从空列表长出来的第一首必在 0 位；批量加入时播最先加入的那首
+			play_index(0);
+		}
 	}
 
 	public bool insert_next_in_playlist(Variant data)
@@ -231,8 +240,14 @@ public partial class MeltySynthPlayer
 			return false;
 		}
 		MarkUserEdited();
+		bool fromEmpty = core.GetCount() == 0;
 		core.InsertAt(core.GetIndex() + 1, k);
 		EmitSignal(SignalName.playlist_changed);
+		// 空列表（清空列表后插第一首）：索引为 -1，新歌落 0 位，直接起播——同 append
+		if (fromEmpty && core.GetCount() > 0)
+		{
+			play_index(0);
+		}
 		return true;
 	}
 
