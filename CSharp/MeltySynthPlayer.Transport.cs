@@ -112,6 +112,8 @@ public partial class MeltySynthPlayer
 		_currentKey = "";
 		ConnectUiStatePolicy();
 		InitMediaBackend();
+		// 后台线程要用的 ChartDb 引用：节点/场景树只应主线程访问，故在主线程缓存一次
+		Volatile.Write(ref _chartDbCached, GetNodeOrNull<ChartDb>("/root/ChartDB"));
 		// 播放模式不在这里读配置：唯一持久化位置是 MidiCore 的播放列表 meta，
 		// 由 MidiCore.EnsureLoaded() 在读回列表时一并恢复（见下方"播放模式持久化"说明）。
 	}
@@ -125,6 +127,9 @@ public partial class MeltySynthPlayer
 
 
 		TickEndOfSequenceOnMainThread();
+
+		// 收敛后台线程攒下的换曲结果：补发信号 / 把权威播放列表索引对齐到后台实际播的那首
+		ConvergeBackgroundAdvance();
 
 		// 人声漂移同步（原 GDScript _sync_vocal_with_midi）
 		TickVocalSync();
@@ -390,11 +395,14 @@ public partial class MeltySynthPlayer
 	/// 返回 true 表示处理完毕（调用方可消费已播完标志）；false 表示前提未就绪（保留标志重试）。
 	/// </summary>
 	/// <summary>
-	/// 曲终检查（**只在主线程**）。两个调用来源，行为完全一致：
+	/// 曲终检查（**只在主线程**）。前台两个调用来源：
 	///   1) 帧回调 `_Process` → TickTransport（前台，每帧）；
-	///   2) Java ticker 的 `bg_tick`（熄屏/后台时**帧回调不跑**，但主线程仍在派发信号，
-	///      由 Java 每秒叫醒一次）—— 这就是后台自动切歌的全部机制，没有独立线程。
-	/// 于是"自动切歌"与"点按钮切歌"最终走同一份同步代码：HandleSongEnded → LoadAndPlayKey。
+	///   2) Java ticker 的 `bg_tick`（熄屏但主线程仍派发信号时，由 Java 每秒叫醒一次）。
+	///
+	/// 深后台主循环停摆时，本方法不再被调用——改由 BackgroundAdvance.cs 的
+	/// 独立 .NET 线程（TryBackgroundSongEndAdvance）接管「曲终→下一首」，彻底解耦
+	/// 于 Godot 主线程存活。两条路径通过 _endHandling 闩锁互斥，不会双换。
+	///
 	/// 只窥视不先消费：换曲失败时把标志留着重试（否则表现为曲终后原地循环、再无输出）。
 	/// </summary>
 	/// <summary>[测试/诊断直调] 等价于 Java ticker 发出的 bg_tick（桌面 harness 用）。</summary>
@@ -421,6 +429,41 @@ public partial class MeltySynthPlayer
 		{
 			Interlocked.Exchange(ref _endHandling, 0);
 		}
+	}
+
+	/// <summary>
+	/// 收敛后台线程攒下的换曲结果：补发信号（current_song_changed / playlist_index_changed /
+	/// playback_state_changed）并把权威播放列表索引对齐到后台实际播的那首。
+	/// 本方法只在主线程（TickTransport）调用——信号与 Godot 节点只能主线程碰。
+	/// </summary>
+	private void ConvergeBackgroundAdvance()
+	{
+		if (!_bgAdvancePending) return;
+		string key = _bgAdvancePendingKey;
+		bool isRestart = _bgAdvanceIsRestart;
+		_bgAdvancePending = false;
+		if (string.IsNullOrEmpty(key)) return;
+
+		_currentKey = key;
+		_emittedSongKey = key;
+		var core = MidiCore.Instance;
+		if (!isRestart && core != null)
+		{
+			int idx = core.IndexOf(key);
+			if (idx >= 0)
+			{
+				core.SetIndex(idx);
+				EmitSignal(SignalName.playlist_index_changed, idx);
+			}
+		}
+		// 原地循环 / 单曲：前台 HandleSongEnded 也只发 playback_state_changed，保持一致
+		if (!isRestart)
+		{
+			EmitSignal(SignalName.current_song_changed, key);
+		}
+		EmitSignal(SignalName.playback_state_changed);
+		PushMediaState(true);
+		ThreadSafeLog.Print($"[MeltySynthPlayer] converged bg advance: key={key} restart={isRestart}");
 	}
 
 	private bool HandleSongEnded()
@@ -1011,6 +1054,9 @@ public partial class MeltySynthPlayer
 		if (action == "bg_tick")
 		{
 			TickEndOfSequenceOnMainThread();
+			// 收敛后台线程攒下的换曲结果：bg_tick 在主线程派发，正好借此补发信号 /
+			// 更新媒体通知（深后台 _Process 不跑时则等回前台由 TickTransport 收敛）。
+			ConvergeBackgroundAdvance();
 			// 后台每秒一次的"人声漂移自检"：熄屏/后台时 _Process 不跑，前台那套
 			// TickVocalSync 也就不会执行 —— 而设备停顿（阻塞式 GC、音频焦点被别的 App 抢走、
 			// 路由切换）恰恰最容易发生在后台。这里借 Java ticker 每秒叫醒主线程的机会补一次，
@@ -1057,23 +1103,6 @@ public partial class MeltySynthPlayer
 	/// 于是"打歌中按耳机键无效果"这条语义由注册状态天然保证，无需页面判断。
 	/// </summary>
 	public bool is_media_command_allowed_here() => _mediaViewRegistered;
-
-	private double _bgPreparseAccum = 0.0;
-
-	/// <summary>
-	/// 下一首的「主线程预取」快照：后台换曲要用的路径 / 歌名 / 专辑 / 封面路径 / (track,channel) 对，
-	/// 全部在主线程算好。
-	///
-	/// 【为什么是一个不可变对象而不是几个散字段】后台线程要读它，主线程要写它。
-	/// 若写成 `_bgNextKey` / `_bgNextPath` / … 这样一组散字段，读者可能看到"新的 key + 旧的 path"
-	/// 这种撕裂组合（无同步的多字段发布）。改成**一次性发布整份不可变快照**后，读者只需
-	/// `var info = _bgNext;` 取一次引用，之后读到的必定是同一首歌的全套字段。
-	/// volatile 保证引用本身的可见性与有序性。
-	/// </summary>
-
-	/// <summary>已预解析过的 key（主线程持有，避免重复解析）</summary>
-	/// <summary>后台换曲调用 apply_chart_audio_config 时的一次性 pairs 覆盖（同线程设置/消费）</summary>
-	private int[] _bgPairsOverride = null;
 
 
 	private void NavigateToPlayer()

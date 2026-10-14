@@ -841,6 +841,13 @@ public partial class MeltySynthPlayer : Node
 
 	public override void _Process(double delta)
 	{
+		// 刷新主循环活性时间戳：后台独立线程据此判定"主循环是否已停摆"（深后台自动切歌）。
+		System.Threading.Volatile.Write(ref _lastProcessTicks, System.Diagnostics.Stopwatch.GetTimestamp());
+		if (_chartDbCached == null)
+		{
+			System.Threading.Volatile.Write(ref _chartDbCached, GetNodeOrNull<ChartDb>("/root/ChartDB"));
+		}
+
 		// 缓存后台线程要用的主线程侧依赖（节点引用不能从后台线程取）
 		// 后台 SoundFont 解析完成后，在主线程完成合成器/音频桥绑定（音频相关 API 必须主线程）
 		if (_sfParseDone && !_sfFinalized && (_sfLoadThread == null || !_sfLoadThread.IsAlive))
@@ -1661,13 +1668,7 @@ public partial class MeltySynthPlayer : Node
 		ThreadSafeLog.Print($"[MeltySynthPlayer] cfg: got config ({cfgs.ElapsedMilliseconds}ms)");
 		// (track, channel) 全集：与前台 soa_pairs_of 同源（解析缓存），缺缓存时由 C# 自己补齐。
 		int[] pairs = System.Array.Empty<int>();
-		if (_bgPairsOverride != null)
-		{
-			// 后台换曲：pairs 由主线程预取传入 —— 既不必解析谱面，也不碰任何 Godot 容器
-			// 原子取走：后台线程可能正写入下一条，读-改-写会把新值当旧值清掉
-			pairs = Interlocked.Exchange(ref _bgPairsOverride, null);
-		}
-		else if (core != null && !string.IsNullOrEmpty(_file))
+		if (core != null && !string.IsNullOrEmpty(_file))
 		{
 			// 缺解析缓存就自己按需补（System.IO 读盘，不经引擎）：后台线程调 Godot 文件 API
 			// 会与可能被冻结的主线程抢引擎全局锁而永久阻塞（"不切歌且彻底静音"）。

@@ -43,6 +43,10 @@ public partial class MeltySynthPlayer
 	private volatile bool _bgAdvanceStop;
 	/// <summary>后台线程已完成换曲、待主循环回来通知 GDScript 对账显示（跨线程可见）</summary>
 	private volatile bool _bgAdvancePending;
+	/// <summary>待收敛的下一首 key（跨线程可见）</summary>
+	private volatile string _bgAdvancePendingKey = "";
+	/// <summary>本次后台换曲是否为「原地重播当前曲」（是则不补发 current_song_changed）</summary>
+	private volatile bool _bgAdvanceIsRestart;
 
 	/// <summary>
 	/// 后台线程要用的 ChartDb 引用：节点/场景树只应主线程访问，故在 _Process 里缓存，
@@ -57,9 +61,6 @@ public partial class MeltySynthPlayer
 	/// <summary>_Process 每帧调用：刷新主循环活性时间戳</summary>
 	/// <summary>看门狗阈值：每轮轮询 200ms，累计这么多次"回调数没变"就判设备已死（≈3s）</summary>
 	private const int BgStallTicksForRecover = 15;
-	/// <summary>已交棒给回调的 key（后台线程私有）：避免每轮重复解析同一首</summary>
-	private string _handoffPreparedKey = "";
-	private string[] _bgSnapshotSeenKeys;   // 上次见过的快照数组（引用比较即可判定"主线程是否重发过"）
 	private int _bgLastCallbackCount = -1;
 	private int _bgStallTicks = 0;
 
@@ -186,9 +187,15 @@ public partial class MeltySynthPlayer
 	}
 
 	/// <summary>后台轮询：仅当主循环停摆且音频回调报过回绕时，接管"曲终→下一首"</summary>
-	/// <summary>等待原因去重日志：只在原因变化时打一条，避免每 200ms 刷屏。</summary>
-	private int _bgLastSkipReason = -1;
-	private int _bgHeartbeat = 0;
+	/// <summary>判定主循环是否停摆：_Process 不再刷新时间戳即视为已停摆。</summary>
+	private bool MainLoopIsStale()
+	{
+		long last = Volatile.Read(ref _lastProcessTicks);
+		if (last == 0) return false;   // 还没跑过 _Process（启动早期），交给前台处理
+		long now = System.Diagnostics.Stopwatch.GetTimestamp();
+		double staleSec = (now - last) / (double)System.Diagnostics.Stopwatch.Frequency;
+		return staleSec > MainLoopStaleSec;
+	}
 
 
 	private void BackgroundAdvanceLoop()
@@ -198,7 +205,7 @@ public partial class MeltySynthPlayer
 			Thread.Sleep(BgAdvancePollMs);
 			try
 			{
-				// 本线程只剩一件事：音频设备存活看门狗（换曲已全部由主线程负责）。
+				// 本线程两件事：① 音频设备存活看门狗；② 主循环停摆时接管自动切歌。
 				if (!(_audioOutput is MiniaudioAudioOutputBridge))
 				{
 					continue;
@@ -226,12 +233,15 @@ public partial class MeltySynthPlayer
 							}
 						}
 					}
-					else
-					{
-						_bgLastCallbackCount = cb;
-						_bgStallTicks = 0;
-					}
+				else
+				{
+					_bgLastCallbackCount = cb;
+					_bgStallTicks = 0;
 				}
+
+				// 主循环停摆时由本线程接管自动切歌（解耦 Godot _Process / Java bg_tick）
+				TryBackgroundSongEndAdvance();
+			}
 			}
 			catch (ThreadInterruptedException)
 			{
@@ -242,6 +252,162 @@ public partial class MeltySynthPlayer
 				ThreadSafeLog.PrintErr($"[MeltySynthPlayer] bg advance error: {e.Message}");
 			}
 		}
+	}
+
+	/// <summary>
+	/// 后台自动切歌入口：主循环已停摆（_Process 不再刷新）时，由本独立线程消费
+	/// EndOfSequence 标志并把播放推进到下一首。前台仍由 TickEndOfSequenceOnMainThread 处理，
+	/// 两者通过 _endHandling 闩锁互斥，不会双换。
+	/// </summary>
+	private void TryBackgroundSongEndAdvance()
+	{
+		var maEnd = _audioOutput as MiniaudioAudioOutputBridge;
+		if (maEnd == null || !maEnd.HasEndOfSequence) return;
+		if (!playing || _paused) return;
+		// 仅当主循环确实已停摆时本线程才接管；否则交给前台 _Process / bg_tick 路径，
+		// 避免与仍在跑的主线程抢同一首曲终（尤其打歌页依赖 midi_finished 结算）。
+		if (!MainLoopIsStale()) return;
+		HandleSongEndedOnBackground();
+	}
+
+	/// <summary>
+	/// 后台版的曲终决策与换曲：不发射任何 Godot 信号（信号只能主线程发），
+	/// 只做"载入+起播"并重载待收敛标记，由主线程在 TickTransport 里补发信号与落盘。
+	/// </summary>
+	private void HandleSongEndedOnBackground()
+	{
+		// 与主线程 TickEndOfSequenceOnMainThread 共用同一闩锁，保证只有一方处理这次曲终
+		if (System.Threading.Interlocked.CompareExchange(ref _endHandling, 1, 0) != 0)
+		{
+			return;
+		}
+		try
+		{
+			var core = MidiCore.Instance;
+			var snap = core?.GetSnapshot();
+			string nextKey = "";
+			bool restartSame = false;
+			if (snap == null || snap.Keys.Length <= 1 || snap.SessionSingle
+				|| snap.RepeatMode == MidiCore.REPEAT_ONE)
+			{
+				restartSame = true;
+			}
+			else
+			{
+				int cur = System.Array.IndexOf(snap.Keys, _currentKey);
+				if (cur < 0) cur = snap.Index;
+				if (cur < 0) cur = 0;
+				int next = (cur + 1) % snap.Keys.Length;
+				nextKey = snap.Keys[next];
+			}
+
+			bool ok;
+			if (restartSame)
+			{
+				ok = BackgroundRestartSameSong();
+				if (ok)
+				{
+					_bgAdvancePendingKey = _currentKey;
+					_bgAdvanceIsRestart = true;
+				}
+			}
+			else
+			{
+				ok = BackgroundLoadAndPlay(nextKey);
+				if (ok)
+				{
+					_bgAdvancePendingKey = nextKey;
+					_bgAdvanceIsRestart = false;
+				}
+			}
+
+			if (ok)
+			{
+				(_audioOutput as MiniaudioAudioOutputBridge)?.ConsumeEndOfSequence();
+				_bgAdvancePending = true;
+			}
+		}
+		catch (System.Exception e)
+		{
+			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] bg song-end advance failed: {e.Message}");
+		}
+		finally
+		{
+			System.Threading.Interlocked.Exchange(ref _endHandling, 0);
+		}
+		// 若本次未能完成（音源未就绪等），保留 EndOfSequence 标志由下次轮询重试
+	}
+
+	/// <summary>后台原地重启当前曲（单曲 / 单曲循环 / 列表仅一首）。</summary>
+	private bool BackgroundRestartSameSong()
+	{
+		if (_sequencer == null || !_sfFinalized) return false;
+		try
+		{
+			WithSynthLock(() => _sequencer.Seek(System.TimeSpan.Zero));
+			pause_resume_vocal_for_restart();
+			play();   // 后台安全：原生 Play + 状态复位 + 设备重启
+			if (_audioOutput is MiniaudioAudioOutputBridge maWrap)
+			{
+				maWrap.ResetEndOfSequence();
+			}
+			InvalidateJudgeClock();
+		}
+		catch (System.Exception e)
+		{
+			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] bg restart same song failed: {e.Message}");
+			return false;
+		}
+		return true;
+	}
+
+	/// <summary>
+	/// 后台换曲的「载入并起播」：与 LoadAndPlayKey 同源，但不发射信号、不碰 Godot 节点。
+	/// 路径解析走纯 C# 的 ResolveMidiPathBg（_chartDbCached 已由主线程缓存），
+	/// MIDI 解析走 System.IO（preferSystemIo），人声加载在 apply_chart_audio_config 内完成。
+	/// </summary>
+	private bool BackgroundLoadAndPlay(string key)
+	{
+		if (_sequencer == null || !_sfFinalized) return false;   // 音源未就绪：保留标志重试
+		var db = _chartDbCached;
+		string path = ResolveMidiPathBg(db, key);
+		if (string.IsNullOrEmpty(path))
+		{
+			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] bg advance: midi path not found for key={key}");
+			return false;
+		}
+		stop();   // 停设备/sequencer（幂等，不发射信号）
+		LoadMidiFile(path, preferSystemIo: true);
+		if (_midiFile == null)
+		{
+			// 音源仍在切换/未就绪：LoadMidiFile 已早退。恢复 playing 以便下次轮询重试，
+			// 且不消费 EndOfSequence 标志。
+			playing = true;
+			_paused = false;
+			return false;
+		}
+		apply_chart_audio_config(key, db);
+		if (_sequencer != null)
+		{
+			WithSynthLock(() =>
+			{
+				_sequencer.Play(_midiFile, false);
+				_sequencerStarted = true;
+				ApplyInstrumentOverridesToSynth();
+			});
+		}
+		InvalidateJudgeClock();
+		if (_audioOutput is MiniaudioAudioOutputBridge maWrap)
+		{
+			maWrap.ResetEndOfSequence();
+		}
+		playing = true;
+		_paused = false;
+		RequestAudioOutputPlay();
+		request_startup_align();
+		_currentKey = key;
+		ThreadSafeLog.Print($"[MeltySynthPlayer] bg advanced to next song: {key}");
+		return true;
 	}
 
 

@@ -119,6 +119,7 @@ public partial class MidiCore : Node
             else _index = 0;   // 位置不持久化：读回后一律从第一首开始
             _loaded = true;
             ThreadSafeLog.Print($"[MidiCore] playlist loaded: {_keys.Count} songs, index={_index}");
+            PublishSnapshot();
             return true;
         }
     }
@@ -172,6 +173,7 @@ public partial class MidiCore : Node
             if (_keys.Count == 0) _index = -1;
             Save();
             ThreadSafeLog.Print($"[MidiCore] playlist pruned: {_keys.Count} songs remain");
+            PublishSnapshot();
         }
     }
 
@@ -232,6 +234,7 @@ public partial class MidiCore : Node
         {
             if (_keys.Count == 0) { _index = -1; return; }
             _index = Mathf.Clamp(i, 0, _keys.Count - 1);
+            PublishSnapshot();
         }
     }
 
@@ -249,6 +252,7 @@ public partial class MidiCore : Node
             }
             _index = _keys.Count == 0 ? -1 : Mathf.Clamp(index, 0, _keys.Count - 1);
             Save();
+            PublishSnapshot();
         }
     }
 
@@ -260,6 +264,7 @@ public partial class MidiCore : Node
             PrepareForMutation();
             _keys.Add(key);
             Save();
+            PublishSnapshot();
         }
     }
 
@@ -273,6 +278,7 @@ public partial class MidiCore : Node
             _keys.Insert(at, key);
             if (_index >= at) _index += 1;   // 播放下标一起挪，保证仍指着同一首
             Save();
+            PublishSnapshot();
         }
     }
 
@@ -289,6 +295,7 @@ public partial class MidiCore : Node
             else if (wasCurrent) _index = Mathf.Clamp(i, 0, _keys.Count - 1);
             else if (_index >= _keys.Count) _index = _keys.Count - 1;
             Save();
+            PublishSnapshot();
         }
     }
 
@@ -316,6 +323,7 @@ public partial class MidiCore : Node
                 _index = Mathf.Clamp(cur, 0, _keys.Count - 1);
             }
             Save();
+            PublishSnapshot();
         }
     }
 
@@ -327,6 +335,7 @@ public partial class MidiCore : Node
             _keys.Clear();
             _index = -1;
             Save();
+            PublishSnapshot();
         }
     }
 
@@ -386,7 +395,41 @@ public partial class MidiCore : Node
     // 不落盘。后台换曲成功后也只记一个"待收敛 key"，由主线程回前台后补索引与落盘。
 
 
+    /// <summary>
+    /// 后台推进用的纯数据快照（不可变，volatile 发布：主线程写、后台线程读）。
+    /// 与 ResolveAdvanceKey 同源的决策输入，只是不再持 _playlistLock、不碰 DB。
+    /// </summary>
+    public sealed class PlaylistSnapshot
+    {
+        public string[] Keys;
+        public int Index;
+        public int RepeatMode;
+        public bool SessionSingle;
+    }
+
     /// <summary>后台推进用的纯数据快照（volatile 发布：主线程写、后台线程读）</summary>
+    private volatile PlaylistSnapshot _snapshot = new PlaylistSnapshot
+    {
+        Keys = System.Array.Empty<string>(),
+        Index = -1,
+        RepeatMode = REPEAT_SEQUENTIAL,
+        SessionSingle = false,
+    };
+
+    /// <summary>在 _playlistLock 内重建并发布快照（主线程调用）。</summary>
+    private void PublishSnapshot()
+    {
+        _snapshot = new PlaylistSnapshot
+        {
+            Keys = _keys.ToArray(),
+            Index = _index,
+            RepeatMode = _repeat_mode,
+            SessionSingle = _session_single,
+        };
+    }
+
+    /// <summary>后台线程读取当前快照（无锁，返回不可变引用）</summary>
+    public PlaylistSnapshot GetSnapshot() => _snapshot;
 
 
 
@@ -404,6 +447,7 @@ public partial class MidiCore : Node
             PrepareForMutation();
             _repeat_mode = mode;
             Save();
+            PublishSnapshot();
         }
     }
 
@@ -414,7 +458,7 @@ public partial class MidiCore : Node
 
     public void SetSessionSingle(bool single)
     {
-        lock (_playlistLock) _session_single = single;
+        lock (_playlistLock) { _session_single = single; PublishSnapshot(); }
     }
 
     public bool IsSessionSingle()
