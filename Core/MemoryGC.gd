@@ -201,9 +201,15 @@ func _apply(level: int) -> void:
 func _drop_texture_caches() -> void:
 	var fs_mgr := FileSystemManager.instance
 	if fs_mgr != null:
-		# 封面强引用 LRU（COVER_TEXTURE_CACHE_MAX = 24 条）
-		fs_mgr.clear_cover_cache()
-		GLogger.info("[MEMGC]   cover cache cleared", "MemoryGC")
+		# 封面强引用 LRU（COVER_TEXTURE_CACHE_MAX = 24 条）。
+		# 当前播放曲的封面保留：播放页正展示着它（TextureRect 持引用，清了也不会立刻
+		# 消失，但视图自愈 invalidate_cover_state 复位时会失去最后一根引用而被释放），
+		# 且回前台重载命中缓存、不必重新解码。LRU 本身有容量上限，后台清缓存只为腾内存，
+		# 没有必要把正在播放的这首也搭上。
+		var keep_cover := _current_cover_path()
+		fs_mgr.clear_cover_cache(keep_cover)
+		GLogger.info("[MEMGC]   cover cache cleared (keep current: %s)" %
+				("yes" if not keep_cover.is_empty() else "no"), "MemoryGC")
 
 	if SkinMGR != null:
 		# 音符皮肤贴图（只留最近两套，清了下次用时重扫）
@@ -299,6 +305,18 @@ func _trim_hydration_cache() -> void:
 func _playback_display() -> Node:
 	var pd := get_node_or_null("/root/PlaybackDisplay")
 	return pd
+
+## 当前播放曲的封面缓存键（与 MusicPlayerView._refresh_cover 取的是同一条路径，
+## 保证 keep_path 能命中缓存里的键）。无曲目/后端未就绪时返回空串（整表清空）。
+func _current_cover_path() -> String:
+	var fs_mgr := FileSystemManager.instance
+	var pd := _playback_display()
+	if fs_mgr == null or pd == null:
+		return ""
+	var data: MidiData = pd.current_midi_data
+	if data == null:
+		return ""
+	return fs_mgr.get_cover_path_by_midiData(data)
 
 ## 主动要一次 C# 托管堆回收（把刚放掉的引用真正还给系统）。
 ## 放在清理流程最末：上面的引用释放要先发生，否则收不到那批对象。

@@ -2215,7 +2215,20 @@ func load_cover_with_cache(path: String) -> Texture2D:
 	return texture
 
 ## 清除封面纹理缓存（封面文件更新后调用）
-func clear_cover_cache() -> void:
+## keep_path：保留该路径的纹理不淘汰。后台内存回收（Core/MemoryGC.gd）传
+## "当前播放曲的封面"——播放页正展示着它，清了回前台就要重解码；且 LRU 本身
+## 已有容量上限（COVER_TEXTURE_CACHE_MAX），后台清缓存只为腾内存，没有必要
+## 把正在播放的这首也搭上。其余调用方（删谱面/重扫）不传，整表清空。
+func clear_cover_cache(keep_path: String = "") -> void:
+	if not keep_path.is_empty() and _cover_texture_cache.has(keep_path):
+		var kept: Texture2D = _cover_texture_cache[keep_path]
+		_cover_texture_cache.clear()
+		_cover_texture_cache[keep_path] = kept
+		# 去重键一并保留：丢掉后同一封面的另一路径会再缓存一份纹理（同内容两份 GPU 纹理）
+		for h in _cover_hash_to_path.keys():
+			if _cover_hash_to_path[h] != keep_path:
+				_cover_hash_to_path.erase(h)
+		return
 	_cover_texture_cache.clear()
 	_cover_hash_to_path.clear()
 

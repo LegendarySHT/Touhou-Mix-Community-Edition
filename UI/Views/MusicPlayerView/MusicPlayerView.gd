@@ -700,9 +700,19 @@ func _kill_cover_flip() -> void:
 ## 全局封面缓存被后台回收（见 Core/MemoryGC.gd）后复位本页封面状态。
 ## 关键是把 _cover_chart_id 清掉：回页面时 _refresh_cover 才算"换了一首"→ 走直出分支，
 ## 否则会被判为"同一首"而跳过（本该重载的那次不重载）。
+## 两种来路，语义不同：
+##   - 回前台自愈（MemoryGC._refresh_current_view_after_trim，当前页）：补一次封面请求。
+##     后台回收保留了当前曲封面（MemoryGC keep_path）时命中缓存即回图；万一整表被清，
+##     CoverLoader 走异步重载也能补上。旧实现只置空 texture 而不补请求——回前台后
+##     封面永远空着，直到下次进页面/换曲，是"后台回来封面没了"的直接原因。
+##   - 后台 trim 非当前页（MemoryGC._trim_view_recursive）：只放引用不重载，
+##     否则刚腾出的内存立刻被补回去（视图不可见，重载没有意义）。
 func invalidate_cover_state() -> void:
 	_kill_cover_flip()
 	_cover_chart_id = ""
 	_cover_first_load = true
-	if _cover != null:
-		_cover.texture = null
+	if UiStatMGR != null and UiStatMGR.current_state != WORK_STATE:
+		if _cover != null:
+			_cover.texture = null
+		return
+	_refresh_cover()
