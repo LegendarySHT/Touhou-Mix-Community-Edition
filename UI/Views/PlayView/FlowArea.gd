@@ -326,6 +326,8 @@ func init_flow_area():
 	# 从配置读取比例系数
 	var block_size_ratio = ConfigManager.instance.get_float("Appearance", "block_size", 6.5)
 	var block_judge_ratio = ConfigManager.instance.get_float("Judge", "block_judging_width", 1.0)
+	# 从配置读取音符绘制顺序（长条置底 / 长条置顶）
+	_apply_note_draw_order()
 	
 	_apply_note_fall_config_from_settings()
 	var lc = parent_node.get_lane_count()
@@ -471,6 +473,11 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 		_recalculate_note_dimensions()
 		return
 
+	if section == "Appearance" and key == "note_draw_order":
+		# 长条绘制层级（置底 / 置顶）热更新
+		_apply_note_draw_order()
+		return
+
 	# 粒子特效配置（Lane 段 spark_*）：热更新，暂停中调整立即生效
 	if section == "Lane" and (key.ends_with("_spark_preset") or key.ends_with("_spark_emitter")
 			or key.ends_with("_spark_scaling") or key.ends_with("_spark_alpha")
@@ -502,9 +509,17 @@ func _recalculate_note_dimensions() -> void:
 	
 	note_visual_width = max(10.0, safe_width / block_size_ratio)
 	note_judge_width = max(10.0, note_visual_width * block_judge_ratio)
-	
+
 	set_note_width(note_visual_width)
 	GLogger.info("Note dimensions recalculated: visual_width=%d, judge_width=%d" % [int(note_visual_width), int(note_judge_width)], "FlowArea")
+
+## 应用音符绘制顺序设置（长条置底 / 长条置顶）到批量绘制器
+func _apply_note_draw_order() -> void:
+	if _note_drawer == null:
+		return
+	var long_on_top = ConfigManager.instance.get_int("Appearance", "note_draw_order", 0) == 1
+	_note_drawer.set_draw_type_order(long_on_top)
+	GLogger.info("Note draw order applied: long_on_top=%s" % str(long_on_top), "FlowArea")
 
 # 修改音符皮肤 数组顺序[短块图片，短块上色区图片，滑块。。。，长条（从头到尾）]
 func set_note_texture(texture_array: Array):

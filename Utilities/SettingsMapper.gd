@@ -104,6 +104,7 @@ static var mappings: Dictionary = {
 	"custom_block_skin_texture_filter_mode": {"section": "Appearance", "key": "custom_block_skin_texture_filter_mode", "value_type": "int"},
 	"block_skin_preset": {"section": "Appearance", "key": "block_skin_preset", "value_type": "string"},
 	"block_size": {"section": "Appearance", "key": "block_size", "value_type": "float"},
+	"note_draw_order": {"section": "Appearance", "key": "note_draw_order", "value_type": "int"},
 	"note_glow_intensity": {"section": "Appearance", "key": "note_glow_intensity", "value_type": "float"},
 	"note_glow_size": {"section": "Appearance", "key": "note_glow_size", "value_type": "float"},
 	"randomize_block_color": {"section": "Appearance", "key": "randomize_block_color", "value_type": "int"},

@@ -62,13 +62,20 @@ var _note_buckets: Dictionary = {}
 # _draw 逆序遍历它：后画者覆盖先画者。绘制层序 = 类型层序 + 同类型内"先出现者在上"
 var _draw_order: Dictionary = {}
 
-# 类型覆盖顺序（先画=在下，后画=在上）：Long 最底 → Slide → Block 最上
-# 固定层序解决"长条遮挡点块/滑块影响游玩"的问题，与音符生成/判定顺序无关
-const _DRAW_TYPE_ORDER: Array = [
+# 类型覆盖顺序（先画=在下，后画=在上），由"音符绘制顺序"设置（Appearance/note_draw_order）选择：
+# 长条置底（默认）：Long 最底 → Slide → Block 最上，长条不遮挡点块/滑块，不影响游玩
+# 长条置顶：Block 最底 → Slide → Long 最上，长条覆盖在其他音符之上
+const _DRAW_TYPE_ORDER_LONG_BOTTOM: Array = [
 	FlowNote.NoteType.Long,
 	FlowNote.NoteType.Slide,
 	FlowNote.NoteType.Block,
 ]
+const _DRAW_TYPE_ORDER_LONG_TOP: Array = [
+	FlowNote.NoteType.Block,
+	FlowNote.NoteType.Slide,
+	FlowNote.NoteType.Long,
+]
+var _draw_type_order: Array = _DRAW_TYPE_ORDER_LONG_BOTTOM
 
 # 平行数组宿主（FlowArea 注入）：_draw 读 flow_area._rt_* 取运行态，无需音符对象
 var flow_area: Object = null
@@ -100,6 +107,12 @@ func set_notes_source(notes: Dictionary) -> void:
 ## 每个类型一个按 _st_start 升序的 seq 索引数组，_draw 逆序遍历以获得正确的覆盖层序。
 func set_draw_order_source(order: Dictionary) -> void:
 	_draw_order = order
+
+## 设置类型绘制层序：long_on_top=true 时长条置顶，false 时置底（默认）。
+## 只影响 _draw 的遍历顺序，_draw_order 数据结构不变，变更后触发重绘即可生效。
+func set_draw_type_order(long_on_top: bool) -> void:
+	_draw_type_order = _DRAW_TYPE_ORDER_LONG_TOP if long_on_top else _DRAW_TYPE_ORDER_LONG_BOTTOM
+	request_redraw()
 
 func clear() -> void:
 	# 字典本身由 FlowArea.clear_flow_area 清空（_note_buckets 是同一引用），此处只触发重绘
@@ -242,8 +255,8 @@ func _setup_glow_layer() -> void:
 	_glow_layer.visible = _glow_enabled
 
 ## 绘制层序（后画者覆盖先画者）：
-##   1) 类型层序固定为 Long（最底）→ Slide → Block（最上）—— 点块不被滑块/长条遮挡，
-##      滑块不被长条遮挡，与音符生成顺序无关。
+##   1) 类型层序由 _draw_type_order 决定（"音符绘制顺序"设置：默认长条置底 Long → Slide → Block，
+##      或长条置顶 Block → Slide → Long），与音符生成顺序无关。
 ##   2) 同类型内逆序遍历 _draw_order（按 _st_start 升序存放）→ 先出现的（靠下方）最后画，
 ##      盖在同类型后出现的（靠上方）音符之上。
 ## 只跳过已移除音符：Long 被按住时 is_judged=true 但仍需显示，不能按 is_judged 跳过。
@@ -265,7 +278,7 @@ func _draw() -> void:
 	var rt_color: PackedColorArray = fa._rt_color
 	var REMOVED: int = fa.F_REMOVED
 
-	for type_key in _DRAW_TYPE_ORDER:
+	for type_key in _draw_type_order:
 		var order: Array = _draw_order[type_key]
 		var is_long: bool = type_key == FlowNote.NoteType.Long
 		var base_tex: Texture2D = _block_tex if type_key == FlowNote.NoteType.Block else _slide_tex

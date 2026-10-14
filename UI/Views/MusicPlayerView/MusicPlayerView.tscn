@@ -424,8 +424,6 @@ grow_vertical = 2
 offset_transform_enabled = true
 offset_transform_visual_only = false
 mouse_filter = 2
-; 裁剪到面板矩形：面板里任何一层内容的最小宽度被撑爆时，绘制都不越到面板外
-; （结构性防护，见 PlColumn/PlCtrlRow 说明）
 clip_contents = true
 script = ExtResource("20_panel")
 
@@ -462,12 +460,6 @@ theme_override_font_sizes/font_size = 25
 text = "打乱列表"
 
 [node name="PlCtrlRow" type="Control" parent="PlaylistPanel/PlColumn"]
-; 最小尺寸隔离层：必须是**纯 Control**（不能是 Container）。
-; Godot 的锚点布局控件会被自己的 combined minimum size 撑大，而 VBoxContainer 会把
-; 子节点的最小宽度往上累加——PlCtrl 行的按钮一多 / 高 DPI 缩放下宽了一挡，
-; 这行的最小宽度就会超过列宽，把 PlColumn 顶到 PlaylistPanel 左边外面（Grow=BOTH 还会左右各溢出一半）。
-; 纯 Control 不累加子节点的最小尺寸（min size 恒为 0），于是 PlColumn 重新只由锚点决定宽度；
-; 万一 PlCtrl 自己还是放不下，由本层的 clip_contents 裁掉，不会越界。
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 mouse_filter = 2

@@ -703,7 +703,7 @@ custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 32
-text = "长条拉伸方式"
+text = "长条缩放基准"
 vertical_alignment = 1
 
 [node name="LStretchMode" type="OptionButton" parent="NoteSkinAdjust/VBoxC/OtherOptions" unique_id=1001200002]
@@ -717,9 +717,9 @@ alignment = 1
 clip_text = true
 selected = 1
 item_count = 2
-popup/item_0/text = "屏幕固定"
+popup/item_0/text = "屏幕高度(图案固定)"
 popup/item_0/id = 0
-popup/item_1/text = "按实际长度"
+popup/item_1/text = "跟随长条(图案跟随)"
 popup/item_1/id = 1
 script = ExtResource("6_fyi7o")
 

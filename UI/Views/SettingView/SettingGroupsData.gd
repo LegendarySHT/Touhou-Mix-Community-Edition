@@ -565,6 +565,18 @@ static func get_setting_groups() -> Array:
 				"unit": "个音符"
 			},
 			{
+				"id": "note_draw_order",
+				"name_en": "Note Drawing Order",
+				"name_zh": "音符绘制顺序",
+				"description": "选择长条与其他音符重叠时的绘制层级。长条置底：长条被点块和滑块覆盖；长条置顶：长条覆盖在点块和滑块之上。",
+				"type": "TYPE_OPTION",
+				"default_value": "0",
+				"options": [
+					{"text_en": "Long Bars at Bottom", "text_zh": "长条置底"},
+					{"text_en": "Long Bars at Top", "text_zh": "长条置顶"}
+				]
+			},
+			{
 				"id": "custom_block_skin_texture_filter_mode",
 				"name_en": "Custom Block Skin Texture Filter Mode",
 				"name_zh": "皮肤纹理过滤模式",
