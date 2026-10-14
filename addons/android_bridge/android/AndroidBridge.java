@@ -729,9 +729,54 @@ public class AndroidBridge extends GodotPlugin {
 			lastAlbum = album == null ? "" : album;
 			foregroundWanted = true;
 			godotStateSeen = true;   // 引擎已下发真实状态，此后才允许拉通知/前台服务
+			// 引擎状态即权威：先把磁盘上现有 media_state.json 的 version 记为已消费，
+			// 否则冷启动后 ticker 会把上一轮残留的文件当成"刚换的歌"覆盖掉新歌信息
+			// （进 TrackView 时媒体卡片显示上次残留的歌曲/封面，见 consumeMediaStateFileVersion）
+			consumeMediaStateFileVersion();
 			setCoverPng(coverPng);
 			pushState();
 		});
+	}
+
+	/**
+	 * 把 media_state.json 的当前 version 记为已消费（**不应用其内容**）。
+	 *
+	 * 【为什么需要】文件契约的本意是"深后台主循环挂起时，C# 后台换曲线程把新曲写给
+	 * ticker"——它只对**引擎上次 update_state 之后新写下的内容**有意义。而进程重启后
+	 * _mediaStateVersion 复位为 -2，上一轮运行落盘的文件仍在：ticker 第一拍读到它、
+	 * version 与 -2 不同 → 把旧歌名/时长/封面覆盖进媒体会话。godotStateSeen 门闩只挡住
+	 * "引擎首次下发之前"，挡不住"首次下发之后"ticker 对残留文件的第一次读取——于是冷启动
+	 * 进 TrackView，卡片显示的是上一轮残留的歌曲（且当前曲的 update_state 已经被它盖过去）。
+	 *
+	 * 每次收到引擎状态都消费一次：清 register→clear→再 register 的同进程场景也覆盖
+	 * （clear 会停 ticker，但文件内容不会因此变新）。消费后 C# 后台推进写下的**新**
+	 * version 仍能被 ticker 正常应用（version 不同即生效），文件契约本身不受影响。
+	 */
+	private void consumeMediaStateFileVersion() {
+		android.app.Activity activity = getActivity();
+		if (activity == null) {
+			return;   // 生命周期边界：ticker 会继续排期重试，不抛 NPE
+		}
+		java.io.File dir = activity.getExternalFilesDir(null);
+		if (dir == null) {
+			return;
+		}
+		java.io.File f = new java.io.File(dir, MEDIA_STATE_FILE);
+		if (!f.exists()) {
+			return;
+		}
+		try {
+			String json = new String(java.nio.file.Files.readAllBytes(f.toPath()),
+					java.nio.charset.StandardCharsets.UTF_8);
+			long version = (long) extractJsonNumber(json, "version");
+			if (version != _mediaStateVersion) {
+				_mediaStateVersion = version;
+				Log.i(TAG, "[media-state] consumed existing version=" + version
+						+ " (engine state is authoritative)");
+			}
+		} catch (Exception e) {
+			// 读失败（可能是半写文件）：不记录 version，ticker 下拍重试；不影响引擎状态本身
+		}
 	}
 
 	/** 封面字节变化时才重新解码 Bitmap，避免每次位置刷新都重解码 */
