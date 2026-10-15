@@ -26,21 +26,12 @@ var log_file_path: String = ""
 ## 日志文件句柄（复用，避免每次写入都重新打开文件）
 var _log_file: FileAccess = null
 
-## 日志前缀映射
-var level_names = {
-	LogLevel.DEBUG: "[DEBUG]",
-	LogLevel.INFO: "[INFO]",
-	LogLevel.WARNING: "[WARN]",
-	LogLevel.ERROR: "[ERROR]"
-}
+## 日志前缀表（Array 下标 = LogLevel 数值；刻意不用 Dictionary——worker 线程持锁拼行时
+## 要避开 Dictionary/StringName 查找，这是本类可被任意线程安全调用的前提之一）
+var _level_prefixes := ["[DEBUG]", "[INFO]", "[WARN]", "[ERROR]"]
 
-## 日志颜色映射
-var level_colors = {
-	LogLevel.DEBUG: "#CCCCCC",
-	LogLevel.INFO: "#FFFFFF",
-	LogLevel.WARNING: "#FFFF00",
-	LogLevel.ERROR: "#FF0000"
-}
+## 串行化所有日志输出（控制台 + 文件）
+var _mutex := Mutex.new()
 
 func _ready() -> void:
 	add_to_group("singleton")
@@ -58,11 +49,11 @@ func _init_log_path() -> void:
 ## 自定义存储根生效后刷新日志路径（Logs/ 随存储根迁移）
 ## 关闭旧句柄，重新解析到当前存储根下的 Logs/ 目录并重建文件
 func refresh_log_path() -> void:
-	if _log_file:
-		_log_file.close()
-		_log_file = null
+	_mutex.lock()
+	_close_log_file_locked()
 	log_file_path = ""
 	_init_log_path()
+	_mutex.unlock()
 
 ## 确保日志目录存在
 func _ensure_log_directory() -> void:
@@ -107,26 +98,22 @@ func warning(message: String, context: String = "") -> void:
 func error(message: String, context: String = "") -> void:
 	_log(LogLevel.ERROR, message, context)
 
-## 内部日志实现
+## 内部日志实现（任意线程可调用）
 func _log(level: LogLevel, message: String, context: String = "") -> void:
-	# 检查日志级别
+	# 检查日志级别（锁外读取，int 赋值原子，无需保护）
 	if level < current_level:
 		return
 
-	# worker 线程保护：print() 和 FileAccess 在 worker 线程调用会导致 StringName 引用计数损坏
-	# （Android ARM 弱内存模型下表现为 BUG: Unreferenced static string，累积后稳定崩溃）
-	# 检测非主线程时转交主线程执行
-	if Thread.is_main_thread():
-		_emit_log(level, message, context)
-	else:
-		call_deferred("_emit_log", level, message, context)
+	# 任意线程直接输出，由 _mutex 串行化
+	_mutex.lock()
+	_emit_log(level, message, context)
+	_mutex.unlock()
 
-## 实际输出日志（仅主线程调用）
+## 实际输出日志（任意线程可调用；调用方必须已持有 _mutex）
 func _emit_log(level: LogLevel, message: String, context: String) -> void:
 	# 构建日志消息
 	var timestamp = Time.get_datetime_string_from_system()
-	var level_prefix = level_names[level]
-	var full_message = "%s %s [%s] %s" % [timestamp, level_prefix, context, message]
+	var full_message = "%s %s [%s] %s" % [timestamp, _level_prefixes[level], context, message]
 
 	# 控制台输出
 	if log_to_console:
@@ -151,9 +138,19 @@ func _write_to_file(message: String) -> void:
 		if _log_file.get_length() > 0:
 			_log_file.seek_end()
 	_log_file.store_line(message)
+	# 立即 flush：FileAccess 的 store_line 是带缓冲的，不 flush 时进程在后台被 LMK
+	# 杀掉会整缓冲丢失（实验项目 bg_append.log 因此产出 0 行）
+	_log_file.flush()
 
-## 刷新并释放文件句柄（退出/读文件前调用）
+## 刷新并释放文件句柄（退出/读文件前调用；持锁执行）
 func _flush_log_file() -> void:
+	_mutex.lock()
+	_close_log_file_locked()
+	_mutex.unlock()
+
+## 关闭句柄（调用方必须已持有 _mutex；flush 后置 null，FileAccess 引用归零时自动 close）。
+## GDScript 的 Mutex 非递归，已持锁的路径必须走本函数而非 _flush_log_file，否则死锁。
+func _close_log_file_locked() -> void:
 	if _log_file:
 		_log_file.flush()
 		_log_file = null
@@ -167,18 +164,23 @@ func set_log_level(level: LogLevel) -> void:
 
 ## 清空日志文件
 func clear_log_file() -> void:
-	_flush_log_file()
+	_mutex.lock()
+	_close_log_file_locked()
 	var file = FileAccess.open(log_file_path, FileAccess.WRITE)
 	if file:
 		file.truncate_64(0)
 		file.close()
+	_mutex.unlock()
 
 ## 获取日志文件内容
 func get_log_contents() -> String:
-	_flush_log_file()
+	_mutex.lock()
+	_close_log_file_locked()
 	var file = FileAccess.open(log_file_path, FileAccess.READ)
 	if file == null:
+		_mutex.unlock()
 		return ""
 	var content := file.get_as_text()
 	file.close()
+	_mutex.unlock()
 	return content
