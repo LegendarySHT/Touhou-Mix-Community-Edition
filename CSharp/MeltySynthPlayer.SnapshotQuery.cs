@@ -77,9 +77,9 @@ public partial class MeltySynthPlayer
 			Phase = ResolvePlaybackPhase(durationMs),
 			SequencerRunning = _sequencerStarted,
 			MidiLoaded = _midiFile != null,
-			// 现有唯一的"本会话是否已进入时间轴"事实：跨过预卷零点、或已落一次正数 seek、
+			// 现有唯一的"本会话是否已进入时间轴"事实：起播成功、或已落一次正数 seek、
 			// 或整桥重建后按正数位置恢复过（三处都置位；stop/曲终/换曲复位）。
-			HasEverStarted = _hasSkippedPreroolEvents,
+			HasEverStarted = _hasEnteredTimeline,
 			CurrentKey = _currentKey ?? "",
 			DeviceState = deviceState,
 			LatencyMs = latencyMs,
@@ -88,7 +88,6 @@ public partial class MeltySynthPlayer
 			RawTimelineMs = rawMs,
 			AudioMs = rawMs,
 			PendingSeekMs = _pendingSeekMs,  // NaN = 无待处理 seek
-			PrerollRemainingMs = _currentOffsetMs < 0.0 ? -_currentOffsetMs : 0.0,
 			DurationMs = durationMs,
 			AudioDelayMs = _audioDelayMs,
 			// 阶段 0 没有"当前打断原因"的存储字段（打断决策收归 C# 是阶段 1），
@@ -114,8 +113,6 @@ public partial class MeltySynthPlayer
 			VisualMs = snap.VisualMs,
 			RawTimelineMs = snap.RawTimelineMs,
 			AudioMs = snap.AudioMs,
-			// 预卷 = 负时间轴（sequencer 停在 0，负偏移由 _currentOffsetMs 表达）
-			IsPreRoll = _currentOffsetMs < 0.0,
 		};
 	}
 
@@ -134,10 +131,11 @@ public partial class MeltySynthPlayer
 	///
 	/// 已知近似（阶段 0 无法区分，已与代码事实对齐，不臆造）：
 	///   - `Stopped`（显式结束、位置归 0）与 `Preparing`（装配完未起播）在"位置 0 且未在播"
-	///     时状态完全同形，只能靠 `_hasSkippedPreroolEvents` 区分"本会话是否进过时间轴"；
-	///   - 预卷期间用户暂停 → 报 `Paused`（位置冻结在负 offset），而不是 `PreRolling`；
+	///     时状态完全同形，只能靠 `_hasEnteredTimeline` 区分"本会话是否进过时间轴"；
 	///   - 传输在播但设备起播失败 → 仍报 `Playing`（设备侧的坏消息由 DeviceState 单独暴露，
 	///     两者组合正是 §5.2 要看见的信息）。
+	/// 【预卷去负化】原 `PreRolling` 分支（负 offset 倒计时）已删除：开局预卷改为 UI 侧
+	/// 主线程倒计时，到期显式起播；C# 侧预卷等待期表现为"sequencer 未启动的 Preparing"。
 	/// </summary>
 	private int ResolvePlaybackPhase(double durationMs)
 	{
@@ -146,16 +144,10 @@ public partial class MeltySynthPlayer
 			return (int)PlaybackPhase.Idle;  // 无曲目、无会话
 		}
 
-		// 暂停优先于预卷：pause() 只置 _paused（playing 仍为 true，见 §1.1 的说明）。
+		// 暂停优先：pause() 只置 _paused（playing 仍为 true，见 §1.1 的说明）。
 		if (_paused)
 		{
 			return (int)PlaybackPhase.Paused;
-		}
-
-		// 负时间轴倒计时：sequencer 刻意停着、设备刻意停着
-		if (_currentOffsetMs < 0.0)
-		{
-			return (int)PlaybackPhase.PreRolling;
 		}
 
 		if (playing)
@@ -171,7 +163,7 @@ public partial class MeltySynthPlayer
 		}
 
 		// 会话已装配、尚未进入时间轴（含预卷开始前的待播态）
-		if (!_hasSkippedPreroolEvents)
+		if (!_hasEnteredTimeline)
 		{
 			return (int)PlaybackPhase.Preparing;
 		}

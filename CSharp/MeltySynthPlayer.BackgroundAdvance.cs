@@ -362,9 +362,13 @@ public partial class MeltySynthPlayer
 	}
 
 	/// <summary>
-	/// 后台换曲的「载入并起播」：与 LoadAndPlayKey 同源，但不发射信号、不碰 Godot 节点。
-	/// 路径解析走纯 C# 的 ResolveMidiPathBg（_chartDbCached 已由主线程缓存），
-	/// MIDI 解析走 System.IO（preferSystemIo），人声加载在 apply_chart_audio_config 内完成。
+	/// 后台换曲的「载入并起播」壳：主体在 Transport.cs 的 <see cref="LoadAndPlayCore"/>
+	/// （与前台同一实现），本方法只保留后台特有的四件事——
+	///   1) 入口守卫：音源未就绪（_sequencer/_sfFinalized）直接失败，保留 EndOfSequence 标志重试；
+	///   2) 路径解析：ResolveMidiPathBg + _chartDbCached（后台线程不查 Godot 节点）；
+	///   3) preferSystemIo: true（后台线程调 Godot 文件 API 会与可能被冻结的主线程抢引擎全局锁）；
+	///   4) _midiFile 载入失败时置回 playing/_paused，让下次轮询重试（前台无此语义）。
+	/// 不发射任何信号（后台线程不发 Godot 信号），播放态经 pending key 交主线程收敛。
 	/// </summary>
 	private bool BackgroundLoadAndPlay(string key)
 	{
@@ -376,10 +380,7 @@ public partial class MeltySynthPlayer
 			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] bg advance: midi path not found for key={key}");
 			return false;
 		}
-		stop();   // 停设备/sequencer（幂等，不发射信号）
-		_file = path;
-		LoadMidiFile(path, preferSystemIo: true);
-		if (_midiFile == null)
+		if (!LoadAndPlayCore(key, db, path, preferSystemIo: true, startPlayback: true))
 		{
 			// 音源仍在切换/未就绪：LoadMidiFile 已早退。恢复 playing 以便下次轮询重试，
 			// 且不消费 EndOfSequence 标志。
@@ -387,26 +388,6 @@ public partial class MeltySynthPlayer
 			_paused = false;
 			return false;
 		}
-		apply_chart_audio_config(key, db);
-		if (_sequencer != null)
-		{
-			WithSynthLock(() =>
-			{
-				_sequencer.Play(_midiFile, false);
-				_sequencerStarted = true;
-				ApplyInstrumentOverridesToSynth();
-			});
-		}
-		InvalidateJudgeClock();
-		if (_audioOutput is MiniaudioAudioOutputBridge maWrap)
-		{
-			maWrap.ResetEndOfSequence();
-		}
-		playing = true;
-		_paused = false;
-		RequestAudioOutputPlay();
-		request_startup_align();
-		_currentKey = key;
 		ThreadSafeLog.Print($"[MeltySynthPlayer] bg advanced to next song: {key}");
 		return true;
 	}

@@ -677,8 +677,10 @@ func get_playback_position() -> RefCounted:
 func resume() -> void:
 	request_audio_focus()
 	# 【不要在 GDScript 侧决定"要不要拉起音频设备"】C# 的 resume() 自己已经分好了：
-	#   - 预卷中（_currentOffsetMs < 0）：故意不碰设备，等预卷跨零点由 _Process 统一起播
-	#   - 正常续播：PrepareAudioOutputForPlaybackStart() + _audioOutput.Play() 自己起设备
+	#   - sequencer 已起播过：正常续播（PrepareAudioOutputForPlaybackStart() +
+	#     _audioOutput.Play() 自己起设备）
+	#   - sequencer 从未起播（打歌预卷等待期）：PlayView 的 is_pause setter 有门控，
+	#     预卷期间不会走到这里；起播由倒计时到期显式调 play() 负责
 	# 曾经在这里加过一句 resume_audio_output_in_place_or_recreate()，结果在预卷期间把设备
 	# 提前拉起来 → 回调渲染全 0 → 被判成 end-of-sequence → 一进打歌页就被抬去结算。
 	# 设备恢复只属于"打断/焦点归还"语境，那是 C# 与焦点监听的事。
@@ -824,23 +826,14 @@ func enter_user_playlist_from_head() -> bool:
 	return MeltySynth.enter_user_playlist_from_head() if MeltySynth != null else false
 func align_index_to_current() -> void:
 	if MeltySynth != null: MeltySynth.align_index_to_current()
-## 开始一次会话。
-## 【新代码请用下面的意图方法】本方法把"哪种会话"编码成两个位置布尔（persist/loop_file），
-## 而 loop_file 恰好决定"曲终干什么"，传错就是结算页里从头再放一遍。意图方法把语义写进名字。
-## 保留本方法仅为过渡期兼容。
-func start_session(items: Array, start_index: int = 0, persist: bool = true, loop_file: bool = true) -> void:
-	if MeltySynth != null: MeltySynth.start_session(items, start_index, persist, loop_file)
-
-# ---- 意图化的会话装配（三个消费方的唯一区别就是这两维，故收敛成三个方法名）----
-## 打歌一局：写单曲槽 B（不落盘、不碰用户列表 A），曲终即曲终、不循环 → 交给结算
-func start_performance(items: Array, start_index: int = 0) -> void:
-	if MeltySynth != null: MeltySynth.start_performance(items, start_index)
-## 音轨试听：写单曲槽 B（不落盘），文件级循环（单曲原地重播）
-func start_preview(items: Array, start_index: int = 0) -> void:
-	if MeltySynth != null: MeltySynth.start_preview(items, start_index)
-## 播放器页会话：用户列表 A 生效（可落盘/可推进），文件级循环
-func start_player_session(items: Array, start_index: int = 0) -> void:
-	if MeltySynth != null: MeltySynth.start_player_session(items, start_index)
+## 页面换曲唯一入口：载入 + 应用谱面配置 + 按模式装配会话 + 起播，一步完成。
+## 显示侧对齐（set_current）仍由调用方负责 —— 那是 UI 数据源，不过信号水合，
+## 且必须在 play_song 之前调（它才是重活：解析、建缓存、通知界面刷新）。
+func play_song(chart_key: String, mode: int, resume_pos_ms: float = -1.0) -> bool:
+	return MeltySynth.play_song(chart_key, mode, resume_pos_ms) if MeltySynth != null else false
+## 仅装配单曲试听会话（不载入、不起播）。起播型换曲请用 play_song(SongMode.PREVIEW)。
+func begin_preview_session(chart_key: String) -> void:
+	if MeltySynth != null: MeltySynth.begin_preview_session(chart_key)
 
 ## 消费方（FlowArea）解析完音符配置后推来"生成提前量"（= 下落窗口时长，毫秒）
 func set_note_generation_lead_ms(ms: float) -> void:
@@ -1063,10 +1056,16 @@ func stop_vocal_playback() -> void:
 	else:
 		MeltySynth.stop_vocal_playback()
 
-## 人声预加载：音频侧在 load_midi → apply_chart_audio_config 里已按权威配置装载并起播人声
-## （含偏移门控），故这里无需再做任何事；保留空实现只为兼容既有调用点。
+## 人声预加载：音频侧在 play_song → LoadAndPlayCore → apply_chart_audio_config 里已按权威
+## 配置装载并起播人声（含偏移门控），故这里无需再做任何事；保留空实现只为兼容既有调用点。
 func prepare_vocal_playback() -> void:
 	pass
+## 起播前重置人声预填内容（PlayView 预卷路径专用）。根因见 C# reset_vocal_prefill：
+## 预卷期间（设备停着）producer 已把 vocal ring 填满，起播首帧偏移门控一放行，
+## 人声就从 ring 头部满音量瞬入 —— 人声文件开头非静音的曲目听感为"呲的一声"。
+## 播放器页 / TrackView 的"载入即起播"路径 ring 不会预填，无需调用。
+func reset_vocal_prefill() -> void:
+	if MeltySynth != null: MeltySynth.reset_vocal_prefill()
 
 # ---- 页面生命周期（旧 SystemMediaSession 语义：注册=通知可见，注销=退出播放并撤下通知）----
 ## 注册播放页面：立刻推一次媒体状态，让通知/锁屏卡片马上出现
@@ -1106,8 +1105,8 @@ func unregister_view(view: Node = null) -> void:
 #
 # 【谁该 claim】在"页面开始驱动播放"的那一步：PlayView._prepare_game（装配一局）、
 # TrackView 打开/重载、MusicPlayerView 激活页与接管用户会话。
-# 本类里所有"起会话"的转发（start_session / begin_user_session / prepare_vocal_playback）
-# 会自动把最近一次发起者记为 owner，调用方不必额外写。
+# 本类里所有"起会话"的转发（play_song / begin_preview_session / begin_user_session /
+# prepare_vocal_playback）会自动把最近一次发起者记为 owner，调用方不必额外写。
 
 var _session_owner: WeakRef = null
 
@@ -1149,14 +1148,16 @@ func set_sync_threshold(ms: float) -> void:
 	if MeltySynth != null: MeltySynth.set_sync_threshold(ms)
 func is_soundfont_reload_pending() -> bool:
 	return MeltySynth.is_soundfont_reload_pending() if MeltySynth != null else false
-## 载入某曲：显示侧重建 + 音频侧（C#）载入并应用谱面配置。起播仍由调用方 play()。
-func load_midi(midi_data: MidiData, _display_only: bool = false) -> bool:
-	if not set_current(midi_data):
-		return false
-	if MeltySynth != null and not midi_data.midi_file_path.is_empty():
-		MeltySynth.load_midi(midi_data.midi_file_path)
-		MeltySynth.apply_chart_audio_config(_key_of(midi_data))
-	return true
+## 【已删除 load_midi(midi_data, display_only)】原"set_current + MeltySynth.load_midi +
+## apply_chart_audio_config"三步壳（不起播，配置与起播全靠调用方补）随 C# 侧
+## load_midi 一并删除：前台"载入 + 应用配置 + 起播"收敛到 play_song(SongMode)，
+## 经 LoadAndPlayCore 完成 stop → 载入 → apply_chart_audio_config → 起播。
+## 纯显示侧重载（不动音频）请直接用 set_current。
+
+## MidiData → 规范 chart_key（folder_name）；chart_key 为空回退 id。
+## 供页面侧调用 C# 统一换曲入口 play_song / begin_preview_session 时取键。
+func chart_key_of(m: MidiData) -> String:
+	return _key_of(m)
 
 func _key_of(m: MidiData) -> String:
 	if m == null:

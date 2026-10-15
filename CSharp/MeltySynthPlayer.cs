@@ -95,8 +95,8 @@ public partial class MeltySynthPlayer : Node
 	/// 一旦探测到就沿用，避免每次重建都退回 AudioServer mix rate 而误判采样率变化。</summary>
 	private int _detectedDeviceSampleRate;
 	// 线程模型说明（TMX-005）：
-	// - 下列标量字段（_volumeLinear/_sequencerStarted/_pendingSeekMs/_currentOffsetMs/_lastPositionMs/
-	//   _hasSkippedPreroolEvents/_judgeAnchorMs/_judgeAnchorTicks/_judgeAnchorValid/_lastRenderedRefMs 等）
+	// - 下列标量字段（_volumeLinear/_sequencerStarted/_pendingSeekMs/_lastPositionMs/
+	//   _hasEnteredTimeline/_judgeAnchorMs/_judgeAnchorTicks/_judgeAnchorValid/_lastRenderedRefMs 等）
 	//   均仅由主线程读写；音频线程在 MiniaudioBridge 内有自己的
 	//   _volumeLinear/_playing 副本并通过 _synthLock 保护合成器引用交换，不直接访问本类标量字段，
 	//   因此无需 volatile（double 也无法标记 volatile）。
@@ -141,10 +141,14 @@ public partial class MeltySynthPlayer : Node
 	public void set_note_generation_lead_ms(double ms) => _noteGenerationLeadMs = ms;
 
 	private double _pendingSeekMs = double.NaN;  // 待处理的 seek 位置（NaN 表示无待处理的 seek）
-	private double _currentOffsetMs = 0.0;  // 当前相对于 sequencer 的时间偏移（支持负数 pre-roll）
 	private double _lastPositionMs = 0.0;  // 最后已知播放位置（暂停/seek 后保持，供 get_position_ms 读取）
 	private int _seekPositionHoldFrames = 0;  // seek 后短暂保持目标位置，避免渲染钟未更新瞬回 0
-	private bool _hasSkippedPreroolEvents = false;  // 标志：已跳过 pre-roll 事件
+	// 本会话是否已进入时间轴：起播成功、正数 seek、整桥重建按正数位置恢复均置位；
+	// stop/曲终/换曲/soundfont 重载复位。供快照区分 Preparing（未起播）与 Stopped。
+	// 【历史】预卷去负化（2026-10）前本字段名为 _hasSkippedPreroolEvents，置位点是
+	// "预卷越零"；现在预卷倒计时移到 UI 侧（PlayView 主线程 delta 累加），C# 不再有
+	// 负时间轴，置位点随之搬到起播路径。
+	private bool _hasEnteredTimeline = false;
 
 	// ============ 判定钟：墙钟锚点推进 + 音频参考慢速校准 ============
 	// 判定位置 = 锚点位置 + 墙钟流逝 × Speed − 设备延迟；锚点在 play/seek/pause/resume/
@@ -490,9 +494,9 @@ public partial class MeltySynthPlayer : Node
 
 		if (_sequencer != null && _autoSynth != null)
 		{
-			// 【先恢复 MIDI 位置，再 SetSynthesizers】不能两件事反过来：
-			// 打断恢复走的是"重建合成器"分支，那条路径自己会把 _sequencerStarted/_currentOffsetMs
-			// 清掉。顺序错了的话刚 seek 好的位置会立刻被清成 0。
+		// 【先恢复 MIDI 位置，再 SetSynthesizers】不能两件事反过来：
+		// 打断恢复走的是"重建合成器"分支，那条路径自己会把 _sequencerStarted
+		// 清掉。顺序错了的话刚 seek 好的位置会立刻被清成 0。
 			RestoreSequencerPositionAfterBridgeRecreate(preInterruptPositionMs);
 			_audioOutput.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
 			_audioOutput.SetVolume(_volumeLinear);
@@ -552,12 +556,11 @@ public partial class MeltySynthPlayer : Node
 				_sequencer.Play(_midiFile, false);
 				_sequencerStarted = true;
 			}
-			// Seek 内部会把负值/超长都钳进 [0, Length]；预卷负值在下面用 offset 另行表达
+			// Seek 内部会把负值/超长都钳进 [0, Length]；恢复位置由调用方保证非负
 			if (positionMs > 0.0)
 			{
 				_sequencer.Seek(TimeSpan.FromMilliseconds(positionMs));
-				_hasSkippedPreroolEvents = true;
-				_currentOffsetMs = 0.0;
+				_hasEnteredTimeline = true;
 			}
 			ApplyInstrumentOverridesToSynth();
 		});
@@ -567,12 +570,6 @@ public partial class MeltySynthPlayer : Node
 			_lastPositionMs = positionMs;
 			// 打断恢复后墙钟必须从新位置起算，否则锚点还停在打断前
 			_seekAnchorMs = positionMs;
-		}
-		else
-		{
-			// 预卷（负值）：sequencer 停在 0，负时间轴由 _currentOffsetMs 表达，
-			// 让下一次 _Process 按正常预卷流程推进它。
-			_currentOffsetMs = positionMs;
 		}
 		// 位置已被外部改动：作废锚点且不要留下会返回陈旧值的 hold 帧
 		_seekPositionHoldFrames = 0;
@@ -609,10 +606,15 @@ public partial class MeltySynthPlayer : Node
 			// 桥都没建：这里不主动建（调用方语境各异），交给 EnsureAudioInitialized 的常规路径
 			return false;
 		}
-		// 预卷：设备与 sequencer 的起播由 _Process 跨零点统一负责
-		if (_currentOffsetMs < 0.0)
+		// 会话已装配但 sequencer 未起播（打歌预卷等待期 / 起播失败待重试）：
+		// 设备与 sequencer 的起播由 UI 侧倒计时到期显式调 play() 负责，这里 hands off。
+		// 【等价替换】预卷去负化（2026-10）前判据是 _currentOffsetMs < 0；现在 C# 无负
+		// 时间轴，"未起播"由 _sequencerStarted 表达。少了这个 guard，预卷期一次焦点评估
+		// 就会把设备拉起来 → 回调渲染全 0 → 误判 end-of-sequence（历史 bug：一进打歌页
+		// 就被抬去结算）。
+		if (!_sequencerStarted)
 		{
-			ThreadSafeLog.Print($"[MeltySynthPlayer] device health ({trigger}): pre-roll in progress, hands off");
+			ThreadSafeLog.Print($"[MeltySynthPlayer] device health ({trigger}): sequencer not started yet, hands off");
 			return false;
 		}
 		// 设备已在跑且上次启动没失败 → 健康
@@ -897,42 +899,18 @@ public partial class MeltySynthPlayer : Node
 				return;
 			}
 
-			// 如果 seek 位置是负数，进入 pre-roll 模式
-			if (_pendingSeekMs < 0.0)
-			{
-				// 负数 seek：停止所有播放，记录 offset，准备 pre-roll
-				_currentOffsetMs = _pendingSeekMs;
-				_sequencerStarted = false;  // 标记 sequencer 需要重启
-				_hasSkippedPreroolEvents = false;  // 重置标志，准备首次 crossing zero
-				// 【锚点也必须一起指向预卷位置】正值路径会设 _seekAnchorMs，负值路径历史上漏了，
-				// 于是 _seekAnchorMs 会保留上一次 seek（典型是播放器页那个几十秒的位置）。
-				// 判定钟一旦按它重锚，位置就从一个很大的值开始 —— 真机表现就是"从播放器页
-				// 退出再进打歌，音符一出来就全部过线 Miss"。设成负 offset 后，预卷期间判定钟
-				// 也从负值起步，跨零点时同一分支会再用音频参考重锚一次。
-				_seekAnchorMs = _currentOffsetMs;
-				_lastPositionMs = _currentOffsetMs;
-				InvalidateJudgeClock();
-		
-				// 停止所有播放（AudioStreamPlayer 和 Sequencer）
-				// 注意：ma_bridge_stop 会等待回调完成，必须在锁外调用（回调可能阻塞在锁上）
-				_audioOutput?.Stop();
-				
-				// 【关键】停止 sequencer，防止在后台继续运行（与回调渲染互斥）
-				WithSynthLock(() =>
-				{
-					if (_sequencer != null)
-					{
-						_sequencer.Stop();
-						// ThreadSafeLog.Print($"[MeltySynthPlayer] Stopped sequencer for pre-roll mode");
-					}
-				});
-				
-			// ThreadSafeLog.Print($"[MeltySynthPlayer] Pre-roll mode: offset set to {_currentOffsetMs} ms");
-				_pendingSeekMs = double.NaN;
-				return;
-			}
+		// 负数 seek：预卷去负化（2026-10）后不再支持。开局预卷改为 UI 侧主线程倒计时
+		// （PlayView._pre_roll_remaining_ms），到期显式调 play() 从 0 起播，C# 无负时间轴。
+		// 直接拒绝并清待处理标志：夹到 0 会走正值路径把设备提前拉起来（预载入后 playing
+		// 已是 true），那是把"没迁完的调用方"升级成"提前起播"，比原行为更糟。
+		if (_pendingSeekMs < 0.0)
+		{
+			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] negative seek {_pendingSeekMs:F1}ms rejected (pre-roll moved to UI-side countdown)");
+			_pendingSeekMs = double.NaN;
+			return;
+		}
 
-			// 正数 seek：正常处理
+		// 正数 seek：正常处理
 			// 1. 如果正在播放，停止 AudioStreamPlayer 清空缓冲区
 			// 注意：ma_bridge_stop 会等待回调完成，必须在锁外调用
 			_audioOutput?.Stop();
@@ -944,9 +922,10 @@ public partial class MeltySynthPlayer : Node
 			{
 				if (!_sequencerStarted)
 				{
-					_sequencer.Play(_midiFile, false);
-					_sequencerStarted = true;
-					ApplyInstrumentOverridesToSynth();
+			_sequencer.Play(_midiFile, false);
+			_sequencerStarted = true;
+			_hasEnteredTimeline = true;  // 起播 = 进入时间轴（打歌预卷到期即走这里）
+			ApplyInstrumentOverridesToSynth();
 				}
 
 				if (_preferNativeSequencerSeek)
@@ -975,8 +954,7 @@ public partial class MeltySynthPlayer : Node
 					LegacySeekByFastForward(_pendingSeekMs);
 				}
 			});
-			_currentOffsetMs = 0.0;  // 清除任何 pre-roll offset
-			_hasSkippedPreroolEvents = true;  // 正数seek时无需跳过事件
+			_hasEnteredTimeline = true;  // 正数 seek = 已进入时间轴
 			ResetRenderTimestamp();
 			InvalidateJudgeClock();  // 按 seek 后的音频参考重建锚点
 			_lastPositionMs = _pendingSeekMs;  // 记录 seek 目标，供非播放状态读取
@@ -998,44 +976,10 @@ public partial class MeltySynthPlayer : Node
 			return;
 		}
 
-		// 【处理 pre-roll 阶段】如果在 pre-roll 中（offset 为负数），进行时间累积，不渲染
-		if (_currentOffsetMs < 0.0 && playing)
-		{
-			_currentOffsetMs += delta * 1000.0;  // 毫秒
-			
-			// 检查是否跨越零点（从 pre-roll 进入正常播放）
-			if (_currentOffsetMs >= 0.0 && !_hasSkippedPreroolEvents)
-			{
-				// 第一次跨越零点：启动 sequencer 和 AudioStreamPlayer（与回调渲染互斥）
-				WithSynthLock(() =>
-				{
-					if (_sequencer != null && _midiFile != null && !_sequencerStarted)
-					{
-						// ThreadSafeLog.Print($"[MeltySynthPlayer] Crossing zero from pre-roll, starting sequencer at position 0");
-						_sequencer.Play(_midiFile, false);
-						_sequencerStarted = true;
-						ApplyInstrumentOverridesToSynth();
-					}
-				});
-				
-				// 【关键】启动 AudioStreamPlayer，确保 sequencer 和播放器同步（锁外）
-				RequestAudioOutputPlay();
-				
-				_hasSkippedPreroolEvents = true;
-				_currentOffsetMs = 0.0;  // 重置 offset，准备正常播放阶段
-				ResetRenderTimestamp();
-				InvalidateJudgeClock();  // 跨零点后按音频参考重建锚点（位置归 0）
-				
-				// 【不要返回】继续执行到正常播放流程，让 sequencer 自然渲染第一批帧
-			}
-			else
-			{
-				// 还在 pre-roll 期间，不播放声音
-				return;
-			}
-		}
-
-		// 曲终由 TickTransport 统一处理（非循环模式 EndOfSequence，显式）。
+	// 【预卷去负化】原 _Process 预卷分支（offset 累加 + 越零自启 sequencer/设备）已删除：
+	// 开局预卷改为 UI 侧主线程倒计时（PlayView._pre_roll_remaining_ms，delta 累加），
+	// 到期由 UI 显式调 play() 从 0 起播。C# 不再有负时间轴，seek 负值直接拒绝。
+	// 曲终由 TickTransport 统一处理（非循环模式 EndOfSequence，显式）。
 
 		if (!playing || _sequencer == null || _audioOutput == null)
 		{
@@ -1194,15 +1138,7 @@ public partial class MeltySynthPlayer : Node
 		// 判定钟锚点作废：下次读取按当前音频参考重建
 		InvalidateJudgeClock();
 
-		// ThreadSafeLog.Print($"[MeltySynthPlayer] play() called - _midiFile: {_midiFile != null}, _sequencerStarted: {_sequencerStarted}, _currentOffsetMs: {_currentOffsetMs}, _audioOutput.IsPlaying: {_audioOutput?.IsPlaying}");
-
-		// 【处理 pre-roll 模式】如果当前有负数 offset，不启动 sequencer，让 _Process 处理跨越零点
-		if (_currentOffsetMs < 0.0)
-		{
-			// ThreadSafeLog.Print($"[MeltySynthPlayer] In pre-roll mode (offset={_currentOffsetMs} ms), sequencer will start when crossing zero");
-			playing = true;
-			return true;
-		}
+		// ThreadSafeLog.Print($"[MeltySynthPlayer] play() called - _midiFile: {_midiFile != null}, _sequencerStarted: {_sequencerStarted}, _audioOutput.IsPlaying: {_audioOutput?.IsPlaying}");
 
 		// 如果 MIDI 已加载但还未启动 sequencer，则启动它（与回调渲染互斥）
 		if (_midiFile != null && !_sequencerStarted)
@@ -1269,9 +1205,8 @@ public partial class MeltySynthPlayer : Node
 		{
 			_sequencer?.Stop();
 		});
-		_sequencerStarted = false;  // 重置标志，下次 play() 会重新启动
-		_currentOffsetMs = 0.0;  // 重置 offset
-		_lastPositionMs = 0.0;  // 重置最后已知位置（stop 语义为回到开头）
+	_sequencerStarted = false;  // 重置标志，下次 play() 会重新启动
+	_lastPositionMs = 0.0;  // 重置最后已知位置（stop 语义为回到开头）
 		InvalidateJudgeClock();
 	}
 
@@ -1298,8 +1233,7 @@ public partial class MeltySynthPlayer : Node
 			_sequencer?.Stop();
 		});
 		_sequencerStarted = false;
-		_hasSkippedPreroolEvents = false;
-		_currentOffsetMs = 0.0;
+		_hasEnteredTimeline = false;
 		_lastPositionMs = _midiFile != null ? _midiFile.Length.TotalMilliseconds : 0.0;
 		InvalidateJudgeClock();
 
@@ -1331,25 +1265,24 @@ public partial class MeltySynthPlayer : Node
 			return;
 		}
 
-		// 钳制上界：上层量程可能与实际曲目不一致（后台换曲后 UI 量程未刷新，
-		// 或拖动时按旧曲长度取值）。把位置甩到曲尾之外会让下一个音频回调的
-		// RestartVocalOnLoopWrap 看到"位置大幅回退"而误判为回绕，进而触发一次
-		// 非预期的换曲。越界 seek 本来也没有语义。
-		// 只夹上界：负值是 pre-roll 语义（[_currentOffsetMs,0)），不能动。
-		double lengthMs = _midiFile.Length.TotalMilliseconds;
-		if (positionMs > 0.0 && !double.IsNaN(lengthMs) && lengthMs > 0.0)
-		{
-			positionMs = Math.Min(positionMs, lengthMs);
-		}
+	// 钳制上界：上层量程可能与实际曲目不一致（后台换曲后 UI 量程未刷新，
+	// 或拖动时按旧曲长度取值）。把位置甩到曲尾之外会让下一个音频回调的
+	// RestartVocalOnLoopWrap 看到"位置大幅回退"而误判为回绕，进而触发一次
+	// 非预期的换曲。越界 seek 本来也没有语义。
+	// 负 seek 在下面的待处理分支里直接拒绝（预卷去负化，见 _pendingSeekMs 分支注释）。
+	double lengthMs = _midiFile.Length.TotalMilliseconds;
+	if (positionMs > 0.0 && !double.IsNaN(lengthMs) && lengthMs > 0.0)
+	{
+		positionMs = Math.Min(positionMs, lengthMs);
+	}
 
-		// 【修复】允许负数 seek，设置待处理的 seek 标志
-		// 负数（pre-roll）依赖 _currentOffsetMs 等主线程状态，仍走 _Process 路径
-		if (positionMs < 0.0)
-		{
-			_pendingSeekMs = positionMs;
-			SeekVocalToMidi(positionMs);
-			return;
-		}
+	// 负 seek 已不支持（预卷去负化：预卷倒计时移 UI 侧，见下方待处理分支注释），
+	// 入口直接拒绝，不再挂 _pendingSeekMs。
+	if (positionMs < 0.0)
+	{
+		ThreadSafeLog.PrintErr($"[MeltySynthPlayer] negative seek {positionMs:F1}ms rejected (pre-roll moved to UI-side countdown)");
+		return;
+	}
 
 		// 暂停时设备已停，音频线程不再跑，交给它的 seek 不会被消费，主线程必须自己落一次。
 		// 下面仍照常排队：device 再次启动后回调会再落一次同目标（幂等），
@@ -1601,6 +1534,34 @@ public partial class MeltySynthPlayer : Node
 			_audioOutput.Play();
 		}
 		_audioOutput?.ResumeVocal();
+	}
+
+	/// <summary>
+	/// 起播前重置人声预填内容（PlayView 预卷路径专用；播放器页 / TrackView 的
+	/// "载入即起播"路径 ring 不会被预填，无需调用）。
+	///
+	/// 【为什么需要】PlayView 的起播时序是"装配 → is_pause=true（停设备 + PauseVocal）
+	/// → 预卷倒计时 1.7s+ → play()"。native 的 vocal_pause 只置 vocalPlaying=0，
+	/// producer 线程照跑，且非播放态策略是"尽快填满"（环满也只 sleep 4ms）——
+	/// 预卷结束前 ring 已被 1.7s 的人声内容填满。起播第一帧偏移门控放行
+	/// （PlayVocal）后，native 的 vocal_mix 当帧就从 ring 头部混入：人声音频开头
+	/// 非静音的曲目，这就是一记满音量瞬入，听感为"呲的一声"。播放器页不存在此
+	/// 问题：apply_chart_audio_config（PlayVocal）与 sequencer.Play + 设备 start 在
+	/// 同一调用栈内完成，首帧回调时 ring 尚未填上，人声随解码平滑进入。
+	///
+	/// seek(0) 内部停 producer、清空 ring、解码器归位、重启 producer：起播时 ring
+	/// 回到空栈，首帧 avail≈0（启动期 vocalMixStarted=0 保护不计欠载），人声与
+	/// 播放器页路径同样平滑进入。playing 状态由 seek 内部按 wasPlaying 恢复
+	/// （预卷期间为 0，起播后仍由偏移门控放行，语义不变）。
+	/// </summary>
+	public void reset_vocal_prefill()
+	{
+		if (_audioOutput is MiniaudioAudioOutputBridge ma && ma.IsVocalLoaded)
+		{
+			ma.SeekVocal(0.0);
+			ma.ResetVocalOffsetGate();
+			ma.PauseVocal();
+		}
 	}
 
 	public void stop_vocal()
@@ -2247,23 +2208,11 @@ public partial class MeltySynthPlayer : Node
 			return _pendingSeekMs;
 		}
 
-		// 在 pre-roll 阶段返回当前的负数 offset。
-		// 【必须排在 seek-hold 之前】预卷期间音频设备是停着的（resume() 的预卷分支
-		// 刻意不启动设备），桥的 seek 永远不会被落盘 → IsBridgeSeekApplied() 恒为假，
-		// 于是在下面的 seek-hold 分支里一直返回 _lastPositionMs（被 LoadMidiFile 清成 0），
-		// 判定钟在整个预卷期间恒为 0。真机表现：准备动画结束后"音符突然冒出来"、
-		// 开局全部 Miss（FlowArea 拿到的 current_time 从 0 起跳，而不是 -1700）。
-		if (_currentOffsetMs < 0.0)
-		{
-			_lastPositionMs = _currentOffsetMs;
-			return _currentOffsetMs;
-		}
-
-		// 【修复】seek 完成后若干帧内（原生 Seek 后 sequencer 渲染钟尚未反映新位置，
-		// 会瞬回 ~0），直接返回 seek 目标位置，避免上层 NoteDisplayer 误判位置回退而
-		// 触发音符左缩、各音轨已通过计数清零。
-		// 仅在"seek 还没被音频线程落盘"时成立：已落盘说明渲染钟已到目标，再返回旧值
-		// 反而会跨后台挂起残留（回前台头几帧显示 seek 目标而不是真实位置）。
+	// 【seek-hold】预卷去负化后不存在负 offset 分支；seek 完成后若干帧内
+	// （原生 Seek 后 sequencer 渲染钟尚未反映新位置，会瞬回 ~0），直接返回 seek 目标位置，
+	// 避免上层 NoteDisplayer 误判位置回退而触发音符左缩、各音轨已通过计数清零。
+	// 仅在"seek 还没被音频线程落盘"时成立：已落盘说明渲染钟已到目标，再返回旧值
+	// 反而会跨后台挂起残留（回前台头几帧显示 seek 目标而不是真实位置）。
 		if (_seekPositionHoldFrames > 0 && !IsBridgeSeekApplied())
 		{
 			_seekPositionHoldFrames--;
@@ -2346,11 +2295,6 @@ public partial class MeltySynthPlayer : Node
 		if (!double.IsNaN(_pendingSeekMs))
 		{
 			return _pendingSeekMs;
-		}
-
-		if (_currentOffsetMs < 0.0)
-		{
-			return _currentOffsetMs;
 		}
 
 		if (!playing || _sequencer == null || !_sequencerStarted)
@@ -2987,30 +2931,11 @@ public partial class MeltySynthPlayer : Node
 
 	// ===================== 接口实现：兼容性包装方法 =====================
 	
-	/// <summary>加载 MIDI 文件 (接口别名)。
-	///
-	/// 【必须先 stop()】旧的 GDScript 管理器 load_midi 开头就是 `stop()`，并留了原因：
-	/// "TrackView 循环播放中直接进入 PlayView 时，后端 sequencer/playing 状态可能残留
-	/// （实测：旧曲位置停留在 74s，pre-roll seek(-2000) 后 crossing-zero 状态机错乱，
-	/// 表现为判定时钟异常 + 位置冻结 + 游戏提前结束）"。重构时这个 stop 丢了 ——
-	/// 于是"在 TrackView 试听后直接进打歌页"这条常见路径会踩回同一个坑。
-	/// 用底层 stop() 而不是 stop_transport()：不广播播放态，避免媒体通知闪暂停/封面硬切。
-	/// </summary>
-	public bool load_midi(string filePath)
-	{
-		try
-		{
-			stop();
-			set_file(filePath);
-			return _midiFile != null;
-		}
-		catch (Exception ex)
-		{
-			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] Failed to load MIDI: {ex.Message}");
-			return false;
-		}
-	}
-
+	// 【已删除 load_midi(string filePath)】原"stop + set_file"半吊子入口（不应用配置、
+	// 不起播，配置与起播全靠调用方补）随前台路径统一删除：TrackView / PlayView 的
+	// "载入 + 应用配置 + 起播"收敛到统一入口 play_song(SongMode)（Transport.cs），
+	// 经 LoadAndPlayCore 完成 stop → _file → LoadMidiFile → apply_chart_audio_config
+	// → 起播。原注释记载的纪律（必须先 stop、用底层 stop 不广播）由 core 首句兑现。
 	/// <summary>暂停播放 (接口方法)</summary>
 	public void pause()
 	{
@@ -3045,7 +2970,7 @@ public partial class MeltySynthPlayer : Node
 		// 暂停时停掉设备：否则回调仍以约 187 次/秒渲染静音，后台停留时是纯发热。
 		// ma_bridge_stop 会等待回调完成，必须在 _synthLock 之外调用（同 stop()）。
 		_audioOutput?.Stop();
-		// ThreadSafeLog.Print($"[MeltySynthPlayer] pause() called - _currentOffsetMs={_currentOffsetMs}, _sequencerStarted={_sequencerStarted}");
+		// ThreadSafeLog.Print($"[MeltySynthPlayer] pause() called - _sequencerStarted: {_sequencerStarted}");
 		// 保持 sequencer 状态，不重置位置
 
 		// 记录暂停时的音源代际与在响音符，供 resume() 决定是否重发以延续长音
@@ -3073,14 +2998,6 @@ public partial class MeltySynthPlayer : Node
 		PrepareAudioOutputForPlaybackStart();
 		if (_midiFile != null && _sequencer != null)
 		{
-			// 【处理 pre-roll 模式】如果在 pre-roll 中，继续等待跨越零点
-			if (_currentOffsetMs < 0.0)
-			{
-				// ThreadSafeLog.Print($"[MeltySynthPlayer] Resume from pre-roll (offset={_currentOffsetMs} ms)");
-				playing = true;
-				return true;  // 不启动 AudioStreamPlayer，等待跨越零点
-			}
-
 			// 线程模型：同 pause()，Resume 重设墙钟锚点，必须与回调渲染互斥
 			WithSynthLock(() =>
 			{
@@ -3090,6 +3007,7 @@ public partial class MeltySynthPlayer : Node
 					// 位置/渲染钟全部静止（进度条冻结、MIDI 静音），必须先启动
 					_sequencer.Play(_midiFile, false);
 					_sequencerStarted = true;
+					_hasEnteredTimeline = true;
 					ApplyInstrumentOverridesToSynth();
 				}
 				else
@@ -3341,11 +3259,10 @@ public partial class MeltySynthPlayer : Node
 		_channelStateAppliedToManual.Clear();
 		ApplyInstrumentOverridesToSynth();
 
-		_sequencerStarted = false;
-		_currentOffsetMs = 0.0;
-		_hasSkippedPreroolEvents = false;
+	_sequencerStarted = false;
+	_hasEnteredTimeline = false;
 
-		// 纯 soundfont 重载（未重新 load_midi）时重新加载 MIDI 文件
+	// 纯 soundfont 重载（未重新 load_midi）时重新加载 MIDI 文件
 		if (!string.IsNullOrEmpty(_file))
 		{
 			LoadMidiFile(_file);
@@ -3528,10 +3445,9 @@ public partial class MeltySynthPlayer : Node
 		_channelStateAppliedToManual.Clear();
 		ApplyInstrumentOverridesToSynth();
 
-		// 重置状态
-		_sequencerStarted = false;
-		_currentOffsetMs = 0.0;
-		_hasSkippedPreroolEvents = false;
+	// 重置状态
+	_sequencerStarted = false;
+	_hasEnteredTimeline = false;
 
 		// ========== 新架构：将合成器引用传递给音频桥接器 ==========
 		_audioOutput?.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
@@ -3627,10 +3543,9 @@ public partial class MeltySynthPlayer : Node
 		}
 		_activeNotesClearedOnLoad++;
 		ThreadSafeLog.Print("[MeltySynthPlayer] per-song state reset on load (active notes cleared)");
-		_sequencerStarted = false;  // 重置标志，等待 play() 调用
-		_currentOffsetMs = 0.0;  // 重置 offset
-		_hasSkippedPreroolEvents = false;  // 重置跳过标志
-		_lastPositionMs = 0.0;  // 清除上一首 MIDI 的位置残留
+	_sequencerStarted = false;  // 重置标志，等待 play() 调用
+	_hasEnteredTimeline = false;  // 重置进入时间轴标志
+	_lastPositionMs = 0.0;  // 清除上一首 MIDI 的位置残留
 		// 换曲重置回绕基准：否则新曲起始位置相对旧曲回绕点大幅后退，
 		// 会被音频回调误判为"又回绕了一次"，导致连续切歌
 		if (_audioOutput is MiniaudioAudioOutputBridge maNewSong)

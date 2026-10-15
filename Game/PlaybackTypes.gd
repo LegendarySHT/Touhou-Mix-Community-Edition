@@ -18,14 +18,25 @@ enum RepeatMode {
 
 ## 播放阶段（数值必须与 CSharp/PlaybackEnums.cs 的 PlaybackPhase 严格同序）
 ## 快照字段 `Phase` 是 int，GDScript 用本枚举按数值比较，不依赖跨语言枚举名解析。
+## 【预卷去负化】原 PRE_ROLLING（负时间轴倒计时）已删除：开局预卷改为 PlayView 主线程
+## 倒计时，到期显式起播；C# 侧预卷等待期表现为"未起播的 PREPARING"。数值因此重排。
 enum Phase {
 	IDLE = 0,        ## 无曲目、无会话
-	PREPARING = 1,   ## 会话已装配、文件已载入，尚未在时间轴上
-	PRE_ROLLING = 2, ## 负时间轴倒计时；sequencer 与设备都刻意停着
-	PLAYING = 3,     ## sequencer 运行中、设备运行中
-	PAUSED = 4,      ## sequencer 停着（位置保留）、设备已 Stop
-	ENDED = 5,       ## 自然曲终
-	STOPPED = 6,     ## 显式结束
+	PREPARING = 1,   ## 会话已装配、文件已载入，尚未起播
+	PLAYING = 2,     ## sequencer 运行中、设备运行中
+	PAUSED = 3,      ## sequencer 停着（位置保留）、设备已 Stop
+	ENDED = 4,       ## 自然曲终
+	STOPPED = 5,     ## 显式结束
+}
+
+## 换曲入口的会话模式（数值必须与 CSharp/PlaybackEnums.cs 的 SongMode 严格同序）
+## 由 C# 统一换曲入口 play_song(chart_key, mode, resume_pos_ms) 消费：
+## - PLAYLIST 沿用调用方已装配的列表会话（入口不碰会话）
+## - PREVIEW / PERFORMANCE 由入口代为装配单曲槽会话（替代原 GDScript 两步编排）
+enum SongMode {
+	PLAYLIST = 0,    ## 播放器页列表换曲：会话由调用方装配
+	PREVIEW = 1,     ## TrackView 试听：单曲槽 + 文件级循环 + 起播
+	PERFORMANCE = 2, ## PlayView 打歌：单曲槽 + 不循环 + 只装配不起播（预卷到期显式起播）
 }
 
 ## 音频设备状态（与 CSharp/PlaybackEnums.cs 的 AudioDeviceState 严格同序）

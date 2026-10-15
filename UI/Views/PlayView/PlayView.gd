@@ -1,5 +1,8 @@
 extends Control
 
+## 播放相关枚举（换曲入口的 SongMode 等；真值在 C# MeltySynth）
+const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
+
 ## 结算界面返回演奏并重开一局时触发（LT_Btn 在 SCORE_VIEW 点击触发）
 signal retry_pressed
 
@@ -210,8 +213,20 @@ func _process(delta: float) -> void:
 			_visual_time_ms = current_time
 			flow_area.set_current_time(current_time, current_time)
 		else:
-			# 如果正在播放MIDI，使用MIDI播放管理器的时间（判定时钟）
-			current_time = playback_mgr.get_position_ms()
+			# 预卷倒计时：主线程 delta 累加（与旧 C# _currentOffsetMs 同一驱动源，帧率
+			# 敏感度不变），显示负时间轴；设备与 sequencer 都停着，到期显式起播。
+			# 起播后的显示链（hud/视觉钟/FlowArea）对预卷与正常播放一致执行——
+			# 音符从屏幕上方落下正是靠预卷期间持续喂负位置。
+			if _pre_roll_remaining_ms > 0.0:
+				_pre_roll_remaining_ms -= delta * 1000.0
+				if _pre_roll_remaining_ms <= 0.0:
+					_begin_actual_playback()
+					current_time = playback_mgr.get_position_ms()
+				else:
+					current_time = -_pre_roll_remaining_ms
+			else:
+				# 如果正在播放MIDI，使用MIDI播放管理器的时间（判定时钟）
+				current_time = playback_mgr.get_position_ms()
 			hud.set_progress(current_time)
 			# 视觉时钟：墙钟累加 + 软锚定音频钟（渲染平滑，判定仍用音频钟）
 			if _visual_time_needs_anchor:
@@ -230,9 +245,10 @@ func _process(delta: float) -> void:
 			# 也避免 C# get_position_ms() 的 _seekPositionHoldFrames 被同帧多次递减。
 			flow_area.set_current_time(current_time, _visual_time_ms, playback_mgr.get_realtime_position_ms())
 
-			# 检测音频停滞：判定钟（current_time）已改为墙钟锚点推导，音频卡顿时不再停滞，
-			# 故停滞检测必须改用音频回调钟（get_raw_position_ms）——音频中断/曲终时停止增长的是它。
-			# 当 duration_ms 与 midiFile.Length 不一致时，进度条可能永远无法达到 max_value
+		# 检测音频停滞：判定钟（current_time）已改为墙钟锚点推导，音频卡顿时不再停滞，
+		# 故停滞检测必须改用音频回调钟（get_raw_position_ms）——音频中断/曲终时停止增长的是它。
+		# 预卷倒计时期间音频设备刻意停着，raw 钟本就不动，检测不适用。
+		if _pre_roll_remaining_ms <= 0.0:
 			var stall_clock_ms: float = playback_mgr.get_raw_position_ms() if playback_mgr else current_time
 			if stall_clock_ms > 0.0 and abs(stall_clock_ms - _last_playback_position) < 0.5:
 				_position_stall_frames += 1
@@ -531,6 +547,12 @@ var is_pause: bool = false:
 		if playback_mgr:
 			if is_pause:
 				playback_mgr.pause()
+			elif _pre_roll_remaining_ms > 0.0:
+				# 预卷倒计时中：设备与 sequencer 刻意停着，起播由 _begin_actual_playback
+				# 在倒计时到期时显式负责。此时调 C# resume() 会把 sequencer 拉起来从 0
+				# 起播，预卷作废 —— 旧机制靠 C# resume() 的负 offset 守卫防这个，预卷归
+				# UI 侧倒计时后，门控随之移到本处（C# 已无负时间轴可作判据）。
+				pass
 			else:
 				playback_mgr.resume()
 				# 暂停期间音频钟冻结，恢复时硬锚定视觉钟，避免音符位置大跳
@@ -541,10 +563,10 @@ func show_or_hide_menu():
 		if _game_started:
 			# 只有在"准备阶段就呼出暂停菜单"时，预卷才还没被玩家看到过，需要重新起算；
 			# 已经正常打起来过的会话（来电打断 / 手动暂停）绝不能重起预卷 ——
-			# 那等于 seek 回负时间轴（曲首），表现就是"挂断电话回来声音从头重播"。
+			# 那等于把播放位置拉回曲首，表现就是"挂断电话回来声音从头重播"。
 			# 打断恢复的位置由 C# RecreateAudioOutputBridge 负责，这里只负责继续播。
 			if not _session_started:
-				_start_pre_roll_now("menu resume (pre-roll never played)")
+				_begin_pre_roll("menu resume (pre-roll never played)")
 				_visual_time_needs_anchor = true
 			is_pause = false
 			ani.animate_fade_out(center_bg, 0.2, "_show_bg")
@@ -665,16 +687,11 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	auto_label.visible = flow_area.auto_mode
 
 	# 预解析 MIDI（同步，命中缓存时几乎零开销），
-	# 后load_midi 直接命中解析缓存，仅做配置应用 + 后端加载
+	# 后续 play_song 直接命中解析缓存，仅做配置应用 + 后端加载
 	if not playback_mgr.ensure_parsed(midi):
 		push_error("Failed to preparse MIDI: " + midi.name)
 	# 加载 MIDI（此时已命中解析缓存，仅做配置应用 + 后端加载）
 	_load_and_convert_midi_notes(midi)
-
-	# 演奏：写「正常通道的单曲槽」(不落盘、不碰用户播放列表) + 关闭文件级循环。
-	# 用意图方法而不是 start_session(..., false, false)：后者要靠位置参数表达语义，
-	# 而 loop_file 传错的后果正是"打完一首歌在结算界面里还会从头再放一遍"。
-	playback_mgr.start_performance([midi] as Array[MidiData], 0)
 	# 认领会话所有权：本局由本页驱动，故后端全局信号（midi_finished / 设备类）归本页响应。
 	# 判据是"所有权"而非"页面可见" —— 后台播放时页面可以不可见却仍归它管，反之亦然。
 	playback_mgr.claim_session(self)
@@ -689,10 +706,10 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 		EvtBus.config_changed.connect(_on_config_changed)
 
 	# 计算初始seek位置：-1000ms（固定：给予UI准备时间）- 音符下落时间（配置项）。
-	# 注意这**不算**开局预卷：后面准备动画 + 序列生成期间后端已经在倒计时（见 _pre_roll_ms 注释），
-	# 这里先摆好位置，真正供玩家看的那一段预卷由 _start_pre_roll_now() 在开局瞬间重新起算。
-	_pre_roll_ms = 0.0
-	_start_pre_roll_now("prepare")
+	# 只读预卷时长，**不在此起算**：准备动画 + 序列生成期间 FlowArea 不显示
+	# （is_pause=true），倒计时起了也白起——原实现在这里 seek 负值、再靠 game start
+	# 重新 seek 兜底，双阶段补丁已随预卷去负化取消。
+	_prepare_pre_roll_duration()
 	# 视觉钟硬锚定：开局 pre-roll 从负时间起，首次 resume 对齐音频钟
 	_visual_time_needs_anchor = true
 	is_pause = true
@@ -766,12 +783,11 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 
 	# 记录游玩开始时间（用于统计游玩时长）
 	_play_start_time = Time.get_ticks_msec()
-	# 【预卷在此刻重新起算】准备动画期间后端已经在倒计时预卷，等这里开局时那段预卷
-	# 早已被吃掉（FlowArea 在 is_pause 期间不取位置，玩家根本看不到）。不重新起算的话，
-	# 开局瞬间预卷已归零 → 第一批音符一出生就在判定线附近，直接过线 Miss，
-	# 之后位置才随正常播放逐渐"上移回正常"。见 _start_pre_roll_now 注释。
-	_start_pre_roll_now("game start")
-	_visual_time_needs_anchor = true
+	# 【预卷在此刻起算】准备动画期间倒计时尚未开始（is_pause=true 时 FlowArea 不显示，
+	# 起了也白起），所以这里起算的整段 1.7s（0.7 下落 + 1.0 余量）完整发生在玩家眼前，
+	# 第一批音符从屏幕上方正常落下——原"负 seek 后台空跑 + game start 重新 seek"的
+	# 双阶段补丁已随预卷去负化取消（见 _begin_pre_roll 注释）。
+	_begin_pre_roll("game start")
 	# 开始播放MIDI
 	_game_started = true
 	_session_started = true
@@ -783,14 +799,16 @@ func _load_and_convert_midi_notes(midi_data: MidiData) -> void:
 		push_error("PlaybackDisplay not available!")
 		return
 
-	# 加载MIDI
-	if not playback_mgr.load_midi(midi_data):
+	# 打歌一局换曲：统一入口一步完成"载入 + 应用谱面配置 + 装配单曲槽会话（不循环）"。
+	# PERFORMANCE 模式只装配不起播（DeferToCaller）：起播时机由预卷倒计时决定
+	# （到期 _begin_actual_playback 显式调 play()），不由本入口决定。
+	# TrackView 中保存的运行时配置（音量/静音/独奏/启用通道门控/人声偏移）由入口内部
+	# C# apply_chart_audio_config 统一应用（含启用通道门控，与熄屏后台换曲同一份），
+	# 此处不再重复下发。
+	if not playback_mgr.play_song(
+			playback_mgr.chart_key_of(midi_data), PlaybackTypesLib.SongMode.PERFORMANCE):
 		push_error("Failed to load MIDI for gameplay")
 		return
-
-	# TrackView 中保存的运行时配置（音量/静音/独奏/启用通道门控/人声偏移）已由 load_midi
-	# 内部的 C# apply_chart_audio_config 统一应用（含启用通道门控，与熄屏后台换曲同一份），
-	# 此处不再重复下发。
 
 	GLogger.info("MIDI loaded and runtime config applied", "PlayView")
 
@@ -863,40 +881,47 @@ func _is_current_game_gen(gen: int, stage: String) -> bool:
 		[stage, gen, _game_generation], "PlayView")
 	return false
 
-## 开局预卷时长（毫秒，负值）。由 note_fall_time 推出，两处 seek 共用同一来源。
-var _pre_roll_ms: float = 0.0
+## 开局预卷：时长（正值，毫秒）+ 主线程倒计时剩余。
+## 【预卷去负化】原实现是 C# 负时间轴（seek(-x) → _currentOffsetMs → _Process 越零自启），
+## 准备动画期间负 seek 在后台空跑、玩家看到时往往已归零，只能靠"game start 重新 seek
+## 回起点"这个双阶段补丁兜底。现在倒计时所有权归本页：prepare 阶段只读时长不起算，
+## game start 那一刻才起算，整段预卷完整发生在玩家眼前，补丁随之取消。
+## 状态：_pre_roll_remaining_ms < 0 = 未激活；> 0 = 倒计时中；== 0 = 已起播。
+var _pre_roll_duration_ms: float = 0.0
+var _pre_roll_remaining_ms: float = -1.0
 
 ## 本局是否已经真正起播过（预卷跑完、进入正常播放）。
 ## 用于区分"准备阶段就呼出的暂停菜单"（预卷还没被看到，继续时要重起预卷）
 ## 与"已经打起来后的暂停/打断"（绝不能再 seek 回曲首）。
 var _session_started: bool = false
 
-## 就地重新起算预卷。
-##
-## 为什么必须"重新起算"而不是只在 _prepare_game 开头 seek 一次：
-## 后端（C# MeltySynthPlayer）的预卷倒计时条件是 `_currentOffsetMs < 0 && playing`，
-## 而 playing 在 _prepare_game 早期就已经是 true；但 FlowArea 只在 `is_pause == false`
-## 时才会被喂位置——准备动画（最长 3s）+ 序列生成这段时间里，预卷在后台一路倒计时、
-## 玩家一帧都看不到。等真正开局时预卷往往已经归零，于是：
-##   · 第一批音符一出生就在判定线附近 → 直接过线 Miss
-##   · 之后位置才随正常播放从 0 涨起，看起来像"音符逐渐上移回正常位置"
-## 所以在"玩家即将看到音符"的那一刻把预卷重新压回起点，让这 1.7s（0.7 下落 + 1.0 余量）
-## 完整地发生在玩家眼前。
-func _start_pre_roll_now(stage: String) -> void:
+## 读取预卷时长（准备阶段调用；**不起算**——准备动画期间 FlowArea 不显示，起了也白起，
+## 这正是原实现要在 game start 重新 seek 的原因）。
+func _prepare_pre_roll_duration() -> void:
 	if playback_mgr == null:
 		return
-	if _pre_roll_ms == 0.0:
-		# 【时长由播放器算，本页不再读配置】此前这里自己读
-		# [Generator] note_fall_time 算 `-(1000 + fall*1000)`，而 FlowArea 又按同一配置
-		# 独立算一份"生成提前量"（规则不同：那边有 1s 下限），两条读数在
-		# note_fall_time > 1.0 时会分叉 → 生成窗口与预卷错配 → 第一批音符"生成即过线"。
-		# 现在以 FlowArea 实际使用的生成窗口为准，预卷 = 该窗口 + 1s 余量（C# 内部计算）。
-		_pre_roll_ms = -playback_mgr.get_pre_roll_duration_ms()
-	playback_mgr.seek(_pre_roll_ms)
-	# 立刻回读：后端若把这次负 seek 吞掉/钳成 0（历史上有过负值被 clamp 的情况），
-	# position 会不认识 -1700，预卷就会整个失效 —— 这是本类最需要一眼看到的数值。
-	GLogger.info("Pre-roll (re)started at %.0fms (%s); backend position now %.1fms" %
-		[_pre_roll_ms, stage, playback_mgr.position_ms], "PlayView")
+	_pre_roll_duration_ms = playback_mgr.get_pre_roll_duration_ms()
+
+## 起算预卷倒计时（玩家即将看到音符的那一刻：game start / 菜单续播）。
+func _begin_pre_roll(stage: String) -> void:
+	_pre_roll_remaining_ms = _pre_roll_duration_ms
+	# 视觉钟硬锚定：预卷从负时间起，起播时对齐音频钟
+	_visual_time_needs_anchor = true
+	GLogger.info("Pre-roll countdown started: %.0fms (%s)" % [_pre_roll_duration_ms, stage], "PlayView")
+
+## 预卷倒计时到期：显式起播（sequencer 从 0 开始 + 拉设备）。
+## 设备起播有启动延迟，起播后第一次读位置前必须硬锚定视觉钟，否则 current_time
+## 从预卷末值跳到真实位置的差值会直接暴露给判定/渲染。
+func _begin_actual_playback() -> void:
+	_pre_roll_remaining_ms = 0.0
+	_visual_time_needs_anchor = true
+	# 预卷期间（设备停着）native producer 已把 vocal ring 填满：起播首帧偏移门控
+	# 一放行，人声就从 ring 头部满音量瞬入 —— 人声文件开头非静音的曲目，
+	# 听感就是起播时"呲的一声"（播放器页同位置起播没这现象：那条路径 ring
+	# 未预填，人声随解码平滑进入）。起播前清掉预填，让两条路径同一起点。
+	playback_mgr.reset_vocal_prefill()
+	playback_mgr.play()
+	GLogger.info("Pre-roll finished, playback started", "PlayView")
 
 ## 全量生成完成后的收尾（应用手动分类 + 结算总音符数），仅在 _prepare_game 内调用一次
 func _finish_playback_setup() -> void:

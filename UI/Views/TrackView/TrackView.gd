@@ -192,15 +192,15 @@ func _load_midi(midi: MidiData) -> void:
 
 # 人声文件检测已前移至 MidiView（选中谱面时解析），此处仅同步已解析的人声路径
 	_vocal_controller.vocal_file_path = current_midi_data.vocal_file_path
-	# 在执行同步耗时的 load_midi 之前先让 UI 渲染一帧
+	# 在执行同步耗时的换曲（set_current 显示侧重合 + play_song 载入起播）之前先让 UI 渲染一帧
 	# （此时转场动画刚启动，避免被 MIDI 解析/JSON 写入阻塞导致首帧卡顿）
 	await get_tree().process_frame
-	# 预解析 MIDI（同步，命中缓存时几乎零开销），让 load_midi 跳过重复解析
+	# 预解析 MIDI（同步，命中缓存时几乎零开销），让换曲入口跳过重复解析
 	if not midi_playback_manager.ensure_parsed(midi):
 		push_error("Failed to preparse MIDI: " + midi.name)
 
-	# 【同一首歌：免重载快速路径】后端此刻已经加载/正在播这一首、运行配置也已应用，再 load_midi()
-	# 只会把播放整体拆掉（C# load_midi 第一句就是 stop()：sequencer/位置记账/人声全清）—— 于是必须先停、
+	# 【同一首歌：免重载快速路径】后端此刻已经加载/正在播这一首、运行配置也已应用，再走换曲入口
+	# 只会把播放整体拆掉（play_song 内部第一句就是 stop()：sequencer/位置记账/人声全清）—— 于是必须先停、
 	# 等音轨列表建完、再从头起播、最后 seek 回原位；听感上就是"初始化那一下 + 重新定位"的卡顿。
 	# 返回播放器页那条路之所以毫无顿挫，正是因为它根本不碰播放。这里与返回路径对齐到底：
 	# 在播 → 一动不动只对齐显示；暂停 → 只续播；换歌/本页主动重载 → 才走完整路径。
@@ -213,20 +213,22 @@ func _load_midi(midi: MidiData) -> void:
 	elif reuse_paused:
 		GLogger.info("TrackView: same song paused -> resume in place (no reload / no seek)", "TrackView")
 	else:
-		# 【保持进度】load_midi 会把后端整体停掉重来（C# load_midi 第一句就是 stop()：
-		# sequencer/位置记账/人声全清），于是"同一首歌从播放器页切到本页"会从头重播。
-		# 这里在停掉之前先记下当前可听位置，等 play() 之后再 seek 回去（见本函数末尾）。
+		# 【保持进度】换曲由统一入口 play_song 完成（内部先 stop 再载入，与旧 load_midi 一样
+		# 会把后端整体停掉重来：sequencer/位置记账/人声全清），于是"同一首歌从播放器页切到
+		# 本页"会从头重播。这里在停掉之前先记下当前可听位置，起播时由 play_song 的
+		# resume_pos_ms 参数落到 sequencer（seek-before-play，见本函数末尾起播分支）。
 		resume_pos_ms = _capture_resume_position(midi)
-		# 加载MIDI到播放管理器（此时已命中解析缓存，仅做配置应用 + 后端加载）
-		if not midi_playback_manager.load_midi(midi):
-			push_error("Failed to load MIDI: " + midi.name)
+		# 显示侧重合（解析缓存 / bpm / 轨道配置 / 乐器缓存，均不动音频）；
+		# 音频侧"载入 + 应用谱面配置 + 起播"由末尾起播分支的 play_song 一步完成。
+		if not midi_playback_manager.set_current(midi):
+			push_error("Failed to set current MIDI: " + midi.name)
 	await get_tree().process_frame
 
 	# 更新进度条最大范围
 	if midi.duration_ms > 0:
 		_set_display_total_time(midi.duration_ms)
-	# TrackView 试听：写「正常通道的单曲槽」(不落盘、不碰用户播放列表) + 文件级循环
-	midi_playback_manager.start_preview([midi] as Array[MidiData], 0)
+	# （会话语义不在这里装配）TrackView 试听的「正常通道的单曲槽 + 文件级循环」由起播分支的
+	# play_song(SongMode.PREVIEW) 内部代装 —— 替代原 start_preview 两步编排。
 	# 认领会话所有权（判据是"谁在驱动播放"，不是"页面是否可见"）
 	midi_playback_manager.claim_session(self)
 
@@ -239,7 +241,7 @@ func _load_midi(midi: MidiData) -> void:
 	_config_persistence.restore_midi_data_config()
 
 	# 加载音符
-	# runtime_track_channel_notes 由 PlaybackDisplay.load_midi 兜底从 notes_soa 重建（保证与 SOA 强一致），
+	# runtime_track_channel_notes 由 set_current（显示侧重合）兜底从 notes_soa 重建（保证与 SOA 强一致），
 	# _build_buckets 直接读取（SOA 就绪时经 grouped_indices 重建 bucket，无需主线程遍历全量音符）。
 	# 守卫不能只看 is_empty()：残留"空分组字典"也要重建；SOA 就绪则直接以 grouped_indices 兜底。
 	if (current_midi_data.notes_soa == null or current_midi_data.notes_soa.size() == 0) \
@@ -295,18 +297,19 @@ func _load_midi(midi: MidiData) -> void:
 		else:
 			_sync_playheads(paused_pos_ms)
 	else:
-		# 【保持进度·先定位再起播】顺序很重要：设备停着时 C# 的 seek_ms 会把目标直接落到
-		# sequencer 上**并同时排队**（Play() 之后回调会再消费一次，幂等），于是设备第一份渲染
-		# 出来的缓冲就是恢复位置；反过来"先 play 再 seek"会先渲染出一份 0 位置（曲首）的音频
-		# —— 进页时那一下"开了个头"的来源。（排队 seek 已在回调内提前到 Render 之前消费，
-		# 见 MiniaudioBridge 注释。）
-		if resume_pos_ms >= 0.0:
-			midi_playback_manager.seek(resume_pos_ms)
-		midi_playback_manager.play()
+		# 【保持进度·先定位再起播】顺序由统一入口保证：play_song 内部先按 resume_pos_ms
+		# 落位再起播（LoadAndPlayCore 的 seek-before-play 纪律）—— 设备停着时 seek_ms 会把
+		# 目标直接落到 sequencer 上**并同时排队**（Play() 之后回调会再消费一次，幂等），于是
+		# 设备第一份渲染出来的缓冲就是恢复位置；反过来"先 play 再 seek"会先渲染出一份 0 位置
+		# （曲首）的音频 —— 进页时那一下"开了个头"的来源。（排队 seek 已在回调内提前到
+		# Render 之前消费，见 MiniaudioBridge 注释。）
+		var midi_key: String = midi_playback_manager.chart_key_of(midi)
+		if not midi_playback_manager.play_song(midi_key, PlaybackTypesLib.SongMode.PREVIEW, resume_pos_ms):
+			push_error("Failed to play song: " + midi.name)
 
 		# 显示侧对齐：last_position_ms / current_tick / 所有播放头 + 抑制若干帧循环检测。
-		# 音源异步加载时 play() 被推迟（位置会被后续重载再清一次），故这种情况挂起到
-		# deferred_play_resumed 再落（与 _resume_after_settings_return 同款处理）。
+		# 音源异步加载时 play_song 被推迟（返回 false，位置会被后续重载再清一次），
+		# 故这种情况挂起到 deferred_play_resumed 再落（与 _resume_after_settings_return 同款处理）。
 		if resume_pos_ms >= 0.0:
 			if midi_playback_manager.deferred_play_pending:
 				_pending_resume_pos_ms = resume_pos_ms
@@ -329,7 +332,7 @@ func _load_midi(midi: MidiData) -> void:
 ## 满足时进页**不需要重载**：占位、音色、静音、音量、人声这些运行配置都是随这首歌的加载一起
 ## 下发到后端的，切视图并不会让它们失效。真正需要重载的只有"用户在本页改了配置想看效果"
 ## （见 _update_preview）与"换了一首歌"（MidiView 选曲 / 后台自动换曲），那时才走完整路径
-## （load_midi + 起播 + 定位）。
+## （play_song 一步完成：载入 + 应用配置 + 起播 + 定位）。
 func _is_same_song_loaded(midi: MidiData) -> bool:
 	if midi_playback_manager == null or midi == null:
 		return false
@@ -777,11 +780,14 @@ func _on_track_instrument_reset(track_index: int, channel: int) -> void:
 	GLogger.info("Track %d Channel %d: 已重置为原始乐器" % [track_index, channel], "TrackView")
 
 # 更新预览（当轨道或音源改变时）
-func _update_preview() -> void:	
+func _update_preview() -> void:
 	var current_pos = midi_playback_manager.position_ms
-	midi_playback_manager.load_midi(current_midi_data)
-	midi_playback_manager.seek(current_pos)
-	midi_playback_manager.play()
+	# 用户改配置后重应用：统一入口按 resume_pos_ms 先落位再起播，内部重新载入 +
+	# 应用谱面配置。原 load_midi + seek + play 三步合一（display_only 语义随之消失：
+	# 配置应用始终走 apply_chart_audio_config，不再有"只显示不应用"的半吊子状态）。
+	midi_playback_manager.play_song(
+		midi_playback_manager.chart_key_of(current_midi_data),
+		PlaybackTypesLib.SongMode.PREVIEW, current_pos)
 
 ## 更新主音符显示器（显示所有音符，不按轨道启用状态过滤）
 func _update_master_note_displayer() -> void:
@@ -977,14 +983,14 @@ func _init_master_note_displayer() -> void:
 		push_warning("No notes found in selected tracks")
 		return
 	
-	# 推荐轨道的首次应用与 _track_config_initialized 标记已在 PlaybackDisplay.load_midi 中完成
+	# 推荐轨道的首次应用与 _track_config_initialized 标记已在 set_current（显示侧重合）中完成
 	# TrackView 只需根据已恢复的 selected_track_configs 显示 UI（由 restore_midi_ui_config 处理）
 	# 这里仅记录日志，不再重复应用推荐轨道
 	if current_midi_data.is_track_config_initialized():
 		GLogger.info("MIDI config already initialized: %d tracks have enabled channels" %
 			current_midi_data.selected_track_configs.size(), "TrackView")
 	else:
-		# 理论上不应走到这里（load_midi 已设置 _track_config_initialized=true），防御性日志
+		# 理论上不应走到这里（set_current 已设置 _track_config_initialized=true），防御性日志
 		push_warning("[TrackView] Unexpected: track config not initialized, selected_track_configs may be incomplete")
 	
 	# 统计音符总数（从 buckets 汇总）
@@ -1121,8 +1127,11 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 	# Reload MIDI when returning from settings (handles backend switch)
 	if old_state == ui_stat_mgr.UIState.SETTINGS_VIEW and new_state == work_state:
 		if current_midi_data:
-			# 回到本页续听：保持「正常通道单曲槽 + 文件级循环」的会话语义
-			midi_playback_manager.start_preview([current_midi_data] as Array[MidiData], 0)
+			# 回到本页续听：保持「正常通道单曲槽 + 文件级循环」的会话语义。
+			# 声音还在续播、无需重载，故只重建会话语义（原 start_preview 两步编排里
+			# 的纯装配部分）；起播型换曲才用 play_song(SongMode.PREVIEW)。
+			midi_playback_manager.begin_preview_session(
+				midi_playback_manager.chart_key_of(current_midi_data))
 			midi_playback_manager.claim_session(self)
 			# 若本次退出设置触发了音源重载（settings_changed 已在退场前同步发出），
 			# 须等重载完成后再 resume：否则重载完成回调会在已启动的人声之上再次重启人声（"多放一下"）。

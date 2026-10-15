@@ -14,9 +14,9 @@ using Godot;
 ///     <see cref="AudioMs"/>（音频回调渲染钟）。二者同属原始时间域、当前同值，
 ///     分开命名同样只为用途可读（人声同步 / 停滞检测用 AudioMs，状态恢复用 RawTimelineMs）。
 ///
-/// 【负值不钳制】预卷期间 <see cref="JudgeMs"/> / <see cref="VisualMs"/> /
-/// <see cref="RawTimelineMs"/> 均为负值，**原样透出**（本项目踩过的核心 bug：
-/// 把预卷钳成 0 → 准备动画结束后音符突然冒出来、开局全部 Miss）。
+/// 【负值不钳制】判定/渲染口径本身不产生负值；预卷期间 UI 侧自行倒计时显示负值，
+/// 不经本快照（本项目踩过的核心 bug：把预卷钳成 0 → 准备动画结束后音符突然冒出来、
+/// 开局全部 Miss——该纪律现由 PlayView 主线程倒计时保证）。
 ///
 /// 【跨语言契约】字段类型刻意用 int/bool/double（不用 C# 枚举）：
 /// GDScript 侧镜像同序枚举后按数值比较（§5.2），不依赖跨语言枚举名字解析。
@@ -29,7 +29,7 @@ public partial class PlaybackSnapshot : RefCounted
 	[Export] public int Phase;                 // PlaybackPhase
 	[Export] public bool SequencerRunning;     // 状态机 #3
 	[Export] public bool MidiLoaded;
-	[Export] public bool HasEverStarted;       // 本会话是否已跨越预卷（替代 PlayView._session_started）
+	[Export] public bool HasEverStarted;       // 本会话是否已进入时间轴（起播/正数 seek/桥重建恢复）
 	[Export] public string CurrentKey = "";
 
 	// —— 状态机 #2：音频设备 ——
@@ -42,7 +42,6 @@ public partial class PlaybackSnapshot : RefCounted
 	[Export] public double RawTimelineMs;      // 原始时间轴 = 现有 get_raw_position_ms()
 	[Export] public double AudioMs;            // 音频回调渲染钟（人声同步 / 停滞检测）
 	[Export] public double PendingSeekMs;      // NaN = 无待处理 seek
-	[Export] public double PrerollRemainingMs; // 预卷剩余（负 offset 的绝对值）；非预卷为 0
 
 	// —— 汇总量 ——
 	[Export] public double DurationMs;

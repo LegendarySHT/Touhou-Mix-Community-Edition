@@ -359,8 +359,20 @@ public partial class MeltySynthPlayer
 
 	// ===================== 换曲编排 =====================
 
-	/// <summary>载入并起播某 key（唯一换曲实现；前台/后台/自动前进共用）。</summary>
-	private bool LoadAndPlayKey(string key, bool requireDisplaySignal)
+	/// <summary>载入并起播某 key（主线程壳；前台/页面换歌入口）。
+	/// <param name="mode">会话模式：Playlist 沿用调用方已装配的列表会话；
+	/// Preview/Performance 由本入口代为装配单曲槽会话（替代原 GDScript
+	/// start_preview/start_performance 编排）。</param>
+	/// <param name="resumePosMs">>= 0 时起播前先把位置落到该点（保持进度）。
+	/// 必须排在 Play 之前：设备停着时 seek_ms 会直落 sequencer 并挂 pending</param>
+	/// <remarks>
+	/// 主体在 <see cref="LoadAndPlayCore"/>，本方法只负责主线程侧的三件事：
+	/// 路径解析（GetNode 查 ChartDB）、非 Playlist 模式的会话装配、失败日志
+	/// （transport: 前缀）、信号顺序（current_song_changed → playback_state_changed
+	/// → PushMediaState，顺序是既有契约）。
+	/// </remarks>
+	private bool LoadAndPlayKey(string key, bool requireDisplaySignal,
+		SongMode mode = SongMode.Playlist, double resumePosMs = -1.0)
 	{
 		var db = GetNodeOrNull<ChartDb>("/root/ChartDB");
 		string path = ResolveMidiPath(db, key);
@@ -369,37 +381,26 @@ public partial class MeltySynthPlayer
 			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] transport: midi path not found for key={key}");
 			return false;
 		}
-
-		// 换曲先停设备清场（不广播暂停态，避免通知闪烁/封面硬切）
-		stop();
-		_file = path;
-		LoadMidiFile(path);
-		if (_midiFile == null)
+		// 非 Playlist 模式：本入口代为装配单曲槽会话（原 GDScript start_preview /
+		// start_performance 的两步编排收拢到这里）。Playlist 不装：调用方
+		// （ensure_user_playlist / begin_user_session）已装配，重复装配会打断
+		// MusicPlayerView 的列表会话。
+		if (mode != SongMode.Playlist)
+		{
+			var core = MidiCore.Instance;
+			core?.SetPersistEnabled(false);
+			core?.SetSessionSingle(true);
+			core?.SetSessionKey(key);
+			_sessionLoopFile = (mode == SongMode.Preview);  // 试听文件级循环；打歌不循环
+		}
+		// Performance 只装配不起播（DeferToCaller）：PlayView 的起播时机由预卷
+		// 倒计时决定（到期显式调 play()），不由本入口决定。
+		if (!LoadAndPlayCore(key, db, path, preferSystemIo: false,
+			    startPlayback: mode != SongMode.Performance, resumePosMs: resumePosMs))
 		{
 			ThreadSafeLog.Print("[MeltySynthPlayer] transport: midi load deferred (soundfont loading)");
 			return false;
 		}
-		apply_chart_audio_config(key);
-		if (_sequencer != null)
-		{
-			WithSynthLock(() =>
-			{
-				_sequencer.Play(_midiFile, false);
-				_sequencerStarted = true;
-				ApplyInstrumentOverridesToSynth();
-			});
-		}
-		InvalidateJudgeClock();
-		if (_audioOutput is MiniaudioAudioOutputBridge maWrap)
-		{
-			maWrap.ResetEndOfSequence();
-		}
-		playing = true;
-		_paused = false;
-		RequestAudioOutputPlay();
-		request_startup_align();
-
-		_currentKey = key;
 		if (requireDisplaySignal)
 		{
 			_emittedSongKey = key;
@@ -407,6 +408,88 @@ public partial class MeltySynthPlayer
 		}
 		EmitSignal(SignalName.playback_state_changed);
 		PushMediaState(true);
+		return true;
+	}
+
+	/// <summary>
+	/// 页面侧统一换曲入口（TrackView / PlayView 的前台载入+起播都走这里）。
+	/// 载入 + 应用谱面配置 + 按模式装配会话 + 起播/只装配，一步完成；
+	/// 显示侧对齐（set_current）仍由调用方负责（那是 UI 数据源，不过信号水合）。
+	/// </summary>
+	/// <param name="chartKey">规范 chart_key（folder_name）</param>
+	/// <param name="mode">SongMode：0=Playlist 1=Preview 2=Performance</param>
+	/// <param name="resumePosMs">>= 0 = 起播前定位到该位置（保持进度）</param>
+	public bool play_song(string chartKey, int mode, double resumePosMs = -1.0)
+	{
+		return LoadAndPlayKey(chartKey, true, (SongMode)mode, resumePosMs);
+	}
+
+	/// <summary>
+	/// 仅装配单曲试听会话（不载入、不起播）：设置返回等"声音还在续播、只需重建
+	/// 会话语义"的场景。起播型换曲请用 <see cref="play_song"/>（SongMode.Preview）。
+	/// 【历史】原 GDScript start_preview 转发 + C# start_session(persist:false) 的
+	/// 非 persist 分支；编排统一后只保留这个纯装配入口。
+	/// </summary>
+	public void begin_preview_session(string chartKey)
+	{
+		MidiCore.Instance?.SetPersistEnabled(false);
+		MidiCore.Instance?.SetSessionSingle(true);
+		MidiCore.Instance?.SetSessionKey(chartKey);
+		_sessionLoopFile = true;
+	}
+
+	/// <summary>
+	/// 换曲的「载入并起播」唯一实现：前台 <see cref="LoadAndPlayKey"/> 与后台
+	/// <see cref="BackgroundLoadAndPlay"/>（BackgroundAdvance.cs）共用同一主体。
+	/// </summary>
+	private bool LoadAndPlayCore(string key, ChartDb db, string path, bool preferSystemIo,
+		bool startPlayback, double resumePosMs = -1.0)
+	{
+		// path 由壳解析并判空（前台 ResolveMidiPath / 后台 ResolveMidiPathBg，各自日志前缀不同）
+
+		// 换曲先停设备清场（不广播暂停态，避免通知闪烁/封面硬切）
+		stop();
+		_file = path;
+		LoadMidiFile(path, preferSystemIo);
+		if (_midiFile == null)
+		{
+			// 音源未就绪（soundfont 仍在加载）：core 不碰 playing——恢复语义由壳决定
+			// （后台壳要置回 playing 以便下次轮询重试，前台壳按原语义直接失败返回）。
+			return false;
+		}
+		apply_chart_audio_config(key, db);
+		// 恢复位置必须先于起播排队（理由见 LoadAndPlayKey 的 resumePosMs 注释：
+		// 先播再 seek 会先渲染一份曲首音频）。设备停着时 seek_ms 直落 + 挂 pending，
+		// 起播后回调在第一次 Render 之前消费 pending。
+		if (resumePosMs >= 0.0)
+		{
+			seek_ms(resumePosMs);
+		}
+		// Performance 模式只装配不起播（DeferToCaller）：下面整段起播步骤跳过，
+		// playing/_paused/sequencer 状态保持"已装配未起播"，由 UI 在正确时机显式 play()。
+		if (startPlayback)
+		{
+			if (_sequencer != null)
+			{
+				WithSynthLock(() =>
+				{
+					_sequencer.Play(_midiFile, false);
+					_sequencerStarted = true;
+					_hasEnteredTimeline = true;  // 起播 = 进入时间轴
+					ApplyInstrumentOverridesToSynth();
+				});
+			}
+			InvalidateJudgeClock();
+			if (_audioOutput is MiniaudioAudioOutputBridge maWrap)
+			{
+				maWrap.ResetEndOfSequence();
+			}
+			playing = true;
+			_paused = false;
+			RequestAudioOutputPlay();
+			request_startup_align();
+		}
+		_currentKey = key;
 		return true;
 	}
 
@@ -1387,12 +1470,13 @@ public partial class MeltySynthPlayer
 	/// <summary>
 	/// 供显示用的位置：扣除视觉校准延迟（与旧 GDScript _process 口径一致）。
 	///
-	/// 【负值必须原样透出】开局预卷走的是负时间轴（PlayView 用 seek(-1000 - note_fall_time*1000)
-	/// 开场，判定/渲染都靠它把音符从屏幕上方落下来）。原来这里无条件 Math.Max(0.0, ...)，
-	/// 会把整个预卷钳成 0 —— 真机表现：准备动画结束后 current_time 从 0 起跳，
-	/// 生成提前量恰好等于下落时间，第一批音符生成即过线 → 开局全部 Miss，
-	/// 之后判定钟靠慢速校准一点点把墙钟拉回真实值，要几十秒才"恢复正常"。
-	/// 校准延迟只对"已经超过 0 的播放位置"有意义，预卷阶段没有设备延迟可扣。
+	/// 【负值透出是防御，不是机制】开局预卷原走 C# 负时间轴（seek 负值 + offset 越零），
+	/// 当时这里必须把负值原样透出，否则 Math.Max(0.0, ...) 会把预卷钳成 0 —— 真机表现：
+	/// 准备动画结束后 current_time 从 0 起跳，第一批音符生成即过线 → 开局全部 Miss，
+	/// 判定钟要几十秒才校准回来。预卷去负化（2026-10）后负时间轴不再存在（预卷改为
+	/// PlayView 主线程倒计时，显示值自己算，不经本方法），本分支保留仅为兜底：
+	/// 真出现负值说明有路径漏迁，透出好过静默钳错。
+	/// 校准延迟只对"已经超过 0 的播放位置"有意义。
 	/// </summary>
 	public double get_visual_position_ms()
 	{

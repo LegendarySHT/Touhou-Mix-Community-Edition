@@ -8,7 +8,6 @@ using Godot;
 ///   <see cref="JudgeMs"/> / <see cref="VisualMs"/> —— 判定·感知轴（扣校准延迟），当前恒等；
 ///   <see cref="RawTimelineMs"/> —— 原始时间轴（sequencer 的时间域）；
 ///   <see cref="AudioMs"/> —— 音频回调渲染钟。
-/// 预卷期间三者均为负值，**不钳制**。
 /// </summary>
 [GlobalClass]
 public partial class PlaybackPosition : RefCounted
@@ -17,5 +16,4 @@ public partial class PlaybackPosition : RefCounted
 	[Export] public double VisualMs;       // 与 JudgeMs 同值（用途可读性）
 	[Export] public double RawTimelineMs;  // 原始时间轴（sequencer 的时间域）
 	[Export] public double AudioMs;        // 音频回调渲染钟
-	[Export] public bool IsPreRoll;        // 是否处于预卷（负时间轴）
 }

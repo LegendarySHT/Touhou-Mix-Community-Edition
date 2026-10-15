@@ -6,6 +6,34 @@
 
 ---
 
+## ⚠️ 实施状态更新（2026-10-15，预卷去负化）
+
+以下条目已在编码中**提前落地**，与后文「阶段 2 计划」的实现方式不同（后文保留作历史记录，阅读时以本节为准）：
+
+1. **负 seek 已从 C# 彻底移除**（§9 争议 1 的落地，但方式不同）：
+   - `MeltySynthPlayer.seek_ms()` / `_Process` 待处理分支：负 seek 不再挂起 offset，**直接拒绝 + PrintErr**（无告警降级，无负值兼容路径）。
+   - `_currentOffsetMs` 字段及全部 25 处引用已删除；负时间轴机制（`_Process` 越零自启、`play()`/`resume()` 预卷分支、位置查询负分支）随之删除。
+   - **预卷倒计时改为 UI 侧主线程 delta 累加**（`PlayView._pre_roll_remaining_ms`，与旧 C# offset 同一驱动源），到期由 PlayView 显式调 `play()` 从 0 起播。这是与后文「C# 状态机承载预卷」的关键分歧：**预卷是 UI 时序知识（音符下落窗口），归 UI；C# 只负责起播**。
+   - `_start_pre_roll_now`（双阶段重新 seek 补丁）已删除——预卷起算点改为「玩家即将看到音符时」（game start），准备动画期间不起算，补丁失去存在理由。
+2. **`PlaybackPhase.PreRolling` 已删除，数值重排**（Idle=0, Preparing=1, Playing=2, Paused=3, Ended=4, Stopped=5）。GDScript 镜像 `Game/PlaybackTypes.gd` 同步。C# 侧预卷等待期表现为「未起播的 Preparing」。
+3. **快照字段 `PrerollRemainingMs` / `IsPreRoll` 已删除**（`PlaybackSnapshot` / `PlaybackPosition` / `SnapshotQuery` / §3.2 字段表），无 GDScript 消费方。
+4. **`PlaybackStartMode.PreRoll*` 两个值标记为「暂无生产者」**：阶段 2 引入显式起始 API 时按新架构（UI 倒计时 + 到期起播）重新设计。
+5. **`_hasSkippedPreroolEvents` 更名为 `_hasEnteredTimeline`**：语义「本会话是否已进入时间轴」，置位点为起播/正数 seek/桥重建恢复（原「预卷越零」置位点随机制删除）。
+6. **`EvaluateAudioDeviceHealth` 的预卷 guard 等价替换**：原判据 `_currentOffsetMs < 0` → 现 `!_sequencerStarted`（未起播期 hands off，防止预卷等待期被焦点评估提前拉设备）。
+7. **PlayView `is_pause` setter 新增预卷门控**：倒计时中不调 C# `resume()`（旧机制由 C# resume() 的负 offset 守卫承担， guard 随机制删除后门控移至 UI）。
+
+## ⚠️ 实施状态更新（2026-10-15，换曲入口统一）
+
+8. **C# 侧：`LoadAndPlayKey` 与 `BackgroundLoadAndPlay` 合并为同一主体 `LoadAndPlayCore`**（`MeltySynthPlayer.Transport.cs`）。差异（路径解析 / preferSystemIo / 信号 / 日志前缀）全部由壳处理，主体完成 stop → `_file` → LoadMidiFile → apply_chart_audio_config → resumePosMs seek（Play 前）→ 按 startPlayback 门控起播。拷贝漏行曾连续造成 5 个跨曲残留 bug，此后不再有两份拷贝。
+9. **新增页面侧统一换曲入口 `play_song(chart_key, mode, resume_pos_ms)`**（`SongMode`：0=Playlist 沿用调用方会话 / 1=Preview 单曲槽+文件级循环+起播 / 2=Performance 单曲槽+不循环+只装配不起播）。Preview/Performance 的单曲槽装配由入口内部代做（替代原 GDScript `start_preview`/`start_performance` 两步编排）。**seek-before-play 纪律**：resumePosMs 必须在 `Play` 之前落到 sequencer，否则第一份渲染是曲首音频（TrackView 历史教训）。
+10. **GDScript 侧删除五个转发壳**：`PlaybackDisplay.load_midi`（三步壳）、`start_session`/`start_performance`/`start_preview`/`start_player_session`；C# 侧同名方法一并删除（`MeltySynthPlayer.Playlist.cs` 只保留 `set_playlist_keys`/`start_session_keys`，后者 PlaylistPanel.gd 在用）。新增 `play_song`/`begin_preview_session`/`chart_key_of` 转发；`Game/PlaybackTypes.gd` 增补 `SongMode` 枚举镜像。
+11. **调用方迁移**：`TrackView._load_midi` 换曲路改 `set_current(midi)`（显示侧重合）+ 末尾起播分支 `play_song(k, PREVIEW, resume_pos_ms)`（先 seek 再起播由入口保证）；`_update_preview`（用户改配置）改 `play_song(k, PREVIEW, current_pos)`；设置返回改纯装配 `begin_preview_session(k)`（声音还在续播，只重建会话语义）。`PlayView._load_and_convert_midi_notes` 改 `play_song(k, PERFORMANCE)`——只装配不起播，起播仍由预卷倒计时到期显式 `play()`（见第 1 条）。
+12. **`load_midi(string filePath)`（C# 半吊子入口）已删除**，替换为墓碑注释：原「必须先 stop」纪律由 LoadAndPlayCore 首句兑现。
+
+后文凡涉及「负时间轴 / PreRolling / PrerollRemainingMs / `_start_pre_roll_now` / 负 seek 兼容 / `load_midi` 三步壳 / `start_session` 四方法编排」的段落，均为**已被上述实施取代的历史设计**。
+
+---
+
 ## 0. 摘要
 
 问题不是"某个函数写错了"，而是**职责切在语言边界上**：C# 播放器持有全部真实状态，GDScript 只看得见其中两个布尔值（`is_playing`/`is_paused`），却被要求替播放器做状态转移决策。
@@ -312,7 +340,7 @@ public partial class PlaybackSnapshot : RefCounted
     [Export] public double AudioMs;           // 音频回调渲染钟（不扣延迟、不锚墙钟）
                                               //   仅供人声同步与停滞检测
     [Export] public double PendingSeekMs;     // NaN = 无待处理 seek
-    [Export] public double PrerollRemainingMs;// 预卷剩余（负 offset 的绝对值）；非预卷为 0
+    // 【已删除 2026-10-15】PrerollRemainingMs / IsPreRoll 随预卷去负化移除（见头部实施记录）
 
     // —— 汇总量 ——
     [Export] public double DurationMs;
@@ -704,6 +732,7 @@ func get_playback_snapshot() -> PlaybackSnapshot:
 | 496 | `playback_mgr.pause()` | `playback_mgr.request_pause()` | 意图化（`reason` 默认 `None` = 用户主动） |
 | 498 | `playback_mgr.resume()` | `if _snap.Phase == Phase.PREROLLING: playback_mgr.resume_from_pause()  else: playback_mgr.resume_from_pause()` | **二义性消除后两者其实同调**——但语义由 C# 的 phase 决定。GDScript 不再需要关心是哪种（见下方 ★） |
 | 509-512 | `if not _session_started: _start_pre_roll_now(...)` | `if not _snap.HasEverStarted: playback_mgr.restart_preroll()` | `_session_started` 与"预卷是否已消费"是两码事（bug 8）。改用 C# 的权威标志 + 有守卫的 `restart_preroll()` |
+| 【已实施 2026-10-15】 | 同左，但实际落地为 `if not _session_started: _begin_pre_roll(...)`（UI 侧倒计时重起，见头部实施记录） | — | 预卷归 UI 后无需 C# `restart_preroll()` 意图 |
 | 530 | `playback_mgr.is_playing` | `_snap.Playing` | — |
 | 545-567 | `_on_audio_focus_changed(state)` 整个方法 | **删除**，改为两个薄回调：`_on_playback_interrupted(reason, pos, phase)` → `_show_pause_menu()`；`_on_playback_resumed(reason, pos)` → 关菜单 + `_visual_time_needs_anchor = true` | 焦点语义归 C# |
 | 586 | `_session_started = false` | `_session_started = false`（保留，供"准备阶段呼菜单"判断）/ 或直接用 `_snap.HasEverStarted` | 二选一，见 ★ |
@@ -711,12 +740,12 @@ func get_playback_snapshot() -> PlaybackSnapshot:
 | 619 | `playback_mgr.ensure_parsed(midi)` | 不变（显示侧解析缓存，与播放器无关） | — |
 | 622 | `_load_and_convert_midi_notes(midi)` | 不变 | 显示侧 |
 | 627 | `playback_mgr.start_session([midi],0,false,false)` | 合并进下一行 | 装配与会话语义合并为一次意图 |
-| 641-642 | `_pre_roll_ms = 0.0; _start_pre_roll_now("prepare")` | `playback_mgr.start_performance(key, path, PlaybackStartMode.PreRollFromNoteFall)` | GDScript 不再计算/传递预卷毫秒（见 §9 争议 1） |
+| 641-642 | ~~`_pre_roll_ms = 0.0; _start_pre_roll_now("prepare")`~~ | 【已实施】`_prepare_pre_roll_duration()`（只读时长，不起算） | GDScript 不再计算/传递预卷毫秒；倒计时起算推迟到 game start（见头部实施记录） |
 | 645 | `is_pause = true` | 不变（UI 态） | — |
 | 655 | `playback_mgr.set_sync_threshold(...)` | 不变 | 人声同步阈值，与状态转移无关 |
 | 685 | `warmup_manual_path()` | 不变 | — |
 | 690 | `prepare_vocal_playback()` | 删除（已是 `pass` 空实现，`PlaybackDisplay.gd:995`） | 死代码 |
-| 720-725 | `_start_pre_roll_now("game start"); ...; is_pause = false` | `playback_mgr.begin_playback(PlaybackStartMode.PreRollFromNoteFall)` 然后 `is_pause = false` | **一个意图取代"重算预卷 + 显式起播"两步** |
+| 720-725 | ~~`_start_pre_roll_now("game start"); ...; is_pause = false`~~ | 【已实施】`_begin_pre_roll("game start")` + 倒计时到期 `_begin_actual_playback()`（显式 `play()`） | 「重算预卷 + 显式起播」两步由 UI 侧倒计时天然完成（见头部实施记录） |
 | 734 | `playback_mgr.load_midi(midi_data)` | 由 `start_performance`/`prepare_session` 内部完成 | 消除"载入"与"装配"两阶段 |
 | 838 | `playback_mgr.seek(_pre_roll_ms)`（负值） | 删除；预卷只能经 `begin_playback`/`restart_preroll` | **负 seek 从公开 API 移除**（见 §9 争议 1） |
 | 842 | 日志回读 `playback_mgr.position_ms` | `_snap.VisualMs` | 对表更准（`position_ms` 现在走的是"再扣一次校准延迟"的口径，`VisualMs` 与之等价） |
