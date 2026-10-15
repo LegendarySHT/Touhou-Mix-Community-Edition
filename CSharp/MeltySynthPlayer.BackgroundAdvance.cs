@@ -377,6 +377,7 @@ public partial class MeltySynthPlayer
 			return false;
 		}
 		stop();   // 停设备/sequencer（幂等，不发射信号）
+		_file = path;
 		LoadMidiFile(path, preferSystemIo: true);
 		if (_midiFile == null)
 		{

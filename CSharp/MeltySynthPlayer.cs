@@ -3649,6 +3649,7 @@ public partial class MeltySynthPlayer : Node
 		_virtualChannelCc11.Clear();
 		_virtualChannelCc10.Clear();
 		_virtualChannelPitchBend.Clear();
+		_mutedVirtualChannels.Clear();
 		_channelStateAppliedToManual.Clear();
 		// 清理手动控制音符过滤器，防止上一首歌的 manual control 标记残留到新歌
 		// PlayView._finish_generate_game_sequences 会根据 play_mode 重新下发
