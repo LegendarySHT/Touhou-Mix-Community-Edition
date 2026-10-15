@@ -214,15 +214,14 @@ public partial class MeltySynthPlayer
 		// 没有"无曲可播"的界面状态：清空列表只清 A、不停当前曲，此时加歌若不起播，
 		// 面板显示新歌、放的还是被清掉的那首，媒体卡片与播放器页长期和实际内容不一致。
 		bool fromEmpty = core != null && core.GetCount() == 0;
+		var keys = new List<string>();
 		foreach (var it in items)
 		{
 			var k = KeyOfVariant(it);
-			if (!string.IsNullOrEmpty(k))
-			{
-				core?.AppendKey(k);
-				core?.SetPersistEnabled(true);
-			}
+			if (!string.IsNullOrEmpty(k)) keys.Add(k);
 		}
+		core?.AppendKeys(keys);
+		core?.SetPersistEnabled(true);
 		EmitSignal(SignalName.playlist_changed);
 		if (fromEmpty && core != null && core.GetCount() > 0)
 		{

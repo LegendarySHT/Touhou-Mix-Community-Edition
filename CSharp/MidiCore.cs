@@ -381,6 +381,25 @@ public partial class MidiCore : Node
         }
     }
 
+    /// <summary>批量追加：整批只落盘一次、只广播一次。
+    /// "全部加入播放列表"若走逐首 AppendKey，会 N 次 Save（每次全列表排序 + 整份 BSON 落盘）
+    /// + N 次 playlist_changed（面板 N 次全量重绘）——几百首即卡死。批量合并后降为
+    /// O(N log N) 排序 + 一次落盘 + 一次重绘。</summary>
+    public void AppendKeys(IEnumerable<string> keys)
+    {
+        if (keys == null) return;
+        lock (_playlistLock)
+        {
+            PrepareForMutation();
+            foreach (var k in keys)
+            {
+                if (!string.IsNullOrEmpty(k)) _keys.Add(k);
+            }
+            Save();
+            PublishSnapshot();
+        }
+    }
+
     public void InsertAt(int i, string key)
     {
         if (string.IsNullOrEmpty(key)) return;
