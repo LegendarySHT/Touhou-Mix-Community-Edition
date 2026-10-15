@@ -36,6 +36,12 @@ public partial class MidiCore : Node
     private readonly List<string> _keys = new();
     private int _index = -1;
     private int _repeat_mode = REPEAT_SEQUENTIAL;
+    /// <summary>
+    /// 用户显式设过播放模式、但可能还没落盘（DB 未就绪时 Save 被 !_loaded 门挡掉）。
+    /// EnsureLoaded 读盘时据此**不覆盖**内存值——否则"开随机 → DB 就绪前退出 →
+    /// 下次启动读回旧模式"，用户在 UI 上设的随机凭空消失（且毫无提示）。
+    /// </summary>
+    private bool _repeat_mode_dirty = false;
     private string _source_fav_id = "";
     private bool _persist_enabled = true;
     private bool _session_single = false;
@@ -112,30 +118,114 @@ public partial class MidiCore : Node
             var raw = Db().GetPlaylistPlain();
             _keys.Clear();
             _keys.AddRange(raw.keys);
+            // 追溯修复旧磁盘数据：Save 落盘规范序的修复只对之后的写入生效，用户手机上
+            // 现存的 meta 还是修复之前写下的旧随机序——不在此重排，切到顺序/列表循环模式
+            // 时读回的"顺序列表"还是那串随机序（观感即"没修好"）。只重排内存 _keys、
+            // 不在这里写盘：磁盘规范序由既有 Save 路径在下次增删时自然落地，避免在加载
+            // 路径引入写操作；DB 扫描序不可用（扫描未完成）时不赌、退化原序。
+            var canonical = new List<string>(_keys);
+            bool reordered = ReorderCanonical(canonical);
+            if (reordered)
+            {
+                _keys.Clear();
+                _keys.AddRange(canonical);
+            }
             _index = raw.index;
-            _repeat_mode = raw.repeatMode;
             _source_fav_id = raw.sourceFavId;
+            // 用户在 DB 就绪前显式设过模式：以内存为准（不读盘覆盖），
+            // 落盘补写放到下面 _loaded=true 之后——Save 有 !_loaded 门，现在调会被挡掉。
+            if (!_repeat_mode_dirty)
+            {
+                _repeat_mode = raw.repeatMode;
+            }
             if (_keys.Count == 0) _index = -1;
             else _index = 0;   // 位置不持久化：读回后一律从第一首开始
             _loaded = true;
-            ThreadSafeLog.Print($"[MidiCore] playlist loaded: {_keys.Count} songs, index={_index}");
+            if (_repeat_mode_dirty)
+            {
+                Save();   // 补一次：SetRepeatMode 当时 Save 被 !_loaded 门挡掉了
+            }
+            ThreadSafeLog.Print($"[MidiCore] playlist loaded: {_keys.Count} songs, index={_index}, repeat={_repeat_mode}{(_repeat_mode_dirty ? ", mode overridden by user" : "")}{(reordered ? ", order normalized to canonical" : "")}");
             PublishSnapshot();
             return true;
         }
     }
 
     /// <summary>落盘（受 persist 门控）。未成功载入过不写，避免用空列表覆盖磁盘。
-    /// 走 ChartDb 的纯托管入口：熄屏后台的换曲线程也会调到这里。</summary>
+    /// 走 ChartDb 的纯托管入口：熄屏后台的换曲线程也会调到这里。
+    ///
+    /// 位置（播放到第几首）**不持久化**：列表每次都从头发起（随机模式本来每次都会重新打乱）。
+    /// 排列（随机/手动拖拽）也**不落盘**：写盘的是规范序副本（见 CanonicalOrderForPersist），
+    /// 内存 _keys 保持当前排列不动——下次启动读回的就是一份有固定顺序的歌单，
+    /// 顺序模式直接用；随机模式在读回后再打乱（ApplyRepeatModeArrangement）。
+    /// 这样后台换曲也不需要任何落盘/写入 —— 少一处会与冻结的主线程争锁的写操作。</summary>
     public void Save()
     {
         lock (_playlistLock)
         {
             if (!_persist_enabled || !_loaded) return;
             if (!DbReady()) return;
-            // 位置（播放到第几首）**不持久化**：列表每次都从头发起（随机模式本来每次都会重新打乱）。
-            // 这样后台换曲也不需要任何落盘/写入 —— 少一处会与冻结的主线程争锁的写操作。
-            Db().SavePlaylistPlain(_keys, 0, _repeat_mode, _source_fav_id);
+            Db().SavePlaylistPlain(CanonicalOrderForPersist(), 0, _repeat_mode, _source_fav_id);
+            _repeat_mode_dirty = false;
         }
+    }
+
+    /// <summary>
+    /// 持久化用的规范序副本：按 ChartDb 的扫描序（_charts.FindAll 的 _id 升序）排列，
+    /// DB 里查不到的 key（异常数据）按字符串序附在末尾。**只用于写盘**，不动内存 _keys。
+    ///
+    /// 为什么值得每次 Save 都重排：盘里存的一直是"上次的排列"——随机模式退出时落的是
+    /// 打乱顺序，下次以顺序模式读回，用户的"顺序列表"其实是上次的随机顺序。
+    /// 存规范序后，顺序列表读出来即是可用顺序；手动重排/打乱只活在本次会话的内存里。
+    /// </summary>
+    private List<string> CanonicalOrderForPersist()
+    {
+        var sorted = new List<string>(_keys);
+        ReorderCanonical(sorted);   // 与 EnsureLoaded 读回时的内存重排共用同一套排序规则
+        return sorted;
+    }
+
+    /// <summary>
+    /// 把 list 原地按规范序（ChartDb 扫描序）重排；返回是否与原序不同。
+    ///
+    /// false 的两种含义：DB 扫描序不可用（扫描未完成/DB 未就绪）时**不赌**、保持原序；
+    /// 或原序本就是规范序（无需动作）。
+    ///
+    /// 落盘序（CanonicalOrderForPersist）与读回时的内存重排（EnsureLoaded）必须共用这一套
+    /// 比较逻辑，否则两处规则漂移又会冒出"读回的顺序与落盘的不是一套"的新 bug——旧随机序
+    /// 不被规范化，正是靠 EnsureLoaded 读回后在内存里补齐（Save 的规范序不追溯已写下的
+    /// 旧数据）。
+    /// </summary>
+    private bool ReorderCanonical(List<string> list)
+    {
+        var db = Db();
+        var canonical = db?.GetAllChartKeysPlain();
+        if (canonical == null || canonical.Length == 0)
+        {
+            return false;   // DB 不可用：退化原序，不赌
+        }
+        var before = new List<string>(list);
+        var pos = new Dictionary<string, int>(canonical.Length);
+        for (int i = 0; i < canonical.Length; i++)
+        {
+            pos[canonical[i]] = i;
+        }
+        list.Sort((a, b) =>
+        {
+            bool ha = pos.TryGetValue(a, out var pa);
+            bool hb = pos.TryGetValue(b, out var pb);
+            if (ha != hb) return ha ? -1 : 1;              // DB 有的排在前
+            if (ha && pa != pb) return pa.CompareTo(pb);   // 都在 DB：按扫描序
+            return string.CompareOrdinal(a, b);            // 都不在：字符串序兜底（确定性）
+        });
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (!string.Equals(list[i], before[i], StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>变更前保证已从磁盘读回：否则首次变更要么落盘被 _loaded 门挡掉，
@@ -238,7 +328,8 @@ public partial class MidiCore : Node
         }
     }
 
-    /// <summary>整表替换（选收藏夹 / 恢复会话 / 打乱后提交顺序）。会重置索引。</summary>
+    /// <summary>整表替换（选收藏夹 / 恢复会话 / adopt 单曲）。会重置索引。
+    /// 属于**内容变更**：走 Save 落盘（规范序，见 CanonicalOrderForPersist）。</summary>
     public void SetKeys(Godot.Collections.Array keys, int index)
     {
         lock (_playlistLock)
@@ -252,6 +343,28 @@ public partial class MidiCore : Node
             }
             _index = _keys.Count == 0 ? -1 : Mathf.Clamp(index, 0, _keys.Count - 1);
             Save();
+            PublishSnapshot();
+        }
+    }
+
+    /// <summary>
+    /// 提交一份**排列**（随机打乱 / 恢复顺序 / 会话内手动重排的整体结果）。
+    /// 与 SetKeys 的唯一区别：**不落盘**——排列是本次会话的状态，持久化歌单始终保持
+    /// 规范序（用户需求："没有增删时不更新持久化的歌单"）。
+    /// 拖拽单项排序走 Move，同样不落盘。
+    /// </summary>
+    public void SetArrangement(Godot.Collections.Array keys, int index)
+    {
+        lock (_playlistLock)
+        {
+            PrepareForMutation();
+            _keys.Clear();
+            foreach (var item in keys)
+            {
+                var s = item.AsString();
+                if (!string.IsNullOrEmpty(s)) _keys.Add(s);
+            }
+            _index = _keys.Count == 0 ? -1 : Mathf.Clamp(index, 0, _keys.Count - 1);
             PublishSnapshot();
         }
     }
@@ -299,7 +412,9 @@ public partial class MidiCore : Node
         }
     }
 
-    /// <summary>调整两项顺序，播放下标一起挪位（拖拽排序用）。</summary>
+    /// <summary>调整两项顺序，播放下标一起挪位（拖拽排序用）。
+    /// **重排不落盘**：手动排序是本次会话的排列状态，持久化歌单保持规范序
+    /// （"没有增删时不更新持久化的歌单"）。杀进程后重排丢失、读回规范序，符合预期。</summary>
     public void Move(int fromIdx, int toIdx)
     {
         lock (_playlistLock)
@@ -322,7 +437,6 @@ public partial class MidiCore : Node
                 }
                 _index = Mathf.Clamp(cur, 0, _keys.Count - 1);
             }
-            Save();
             PublishSnapshot();
         }
     }
@@ -444,6 +558,9 @@ public partial class MidiCore : Node
     {
         lock (_playlistLock)
         {
+            // 先记 dirty 再 PrepareForMutation：EnsureLoaded 读盘时据此不覆盖用户刚设的值
+            // （DB 未就绪时读盘尚未发生，此刻赋值 + dirty，就绪后由 EnsureLoaded 补落盘）
+            _repeat_mode_dirty = true;
             PrepareForMutation();
             _repeat_mode = mode;
             Save();

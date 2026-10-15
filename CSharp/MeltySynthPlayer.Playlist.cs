@@ -348,7 +348,14 @@ public partial class MeltySynthPlayer
 	/// 用户得手动把模式切走再切回来（那一步会走 set_repeat_mode → BecomeShuffled）才对得上。
 	///
 	/// _seqOrder/_shufOrder 是本次运行的排列快照：非空表示本次运行已经排过，不重复打乱
-	/// （同一进程内多次进页面不会每次都换顺序）。</summary>
+	/// （同一进程内多次进页面不会每次都换顺序）。
+	///
+	/// 索引对齐对**所有模式**生效（曾经的 bug：对齐只写在随机分支里，非随机模式
+	/// early-return，索引没人管）：无曲目在放、或当前曲不在歌单时归队首——与 EnsureLoaded
+	/// 的"读回后一律从第一首开始"是同一条契约；有曲目在放时把 index 指到它在歌单里的位置，
+	/// 随后 play_next/play_previous 从该位置推进，才是"下一首/上一首"的正确语义。
+	/// 随机分支内部（BecomeShuffled/ApplyArrangement → SetArrangement）已按同样规则设过
+	/// 索引，末尾这次对齐对随机模式是幂等的（值相同），行为零变化。</summary>
 	public void ApplyRepeatModeArrangement()
 	{
 		var core = MidiCore.Instance;
@@ -356,26 +363,35 @@ public partial class MeltySynthPlayer
 		{
 			return;
 		}
-		if (core.GetRepeatMode() != MidiCore.REPEAT_SHUFFLE)
+		// 排列仍只由随机模式做；但索引对齐不能再像过去那样随非随机模式一起 early-return——
+		// EnsureLoaded 读盘后按契约把 index 置 0，冷启动从 TrackView 试听一首在歌单里
+		// （位置 k）的歌后按"下一首"，play_next 的 advance 分支会从 index=0 取，播出
+		// keys[1] 而非 keys[k+1]（"上一首"更是回绕到末首）。
+		if (core.GetRepeatMode() == MidiCore.REPEAT_SHUFFLE)
 		{
-			return;
-		}
-		if (_seqOrder.Count == 0)
-		{
-			// 记下"切回顺序时该还原成什么"：此刻盘里那版就是对照基准
-			foreach (var k in core.GetKeys())
+			if (_seqOrder.Count == 0)
 			{
-				_seqOrder.Add(k);
+				// 记下"切回顺序时该还原成什么"：此刻盘里那版就是对照基准
+				foreach (var k in core.GetKeys())
+				{
+					_seqOrder.Add(k);
+				}
+			}
+			if (_shufOrder.Count == 0)
+			{
+				BecomeShuffled();
+			}
+			else
+			{
+				ApplyArrangement(_shufOrder);
 			}
 		}
-		if (_shufOrder.Count == 0)
-		{
-			BecomeShuffled();
-		}
-		else
-		{
-			ApplyArrangement(_shufOrder);
-		}
+		// 结束后索引归位（所有模式统一）：正在播放的曲目在歌单里 → index 指到它的位置，
+		// 随后 play_next/play_previous 从该位置前进/后退，才是"下一首"的正确语义；
+		// 不在（含冷启动什么都没在放）→ 回队首——与 EnsureLoaded 的"读回后一律从
+		// 第一首开始"是同一条契约（随机模式下即打乱后的首项，上一轮已修，不回归）。
+		int i = core.IndexOf(_currentKey);
+		core.SetIndex(i >= 0 ? i : 0);
 	}
 
 	public void set_repeat_mode(int mode)
@@ -442,7 +458,12 @@ public partial class MeltySynthPlayer
 		{
 			return;
 		}
-		string cur = core.GetCurrentKey();
+		// "要保留的当前曲"只认**真正在放的那首**（_currentKey）。不能拿 core.GetCurrentKey()
+		// （歌单 index 处的 key）凑数：读盘后 index 恒为 0，那只是 keys[0] 占位符——冷启动、
+		// 或从 TrackView 试听一首不在用户歌单里的歌时，把它当"当前曲"会把队首项挪到洗牌后的
+		// 中段并设 index，随后 play_next 的无基准分支就播放那一首，而不是打乱后的队首。
+		// 播放中切随机模式时 _currentKey 就在歌单里，保留定位的语义不变。
+		string cur = _currentKey;
 		var keys = new List<string>();
 		foreach (var k in core.GetKeys())
 		{
@@ -462,7 +483,8 @@ public partial class MeltySynthPlayer
 		{
 			arr.Add(k);
 		}
-		core.SetKeys(arr, idx >= 0 ? idx : 0);
+		// SetArrangement：打乱是排列不是内容——不落盘，持久化歌单保持规范序
+		core.SetArrangement(arr, idx >= 0 ? idx : 0);
 	}
 
 	private void ApplyArrangement(List<string> arrangement)
@@ -472,7 +494,9 @@ public partial class MeltySynthPlayer
 		{
 			return;
 		}
-		string cur = core.GetCurrentKey();
+		// 同 BecomeShuffled：只认真正在放的曲目（_currentKey）；歌单 index 处的 key 在读盘后
+		// 只是 keys[0] 占位符，不能拿来当"当前曲"定位。
+		string cur = _currentKey;
 		var have = new HashSet<string>();
 		foreach (var k in arrangement)
 		{
@@ -502,6 +526,7 @@ public partial class MeltySynthPlayer
 			arr.Add(k);
 		}
 		int idx = arranged.IndexOf(cur);
-		core.SetKeys(arr, idx >= 0 ? idx : 0);
+		// 同 BecomeShuffled：排列提交不落盘
+		core.SetArrangement(arr, idx >= 0 ? idx : 0);
 	}
 }

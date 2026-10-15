@@ -367,6 +367,31 @@ func _connect_signals() -> void:
 	# 配置变更信号（新增）
 	event_bus.config_changed.connect(_on_config_changed)
 
+	# C# 播放器的导航请求（外部媒体命令的上下首处理完后发来）：由 UI 侧切到播放器页。
+	# C# 只发信号、不直接切页面——媒体命令处理（后台时经主线程信号派发到达）不被
+	# 视图实例化/入场动画这些按帧推进的活阻塞。
+	if MeltySynth != null:
+		MeltySynth.navigate_to_player_requested.connect(_on_navigate_to_player_requested)
+	else:
+		logger.warning("MeltySynth is null, cannot connect navigate_to_player_requested signal", "Main")
+
+## C# 播放器请求导航到播放器页（外部媒体命令"上下首"的入口语义：切歌由播放器负责，
+## 页面切换只发信号通知 UI）。延迟一帧执行：与命令处理解耦。
+func _on_navigate_to_player_requested() -> void:
+	call_deferred("_navigate_to_player")
+
+func _navigate_to_player() -> void:
+	if state_manager == null or state_manager.current_state == UIStateManager.UIState.MUSIC_PLAYER_VIEW:
+		return
+	# 从 TrackView 的试听会话过来时摘掉历史栈里的 TRACK_VIEW：否则从播放器页按返回
+	# 会回到 TrackView（同一首歌的另一种视图），与"上下首 = 进播放器页"的入口语义不符
+	# （原 C# NavigateToPlayer 的同款逻辑，随页面切换一并搬到 UI 侧）
+	var hist := state_manager.state_history
+	var idx := hist.find(UIStateManager.UIState.TRACK_VIEW)
+	if idx >= 0:
+		hist.remove_at(idx)
+	state_manager.change_state(UIStateManager.UIState.MUSIC_PLAYER_VIEW, false)
+
 ## 加载配置文件（验证和应用）
 func _load_configuration() -> void:
 	# 配置已在 _initialize_core_systems() 中预加载

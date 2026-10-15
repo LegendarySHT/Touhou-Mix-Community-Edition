@@ -296,8 +296,7 @@ func _ensure_playing(mgr) -> void:
 	# 要用用户播放列表(A)时先确保它就绪：C# 侧为空先读盘恢复，仍为空则借单曲槽那首(B)。
 	# 正常通道（演奏/试听/媒体播种）只写单曲槽、不碰 A，所以这里必须自己确保 A 可用；
 	# 为此本页的播放动作天然就是"开始播放 A"，与用户从 TrackView 试听过来不冲突。
-	if MidiCore.GetCount() == 0 or not MidiCore.IsPersistEnabled():
-		mgr.ensure_user_playlist()
+	mgr.ensure_user_playlist()
 	# 本页 = 用户播放列表(A)会话：显式清掉可能残留的单曲槽标记，
 	# 否则 A 有内容也会被当作单曲槽而"播完不推进"
 	mgr.begin_user_session()

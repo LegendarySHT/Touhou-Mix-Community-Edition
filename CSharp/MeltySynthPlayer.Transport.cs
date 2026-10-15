@@ -91,6 +91,7 @@ public partial class MeltySynthPlayer
 	[Signal] public delegate void deferred_play_resumedEventHandler();
 	[Signal] public delegate void soundfont_reload_completedEventHandler();
 	[Signal] public delegate void midi_finishedEventHandler();
+	[Signal] public delegate void navigate_to_player_requestedEventHandler();
 	/// <summary>音频焦点变化（来自 Java AudioManager）。取值：0=GAIN / 1=LOSS_TRANSIENT /
 	/// 2=DUCK / 3=LOSS。上层据此暂停与恢复 —— 焦点归还的时刻才是恢复音频设备唯一可能成功的时刻。</summary>
 	[Signal] public delegate void audio_focus_changedEventHandler(int state);
@@ -216,7 +217,19 @@ public partial class MeltySynthPlayer
 			play();
 			return true;
 		}
-		int i = core.IndexOf(core.NextKey());
+		// 当前曲不在（空）歌单里时——冷启动什么都没加载过、或从 TrackView 试听一首不在
+		// 用户歌单里的歌——"下一首"没有可推进的基准：从当前索引（ensure_user_playlist 已
+		// 按模式归位：随机模式下即打乱后的队首）起播，而不是跳过队首。否则外部按一次
+		// "下一首"进播放器页，会直接落在打乱后的第二首，且看不出为什么。
+		// 判据用 _currentKey 而非 playing：自动推进（userInitiated=false）必然已有曲目
+		// 在放，不受影响。
+		if (string.IsNullOrEmpty(_currentKey) || core.IndexOf(_currentKey) < 0)
+		{
+			play_index(core.GetIndex());
+			return true;
+		}
+		var nk = core.NextKey();
+		int i = core.IndexOf(nk);
 		if (i < 0)
 		{
 			return false;
@@ -232,6 +245,13 @@ public partial class MeltySynthPlayer
 		if (core == null || core.GetCount() == 0)
 		{
 			return false;
+		}
+		// 同 play_next：没有可推进的基准（冷启动 / 当前曲不在歌单）时从当前索引起播，
+		// 不回绕到末尾——经"上一首"进播放器页的入口语义同样是"从歌单开头放"。
+		if (string.IsNullOrEmpty(_currentKey) || core.IndexOf(_currentKey) < 0)
+		{
+			play_index(core.GetIndex());
+			return true;
 		}
 		int i = core.IndexOf(core.PrevKey());
 		if (i < 0)
@@ -607,14 +627,14 @@ public partial class MeltySynthPlayer
 			// A 为空：借用单曲槽那首当起点（不落盘，用户编辑后再转正式）
 			adopt_single_into_playlist();
 		}
+		// 模式广播**无条件**：懒加载视图的 _ready 早于 MidiCore 读盘，那时读到的
+		// 是内存默认值（顺序）——不补广播，按钮/面板就打乱按钮就一直停在默认态。
+		// 空列表也广播：模式本身独立于列表存在（MidiCore 的 playlist meta）。
+		EmitSignal(SignalName.repeat_mode_changed, core.GetRepeatMode());
 		if (core.GetCount() > 0)
 		{
 			core.SetPersistEnabled(true);
 			core.SetSessionSingle(false);
-			// 读回磁盘后必须把「模式」广播一次：UI（播放器页的播放方式按钮、播放列表面板的
-			// 打乱按钮）是在 MidiCore 读盘之前建的，不广播就会一直停在默认的顺序模式，
-			// 要用户手动切一次模式才对得上。
-			EmitSignal(SignalName.repeat_mode_changed, core.GetRepeatMode());
 			// 排列也要跟上模式：随机模式下盘里若还是顺序排列，这里真正打乱一次
 			ApplyRepeatModeArrangement();
 		}
@@ -1133,16 +1153,27 @@ public partial class MeltySynthPlayer
 			return;
 		}
 
-		// 上下首：与旧 `_on_backend_command` 一致 —— **无条件**交给中心执行器
-		// （handle_media_command 内部自己 ensure_user_playlist + play_next/play_previous），
-		// 处理完一律进播放器页（这是该页面的入口语义，与歌单是否为空无关）。
-		// 【刻意不按"当前是否在播放器页"分支】曾经的分支会让 TrackView 里的"下一首"
-		// 变成"丢弃当前会话、从用户歌单第一首重开"，与 55b11058 的行为不一致。
+		// 上下首：切歌/起播是**播放器行为**，无条件交给中心执行器（与旧 `_on_backend_command`
+		// 一致 —— handle_media_command 内部自己 ensure_user_playlist + play_next/play_previous，
+		// 冷启动/从 TrackView 试听切入时由它负责切到用户歌单）。后台/熄屏时这条纯播放器
+		// 链路本就工作正常：媒体按钮生效不依赖 UI 在跑。
+		// 页面切换不在此处直接做：只发一个导航信号，由 UI 侧（Main）决定何时切页面——
+		// 免得视图实例化/入场动画这些按帧推进的活堵在媒体命令处理里（后台时尤其）。
+		//
+		// 【信号必须在切歌之前发】Main 侧是 call_deferred 切页，而切歌引发的
+		// TrackView"下方换曲"重载同样是 call_deferred（_current_song_changed 处理器排队）——
+		// 两者进同一个 deferred 队列，按发出顺序 FIFO 执行。若先切歌再发信号，重载会排在
+		// 切页前面跑完：彼时会话所有者还是 TrackView（播放器页尚未 claim），重载尾部的
+		// start_preview + claim_session 把会话打回单曲槽试听（session_single=true），
+		// 之后切页的 claim 也于事无补 —— 播放器页的列表会话被抢走，曲终不推进、
+		// 文件级单曲循环（23:16 实测： Escape 播完原地重播）。
+		// 先发信号则队列变为「切页（register_view→claim 播放器页）→ 重载（_owns_session
+		// 守卫见所有者已易主，直接返回）」，试听会话不会再被重新抢占。
 		if (action == "next" || action == "prev")
 		{
+			EmitSignal(SignalName.navigate_to_player_requested);
 			handle_media_command(action, posMs);
 			PushMediaState(true);
-			NavigateToPlayer();
 			return;
 		}
 		handle_media_command(action, posMs);
@@ -1163,31 +1194,6 @@ public partial class MeltySynthPlayer
 	/// </summary>
 	public bool is_media_command_allowed_here() => _mediaViewRegistered;
 
-
-	private void NavigateToPlayer()
-	{
-		var ui = GetNodeOrNull("/root/UiStatMGR");
-		if (ui == null)
-		{
-			return;
-		}
-		if (ui.Get("current_state").AsInt32() == UiStateMusicPlayerView)
-		{
-			return;   // 已在该页：再 change_state 只会打一条 "can not change state" 噪音
-		}
-		var hist = ui.Get("state_history");
-		if (hist.VariantType == Variant.Type.Array)
-		{
-			var arr = hist.AsGodotArray();
-			int idx = arr.IndexOf(UiStateTrackView);
-			if (idx >= 0)
-			{
-				arr.RemoveAt(idx);
-			}
-			ui.Set("state_history", arr);
-		}
-		ui.Call("change_state", UiStateMusicPlayerView, false);
-	}
 
 	private ulong _lastMediaPushTicks = 0;
 	private const ulong MediaPushIntervalMs = 500;
