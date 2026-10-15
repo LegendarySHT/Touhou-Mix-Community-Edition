@@ -619,32 +619,12 @@ func _midi_load_children(album_id: String) -> void:
 	_midi_loaded[album_id] = true
 	if keys.is_empty():
 		return  # 重算可视行由调用方统一做（展开全部时可只算一次）
-	var projections: Array = ChartDB.GetMidiListItemsByKeys(keys, "")
-	var by_key := {}
-	for p in projections:
-		by_key[String(p.get("key", ""))] = p
 	# 找到组行位置，在其后插入
 	for i in _rows.size():
 		var row: Dictionary = _rows[i]
 		if int(row.get("kind", RowKind.FLAT)) == RowKind.GROUP and String(row["key"]) == album_id:
-			var inserted: Array = []
-			for k in keys:
-				var info: Dictionary = by_key.get(String(k), {})
-				var author := String(info.get("artist_name", ""))
-				if author.is_empty():
-					author = "-"
-				inserted.append({
-					"kind": RowKind.ITEM,
-					"key": String(k),
-					"group": album_id,
-					"left": "    %s" % String(info.get("name", String(k))),
-					"right": author,
-					# 折叠期间被组行全选过的谱面，展开后要还原勾选
-					"selected": bool(_midi_checked.get(String(k), false)),
-					"disabled": false,
-				})
 			var at := i + 1
-			for r in inserted:
+			for r in _midi_rows_for(keys, album_id):
 				_rows.insert(at, r)
 				at += 1
 			break
@@ -654,24 +634,34 @@ func _midi_append_children(out: Array, album_id: String) -> void:
 	var keys: Array = _midi_children.get(album_id, [])
 	if keys.is_empty():
 		return
+	for r in _midi_rows_for(keys, album_id):
+		out.append(r)
+
+
+## 按 key 序列取投影并建成子行（展开 / 重建共用；一次 GetMidiListItemsByKeys 批量查）。
+## 保持传入顺序，投影缺失的键也能出列（只丢名字），与旧行为一致。
+func _midi_rows_for(keys: Array, album_id: String) -> Array:
 	var projections: Array = ChartDB.GetMidiListItemsByKeys(keys, "")
 	var by_key := {}
 	for p in projections:
 		by_key[String(p.get("key", ""))] = p
+	var rows: Array = []
 	for k in keys:
 		var info: Dictionary = by_key.get(String(k), {})
 		var author := String(info.get("artist_name", ""))
 		if author.is_empty():
 			author = "-"
-		out.append({
+		rows.append({
 			"kind": RowKind.ITEM,
 			"key": String(k),
 			"group": album_id,
 			"left": "    %s" % String(info.get("name", String(k))),
 			"right": author,
+			# 折叠期间被组行全选过的谱面，展开后要还原勾选
 			"selected": bool(_midi_checked.get(String(k), false)),
 			"disabled": false,
 		})
+	return rows
 
 
 # ════════════════════════════════════════════════════════════

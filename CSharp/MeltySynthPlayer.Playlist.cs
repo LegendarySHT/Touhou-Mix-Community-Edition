@@ -306,8 +306,6 @@ public partial class MeltySynthPlayer
 		EmitSignal(SignalName.playlist_index_changed, core.GetIndex());
 	}
 
-	public bool playlist_has_midi(Variant m) => MidiCore.Instance?.Has(KeyOfVariant(m)) ?? false;
-
 	public bool play_by_key(string chartKey)
 	{
 		if (string.IsNullOrEmpty(chartKey))

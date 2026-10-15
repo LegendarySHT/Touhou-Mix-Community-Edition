@@ -796,11 +796,11 @@ func has_playlist() -> bool:
 	return MeltySynth.has_playlist() if MeltySynth != null else false
 func playlist_has_key(k: String) -> bool:
 	return MeltySynth.playlist_has_key(k) if MeltySynth != null else false
-func playlist_has_midi(m: MidiData) -> bool:
-	return MeltySynth.playlist_has_midi(m) if MeltySynth != null else false
 func append_to_playlist(items: Array) -> void:
 	if MeltySynth != null: MeltySynth.append_to_playlist(items)
-func insert_next_in_playlist(data: MidiData) -> bool:
+## 收 Variant：MidiData 或规范键字符串都行（C# KeyOfVariant 两种都认）。
+## 曲库卡片传 key 即可，省掉"为取一个 key 先水合整份谱面 JSON"的主线程读库。
+func insert_next_in_playlist(data: Variant) -> bool:
 	return MeltySynth.insert_next_in_playlist(data) if MeltySynth != null else false
 func remove_from_playlist(index: int) -> void:
 	if MeltySynth != null: MeltySynth.remove_from_playlist(index)

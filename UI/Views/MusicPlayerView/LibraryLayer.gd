@@ -243,17 +243,6 @@ const DATA_REGION := {
 	SortingEngine.SortDataField.UPLOADED_DATE: Rect2(240, 320, 80, 80),
 }
 
-## 列表项是轻量投影（Dictionary），批量操作前水合为 MidiData。
-## 单个曲子水合失败（已删除/DB 未就绪）时跳过。
-func _visible_library_midis() -> Array[MidiData]:
-	var out: Array[MidiData] = []
-	for it in _lib_items:
-		if it is Dictionary:
-			var m: MidiData = DataMGR.get_midi_by_id(String((it as Dictionary).get("key", "")))
-			if m != null:
-				out.append(m)
-	return out
-
 # ── 曲库卡片操作 ──────────────────────────────────────
 
 ## 把轻量投影的 key 写进播放列表
@@ -270,9 +259,8 @@ func _on_card_play_next(item: Dictionary) -> void:
 	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
-	var data: MidiData = DataMGR.get_midi_by_id(k)
-	if data != null:
-		mgr.insert_next_in_playlist(data)
+	# 同上：insert_next 只需要 key，不必为取 key 先水合整份谱面 JSON
+	mgr.insert_next_in_playlist(k)
 
 func _on_card_add(item: Dictionary) -> void:
 	var k := _key_of(item)
@@ -281,9 +269,10 @@ func _on_card_add(item: Dictionary) -> void:
 	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
-	var data: MidiData = DataMGR.get_midi_by_id(k)
-	if data != null and not mgr.playlist_has_key(k):
-		mgr.append_to_playlist([data] as Array[MidiData])
+	# 投影的 key 就是规范键（ChartDb.ListItemDict 的 key = _id），而 append 只需要 key
+	# （C# KeyOfVariant 认字符串变体）——不必为取一个 key 先水合整份谱面 JSON
+	if not mgr.playlist_has_key(k):
+		mgr.append_to_playlist([k])
 
 func _on_card_favorite(item: Dictionary) -> void:
 	var k := _key_of(item)
@@ -295,10 +284,13 @@ func _on_batch_add_pressed() -> void:
 	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
-	var add: Array[MidiData] = []
-	for m in _visible_library_midis():
-		if not mgr.playlist_has_midi(m):
-			add.append(m)
+	# 投影里就带 key（= 规范键 _id），append 只需要 key：零 DB 查询、零水合。
+	var add: Array = []
+	for it in _lib_items:
+		if it is Dictionary:
+			var k := _key_of(it)
+			if not k.is_empty() and not mgr.playlist_has_key(k):
+				add.append(k)
 	if not add.is_empty():
 		mgr.append_to_playlist(add)
 

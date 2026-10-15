@@ -154,10 +154,10 @@ func get_midis_by_song(song_id: String) -> Array[MidiData]:
 func get_midi_by_id(midi_id: String) -> MidiData:
 	if midi_id.is_empty():
 		return null
+	if midis.has(midi_id):
+		return midis[midi_id]
 	if ChartDB == null or not ChartDB.IsOpen():
-		# DB 未打开：仅能在已水合缓存中查找，支持 chart_key / id / file_hash 任意别名
-		if midis.has(midi_id):
-			return midis[midi_id]
+		# DB 未打开：仅在已水合缓存中按别名兜底（chart_key / id / file_hash）
 		for midi: MidiData in midis.values():
 			if midi.chart_key == midi_id or midi.id == midi_id or midi.file_hash == midi_id:
 				return midi
@@ -166,16 +166,6 @@ func get_midi_by_id(midi_id: String) -> MidiData:
 	if chart_key.is_empty():
 		return null
 	return _ensure_midi(chart_key)
-
-## 将任意 ID 别名（id / file_hash / hash / midi_id / folder_name）解析为规范键（folder_name）
-## DB 未打开时无法解析，原样返回别名（调用方需自行降级处理）
-func resolve_chart_key(alias: String) -> String:
-	if alias.is_empty():
-		return ""
-	if ChartDB == null or not ChartDB.IsOpen():
-		return alias
-	var key: String = ChartDB.LookupChartKey(alias)
-	return key if not key.is_empty() else alias
 
 ## 按状态过滤MIDI谱面
 func get_midis_by_status(status: String) -> Array[MidiData]:
