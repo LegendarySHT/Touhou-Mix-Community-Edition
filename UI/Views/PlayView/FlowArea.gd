@@ -39,12 +39,12 @@ var _skin_config: Dictionary = {}
 var _is_glow_enabled: bool = false
 
 # long-f 中部贴图应用方式："repeat"（水平拉伸+垂直重复）或 "stretch"（固定比例映射，不随身体压缩）
-var _long_f_mode: String = "repeat"
+var _long_f_mode: String = SkinManager.LONG_F_MODE_REPEAT
 # stretch 模式的贴图映射方式："screen"（方案 A：屏幕固定映射）或 "length"（方案 B：按身体基准长度映射）
-var _long_stretch_mode: String = "length"
+var _long_stretch_mode: String = SkinManager.LONG_STRETCH_MODE_LENGTH
 
 # 长条连接模式："edge"（边缘连接，默认）或 "center"（中心连接）
-var _long_connect_mode: String = "edge"
+var _long_connect_mode: String = SkinManager.LONG_CONNECT_MODE_EDGE
 var _long_connect_center: bool = false  # 缓存 _long_connect_mode=="center"，热路径避免每帧字符串比较
 
 # 随机颜色（由 PlayView 在 _prepare_game 时生成并传入）
@@ -549,10 +549,14 @@ func load_note_skin(skin_name: String = SkinManager.DEFAULT_SKIN_PRESET) -> void
 		skin_textures = SkinMGR.get_skin_textures(skin_name)
 		# 加载皮肤完整配置（新结构）
 		_skin_config = SkinMGR.get_skin_config(skin_name)
-		# 读取光效总开关与长条连接模式
+		# 长条三项显示模式（连接/延伸/缩放基准）经统一入口一次取回，默认值收敛在 SkinManager
+		var long_settings: Dictionary = SkinMGR.get_long_settings(skin_name)
+		_long_connect_mode = long_settings.get("connect_mode", SkinManager.LONG_CONNECT_MODE_EDGE)
+		_long_connect_center = _long_connect_mode == SkinManager.LONG_CONNECT_MODE_CENTER
+		_long_f_mode = long_settings.get("f_mode", SkinManager.LONG_F_MODE_REPEAT)
+		_long_stretch_mode = long_settings.get("stretch_mode", SkinManager.LONG_STRETCH_MODE_LENGTH)
+		# 读取光效总开关
 		_is_glow_enabled = SkinMGR.is_glow_enabled(skin_name)
-		_long_connect_mode = SkinMGR.get_long_connect_mode(skin_name)
-		_long_connect_center = _long_connect_mode == "center"
 
 	# 构建纹理数组，按顺序: short(点块Block), short_core, instant(滑块Slide), instant_core, long_b, long_b_core, long_f, long_f_core, long_t, long_t_core
 	var texture_array = [
@@ -612,16 +616,8 @@ func refresh_note_colors() -> void:
 
 # 根据皮肤配置设置 long-f 中部贴图的应用方式
 # repeat → 水平拉伸+垂直重复（drawer 分条绘制）；stretch → 固定比例映射（映射方式见 long_stretch_mode）
+# 模式值由 load_note_skin 经 SkinMGR.get_long_settings 读入并缓存，此处只负责同步到批量绘制器
 func _apply_long_f_mode() -> void:
-	var mode = "repeat"
-	if _skin_config.has("long") and _skin_config["long"].has("long_f_mode"):
-		mode = _skin_config["long"]["long_f_mode"]
-	_long_f_mode = mode
-	# 拉伸映射方式：screen=屏幕固定映射（方案 A）/ length=按身体基准长度映射（方案 B）
-	var stretch_mode = SkinManager.LONG_STRETCH_MODE_LENGTH
-	if _skin_config.has("long") and _skin_config["long"].has("long_stretch_mode"):
-		stretch_mode = _skin_config["long"]["long_stretch_mode"]
-	_long_stretch_mode = stretch_mode
 	# 同步到批量绘制器（皮肤热切换时实时更新）
 	if _note_drawer:
 		_note_drawer.set_long_body_mode(_long_f_mode)

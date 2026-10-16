@@ -27,6 +27,17 @@ const LONG_BODY_REPEAT_SHADER: Shader = preload("res://UI/Components/PopupWindow
 @onready var _long_color_picker: ColorPickerButton = $VBoxC/OtherOptions/LongColor/ColorPickerButton
 @onready var _random_long_cb: CheckBox = $VBoxC/OtherOptions/RandomLongColor
 
+# 长条三项模式：UI 选项索引 ↔ 工作副本配置值 的映射（顺序与 PopupWindow.tscn 中各
+# OptionButton 的 popup item 顺序一致，是索引/值对应关系的唯一来源）。
+#   long_connect_mode: 0=边缘连接(edge)    1=中心连接(center)
+#   long_f_mode:       0=拉伸(stretch)     1=重复(repeat)    ← 注意与上一项顺序相反
+#   long_stretch_mode: 0=屏幕固定(screen)  1=跟随长条(length)
+const _LONG_MODE_UI_ORDER := {
+	"long_connect_mode": [SkinManager.LONG_CONNECT_MODE_EDGE, SkinManager.LONG_CONNECT_MODE_CENTER],
+	"long_f_mode": [SkinManager.LONG_F_MODE_STRETCH, SkinManager.LONG_F_MODE_REPEAT],
+	"long_stretch_mode": [SkinManager.LONG_STRETCH_MODE_SCREEN, SkinManager.LONG_STRETCH_MODE_LENGTH],
+}
+
 # 当前编辑中的皮肤配置工作副本（结构同 SkinManager.get_skin_config 的返回）
 var _working_config: Dictionary = {}
 # 当前选中的皮肤名（含 [内置] 后缀）
@@ -43,6 +54,8 @@ func _ready() -> void:
 	_l_stretch_mode_btn.item_selected.connect(_on_setting_changed)
 	# 预览长条容器尺寸变化：screen 拉伸模式的 AtlasTexture 裁剪区域需按新尺寸重算
 	_note_long_node.resized.connect(_on_long_preview_resized)
+	# 长条连接模式偏移依赖 head/tail 布局尺寸，布局落地后需自动重算（详见 _bind_connect_mode_fit）
+	_bind_connect_mode_fit()
 	_enable_glow_cb.toggled.connect(_on_setting_changed)
 	# 自定义颜色总开关：单独处理，联动启用/禁用后续颜色子项
 	_custom_color_cb.toggled.connect(_on_custom_color_toggled)
@@ -149,15 +162,8 @@ func _sync_ui_from_config() -> void:
 	_long_color_picker.color = long_sec.get("color", Color.WHITE)
 	_set_checkbox_no_signal(_random_long_cb, bool(long_sec.get("random_color", false)))
 
-	# 长条连接模式：UI 0=edge, 1=center
-	var conn_mode = long_sec.get("long_connect_mode", SkinMGR.LONG_CONNECT_MODE_EDGE)
-	_l_conn_mode_btn.select(1 if conn_mode == SkinMGR.LONG_CONNECT_MODE_CENTER else 0)
-	# 长条延伸模式：UI 0=stretch, 1=repeat（注意顺序与 conn_mode 相反）
-	var f_mode = long_sec.get("long_f_mode", SkinMGR.LONG_F_MODE_REPEAT)
-	_l_repeat_mode_btn.select(1 if f_mode == SkinMGR.LONG_F_MODE_REPEAT else 0)
-	# 长条拉伸方式：UI 0=屏幕固定（方案 A）, 1=按实际长度（方案 B）
-	var stretch_mode = long_sec.get("long_stretch_mode", SkinMGR.LONG_STRETCH_MODE_LENGTH)
-	_l_stretch_mode_btn.select(0 if stretch_mode == SkinMGR.LONG_STRETCH_MODE_SCREEN else 1)
+	# 长条三项模式（连接/延伸/缩放基准）：经统一映射表同步，不在各处手写索引对应关系
+	_sync_long_modes_from_config()
 
 	# 根据 CustomColor 总开关状态联动启用/禁用颜色子项
 	# set_pressed_no_signal 不触发 toggled，需手动同步一次控件可用状态
@@ -173,12 +179,8 @@ func _read_ui_to_config() -> void:
 	_read_note_section_to_config("short", _block_color_cb, _block_color_picker, _random_block_cb)
 	_read_note_section_to_config("instant", _slide_color_cb, _slide_color_picker, _random_slide_cb)
 	_read_note_section_to_config("long", _long_color_cb, _long_color_picker, _random_long_cb)
-	# 长条独有字段
-	if not _working_config.has("long"):
-		_working_config["long"] = {}
-	_working_config["long"]["long_connect_mode"] = SkinMGR.LONG_CONNECT_MODE_CENTER if _l_conn_mode_btn.selected == 1 else SkinMGR.LONG_CONNECT_MODE_EDGE
-	_working_config["long"]["long_f_mode"] = SkinMGR.LONG_F_MODE_REPEAT if _l_repeat_mode_btn.selected == 1 else SkinMGR.LONG_F_MODE_STRETCH
-	_working_config["long"]["long_stretch_mode"] = SkinMGR.LONG_STRETCH_MODE_SCREEN if _l_stretch_mode_btn.selected == 0 else SkinMGR.LONG_STRETCH_MODE_LENGTH
+	# 长条三项模式（连接/延伸/缩放基准）：经统一映射表读回，不在各处手写索引对应关系
+	_read_long_modes_to_config()
 
 func _read_note_section_to_config(key: String, enable_cb: CheckBox, picker: ColorPickerButton, random_cb: CheckBox) -> void:
 	if not _working_config.has(key):
@@ -186,6 +188,43 @@ func _read_note_section_to_config(key: String, enable_cb: CheckBox, picker: Colo
 	_working_config[key]["enable_color"] = enable_cb.button_pressed
 	_working_config[key]["color"] = picker.color
 	_working_config[key]["random_color"] = random_cb.button_pressed
+
+## 长条模式配置键 → 对应 OptionButton
+func _long_mode_btn(key: String) -> OptionButton:
+	match key:
+		"long_connect_mode": return _l_conn_mode_btn
+		"long_f_mode": return _l_repeat_mode_btn
+		"long_stretch_mode": return _l_stretch_mode_btn
+	return null
+
+## 工作副本中的长条三项模式（缺失键兜底为 SkinManager 默认值，默认值唯一来源）
+func _working_long_modes() -> Dictionary:
+	var long_sec: Dictionary = _working_config.get("long", {})
+	return {
+		"long_connect_mode": long_sec.get("long_connect_mode", SkinManager.LONG_CONNECT_MODE_EDGE),
+		"long_f_mode": long_sec.get("long_f_mode", SkinManager.LONG_F_MODE_REPEAT),
+		"long_stretch_mode": long_sec.get("long_stretch_mode", SkinManager.LONG_STRETCH_MODE_LENGTH),
+	}
+
+## 将工作副本中的长条三项模式同步到 UI（select 不发射 item_selected，无需防信号）
+func _sync_long_modes_from_config() -> void:
+	var modes := _working_long_modes()
+	for key in _LONG_MODE_UI_ORDER:
+		var values: Array = _LONG_MODE_UI_ORDER[key]
+		var idx := values.find(modes.get(key, values[0]))
+		var btn := _long_mode_btn(key)
+		if btn:
+			btn.select(maxi(0, idx))
+
+## 从 UI 读回长条三项模式写入工作副本
+func _read_long_modes_to_config() -> void:
+	if not _working_config.has("long"):
+		_working_config["long"] = {}
+	for key in _LONG_MODE_UI_ORDER:
+		var values: Array = _LONG_MODE_UI_ORDER[key]
+		var btn := _long_mode_btn(key)
+		if btn:
+			_working_config["long"][key] = values[clampi(btn.selected, 0, values.size() - 1)]
 
 ## 任意设置项变化时：读 UI → 刷新预览
 func _on_setting_changed(_v) -> void:
@@ -238,21 +277,44 @@ func _apply_preview_from_config() -> void:
 				_apply_preview_glow(part_node, long_color, enable_glow, glow_intensity, glow_size)
 
 	# 3. 长条连接模式：center → head/tail 各向 body 偏移半高；edge → 重置
-	var long_sec: Dictionary = _working_config.get("long", {})
-	var conn_mode = long_sec.get("long_connect_mode", SkinMGR.LONG_CONNECT_MODE_EDGE)
+	#    （偏移量依赖 head/tail 的布局尺寸，布局未稳定时算出的值无效，
+	#     故除在此应用外，还通过 _bind_connect_mode_fit 绑定 resized 自动重算）
+	_apply_connect_mode_offset()
+
+	# 4. 长条延伸模式：repeat → LongBodyRepeat shader；stretch → 固定比例映射
+	#    （stretch 的映射方式：screen 用 AtlasTexture 裁出身体对应段，length 显示整图）
+	_refresh_long_body_preview()
+
+## 长条连接模式预览偏移：center → head/tail 各向 body 偏移半高；edge → 重置
+## 偏移量 = 半个 head/tail 布局高度，依赖布局尺寸，必须在布局稳定后计算：
+## 弹窗首次打开时 init_adjust() 早于 popup()，预览容器不可见、尚未布局（size 为 0），
+## 此时算出的偏移是 0，预览恒表现为"边缘连接"，且之后无人重算——直到用户改动选项才恢复正常。
+## 因此除 _apply_preview_from_config 调用外，还经 _bind_connect_mode_fit 绑定
+## head/tail 的 resized / visibility_changed，布局落地（popup 显示、换肤、尺寸变化）后自动重算。
+func _apply_connect_mode_offset() -> void:
+	var conn_mode: String = _working_long_modes().get("long_connect_mode", SkinManager.LONG_CONNECT_MODE_EDGE)
 	var head_node = _note_long_node.get_node_or_null("VBoxC/head")
 	var tail_node = _note_long_node.get_node_or_null("VBoxC/tail")
 	if head_node and tail_node:
-		if conn_mode == SkinMGR.LONG_CONNECT_MODE_CENTER:
+		if conn_mode == SkinManager.LONG_CONNECT_MODE_CENTER:
 			head_node.offset_transform_position.y = -head_node.size.y * 0.5
 			tail_node.offset_transform_position.y = tail_node.size.y * 0.5
 		else:
 			head_node.offset_transform_position.y = 0.0
 			tail_node.offset_transform_position.y = 0.0
 
-	# 4. 长条延伸模式：repeat → LongBodyRepeat shader；stretch → 固定比例映射
-	#    （stretch 的映射方式：screen 用 AtlasTexture 裁出身体对应段，length 显示整图）
-	_refresh_long_body_preview()
+## 绑定长条连接模式偏移的自动重算（只绑一次，与 _bind_glow_fit 同思路）
+## resized：布局落地/尺寸变化后按新尺寸重算（弹窗 popup() 后布局稳定、换肤后头尾高度变化都会触发）；
+## visibility_changed：弹窗 popup() 后补一次，覆盖"隐藏状态下完成布局、resized 不触发"的情况。
+func _bind_connect_mode_fit() -> void:
+	if _note_long_node.has_meta("_conn_fit_bound"):
+		return
+	_note_long_node.set_meta("_conn_fit_bound", true)
+	for part in ["head", "tail"]:
+		var part_node := _note_long_node.get_node_or_null("VBoxC/" + part)
+		if part_node is Control:
+			part_node.resized.connect(_apply_connect_mode_offset)
+			part_node.visibility_changed.connect(_apply_connect_mode_offset)
 
 ## 解析预览颜色：随机模式时生成一个临时随机色（仅用于预览，不写回配置）
 func _resolve_preview_color(key: String, enable_cb: CheckBox, picker: ColorPickerButton, random_cb: CheckBox) -> Color:
@@ -349,11 +411,11 @@ func _fit_glow_quad(glow: Node, note_root: Node) -> void:
 	glow_ctrl.offset_bottom = 0.0
 
 ## 应用预览 body/core 的 long-f 中部贴图样式（延伸模式 + 拉伸映射方式）。
-## 抽出为独立入口：预览容器尺寸变化时，screen 模式的 AtlasTexture 裁剪区域需重算
+## 抽出为独立入口：预览容器尺寸变化时，repeat 的分条周期与 screen 的裁剪区域都需重算
 func _refresh_long_body_preview() -> void:
-	var long_sec: Dictionary = _working_config.get("long", {})
-	var f_mode = long_sec.get("long_f_mode", SkinMGR.LONG_F_MODE_REPEAT)
-	var stretch_mode = long_sec.get("long_stretch_mode", SkinMGR.LONG_STRETCH_MODE_LENGTH)
+	var modes := _working_long_modes()
+	var f_mode: String = modes.get("long_f_mode", SkinManager.LONG_F_MODE_REPEAT)
+	var stretch_mode: String = modes.get("long_stretch_mode", SkinManager.LONG_STRETCH_MODE_LENGTH)
 	_apply_preview_long_f_mode(_note_long_node.get_node_or_null("VBoxC/body"),
 		_preview_long_body_tex, f_mode, stretch_mode)
 	_apply_preview_long_f_mode(_note_long_node.get_node_or_null("VBoxC/body/core"),
@@ -410,11 +472,9 @@ func _make_preview_screen_atlas(node: Control, base_tex: Texture2D) -> AtlasText
 	atlas.region = Rect2(0.0, v0 * tex_h, tex_w, region_h)
 	return atlas
 
-## 预览长条容器尺寸变化：屏幕固定模式下分条/裁剪的锚点依赖容器高度与节点位置，需重算
+## 预览长条容器尺寸变化：body 的 repeat 分条周期（v_repeat）依赖 body 高度、
+## screen 模式的 AtlasTexture 裁剪依赖容器高度与节点位置，均需按新尺寸重算——与当前模式无关
 func _on_long_preview_resized() -> void:
-	var long_sec: Dictionary = _working_config.get("long", {})
-	if long_sec.get("long_stretch_mode", SkinMGR.LONG_STRETCH_MODE_LENGTH) != SkinMGR.LONG_STRETCH_MODE_SCREEN:
-		return
 	_refresh_long_body_preview()
 
 ## 不触发信号设置 CheckBox 状态

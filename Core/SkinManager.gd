@@ -355,33 +355,23 @@ func get_skin_config(skin_name: String) -> Dictionary:
 			return {}
 	return skin_data.config
 
-## 获取长条连接模式（"edge" 边缘连接 / "center" 中心连接）
-func get_long_connect_mode(skin_name: String) -> String:
+## 一次取回长条三项显示模式：连接方式 / 中部贴图延伸 / 拉伸映射方式
+## 运行时（FlowArea）与皮肤预览等调用方统一走此入口，避免分三次读配置、默认值散落多处
+## 返回 {"connect_mode", "f_mode", "stretch_mode"}；皮肤缺失时各项取默认值
+func get_long_settings(skin_name: String) -> Dictionary:
 	var config = get_skin_config(skin_name)
 	if config.is_empty():
-		return LONG_CONNECT_MODE_EDGE
+		return {
+			"connect_mode": LONG_CONNECT_MODE_EDGE,
+			"f_mode": LONG_F_MODE_REPEAT,
+			"stretch_mode": LONG_STRETCH_MODE_LENGTH
+		}
 	var long_sec: Dictionary = config.get("long", {})
-	var mode = long_sec.get("long_connect_mode", LONG_CONNECT_MODE_EDGE)
-	return LONG_CONNECT_MODE_CENTER if mode == LONG_CONNECT_MODE_CENTER else LONG_CONNECT_MODE_EDGE
-
-## 获取长条中部贴图延伸模式（"repeat" 垂直重复 / "stretch" 竖直拉伸）
-func get_long_f_mode(skin_name: String) -> String:
-	var config = get_skin_config(skin_name)
-	if config.is_empty():
-		return LONG_F_MODE_REPEAT
-	var long_sec: Dictionary = config.get("long", {})
-	var mode = long_sec.get("long_f_mode", LONG_F_MODE_REPEAT)
-	return LONG_F_MODE_STRETCH if mode == LONG_F_MODE_STRETCH else LONG_F_MODE_REPEAT
-
-## 获取长条拉伸的贴图映射方式（"screen" 屏幕固定映射 / "length" 按实际长度映射）
-## 仅当 long_f_mode = stretch 时有意义
-func get_long_stretch_mode(skin_name: String) -> String:
-	var config = get_skin_config(skin_name)
-	if config.is_empty():
-		return LONG_STRETCH_MODE_LENGTH
-	var long_sec: Dictionary = config.get("long", {})
-	var mode = long_sec.get("long_stretch_mode", LONG_STRETCH_MODE_LENGTH)
-	return LONG_STRETCH_MODE_SCREEN if mode == LONG_STRETCH_MODE_SCREEN else LONG_STRETCH_MODE_LENGTH
+	return {
+		"connect_mode": LONG_CONNECT_MODE_CENTER if long_sec.get("long_connect_mode") == LONG_CONNECT_MODE_CENTER else LONG_CONNECT_MODE_EDGE,
+		"f_mode": LONG_F_MODE_STRETCH if long_sec.get("long_f_mode") == LONG_F_MODE_STRETCH else LONG_F_MODE_REPEAT,
+		"stretch_mode": LONG_STRETCH_MODE_SCREEN if long_sec.get("long_stretch_mode") == LONG_STRETCH_MODE_SCREEN else LONG_STRETCH_MODE_LENGTH
+	}
 
 ## 判断皮肤是否启用光效（[general] enable_glow）
 func is_glow_enabled(skin_name: String) -> bool:
