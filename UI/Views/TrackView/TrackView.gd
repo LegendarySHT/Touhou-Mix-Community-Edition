@@ -51,7 +51,8 @@ var regular_instruments: Array = []  # 常规乐器
 var drum_instruments: Array = []     # GM/GS/GM2 鼓组 bank（B120+）
 
 # 全局共享的乐器子菜单（16 大类各一套，跨所有音轨复用），挂在本视图下避免随轨道场景释放。
-# 打开某轨主菜单时经 midiTrack._ensure_submenus_attached reparent 到该轨弹窗下（见 get_shared_submenu）。
+# 打开某轨主菜单时经 midiTrack._on_main_menu_about_to_popup reparent 到该轨弹窗下（见 get_shared_submenu），
+# 并由该轨接管信号接线（打开时接、关闭时断，见 midiTrack._claim_submenu_wiring）。
 var _shared_instrument_submenus: Dictionary = {}
 # 人声音频路径存在时相关组件会显示
 # vocal_file_path 现由 _vocal_controller 管理
@@ -1366,7 +1367,9 @@ func _refresh_all_track_instruments() -> void:
 # 打开某轨主菜单时由 midiTrack._ensure_submenus_attached reparent 到该轨弹窗下。
 # 相比每轨各建 16 个 PopupMenu/Window 节点，可显著降低 TrackView 随音轨数线性增长的内存。
 
-## 取全局共享子菜单（不存在则创建一个裸 PopupMenu 挂在本视图下），category 为乐器大类号
+## 取全局共享子菜单（不存在则创建一个裸 PopupMenu 挂在本视图下），category 为乐器大类号。
+## 本视图只负责"持有"让子菜单活得过轨道场景；信号接线由打开菜单的那个音轨接管
+## （随开随接、随关随断，见 midiTrack._claim_submenu_wiring）。
 func get_shared_submenu(category: int) -> PopupMenu:
 	if _shared_instrument_submenus.has(category):
 		var existing = _shared_instrument_submenus[category]
@@ -1379,7 +1382,9 @@ func get_shared_submenu(category: int) -> PopupMenu:
 	_shared_instrument_submenus[category] = sub
 	return sub
 
-## 把共享子菜单从轨道弹窗收回本视图持有（不销毁），防止换谱/清轨时随轨道场景被释放
+## 把共享子菜单从轨道弹窗收回本视图持有（不销毁），防止换谱/清轨时随轨道场景被释放。
+## 只做 reparent：信号连接不受影响——彼时接线归某代音轨，该轨释放时引擎自动摘除
+## （见 midiTrack._claim_submenu_wiring 的说明），收回后由下一个打开菜单的音轨重新接管。
 func _reclaim_shared_submenus() -> void:
 	for cat in _shared_instrument_submenus:
 		var sub = _shared_instrument_submenus[cat]
