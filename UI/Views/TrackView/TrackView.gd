@@ -36,6 +36,14 @@ var is_progress_dragging: bool = false
 # 静音按钮记住的上一次音量条值（<0 表示本次会话尚未静音过，恢复时用默认值）
 var _prev_midi_vol: float = -1.0
 var _prev_vocal_vol: float = -1.0
+# 本页载入时 MIDI 音量条的生效值（可能是全局默认）。退出落盘时仅当滑块偏离它才把
+# midi_volume 写进配置——否则"从没手动调过音量"的曲子也会被钉上一个生效值，
+# 之后全局默认音量再改，对这些曲子不再生效（见 MidiConfigPersistence.save_midi_config）。
+var midi_volume_at_load: float = -1.0
+# 人声音量同构：at_load 为载入时生效值（含全局默认回落），cfg_at_load 为配置里的原值
+# （0.5 = 未配置哨兵）。改动回到生效值时还原原值，不把默认值钉进配置。
+var vocal_volume_at_load: float = -1.0
+var vocal_volume_cfg_at_load: float = 0.5
 
 var current_tick: int = 0
 var last_position_ms: float = 0.0  # 用于检测循环播放重置
@@ -199,6 +207,10 @@ func _load_midi(midi: MidiData) -> void:
 	# 预解析 MIDI（同步，命中缓存时几乎零开销），让换曲入口跳过重复解析
 	if not midi_playback_manager.ensure_parsed(midi):
 		push_error("Failed to preparse MIDI: " + midi.name)
+	# 原始乐器表就绪：这张表只在 set_current（换曲重载）里填充，而"同一首歌从播放器页
+	# 切进来"走下面的免重载快速路径、不经过 set_current——不补这一步，轨道乐器显示
+	# 回落到它时会拿到空表/上一首残留，全部显示成钢琴。见 ensure_original_instruments。
+	midi_playback_manager.ensure_original_instruments(midi)
 
 	# 【同一首歌：免重载快速路径】后端此刻已经加载/正在播这一首、运行配置也已应用，再走换曲入口
 	# 只会把播放整体拆掉（play_song 内部第一句就是 stop()：sequencer/位置记账/人声全清）—— 于是必须先停、
@@ -568,8 +580,14 @@ func _on_vocal_volume_changed(value: float) -> void:
 	midi_playback_manager.set_vocal_volume_db(volume_db)
 
 	# 更新MidiData中的音量值，用于持久化
+	# 覆盖式保存：拖回载入时的生效值就还原配置原值（不留下"等于默认"的覆盖），
+	# 否则记下这次真正的改动。否则静音按钮的"取消静音"也会把生效值（很可能只是
+	# 全局默认）钉进配置，之后默认再改对这首曲子不再生效。
 	if current_midi_data != null:
-		current_midi_data.vocal_volume = value
+		if is_equal_approx(value, vocal_volume_at_load):
+			current_midi_data.vocal_volume = vocal_volume_cfg_at_load
+		else:
+			current_midi_data.vocal_volume = value
 
 	# 更新标签
 	_vocal_controller.set_display_vocal_volume(value)
@@ -764,8 +782,8 @@ func _on_track_instrument_reset(track_index: int, channel: int) -> void:
 		midi_playback_manager.set_track_channel_instrument(
 			track_index,
 			channel,
-			original_instr["bank"],
-			original_instr["program"]
+			original_instr.get("bank", 0),
+			original_instr.get("program", 0)
 		)
 		
 		# 更新 UI 下拉框（需要遍历查找匹配 track_index 和 channel 的UI项）
@@ -1311,11 +1329,14 @@ func _set_track_instrument_from_midi_data(track_scene: MidiTrack, track_idx: int
 		preset_name = override_instr.get("name", midi_playback_manager.get_preset_name(program, bank))
 		GLogger.info("Track %d Channel %d: 使用用户覆盖乐器 %s" % [track_idx, channel, preset_name], "TrackView")
 	else:
-		# 使用 MIDI 文件中的原始乐器
-		var instrument_info = midi_playback_manager.get_track_channel_instrument(track_idx, channel)
+		# 使用 MIDI 文件中的原始乐器：用户覆盖优先，无覆盖回落解析出的原始乐器
+		# （C# 运行时表只记用户覆盖，查不到即无覆盖，见 get_effective_track_channel_instrument）
+		var instrument_info = midi_playback_manager.get_effective_track_channel_instrument(track_idx, channel)
 		bank = instrument_info.get("bank", 0)
 		program = instrument_info.get("program", 0)
 		preset_name = midi_playback_manager.get_preset_name(program, bank)
+		if preset_name.is_empty():
+			preset_name = "#%d" % program  # 音源里没有该 bank/program（如部分 GS bank）
 
 	# 构建显示名称
 	var display_name = "%s (B%d:P%d)" % [preset_name, bank, program]

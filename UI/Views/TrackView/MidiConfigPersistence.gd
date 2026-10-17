@@ -22,8 +22,8 @@ func save_midi_config() -> void:
 		return
 
 	# 更新MidiData中的音量值（滑块为线性 0-1）
-	current_midi_data.midi_volume = _track_view.midi_vol_slider.value
-	current_midi_data.vocal_volume = _track_view.vocal_vol_slider.value
+	if not is_equal_approx(_track_view.midi_vol_slider.value, _track_view.midi_volume_at_load):
+		current_midi_data.midi_volume = _track_view.midi_vol_slider.value
 
 	# 更新人声文件路径
 	current_midi_data.vocal_file_path = _track_view._vocal_controller.vocal_file_path
@@ -136,6 +136,14 @@ func restore_midi_data_config() -> void:
 
 	midi_vol_slider.value = midi_vol
 	vocal_vol_slider.value = vocal_vol
+
+	# 记录载入时的生效值（取滑块赋值后的值，规避滑块 step 量化差异）：
+	# 退出落盘时仅当滑块偏离它才写 midi_volume，见 save_midi_config。
+	_track_view.midi_volume_at_load = midi_vol_slider.value
+	# 人声音量同构：生效值 + 配置原值（0.5=未配置）。改动回到生效值时还原原值，
+	# 不把"等于全局默认"的值钉进配置，见 TrackView._on_vocal_volume_changed。
+	_track_view.vocal_volume_at_load = vocal_vol_slider.value
+	_track_view.vocal_volume_cfg_at_load = current_midi_data.vocal_volume
 
 	_track_view._set_display_midi_volume(midi_vol_slider.value)
 	_track_view._vocal_controller.set_display_vocal_volume(vocal_vol_slider.value)

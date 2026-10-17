@@ -163,7 +163,13 @@ var vocal_offset_ms: int = 0
 var vocal_enabled: bool = false
 
 ## 轨道-通道音量配置 {track_idx: {ch_idx: float(0.0-1.0)}}
+## 覆盖式语义：只保存用户改过的值，未配置的 (track, channel) 读默认 DEFAULT_TRACK_VOLUME
+## （与 C# ApplyTrackVolumeConfig 对未覆盖通道补的默认值一致）。导出时过滤掉等于默认值的项，
+## 避免"退出页面把默认值落盘钉死"（之后默认再改，这首曲子仍停在旧值）。
 var track_channel_volume_config: Dictionary = {}
+
+## 轨道-通道音量默认值（未配置时读取侧与 C# 下发侧共用这一个数）
+const DEFAULT_TRACK_VOLUME := 0.5
 
 ## 独奏状态 (track:channel -> true)
 var solo_pairs: Dictionary = {}
@@ -484,14 +490,38 @@ func set_track_channel_volume(track_index: int, channel: int, volume: float) -> 
 		track_channel_volume_config[track_index] = {}
 	track_channel_volume_config[track_index][channel] = clamp(volume, 0.0, 1.0)
 
-## 获取特定(track, channel)对的音量
+## 获取特定(track, channel)对的音量（未配置回落默认 50%，与 C# 下发侧一致）
 func get_track_channel_volume(track_index: int, channel: int) -> float:
 	if track_channel_volume_config.has(track_index):
-		return track_channel_volume_config[track_index].get(channel, 1.0)
-	return 1.0
+		return track_channel_volume_config[track_index].get(channel, DEFAULT_TRACK_VOLUME)
+	return DEFAULT_TRACK_VOLUME
 
 ## 导出用户运行时配置为字典
+##
+## 覆盖式导出：音量/静音只保留**偏离默认值的项**（等于默认值的删掉），读取侧对缺失键
+## 回落同一默认（get_track_channel_volume / get_track_channel_mute）。否则每次退出页面
+## 都会把"当前生效值"（很可能只是默认）写进配置钉死——之后默认再改，这首曲子仍停在旧值，
+## 即"默认音量改动对老曲子失效"。midi_volume 的落盘时机由 MidiConfigPersistence 把守
+## （仅当用户真的动过滑块才写），不在此过滤。
 func export_runtime_config() -> Dictionary:
+	# 轨道音量：剔除等于默认值的通道；整轨都被剔掉则整轨不导出
+	var volume_export: Dictionary = {}
+	for t in track_channel_volume_config:
+		var kept: Dictionary = {}
+		for c in track_channel_volume_config[t]:
+			if not is_equal_approx(float(track_channel_volume_config[t][c]), DEFAULT_TRACK_VOLUME):
+				kept[c] = track_channel_volume_config[t][c]
+		if not kept.is_empty():
+			volume_export[t] = kept
+	# 静音：false 是默认态（换曲时 C# 本就会清空静音集），只保留 true
+	var mute_export: Dictionary = {}
+	for t in track_channel_mute_state:
+		var kept: Dictionary = {}
+		for c in track_channel_mute_state[t]:
+			if bool(track_channel_mute_state[t][c]):
+				kept[c] = track_channel_mute_state[t][c]
+		if not kept.is_empty():
+			mute_export[t] = kept
 	return {
 		"midi_volume": midi_volume,
 		"vocal_volume": vocal_volume,
@@ -500,8 +530,8 @@ func export_runtime_config() -> Dictionary:
 		"vocal_enabled": vocal_enabled,
 		"selected_track_indices": selected_track_indices.duplicate(),
 		"selected_track_configs": selected_track_configs.duplicate(),
-		"track_channel_mute_state": track_channel_mute_state.duplicate(),
-		"track_channel_volume_config": track_channel_volume_config.duplicate(),
+		"track_channel_mute_state": mute_export,
+		"track_channel_volume_config": volume_export,
 		"track_channel_instrument_overrides": track_channel_instrument_overrides.duplicate(),
 		"solo_pairs": solo_pairs.duplicate(),
 		"use_soundfont": use_soundfont,

@@ -1780,7 +1780,10 @@ public partial class MeltySynthPlayer : Node
 	/// <summary>轨道-通道音量：有配置按配置；无配置统一 0.5（与 TrackView 新谱面默认一致）</summary>
 	private void ApplyTrackVolumeConfig(Dictionary<string, object> cfg, int[] pairs)
 	{
-		bool applied = false;
+		// 配置里只保存用户改过的音量（覆盖式导出，见 MidiData.export_runtime_config），
+		// 因此这里对"配置未覆盖的 (track, channel)"一律补默认 50% —— 与 GDScript 侧
+		// MidiData.get_track_channel_volume 的读取默认值一致，显示与听感才不会分歧。
+		var configured = new HashSet<(int, int)>();
 		var vol = PlainDict(cfg, "track_channel_volume_config");
 		if (vol != null)
 		{
@@ -1796,18 +1799,18 @@ public partial class MeltySynthPlayer : Node
 					if (int.TryParse(chanEntry.Key, out int chan) && PlainDouble(chMap, chanEntry.Key, out double cv))
 					{
 						set_track_channel_volume(trackIdx, chan, (float)cv);
-						applied = true;
+						configured.Add((trackIdx, chan));
 					}
 				}
 			}
 		}
-		if (applied || pairs.Length == 0)
-		{
-			return;
-		}
 		foreach (int pair in pairs)
 		{
-			set_track_channel_volume(pair >> 8, pair & 0xFF, 0.5f);
+			var key = (pair >> 8, pair & 0xFF);
+			if (!configured.Contains(key))
+			{
+				set_track_channel_volume(key.Item1, key.Item2, 0.5f);
+			}
 		}
 	}
 
@@ -2448,6 +2451,13 @@ public partial class MeltySynthPlayer : Node
 		_channelStateAppliedToManual.TryRemove(virtualId, out _);
 	}
 
+	/// <summary>
+	/// 读取用户为 (track, channel) 指定的乐器覆盖。
+	/// 返回**空字典**表示"没有覆盖记录"——调用方（如 TrackView 的乐器显示）应回落到
+	/// MIDI 解析出的原始乐器；{bank:0, program:0} 表示用户显式覆盖成了钢琴，两者必须可区分。
+	/// （历史上这里对缺失项返回 {0,0}，与"显式设成钢琴"无法区分，显示侧于是把所有
+	/// 未覆盖轨道都显示成钢琴。）
+	/// </summary>
 	public Godot.Collections.Dictionary get_track_channel_instrument(int trackIndex, int channel)
 	{
 		if (_trackChannelInstruments.TryGetValue(trackIndex, out var trackMap)
@@ -2460,11 +2470,7 @@ public partial class MeltySynthPlayer : Node
 			};
 		}
 
-		return new Godot.Collections.Dictionary
-		{
-			{ "bank", 0 },
-			{ "program", 0 }
-		};
+		return new Godot.Collections.Dictionary();
 	}
 
 	public Godot.Collections.Array get_presets_list()

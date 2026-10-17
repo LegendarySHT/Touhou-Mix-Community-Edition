@@ -989,6 +989,24 @@ func get_original_track_channel_instrument(track_index: int, channel: int) -> Di
 			return ch_map[channel]
 	return {}
 
+## 保证某曲的"原始乐器表"（cached_track_channel_instruments）就绪，供显示侧读取。
+##
+## 这张表原先只在 set_current（换曲重载路径）里经 _cache_instruments_for 填充。而
+## "同一首歌从播放器页切进 TrackView"走免重载快速路径（_load_midi 的 reuse_playback
+## 分支）不经过 set_current，此刻它可能是空的、或上一首的残留 —— 显示侧回落到它时
+## 会把所有音轨的乐器显示成错值/钢琴。按 chart_key 判重，同曲重复调用无开销。
+func ensure_original_instruments(midi_data: MidiData) -> void:
+	_cache_instruments_for(midi_data)
+
+## 取 (track, channel) 的"生效乐器"：用户覆盖（C# 运行时表）优先，无覆盖时回落
+## MIDI 解析出的原始乐器。MidiView 选曲与播放器页切来两条进入路径都经此读取，
+## 显示效果一致。返回 {} 表示两者皆无（该通道没有 program change，GM 默认钢琴）。
+func get_effective_track_channel_instrument(track_index: int, channel: int) -> Dictionary:
+	var info: Dictionary = get_track_channel_instrument(track_index, channel)
+	if not info.is_empty():
+		return info
+	return get_original_track_channel_instrument(track_index, channel)
+
 # ---- 人声 ----
 func set_vocal_offset_ms(offset_ms: float) -> void:
 	if MeltySynth != null: MeltySynth.set_vocal_offset_ms(offset_ms)
