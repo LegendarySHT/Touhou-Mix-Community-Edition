@@ -677,6 +677,15 @@ func _on_track_solo_toggled(is_solo: bool, track_index: int, channel: int) -> vo
 			var target_muted = true if not should_solo else is_muted_in_snapshot
 			midi_playback_manager.set_track_channel_mute_runtime(track_ui.track_index, track_ui.track_channel, target_muted)
 
+	# 独奏贴图是全局语义：任一音轨开启独奏后，未开启独奏的音轨要换成斜杠麦克风
+	_refresh_all_solo_icons()
+
+# 刷新所有音轨的独奏按钮贴图（本轨/全局独奏态变化后调用）
+func _refresh_all_solo_icons() -> void:
+	for track_ui in list_items:
+		if track_ui is MidiTrack and track_ui.solo_btn:
+			track_ui.refresh_solo_icon()
+
 # 轨道音量改变
 func _on_track_volume_changed(value: float, track_index: int, channel: int ) -> void:
 	if midi_playback_manager == null:

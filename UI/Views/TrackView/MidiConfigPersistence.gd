@@ -259,7 +259,8 @@ func restore_midi_ui_config() -> void:
 				track_item.solo_btn.set_block_signals(true)
 				track_item.solo_btn.button_pressed = is_soloed
 				track_item.solo_btn.set_block_signals(false)
-				track_item.solo_btn.texture_normal.region = Rect2(80, 160, 80, 80) if is_soloed else Rect2(80, 240, 80, 80)
+				# 贴图规则：本轨独奏/全局无独奏 → 麦克风；他人独奏中而本轨未开 → 斜杠麦克风
+				track_item.refresh_solo_icon()
 
 			# 更新音量滑块和标签
 			if track_item.volume_slider:

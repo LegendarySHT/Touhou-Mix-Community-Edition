@@ -159,7 +159,7 @@ region = Rect2(0, 240, 80, 80)
 [sub_resource type="AtlasTexture" id="AtlasTexture_gihxt"]
 resource_local_to_scene = true
 atlas = ExtResource("2_phpps")
-region = Rect2(80, 240, 80, 80)
+region = Rect2(80, 160, 80, 80)
 
 [sub_resource type="CompressedTexture2D" id="CompressedTexture2D_kgiiq"]
 load_path = "res://.godot/imported/icon_set.png-96c5ab029ee097edb55aef049d22d02c.ctex"

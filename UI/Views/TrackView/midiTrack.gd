@@ -600,8 +600,23 @@ func _on_mute_toggled(is_pressed: bool):
 	# 这里仅负责UI状态更新
 	mute_btn.texture_normal.region = Rect2(0, 240, 80, 80) if is_pressed else Rect2(0, 160, 80, 80)
 
-func _on_solo_toggled(is_pressed: bool):
-	solo_btn.texture_normal.region = Rect2(80, 160, 80, 80) if is_pressed else Rect2(80, 240, 80, 80)
+func _on_solo_toggled(_is_pressed: bool):
+	# 贴图规则见 refresh_solo_icon；全局刷新由 TrackView._on_track_solo_toggled 完成
+	refresh_solo_icon()
+
+# 独奏按钮贴图规则（icon_set.png 图集，80px 网格）：
+# - 本轨独奏开启         → 麦克风 (80,160)
+# - 无任何音轨开启独奏   → 全部麦克风（此时没有音轨被独奏静音）
+# - 他人独奏中、本轨未开 → 斜杠麦克风 (80,240)
+# parent_node.solo_pairs 由 TrackView 维护（{"track:channel": true}）
+func refresh_solo_icon() -> void:
+	var any_solo := solo_btn.button_pressed
+	if not any_solo and parent_node != null:
+		var solo_pairs = parent_node.get("solo_pairs")
+		if solo_pairs is Dictionary:
+			any_solo = not solo_pairs.is_empty()
+	var show_mic := solo_btn.button_pressed or not any_solo
+	solo_btn.texture_normal.region = Rect2(80, 160, 80, 80) if show_mic else Rect2(80, 240, 80, 80)
 
 func _on_enable_toggled(toggle_on: bool):
 	if midi_data:
