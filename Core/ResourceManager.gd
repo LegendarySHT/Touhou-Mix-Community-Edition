@@ -156,8 +156,10 @@ func _build_local_json(chart_data: Dictionary) -> Dictionary:
 		"uploaderAvatarUrl": str(chart_data.get("uploaderAvatarUrl", "")),
 		"name": str(chart_data.get("title", "")),
 		"desc": str(chart_data.get("description", "")),
-		"artistName": str(chart_data.get("artistName", "")),
-		"artistUrl": str(chart_data.get("artistUrl", "")),
+		# MIG-1（2026-10-22）：服务端字段改名为 midiAuthor/midiAuthorUrl；
+		# 本地 info.json 仍用旧键 artistName/artistUrl（ChartDb/MidiData 本地管线未变）
+		"artistName": str(chart_data.get("midiAuthor", "")),
+		"artistUrl": str(chart_data.get("midiAuthorUrl", "")),
 		"coverHash": str(chart_data.get("coverHash", "")),
 		"uploadedDate": str(chart_data.get("uploadedAt", "")),
 		"approvedDate": str(chart_data.get("approvedAt", "")),

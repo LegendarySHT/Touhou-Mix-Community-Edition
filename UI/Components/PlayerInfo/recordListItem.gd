@@ -52,7 +52,7 @@ func set_mode(mode: int) -> void:
 ## 填充一条记录
 ## data 字段（camelCase，与服务端 DTO 对齐）：
 ##   midiName / songName  谱面名
-##   authorName           谱面作者
+##   midiAuthor           MIDI 作者（MIG-1：原 authorName 实为 MIDI 作者，随服务端字段二合一改名）
 ##   playedAt             游玩时间（ISO 8601 字符串）
 ##   totalScore / score   总分
 ##   pp                   pp 值
@@ -68,7 +68,7 @@ func setup_record(data: Dictionary, mode: int = -1) -> void:
 	_midi_hash = str(data.get("midiHash", ""))
 
 	midi_name_label.set_scroll_text(_pick_str(data, ["midiName", "songName"], "—"))
-	midi_author_label.set_scroll_text(_pick_str(data, ["authorName"], "—"))
+	midi_author_label.set_scroll_text(_pick_str(data, ["midiAuthor"], "—"))
 	date_label.text = _format_played_at(_pick_str(data, ["playedAt"], ""))
 
 	score_label.text = _format_number(int(_pick(data, ["totalScore", "score"], 0)))

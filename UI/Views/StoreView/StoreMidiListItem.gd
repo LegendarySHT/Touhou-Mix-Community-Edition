@@ -116,7 +116,8 @@ func set_remote_display(chart_data: Dictionary) -> void:
 
 	# 填充显示字段
 	title_text.set_scroll_text(str(chart_data.get("title", "Unknown")))
-	author_text.text = str(chart_data.get("artistName", ""))
+	# MIG-1（2026-10-22）：服务端 ArtistName 已移除，MIDI 作者改读 midiAuthor
+	author_text.text = str(chart_data.get("midiAuthor", ""))
 	uploader.text = "Upload by " + str(chart_data.get("uploaderName", ""))
 	album_name.set_scroll_text(str(chart_data.get("albumName", "null")))
 	_original_song_name = str(chart_data.get("songName", "null"))
