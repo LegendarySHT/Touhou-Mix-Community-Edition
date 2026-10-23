@@ -1768,15 +1768,6 @@ public partial class MeltySynthPlayer : Node
 		return false;
 	}
 
-	private static bool PlainToChannelIndex(object o, out int channel)
-	{
-		channel = 0;
-		if (o is long l) { channel = (int)l; return true; }
-		if (o is double d) { channel = (int)Math.Round(d); return true; }
-		if (o is string s) return int.TryParse(s, out channel);
-		return false;
-	}
-
 	/// <summary>轨道-通道音量：有配置按配置；无配置统一 0.5（与 TrackView 新谱面默认一致）</summary>
 	private void ApplyTrackVolumeConfig(Dictionary<string, object> cfg, int[] pairs)
 	{
@@ -1815,9 +1806,11 @@ public partial class MeltySynthPlayer : Node
 	}
 
 	/// <summary>
-	/// 静音：先按持久化状态下发，再叠加 solo / 启用通道门控的运行时静音（顺序不可颠倒：
+	/// 静音：先按持久化状态下发，再叠加 solo 的运行时静音（顺序不可颠倒：
 	/// 持久化状态里 muted=false 会解除静音，运行时静音必须最后压上）。LoadMidiFile 已清空
 	/// 静音集合，故配置里没提到的通道天然不静音。
+	/// 注意：音轨"启用/禁用"（selected_track_configs）不在此做门控——它只决定该轨音符
+	/// 是否参与游戏内生成与显示，是否发声由静音/独演负责（见 TrackView._on_track_enable_toggled）。
 	/// </summary>
 	private void ApplyTrackMuteConfig(Dictionary<string, object> cfg, int[] pairs)
 	{
@@ -1854,67 +1847,6 @@ public partial class MeltySynthPlayer : Node
 				}
 			}
 		}
-
-		// 启用/禁用通道（TrackView 的音轨开关）：未启用的通道运行时静音。
-		// 从未配置过的谱面（_track_config_initialized=false）按"全部启用"处理——简介推荐轨的
-		// 初始化在 GDScript 侧（ensure_track_config_initialized），与 MidiListItem 的兜底语义一致。
-		if (!PlainBool(cfg, "_track_config_initialized", out bool initialized) || !initialized)
-		{
-			return;
-		}
-		var sel = PlainDict(cfg, "selected_track_configs");
-		if (sel == null)
-		{
-			return;
-		}
-		var unselected = new System.Collections.Generic.List<int>();
-		int selectedCount = 0;
-		foreach (int pair in pairs)
-		{
-			if (IsChannelSelected(sel, pair >> 8, pair & 0xFF))
-			{
-				selectedCount++;
-			}
-			else
-			{
-				unselected.Add(pair);
-			}
-		}
-		// 一个都没解析成"已启用"几乎只可能是键/值的类型没对上。真按它静音会把整首变哑，
-		// 故按"全部启用"兜底 —— 与前台「推荐轨不存在 → 启用全部」同一哲学。
-		if (selectedCount == 0)
-		{
-			ThreadSafeLog.PrintErr("[MeltySynthPlayer] selected_track_configs 解析为空，按全部启用兜底（请检查键/值类型）");
-			return;
-		}
-		foreach (int pair in unselected)
-		{
-			set_track_channel_mute(pair >> 8, pair & 0xFF, true);
-		}
-	}
-
-	/// <summary>
-	/// selected_track_configs 里该 (track,channel) 是否启用。键与通道号都按 int/float/string 全认：
-	/// 配置经 GDScript Dictionary → BSON → Godot Dictionary 往返，JSON 兼容层不保证数值仍是 int。
-	/// </summary>
-	private static bool IsChannelSelected(Dictionary<string, object> selected, int track, int channel)
-	{
-		if (selected == null || !selected.TryGetValue(track.ToString(), out var arrObj))
-		{
-			return false;
-		}
-		if (!(arrObj is System.Collections.Generic.List<object> arr))
-		{
-			return false;
-		}
-		foreach (var ch in arr)
-		{
-			if (PlainToChannelIndex(ch, out int c) && c == channel)
-			{
-				return true;
-			}
-		}
-		return false;
 	}
 
 	/// <summary>
@@ -2927,6 +2859,12 @@ public partial class MeltySynthPlayer : Node
 		{
 			_mutedVirtualChannels.TryRemove(virtualId, out _);
 		}
+	}
+
+	/// <summary>该 (track, channel) 当前是否处于运行时静音（持久化静音 + solo + 手动静音的并集）</summary>
+	public bool is_track_channel_muted(int trackIndex, int channel)
+	{
+		return _mutedVirtualChannels.ContainsKey(trackIndex * 16 + channel);
 	}
 
 	// Legacy overload for backward compatibility (assumes track 0)

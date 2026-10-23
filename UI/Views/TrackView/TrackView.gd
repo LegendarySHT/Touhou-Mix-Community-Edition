@@ -631,10 +631,10 @@ func _on_track_enable_toggled(is_checked: bool, track_index: int, channel: int) 
 	# 更新指定(track, channel)启用状态
 	current_midi_data.set_track_channel_enabled(track_index, channel, is_checked)
 
-	# 启用状态同步到合成器：禁用的通道运行时静音（此前只影响音符显示，
-	# 播放不跟随；编辑立即生效，播放器页承接同一后端状态）
-	if midi_playback_manager != null:
-		midi_playback_manager.set_track_channel_mute_runtime(track_index, channel, not is_checked)
+	# 启用状态只决定该音轨的音符是否作为游戏内音符生成（PlayView 谱面 / 音符量统计）
+	# 与音符显示可见性，不控制是否发声——出声与否由静音/独奏负责。
+	# （历史上曾把取消启用同步为合成器运行时静音，导致"取消启用即静音"，已移除；
+	# 加载期的同型门控见 MeltySynthPlayer.ApplyTrackMuteConfig，亦已移除。）
 
 	# 同步主音符显示器（按 selected_track_configs 过滤音符可见性）
 	if master_note_displayer:

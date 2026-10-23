@@ -951,6 +951,8 @@ func get_track_channel_volume(track_index: int, channel: int) -> float:
 	return MeltySynth.get_track_channel_volume(track_index, channel) if MeltySynth != null else 1.0
 func set_track_channel_mute_runtime(track_index: int, channel: int, muted: bool) -> void:
 	if MeltySynth != null: MeltySynth.set_track_channel_mute(track_index, channel, muted)
+func is_track_channel_muted(track_index: int, channel: int) -> bool:
+	return MeltySynth.is_track_channel_muted(track_index, channel) if MeltySynth != null else false
 func set_track_channel_instrument(track_index: int, channel: int, bank: int, program: int) -> void:
 	if MeltySynth != null: MeltySynth.set_track_channel_instrument(track_index, channel, bank, program)
 func get_track_channel_instrument(track_index: int, channel: int) -> Dictionary:
