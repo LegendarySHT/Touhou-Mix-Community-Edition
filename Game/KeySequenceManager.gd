@@ -34,6 +34,10 @@ var generate_short_connect: bool = true
 var max_instant_connect_seconds: float = 1.0
 var min_block_spacing: int = 1
 var hand_model_enabled: bool = true
+# 长条时长调整（生成设置）：时间上限（秒，<=0 不限制）+ 长度缩放倍率（1.0 = 不缩放）。
+# 语义与生效顺序见 C# KeySequenceCore.SetLongDurationPolicy：先缩放、后钳上限，仅影响 Long。
+var long_max_time: float = 0.0
+var long_length_scaling: float = 1.0
 
 ## ========== C# 核心与运行态 ==========
 var _core: KeySequenceCore = null
@@ -66,6 +70,9 @@ func _configure_core(core: KeySequenceCore, timebase: int, bpm_timeline_data: Ar
 		min_tap_interval, cooldown_seconds, max_touch_move_velocity, max_touch_count,
 		generate_instant_connect, generate_short_connect, max_instant_connect_seconds,
 		min_block_spacing, hand_model_enabled, key_width, screen_width)
+	# 长条时长调整策略（时间上限 + 长度缩放）单独下发：Configure 形参已很长，且这两项
+	# 有安全默认（不限制/不缩放），漏调不影响既有行为
+	core.SetLongDurationPolicy(long_max_time, long_length_scaling)
 	var bpm_ticks := PackedInt32Array()
 	var bpm_values := PackedFloat32Array()
 	for e in bpm_timeline_data:
@@ -130,12 +137,13 @@ func _build_cache_key(midi_id: String, enabled_indices: PackedInt32Array) -> Str
 
 ## 生成参数指纹（cache_key 组成部分）：任一生成相关配置变更即视为全新缓存域
 func _config_fingerprint() -> String:
-	return "%d_%d_%d_%d_%.4f_%.4f_%.4f_%.4f_%.4f_%d_%d_%.4f_%d_%.2f_%.1f" % [
+	return "%d_%d_%d_%d_%.4f_%.4f_%.4f_%.4f_%.4f_%d_%d_%.4f_%d_%.2f_%.1f_%.4f_%.4f" % [
 		lane_count, density_cap_per_sec, max_touch_count, min_block_spacing,
 		instant_block_threshold, short_block_threshold, min_tap_interval,
 		cooldown_seconds, max_touch_move_velocity,
 		int(generate_instant_connect), int(generate_short_connect), max_instant_connect_seconds,
-		int(hand_model_enabled), key_width, screen_width
+		int(hand_model_enabled), key_width, screen_width,
+		long_max_time, long_length_scaling
 	]
 
 ## 启动键序列生成（WorkerThreadPool 后台线程），返回 task_id
@@ -168,6 +176,10 @@ func generate_keys_async(chart_path: String, enabled_indices: PackedInt32Array,
 ## ========== C# 输出访问器（只读）==========
 func seq_count() -> int:
 	return _get_core().GameSeqCount if _core else 0
+## 判定总数（结算总音符数）：长条计 2（头/尾各一次判定），点块/滑块计 1。
+## 与 FlowArea.get_note_judgment_count 同口径，供 MidiView 音符量统计使用
+func get_note_judgment_count() -> int:
+	return _get_core().JudgmentCount if _core else 0
 func seq_key_id(i: int) -> int: return _core.SeqKeyId(i)
 func seq_pitch(i: int) -> int: return _core.SeqPitch(i)
 func seq_start_ms(i: int) -> float: return _core.SeqStartMs(i)
@@ -206,6 +218,10 @@ func _load_config_parameters() -> void:
 	max_touch_move_velocity = cfg.get_float(gen_cfg, "max_touch_move_speed", 300.0)
 	density_cap_per_sec = cfg.get_int(gen_cfg, "max_block_coalesce_time", 8)
 	min_block_spacing = _validate_min_block_spacing(cfg.get_int("Judge", "min_block_spacing", 1))
+	# 长条时长调整：时间上限（秒，<=0 不限制）；长度缩放存的是百分比，内部换算为倍率并钳到
+	# (0, 1]——设置项取值范围为小于等于 100%（100 = 不缩放），手改配置 >100 也不允许拉长
+	long_max_time = max(0.0, cfg.get_float(gen_cfg, "long_block_max_time", 0.0))
+	long_length_scaling = clampf(cfg.get_float(gen_cfg, "long_block_length_scaling", 100.0) / 100.0, 0.01, 1.0)
 	var app_cfg = "Appearance"
 	generate_short_connect = cfg.get_bool(app_cfg, "generate_short_connect", true)
 	generate_instant_connect = cfg.get_bool(app_cfg, "generate_instant_connect", true)
@@ -261,6 +277,10 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 						max_touch_move_velocity = float(value)
 				"max_block_coalesce_time":
 					density_cap_per_sec = int(value)
+				"long_block_max_time":
+					long_max_time = max(0.0, float(value))
+				"long_block_length_scaling":
+					long_length_scaling = clampf(float(value) / 100.0, 0.01, 1.0)
 		"Appearance":
 			match key:
 				"generate_short_connect":

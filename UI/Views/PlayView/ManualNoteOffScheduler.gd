@@ -10,7 +10,8 @@ extends RefCounted
 ## 本类无场景树依赖，纯数据 + 播放器调用，可由 FlowArea 持有并逐帧驱动。
 
 ## 待触发的手动 NoteOff（驱动源为播放位置，而非墙钟 Timer）
-## 每项: {abs_end_ms, track, channel, pitch, velocity, gen}
+## 每项: {abs_end_ms, seq_index, track, channel, pitch, velocity, gen}
+## seq_index 与 FlowArea 音符索引一致，供长条中断时按音符提前触发 NoteOff
 var _pending_manual_offs: Array = []
 ## 待触发 NoteOff 的最小绝对结束时刻：绝大多数帧 t < min 直接跳过扫描（O(n)→O(1)）
 var _pending_manual_offs_min_end: float = INF
@@ -43,6 +44,7 @@ func trigger_from_sequence(ksm: KeySequenceManager, seq_index: int) -> void:
 	var gen := _bump_note_off_gen(track_idx, channel, pitch)
 	_pending_manual_offs.append({
 		"abs_end_ms": abs_end_ms,
+		"seq_index": seq_index,
 		"track": track_idx,
 		"channel": channel,
 		"pitch": pitch,
@@ -79,19 +81,46 @@ func process(time_ms: float, force: bool = false) -> void:
 	var new_min := INF
 	for entry in _pending_manual_offs:
 		if force or time_ms >= entry["abs_end_ms"]:
-			# 代数守卫：同键已触发更新的音符则跳过本次 NoteOff（旧音交给新音一起结束）
-			if _is_note_off_gen_current(entry["track"], entry["channel"], entry["pitch"], entry["gen"]):
-				if midi_player and is_instance_valid(midi_player):
-					if midi_player.has_method("trigger_note_off"):
-						midi_player.call("trigger_note_off", entry["pitch"], entry["velocity"], entry["channel"], entry["track"])
-					elif midi_player.has_method("note_off"):
-						midi_player.note_off(entry["channel"], entry["pitch"])
+			_fire_note_off(entry, midi_player)
 		else:
 			remaining.append(entry)
 			if entry["abs_end_ms"] < new_min:
 				new_min = entry["abs_end_ms"]
 	_pending_manual_offs = remaining
 	_pending_manual_offs_min_end = new_min
+
+
+## 提前触发某音符的手动 NoteOff（长条按压中断：合成器里的音立即停止，
+## 而非等到被压缩/缩放后的结束时刻——否则听感上"手已松开声音还在继续"）
+## seq_index: FlowArea 音符索引（与 trigger_from_sequence 的 seq_index 一致）
+## 无匹配挂起项时为空操作（未触发过 / 已触发过 / 已结束）
+func trigger_off_now(seq_index: int) -> void:
+	if _pending_manual_offs.is_empty():
+		return
+	var midi_player = PlaybackDisplay.instance.midi_player
+	var remaining: Array = []
+	var new_min := INF
+	for entry in _pending_manual_offs:
+		if entry["seq_index"] == seq_index:
+			_fire_note_off(entry, midi_player)
+			continue
+		remaining.append(entry)
+		if entry["abs_end_ms"] < new_min:
+			new_min = entry["abs_end_ms"]
+	_pending_manual_offs = remaining
+	_pending_manual_offs_min_end = new_min
+
+
+## 向合成器发送一次 NoteOff（代数守卫：同键已触发更新的音符则跳过，
+## 旧音交给新音一起结束——MeltySynth NoteOff 会结束该键全部 voice）
+func _fire_note_off(entry: Dictionary, midi_player) -> void:
+	if not _is_note_off_gen_current(entry["track"], entry["channel"], entry["pitch"], entry["gen"]):
+		return
+	if midi_player and is_instance_valid(midi_player):
+		if midi_player.has_method("trigger_note_off"):
+			midi_player.call("trigger_note_off", entry["pitch"], entry["velocity"], entry["channel"], entry["track"])
+		elif midi_player.has_method("note_off"):
+			midi_player.note_off(entry["channel"], entry["pitch"])
 
 
 ## 清空待触发队列（新一局 / 清场时调用）

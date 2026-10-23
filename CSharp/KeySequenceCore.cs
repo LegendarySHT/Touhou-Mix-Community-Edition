@@ -27,11 +27,17 @@ public partial class KeySequenceCore : RefCounted
     private bool _handModelEnabled;
     private float _keyWidth;
     private float _screenWidth;
+    // 长条时长调整策略（仅对分类为 Long 的音符生效；分类按原始时长完成，调整不改变类型）：
+    // _longMaxSec > 0 时超过该时长（秒）的长条强制压缩到该时长；_longScale != 1 时先按倍率缩放，
+    // 缩放后仍超上限才钳到上限（顺序：先缩放、后上限）。
+    private float _longMaxSec;
+    private float _longScale = 1.0f;
 
     private const float HOME_BIAS_COEFF = 0.4f;
     private const float CROSS_HAND_PENALTY_MULT = 2.0f;
     private const float CHORD_TOLERANCE_MS = 10.0f;
     private const float DEFAULT_BPM = 120.0f;
+    private const int TYPE_LONG = 2;   // 块类型：0=Block 1=Slide 2=Long（与 GDScript BlockType 一致）
 
     // ===== 时间线 =====
     private int _timebase;
@@ -90,6 +96,30 @@ public partial class KeySequenceCore : RefCounted
     }
 
     private int ValidateMinSpacing(int v) => v < 0 || v >= _laneCount ? 1 : v;
+
+    /// <summary>
+    /// 设置长条时长调整策略（生成设置项"长条时间上限 / 长条长度缩放"）。
+    /// longMaxSec &lt;= 0 = 不限制；longScale &lt;= 0 视为不缩放（防御，正常配置经 UI 校验为 [10, 100]%）。
+    /// 每次生成前由 KeySequenceManager._configure_core 应用（worker 线程，纯字段写入无竞争）。
+    /// </summary>
+    public void SetLongDurationPolicy(float longMaxSec, float longScale)
+    {
+        _longMaxSec = longMaxSec > 0.0f ? longMaxSec : 0.0f;
+        _longScale = longScale > 0.0f ? longScale : 1.0f;
+    }
+
+    /// <summary>
+    /// 长条时长调整：先按倍率缩放，缩放后仍超上限再钳到上限。
+    /// 仅对已按原始时长分类为 Long 的音符调用（缩放/上限不把长条变成点块，也不把点块变成长条）。
+    /// </summary>
+    private float ApplyLongDurationAdjust(float durMs)
+    {
+        if (_longScale != 1.0f)
+            durMs *= _longScale;
+        if (_longMaxSec > 0.0f && durMs > _longMaxSec * 1000.0f)
+            durMs = _longMaxSec * 1000.0f;
+        return durMs;
+    }
 
     // ========== 时间参数 ==========
     public void SetMidiTimeParameters(int timebase, int[] bpmTicks, float[] bpmValues)
@@ -426,10 +456,13 @@ public partial class KeySequenceCore : RefCounted
                 int lane = kv.Key, note = kv.Value;
                 float startMs = TickToMs(_inStartTick[note]);
                 float durMs = TickDurToMs(_inStartTick[note], _inDurTick[note]);
+                // 基线类型按原始时长分类（长条长度缩放/时间上限不改变类型，只调整已判定为 Long 的音符实际时长）
+                int baseType = durMs / 1000.0f <= _instantThr ? 1 : (durMs / 1000.0f <= _shortThr ? 0 : 2);
+                if (baseType == 2) durMs = ApplyLongDurationAdjust(durMs);
                 var b = GetBlock();
                 b.Batch = _batchCounter; b.Lane = lane; b.StartMs = startMs; b.EndMs = startMs + durMs;
                 b.DurMs = durMs; b.MainPitch = _inPitch[note]; b.X = CalcLaneX(lane);
-                b.Type = durMs / 1000.0f <= _instantThr ? 1 : (durMs / 1000.0f <= _shortThr ? 0 : 2); // 基线类型
+                b.Type = baseType;
                 b.Notes.Clear(); b.Notes.Add(note);
                 chordBlocks.Add(b);
             }
@@ -874,6 +907,23 @@ public partial class KeySequenceCore : RefCounted
 
     // ========== 输出访问器 ==========
     public int GameSeqCount => _seqKeyId.Count;
+
+    /// <summary>
+    /// 判定总数（结算总音符数）：长条计 2（头/尾各一次判定），点块/滑块计 1。
+    /// 与 FlowArea.get_note_judgment_count / ScoreCalculator.total_notes 同口径，
+    /// 供 MidiView 音符量统计使用（长条持续 tick 不计入）。
+    /// </summary>
+    public int JudgmentCount
+    {
+        get
+        {
+            int total = 0;
+            for (int i = 0; i < _seqType.Count; i++)
+                total += _seqType[i] == TYPE_LONG ? 2 : 1;
+            return total;
+        }
+    }
+
     public int SeqKeyId(int i) => _seqKeyId[i];
     public int SeqPitch(int i) => _seqPitch[i];
     public float SeqStartMs(int i) => _seqStart[i];

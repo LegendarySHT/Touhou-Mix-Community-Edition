@@ -466,6 +466,24 @@ static func get_setting_groups() -> Array:
 				"unit": "s"
 			},
 			{
+				"id": "long_block_max_time",
+				"name_en": "Long Block Max Time",
+				"name_zh": "长条时间上限",
+				"description": "所有时长超过此值的长条将被强制压缩到此时长，此项为0时不作限制。",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "1.5",
+				"unit": "s"
+			},
+			{
+				"id": "long_block_length_scaling",
+				"name_en": "Long Block Length Scaling",
+				"name_zh": "长条长度缩放",
+				"description": "按倍率缩短长条的实际时长。",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "90",
+				"unit": "%"
+			},
+			{
 				"id": "max_simultaneous_blocks",
 				"name_en": "Max Simultaneous Blocks",
 				"name_zh": "最大并排下落音符",

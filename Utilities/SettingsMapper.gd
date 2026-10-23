@@ -85,6 +85,8 @@ static var mappings: Dictionary = {
 	# ========== 生成设置 ==========
 	"instant_block_max_time": {"section": "Generator", "key": "instant_block_max_time", "value_type": "float"},
 	"short_block_max_time": {"section": "Generator", "key": "short_block_max_time", "value_type": "float"},
+	"long_block_max_time": {"section": "Generator", "key": "long_block_max_time", "value_type": "float"},
+	"long_block_length_scaling": {"section": "Generator", "key": "long_block_length_scaling", "value_type": "float"},
 	"max_simultaneous_blocks": {"section": "Generator", "key": "max_simultaneous_blocks", "value_type": "int"},
 	"min_tap_interval": {"section": "Generator", "key": "min_tap_interval", "value_type": "float"},
 	"min_touch_cooldown_time": {"section": "Generator", "key": "min_touch_cooldown_time", "value_type": "float"},
@@ -253,6 +255,11 @@ static func validate_value(setting_id: String, value: Variant) -> bool:
 			return float(value) > 0.0
 		"perfect_time", "great_time", "good_time", "bad_time":
 			return float(value) > 0.0
+		"long_block_max_time":
+			return float(value) >= 0.0
+		"long_block_length_scaling":
+			# 取值范围 [10, 100]（小于等于 100%）：100 = 不缩放（允许），下限 10 防退化
+			return float(value) >= 10.0 and float(value) <= 100.0
 	
 	# 默认通过验证
 	return true

@@ -941,12 +941,12 @@ func _finish_playback_setup() -> void:
 			GLogger.info("[Performing OFF] Cleared manual control notes: all notes will auto-play (manual=%d, auto=%d)" %
 				[manual_count, auto_count], "PlayView")
 
-	# 结算总音符数（LONG 的持续 tick 不计入）：平行数组快照完成后已确定
-	var seq_total: int = flow_area.get_sequence_count()
+	# 结算总音符数（长条计 2：头/尾各一次判定；LONG 的持续 tick 不计入）：平行数组快照完成后已确定
+	var seq_total: int = flow_area.get_note_judgment_count()
 	if score_calc:
 		score_calc.total_notes = seq_total
 	play_result.total_notes = seq_total
-	GLogger.info("Playback setup finalized: %d game sequences" % seq_total, "PlayView")
+	GLogger.info("Playback setup finalized: %d judgments (long notes count 2)" % seq_total, "PlayView")
 
 ## 从ConfigManager加载键盘和轨道相关的参数
 func _load_lane_parameters() -> void:
@@ -1318,7 +1318,7 @@ func _init_lane_display():
 
 # ---- 判定回调（计分数据源留在 PlayView，展示委托 HUD） ----
 
-func _on_note_judged(result: String, offset: String, block_type: int, timing_sec: float, signed_offset_sec: float):
+func _on_note_judged(result: String, offset: String, block_type: int, timing_sec: float, signed_offset_sec: float, long_instance_id: int = -1):
 	# 委托 ScoreCalculator 计算（数据源，逐判定实时）
 	var judgment = ScoreCalculator.Judgment.MISS
 	match result:
@@ -1328,7 +1328,7 @@ func _on_note_judged(result: String, offset: String, block_type: int, timing_sec
 		"Bad":     judgment = ScoreCalculator.Judgment.BAD
 		"Miss":    judgment = ScoreCalculator.Judgment.MISS
 
-	var snap = score_calc.record_judgment(judgment, block_type, timing_sec, signed_offset_sec)
+	var snap = score_calc.record_judgment(judgment, block_type, timing_sec, signed_offset_sec, false, long_instance_id)
 	hud.on_note_judged(result, offset, snap)
 
 ## LONG 持续 tick 加分（已委托 ScoreCalculator）

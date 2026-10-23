@@ -375,7 +375,8 @@ func _compute_and_cache_notes(midi: MidiData) -> void:
 
 	# 切换项守卫：await 期间用户可能已切到其他 MIDI 项，本 item 不再是选中项
 	# 仍写入 _info_cache（缓存供下次使用），但 _apply_display 会自行判断是否刷新共享面板
-	var count: int = ksm.seq_count()
+	# 音符量口径：长条计 2（头/尾各一次判定），与结算页 total_notes 一致
+	var count: int = ksm.get_note_judgment_count()
 	if count > 0 and midi.duration_ms > 0:
 		entry["note_str"] = "%d" % count
 		entry["mpp_str"] = "%.1f" % (count / (midi.duration_ms / 60000.0))

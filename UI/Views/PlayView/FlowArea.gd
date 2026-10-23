@@ -93,11 +93,12 @@ var spark_emitter_scales: Dictionary = {}
 const _JUDGE_TYPES: Array[String] = ["Perfect", "Great", "Good", "Bad"]
 ###################################
 
-## note_judged(result: String, offset: String, block_type: int, timing_sec: float, signed_offset_sec: float)
+## note_judged(result: String, offset: String, block_type: int, timing_sec: float, signed_offset_sec: float, long_instance_id: int)
 ## block_type: KeySequenceManager.BlockType 值 (0=Block=点块,1=Slide=滑块,2=Long=长条)
 ## 与 FlowNote.NoteType / ScoreCalculator.BlockType 同名同值，可直接透传
 ## timing_sec: 偏差绝对值(秒)  signed_offset_sec: 带符号偏差(秒)
-signal note_judged(result: String, offset: String, block_type: int, timing_sec: float, signed_offset_sec: float)
+## long_instance_id: 长条唯一实例 ID（长条双判定的头/尾判定共用同一衰减链；非长条为 -1）
+signal note_judged(result: String, offset: String, block_type: int, timing_sec: float, signed_offset_sec: float, long_instance_id: int)
 ## long_holding(long_instance_id: int) - 长条持续加分 tick
 signal long_holding(long_instance_id: int)
 
@@ -161,10 +162,11 @@ var _count: int = 0                                     # 序列总数（=数组
 
 # 运行态标志位打包到一个字节（_rt_flags）：
 const F_REMOVED := 1      # 已从绘制列表移除
-const F_JUDGED := 2       # 已被判定过
+const F_JUDGED := 2       # 已被判定过（长条为首判/头部判定）
 const F_CAN_JUDGE := 4    # 滑块可被认领（键盘模式）
 const F_HELD := 8         # 长条被按住
 const F_PASSED := 16      # 已过判定线
+const F_TAIL_JUDGED := 32 # 长条尾部已判定（双判定模型的第二次判定：按完=Perfect / 断开=Miss）
 var _rt_flags: PackedByteArray = PackedByteArray()
 var _rt_x: PackedFloat32Array = PackedFloat32Array()            # cached_x（左缘）
 var _rt_cx: PackedFloat32Array = PackedFloat32Array()            # cached_center_x（判定/绘制用）
@@ -250,6 +252,14 @@ func _seq_type_to_int(t: int) -> int:
 ## 序列总数（= _st_* 数组长度），供 PlayView 结算统计用
 func get_sequence_count() -> int:
 	return _count
+
+## 判定总数（结算总音符数）：长条计 2（头/尾各一次判定），点块/滑块计 1。
+## 长条持续 tick（long_holding，只加分不加 combo）不计入。
+func get_note_judgment_count() -> int:
+	var total := 0
+	for i in _count:
+		total += 2 if _st_type[i] == FlowNote.NoteType.Long else 1
+	return total
 
 ## 清空全部平行数组（clear_flow_area 调用；build_seq_data 会重新分配）
 func _reset_seq_arrays() -> void:
@@ -717,6 +727,9 @@ func _spawn_note(note_index: int) -> void:
 		_rt_head_half[note_index] = _note_drawer.get_long_head_half_height()
 		_rt_tail_half[note_index] = _note_drawer.get_long_tail_half_height()
 		_rt_held_by[note_index] = -1
+		# spawn 即分配唯一实例 ID：首判（按下）与尾判（按完/断开）共用同一衰减链
+		if _rt_long_id[note_index] < 0:
+			_rt_long_id[note_index] = _alloc_long_id()
 	else:
 		_rt_half[note_index] = _note_drawer.get_half_height(tp)
 		_rt_claimed[note_index] = -1
@@ -811,7 +824,7 @@ func _update_block_note_fall(note_index: int, current_time_ms: float, render_tim
 	# Miss 判定: 音符超出窗口底部且未被击打 (原第二 Tween.finished 逻辑)
 	if not (_rt_flags[note_index] & F_JUDGED) and not (_rt_flags[note_index] & F_REMOVED) and center_y >= _cached_viewport_height:
 		_remove_note(note_index)
-		note_judged.emit("Miss", "", _st_type[note_index], 1.0, 0.0)
+		note_judged.emit("Miss", "", _st_type[note_index], 1.0, 0.0, _rt_long_id[note_index])
 
 ## current_time_ms = 判定时钟（音频），render_time_ms = 渲染时钟（平滑视觉，可选）
 ## 平行数组版：写 _rt_head_cy/_rt_tail_cy/_rt_body_* 缓存字段，drawer 在 _draw 中读取绘制
@@ -857,10 +870,17 @@ func _update_long_note_fall(note_index: int, current_time_ms: float, render_time
 		ref_len -= head_half + tail_half
 	_rt_body_ref_len[note_index] = maxf(ref_len, 1.0)
 
+	# 双判定 Miss（从未击打的长条）：头部落出屏幕底计一次头部 Miss（置 F_JUDGED 后不可再击打，
+	# 与点块落出屏幕即 Miss 的行为对齐）；尾部落出屏幕底再计一次尾部 Miss 并移除。
+	# 两次都经 note_judged 计入评分与 combo
 	if not (_rt_flags[note_index] & F_JUDGED) and not (_rt_flags[note_index] & F_HELD) and _rt_held_by[note_index] < 0:
+		if head_center >= _cached_viewport_height:
+			_rt_flags[note_index] |= F_JUDGED
+			note_judged.emit("Miss", "", FlowNote.NoteType.Long, 1.0, 0.0, _rt_long_id[note_index])
+	if not (_rt_flags[note_index] & F_TAIL_JUDGED) and not (_rt_flags[note_index] & F_HELD) and _rt_held_by[note_index] < 0:
 		if tail_center >= _cached_viewport_height:
+			_judge_long_tail(note_index, "Miss")
 			_remove_note(note_index)
-			note_judged.emit("Miss", "", FlowNote.NoteType.Long, 1.0, 0.0)
 
 ## 内联辅助：长条更新用（保留 _compute_center_y_by_judge_time 逻辑，但接收预计算常量避免重复取值）
 ## 等价于 _compute_center_y_by_judge_time(judge_time_ms, render_time_ms, half_height)，
@@ -1196,6 +1216,17 @@ func _handle_release(touch_id: int, input_time_ms: float = -1.0, released_lane: 
 	var note_index: int = active_holds[touch_id]
 	_rt_flags[note_index] &= ~F_HELD
 
+	# 长条双判定：中途松开 = 尾部 Miss（计入评分与 combo，断开即断 combo）。
+	# 尾部已完成的同帧竞态（渲染钟已到结束时刻但 _process 尚未派发 Perfect）不补 Miss，
+	# 交给 active_holds 完成路径；按住的时长不足一个画面帧时也不会误判
+	var long_end_time = _st_start[note_index] + max(0.0, _st_dur[note_index])
+	if not (_rt_flags[note_index] & F_TAIL_JUDGED) and _render_time_ms < long_end_time:
+		_judge_long_tail(note_index, "Miss")
+		# 演奏模式：按压中断立即 NoteOff——否则合成器里的原音符会一直响到
+		# （可能被压缩/缩放的）结束时刻，听感上"手已松开声音还在继续"
+		if parent_node.play_mode:
+			_manual_off_scheduler.trigger_off_now(note_index)
+
 	# 移除音符
 	_remove_note(note_index)
 	active_holds.erase(touch_id)
@@ -1466,7 +1497,7 @@ func _judge_note(note_index: int, trigger_vibration: bool = false, input_time_ms
 	var hit_pos := Vector2(_rt_cx[note_index], _rt_cy[note_index])
 
 	note_judged.emit(result, "%s%.1f ms" % ["+" if time_diff>=0 else "", time_diff],
-		block_type, timing_sec, signed_offset_sec)
+		block_type, timing_sec, signed_offset_sec, _rt_long_id[note_index])
 	if trigger_vibration:
 		_trigger_touch_vibration()
 	if _st_type[note_index] != FlowNote.NoteType.Long:
@@ -1479,6 +1510,18 @@ func _judge_note(note_index: int, trigger_vibration: bool = false, input_time_ms
 	var emitter = spark_emitters.get(result, "")
 	if (not preset.is_empty() or not emitter.is_empty()) and _st_type[note_index] != FlowNote.NoteType.Long and hit_pos != Vector2.ZERO:
 		_generate_particle(result, hit_pos)
+
+## 长条尾部判定（双判定模型的第二次判定）：
+## 持续按完整个长条 = Perfect；中途断开 / 从未击打而落出屏幕 = Miss。
+## 与首判同级计入评分、combo 与准度（is_long_sustain=false，不走 long_holding 的只加分路径）；
+## block_type 恒为 Long，long_instance_id 让 ScoreCalculator 走该长条的衰减链（首判之后的下一次）。
+## 同一长条仅判定一次（F_TAIL_JUDGED 守卫），调用方负责随后的移除/清场。
+func _judge_long_tail(note_index: int, result: String) -> void:
+	if _rt_flags[note_index] & F_TAIL_JUDGED:
+		return
+	_rt_flags[note_index] |= F_TAIL_JUDGED
+	var timing_sec: float = 1.0 if result == "Miss" else 0.0
+	note_judged.emit(result, "", FlowNote.NoteType.Long, timing_sec, 0.0, _rt_long_id[note_index])
 
 var _is_pause: bool = false
 var _cached_viewport_height: float = 0.0
@@ -1570,6 +1613,8 @@ func _process(delta: float) -> void:
 		# 结束跟随渲染时钟（而非补偿判定钟）：补偿后判定钟在曲终被钳制到不满 delay，
 		# 会让长条尾部提前/无法按视觉滑完而残留、回缩。用渲染钟保证"尾巴滑到判定线即收尾"。
 		if _render_time_ms >= long_end_time:
+			# 长条双判定：持续按完整个长条 = 尾部 Perfect（计入评分与 combo）
+			_judge_long_tail(note_index, "Perfect")
 			if not spark_presets.get("Perfect", "").is_empty() or not spark_emitters.get("Perfect", "").is_empty():
 				_generate_particle("Perfect", Vector2(_rt_cx[note_index], _rt_tail_cy[note_index]))
 			_remove_note(note_index)
