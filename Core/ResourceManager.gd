@@ -86,25 +86,34 @@ func download_chart(chart_hash: String) -> Dictionary:
 	# 记录本次已写入的文件，下载失败时清理
 	var created_files: Array[String] = []
 	
-	# 3. 下载 MIDI 文件
-	var midi_url := "%s/api/charts/%s/file" % [NetManager.instance.server_url, safe_hash]
+	# 3. 封面与 MIDI 并行下载（互不依赖；封面失败不阻塞整体流程）
+	#    协程经 Callable 启动以绕过 GDScript「协程必须 await」的静态检查，
+	#    后面再 await 同一个协程对象取结果（未 await 也会自行跑完）
+	var cover_path := chart_dir.path_join("cover.jpg")
+	var cover_task: Variant = null
+	if bool(chart_data.get("hasCover", false)):
+		var cover_url := "%s/api/charts/%s/cover" % [NetManager.instance.server_url, safe_hash]
+		cover_task = Callable(self, "_download_file").call(cover_url, cover_path)
+	
+	# 4. 下载 MIDI：走可缓存媒体路径 /media/charts/{hash}.mid（CF 边缘命中 ~2s），
+	#    计数用并行 beacon 上报（不等待、失败静默）
+	var midi_url := "%s/media/charts/%s.mid" % [NetManager.instance.server_url, safe_hash]
 	var midi_path := chart_dir.path_join("song.mid")
-	var midi_result := await _download_file(midi_url, midi_path)
+	_report_download(safe_hash)
+	var midi_result: Dictionary = await _download_file(midi_url, midi_path, int(chart_data.get("fileSize", 0)))
+	
+	# 先等封面任务收尾，再处理 MIDI 成败（避免失败清理目录与封面写入竞态）
+	if cover_task != null:
+		var cover_result: Dictionary = await cover_task
+		if cover_result.get("ok", false):
+			created_files.append(cover_path)
+		else:
+			# 封面下载失败不阻塞整体流程
+			GLogger.warning("Cover download failed for %s: %s" % [safe_hash, str(cover_result.get("error", ""))], "ResMGR")
+	
 	if not midi_result.get("ok", false):
 		return _fail_download(chart_hash, chart_dir, created_files, "midi_download_failed: %s" % str(midi_result.get("error", "")))
 	created_files.append(midi_path)
-	
-	# 4. 下载封面（如有）
-	var has_cover := bool(chart_data.get("hasCover", false))
-	if has_cover:
-		var cover_url := "%s/api/charts/%s/cover" % [NetManager.instance.server_url, safe_hash]
-		var cover_path := chart_dir.path_join("cover.jpg")
-		var cover_result := await _download_file(cover_url, cover_path)
-		if not cover_result.get("ok", false):
-			# 封面下载失败不阻塞整体流程
-			GLogger.warning("Cover download failed for %s: %s" % [safe_hash, str(cover_result.get("error", ""))], "ResMGR")
-		else:
-			created_files.append(cover_path)
 	
 	# 5. 写入元数据 JSON（白名单结构，匹配 ChartNormalizer / ChartDb 派生）
 	var json_data := _build_local_json(chart_data)
@@ -180,33 +189,125 @@ func _build_local_json(chart_data: Dictionary) -> Dictionary:
 		}
 	}
 
-## 下载二进制文件到本地路径
-func _download_file(url: String, save_path: String) -> Dictionary:
-	var http := HTTPRequest.new()
-	add_child(http)
-	# 文件下载可能较大，设置较长超时
-	http.timeout = 60.0
-	var err := http.request(url)
-	if err != OK:
+## 下载二进制文件到本地路径（流式落盘 + 自适应超时 + 断点续传重试）
+## expected_size: 期望字节数（0 = 未知），用于按文件大小自适应超时
+## 返回 {"ok": bool, "error": String}
+func _download_file(url: String, save_path: String, expected_size: int = 0, max_attempts: int = 3) -> Dictionary:
+	var part_path := save_path + ".part"
+	var tmp_path := save_path + ".part.tmp"
+	var attempt := 0
+	while attempt < max_attempts:
+		attempt += 1
+		
+		# 断点续传：从 .part 已落盘字节处继续（URL 内容寻址，旧片段永远有效）
+		var resumed_from := 0
+		if FileAccess.file_exists(part_path):
+			resumed_from = _file_size(part_path)
+		
+		# 自适应超时：剩余字节按 100KB/s 保守估算 ×1.5 余量，封顶 300s。
+		# MB 级文件走 CF 边缘命中时几秒完成，回源慢时也不至于被固定 60s 掐断
+		var timeout := 60.0
+		if expected_size > resumed_from:
+			timeout = clampf((expected_size - resumed_from) / 100000.0 * 1.5, 60.0, 300.0)
+		
+		var headers := PackedStringArray()
+		if resumed_from > 0:
+			headers.append("Range: bytes=%d-" % resumed_from)
+		
+		if FileAccess.file_exists(tmp_path):
+			DirAccess.remove_absolute(tmp_path)
+		
+		var http := HTTPRequest.new()
+		add_child(http)
+		http.timeout = timeout
+		# Godot 的 download_file 以截断方式打开目标文件：206 片段先落临时文件，
+		# 成功后再拼接进 .part，避免 Range 尾巴覆写文件头部
+		http.download_file = tmp_path
+		var err := http.request(url, headers)
+		if err != OK:
+			http.queue_free()
+			if attempt >= max_attempts:
+				return {"ok": false, "error": "request_failed: %d" % err}
+			continue
+		
+		var resp = await http.request_completed
 		http.queue_free()
-		return {"ok": false, "error": "request_failed: %d" % err}
-	var resp = await http.request_completed
-	http.queue_free()
-	var result_code = resp[0]
-	var response_code = resp[1]
-	var response_body = resp[3]
-	if result_code != HTTPRequest.RESULT_SUCCESS:
-		return {"ok": false, "error": "download_failed: result=%d" % result_code}
-	if response_code != 200:
-		return {"ok": false, "error": "http_%d" % response_code}
-	if not response_body is PackedByteArray or response_body.size() == 0:
-		return {"ok": false, "error": "empty_response"}
-	var f := FileAccess.open(save_path, FileAccess.WRITE)
-	if f == null:
-		return {"ok": false, "error": "file_open_failed: %s" % save_path}
-	f.store_buffer(response_body)
-	f.close()
+		var result_code = resp[0]
+		var response_code = resp[1]
+		
+		if result_code != HTTPRequest.RESULT_SUCCESS:
+			# 超时/连接失败：引擎已自动删除未完成的临时文件；保留 .part 下一轮续传
+			if attempt >= max_attempts:
+				return {"ok": false, "error": "download_failed: result=%d" % result_code}
+			continue
+		
+		if response_code == 416:
+			# .part 超出服务端范围：丢弃重新全量下载（内容寻址下不应发生）
+			DirAccess.remove_absolute(part_path)
+			if attempt >= max_attempts:
+				return {"ok": false, "error": "http_416"}
+			continue
+		
+		if response_code != 200 and response_code != 206:
+			# 4xx 直接失败；5xx（边缘瞬时错误）可重试
+			if response_code >= 500 and attempt < max_attempts:
+				continue
+			return {"ok": false, "error": "http_%d" % response_code}
+		
+		# 空响应（如误配 200 空体）按失败处理，避免落下 0 字节文件
+		if _file_size(tmp_path) == 0:
+			return {"ok": false, "error": "empty_response"}
+		
+		# 200 = 服务端未理会 Range，返回全量：整体替换 .part；
+		# 206 = Range 片段：追加到 .part 末尾
+		if response_code == 200:
+			if FileAccess.file_exists(part_path):
+				DirAccess.remove_absolute(part_path)
+			if DirAccess.rename_absolute(tmp_path, part_path) != OK:
+				return {"ok": false, "error": "rename_failed"}
+		else:
+			var part_handle := FileAccess.open(part_path, FileAccess.READ_WRITE)
+			if part_handle == null:
+				return {"ok": false, "error": "part_open_failed"}
+			part_handle.seek_end()
+			var chunk_file := FileAccess.open(tmp_path, FileAccess.READ)
+			if chunk_file == null:
+				part_handle.close()
+				return {"ok": false, "error": "tmp_read_failed"}
+			part_handle.store_buffer(chunk_file.get_buffer(chunk_file.get_length()))
+			chunk_file.close()
+			part_handle.close()
+			DirAccess.remove_absolute(tmp_path)
+		
+		# 大小校验（期望值已知时）：不符则重下（内容寻址下不应发生）
+		if expected_size > 0 and _file_size(part_path) != expected_size:
+			if attempt >= max_attempts:
+				DirAccess.remove_absolute(part_path)
+				return {"ok": false, "error": "size_mismatch"}
+			continue
+	
+	# 成功：.part → 正式路径
+	if DirAccess.rename_absolute(part_path, save_path) != OK:
+		return {"ok": false, "error": "rename_failed"}
 	return {"ok": true}
+
+## 下载计数上报（beacon）：与文件下载并行触发，不等待结果。
+## 大文件改走可缓存媒体路径后，/file 的服务端权威计数不在下载路径上，
+## 计数由本端点上报；失败/丢失仅影响商店排序，可接受。
+func _report_download(chart_hash: String) -> void:
+	if NetManager.instance == null or not NetManager.instance.is_online:
+		return
+	var url := "%s/api/charts/%s/downloaded" % [NetManager.instance.server_url, chart_hash]
+	NetManager.instance._request("POST", url, null)
+
+## 取文件字节数（不存在返回 0）
+func _file_size(path: String) -> int:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return 0
+	var size := f.get_length()
+	f.close()
+	return size
 
 ## 清理文件夹名中的非法字符
 func _sanitize_folder_name(folder_name: String) -> String:
