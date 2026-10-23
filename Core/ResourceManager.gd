@@ -12,6 +12,11 @@ static var instance: ResourceManager
 ## 下载状态缓存 {hash: DownloadState}
 var _download_states: Dictionary = {}
 
+## 封面并行下载信箱（download_chart 与 _on_cover_downloaded 回调之间传递结果）。
+## _cover_done 初始 true（无任务），启动封面下载时置 false，回调置 true 并写 _cover_result。
+var _cover_done := true
+var _cover_result: Dictionary = {"ok": false, "error": "not_started"}
+
 func _ready() -> void:
 	if instance == null:
 		instance = self
@@ -87,30 +92,34 @@ func download_chart(chart_hash: String) -> Dictionary:
 	var created_files: Array[String] = []
 	
 	# 3. 封面与 MIDI 并行下载（互不依赖；封面失败不阻塞整体流程）
-	#    协程经 Callable 启动以绕过 GDScript「协程必须 await」的静态检查，
-	#    后面再 await 同一个协程对象取结果（未 await 也会自行跑完）
 	var cover_path := chart_dir.path_join("cover.jpg")
-	var cover_task: Variant = null
-	if bool(chart_data.get("hasCover", false)):
+	_cover_done = not bool(chart_data.get("hasCover", false))
+	if not _cover_done:
 		var cover_url := "%s/api/charts/%s/cover" % [NetManager.instance.server_url, safe_hash]
-		cover_task = Callable(self, "_download_file").call(cover_url, cover_path)
-	
+		# ⚠️ 必须用**语句形式**调用（丢弃返回值）：把协程状态对象
+		# （GDScriptFunctionState）赋值给变量会触发引擎运行时错误
+		# "Trying to call an async function without await"（gdscript_vm.cpp
+		# 对 call_ret 且返回协程对象的检查）。下载结果经 on_done 回调回收。
+		Callable(self, "_download_file").call(cover_url, cover_path, 0, 3,
+			Callable(self, "_on_cover_downloaded"))
+
 	# 4. 下载 MIDI：走可缓存媒体路径 /media/charts/{hash}.mid（CF 边缘命中 ~2s），
 	#    计数用并行 beacon 上报（不等待、失败静默）
 	var midi_url := "%s/media/charts/%s.mid" % [NetManager.instance.server_url, safe_hash]
 	var midi_path := chart_dir.path_join("song.mid")
 	_report_download(safe_hash)
 	var midi_result: Dictionary = await _download_file(midi_url, midi_path, int(chart_data.get("fileSize", 0)))
-	
-	# 先等封面任务收尾，再处理 MIDI 成败（避免失败清理目录与封面写入竞态）
-	if cover_task != null:
-		var cover_result: Dictionary = await cover_task
-		if cover_result.get("ok", false):
-			created_files.append(cover_path)
-		else:
-			# 封面下载失败不阻塞整体流程
-			GLogger.warning("Cover download failed for %s: %s" % [safe_hash, str(cover_result.get("error", ""))], "ResMGR")
-	
+
+	# 等封面收尾再处理 MIDI 成败（避免失败清理目录与封面写入竞态）。
+	# _cover_done 先判断后等待：封面即使先于 MIDI 完成也不会漏等待。
+	while not _cover_done:
+		await get_tree().create_timer(0.05).timeout
+	if _cover_result.get("ok", false):
+		created_files.append(cover_path)
+	else:
+		# 封面下载失败不阻塞整体流程
+		GLogger.warning("Cover download failed for %s: %s" % [safe_hash, str(_cover_result.get("error", ""))], "ResMGR")
+
 	if not midi_result.get("ok", false):
 		return _fail_download(chart_hash, chart_dir, created_files, "midi_download_failed: %s" % str(midi_result.get("error", "")))
 	created_files.append(midi_path)
@@ -152,6 +161,11 @@ func _fail_download(chart_hash: String, chart_dir: String, created_files: Array,
 	for file_path in created_files:
 		if FileAccess.file_exists(file_path):
 			DirAccess.remove_absolute(file_path)
+	# 清理下载中间产物（.part/.part.tmp），否则非空目录删除会失败、留下垃圾目录
+	DirAccess.remove_absolute(chart_dir.path_join("song.mid.part"))
+	DirAccess.remove_absolute(chart_dir.path_join("song.mid.part.tmp"))
+	DirAccess.remove_absolute(chart_dir.path_join("cover.jpg.part"))
+	DirAccess.remove_absolute(chart_dir.path_join("cover.jpg.part.tmp"))
 	DirAccess.remove_absolute(chart_dir)  # 非空目录删除会失败，忽略
 	_download_states[chart_hash] = DownloadState.FAILED
 	return {"ok": false, "error": error_msg}
@@ -192,7 +206,18 @@ func _build_local_json(chart_data: Dictionary) -> Dictionary:
 ## 下载二进制文件到本地路径（流式落盘 + 自适应超时 + 断点续传重试）
 ## expected_size: 期望字节数（0 = 未知），用于按文件大小自适应超时
 ## 返回 {"ok": bool, "error": String}
-func _download_file(url: String, save_path: String, expected_size: int = 0, max_attempts: int = 3) -> Dictionary:
+## 下载二进制文件到本地路径（流式落盘 + 自适应超时 + 断点续传）
+## on_done: 可选完成回调，供「即发即弃」式并行启动回收结果——语句形式调用协程
+## 拿不到返回值（且引擎禁止把协程状态对象赋值给变量，见 download_chart 注释），
+## 结果经此回调传出；直接 await 调用时回调同样触发（无害）。
+func _download_file(url: String, save_path: String, expected_size: int = 0,
+		max_attempts: int = 3, on_done: Callable = Callable()) -> Dictionary:
+	var result := await _download_file_impl(url, save_path, expected_size, max_attempts)
+	if on_done.is_valid():
+		on_done.call(result)
+	return result
+
+func _download_file_impl(url: String, save_path: String, expected_size: int, max_attempts: int) -> Dictionary:
 	var part_path := save_path + ".part"
 	var tmp_path := save_path + ".part.tmp"
 	var attempt := 0
@@ -294,11 +319,20 @@ func _download_file(url: String, save_path: String, expected_size: int = 0, max_
 ## 下载计数上报（beacon）：与文件下载并行触发，不等待结果。
 ## 大文件改走可缓存媒体路径后，/file 的服务端权威计数不在下载路径上，
 ## 计数由本端点上报；失败/丢失仅影响商店排序，可接受。
+## ⚠️ NetManager._request 是协程：此处为**语句形式**调用（丢弃返回值）即发即弃，
+## 是合法姿势；切勿改成 `var r = _request(...)`——那会触发引擎运行时错误
+## "Trying to call an async function without await"。
 func _report_download(chart_hash: String) -> void:
 	if NetManager.instance == null or not NetManager.instance.is_online:
 		return
 	var url := "%s/api/charts/%s/downloaded" % [NetManager.instance.server_url, chart_hash]
 	NetManager.instance._request("POST", url, null)
+
+## 封面并行下载完成回调（经 _download_file 的 on_done 触发）：置位信箱，
+## 唤醒 download_chart 中的 join 轮询
+func _on_cover_downloaded(result: Dictionary) -> void:
+	_cover_result = result
+	_cover_done = true
 
 ## 取文件字节数（不存在返回 0）
 func _file_size(path: String) -> int:
