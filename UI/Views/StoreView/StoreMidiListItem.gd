@@ -160,6 +160,32 @@ func _update_download_state_ui() -> void:
 			_stop_pulse_animation()
 			song_name.set_scroll_text("下载失败，点击重试")
 
+## 下载阶段 → 进度文案（与 ResourceManager.DownloadStage 对应）
+func _stage_text(stage: int) -> String:
+	match stage:
+		ResourceManager.DownloadStage.METADATA:
+			return "正在获取谱面信息"
+		ResourceManager.DownloadStage.COVER:
+			return "正在下载封面"
+		ResourceManager.DownloadStage.MIDI:
+			return "正在下载midi文件"
+		ResourceManager.DownloadStage.JSON:
+			return "正在写入谱面信息"
+		ResourceManager.DownloadStage.RESCAN:
+			return "正在刷新本地曲库"
+	return "下载中"
+
+## 更新下载进度显示（DOWNLOADING 期间的详细信息，由 StoreView 经 ResMGR 回调驱动）
+## stage: ResourceManager.DownloadStage；percent: 0.0~1.0，<0 表示该阶段无字节进度
+func set_download_progress(stage: int, percent: float) -> void:
+	# 非下载中状态忽略：防完成前的迟到 tick 覆盖"▶ ..."终态文本
+	if download_state != ResourceManager.DownloadState.DOWNLOADING:
+		return
+	var text := _stage_text(stage)
+	if percent >= 0.0:
+		text = "%s %d%%" % [text, int(round(percent * 100.0))]
+	song_name.set_scroll_text(text)
+
 ## 启动脉冲动画（下载中提示）
 func _start_pulse_animation() -> void:
 	_stop_pulse_animation()

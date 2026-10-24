@@ -326,7 +326,9 @@ func _download_chart(chart_hash: String) -> void:
 	# 更新列表项状态为下载中
 	_update_item_download_state(chart_hash, ResourceManager.DownloadState.DOWNLOADING)
 
-	var result: Dictionary = await ResMGR.download_chart(chart_hash)
+	# 进度回调：绑定 chart_hash，把 ResMGR 的 (stage, percent) 转给对应列表项
+	var result: Dictionary = await ResMGR.download_chart(chart_hash,
+		Callable(self, "_on_download_progress").bind(chart_hash))
 
 	if result.get("ok", false):
 		_update_item_download_state(chart_hash, ResourceManager.DownloadState.DOWNLOADED)
@@ -349,6 +351,20 @@ func _update_item_download_state(chart_hash: String, state: int) -> void:
 		# 列表项缺失（下载期间离开商店等）：状态机以 ResMGR 为准、重进商店会按
 		# get_download_state 重建显示，此处仅记录，避免静默丢失难以排查
 		GLogger.warning("No list item matched hash %s (state=%d)" % [chart_hash, state], "StoreView")
+
+## 下载进度回调（ResMGR 主线程定时调用）：转发给匹配的列表项。
+## 列表项缺失时静默跳过（进度 tick 频率高，不刷日志；终态仍有上面的 warning 兜底）
+## ⚠️ chart_hash 必须是**最后一个参数**：Callable.bind() 的绑定参数追加在调用参数之后
+## （Godot 语义），ResMGR 以 (stage, percent) 两参调用 → 实际收到 (stage, percent, chart_hash)。
+## 若把 chart_hash 放首位，stage 会灌进 chart_hash 形参，类型不匹配直接SCRIPT ERROR，
+## 且该错误会中止整个 download_chart 协程链 → UI 永久停留"下载中"
+func _on_download_progress(stage: int, percent: float, chart_hash: String) -> void:
+	for item in list_items:
+		if item and is_instance_valid(item) and item is StoreMidiListItem:
+			var store_item = item as StoreMidiListItem
+			if store_item.chart_hash == chart_hash:
+				store_item.set_download_progress(stage, percent)
+				return
 
 ## 从本地查找已下载的 MidiData 并跳转 MidiView
 func _jump_to_midi_view(chart_hash: String) -> void:
