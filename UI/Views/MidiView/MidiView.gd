@@ -365,6 +365,8 @@ func _on_del_btn_pressed():
 			if vocal_path.is_empty():
 				window.show_message("该谱面没有设置人声音频")
 				return
+			# 人声可能正被播放器持有（Windows 上打开中的文件删不掉，err 1），先释放再删
+			FileSystemManager.instance.release_vocal_lock(chart_id)
 			if not FileSystemManager.instance.delete_file(vocal_path):
 				window.show_message("删除人声文件失败")
 				return

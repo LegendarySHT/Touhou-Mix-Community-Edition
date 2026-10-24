@@ -1125,6 +1125,19 @@ func _await_cache_validation(rw: Dictionary, cached_charts: Dictionary) -> void:
 		for folder_name in charts_data.keys():
 			cached_charts[folder_name] = charts_data[folder_name]
 
+	# 3.5 重扫后仍未回到缓存的 changed 文件夹 = 谱面已损坏（info.json/song.mid 被删的
+	# 半残目录——典型现场：删谱面时人声被播放器占用、目录删一半）。与 removed 同等
+	# 清理：只 erase 内存缓存不够（SaveChartsCache 不删行），下次启动又会从 DB 水合出
+	# 鬼影，必须同步 RemoveCharts 才能自愈。
+	var broken_folders: Array = []
+	for f in changed_folders:
+		if not cached_charts.has(f):
+			broken_folders.append(f)
+	if not broken_folders.is_empty():
+		GLogger.warning("Pruned %d broken chart folder(s) (json/mid missing after rescan): %s" % [
+			broken_folders.size(), ", ".join(broken_folders)
+		], "FileSystemMGR")
+
 	# 重建 charts_index（主线程）
 	charts_index.clear()
 	_chart_id_to_folder.clear()
@@ -1143,10 +1156,14 @@ func _await_cache_validation(rw: Dictionary, cached_charts: Dictionary) -> void:
 		audio_dirty.append(f)
 	for f in removed_folders:
 		audio_dirty.append(f)
+	for f in broken_folders:
+		audio_dirty.append(f)
 	_update_audio_files_cache(audio_dirty)
-	# 已删除文件夹同步移除 DB 中的 chart（含 chart_runtime + 聚合重算）
-	if ChartDB and ChartDB.IsOpen() and not removed_folders.is_empty():
-		ChartDB.RemoveCharts(removed_folders)
+	# 已删除/已损坏文件夹同步移除 DB 中的 chart（含 chart_runtime + 聚合重算）
+	if ChartDB and ChartDB.IsOpen():
+		var db_removed: Array = removed_folders + broken_folders
+		if not db_removed.is_empty():
+			ChartDB.RemoveCharts(db_removed)
 
 	# 人声路径自愈：变化/新增的谱面按新索引重指失效路径、补齐空缺路径
 	# 传 changed+new 供第 2 层校正未水合谱面持久化配置里的脏路径（removed 已随 RemoveCharts 清掉）
@@ -2411,6 +2428,19 @@ func _delete_single_chart_files(chart_id: String) -> Dictionary:
 	var meta: ChartMetadata = result["metadata"]
 	var folder_path := CHARTS_DIR.path_join(folder_name)
 
+	# 删除前释放播放器对该谱面人声的占用：Windows 上被 miniaudio decoder 打开中的
+	# vocal.* 无法删除（DirAccess.remove 直接失败），曾导致"删除曲包失败"且目录删一半、
+	# 索引清一半的残局，重开该谱面必崩（2026-10-24 实测，见 _release_vocal_lock）。
+	release_vocal_lock(chart_id)
+
+	# 先删目录：失败则整体保持原状（索引/DB 均未动），用户重试即可。
+	# 【历史坑】旧实现先清索引再删目录，删除失败会留下"索引已清、目录半残"的不一致：
+	# charts_index 仍持该曲（erase 在删除之后），但音频索引/DB 已清、盘中只剩删不掉的
+	# vocal.* → 重开谱面 midi 解析不到 → transport 硬报错。
+	if not delete_directory_recursive(folder_path):
+		return {}
+
+	# 目录删除成功，再清音频索引 + DB 速查库（该谱面的音频条目随目录一起消失）
 	# 先从 audio_files_index 中移除关联的音频条目
 	for i in range(audio_files_index.size() - 1, -1, -1):
 		if audio_files_index[i].get("chart_id", "") == chart_id:
@@ -2423,10 +2453,6 @@ func _delete_single_chart_files(chart_id: String) -> Dictionary:
 	if ChartDB and ChartDB.IsOpen():
 		ChartDB.RemoveAudioFiles([folder_name])
 
-	# 删除目录
-	if not delete_directory_recursive(folder_path):
-		return {}
-
 	# 从 charts_index 移除
 	_chart_id_to_folder.erase(meta.id)
 	_hash_to_folder.erase(meta.hash)
@@ -2434,24 +2460,74 @@ func _delete_single_chart_files(chart_id: String) -> Dictionary:
 	charts_index.erase(folder_name)
 	return {"folder_name": folder_name, "meta": meta}
 
+## 公开：删除谱面/人声文件前调用，释放播放器对目标谱面人声的文件占用。
+## chart_id 接受 lookup_chart 同款语义（folder_name / id / midi_id / file_hash / hash）。
+## 无匹配（播放器没在播这首、或根本没播）时零动作。
+func release_vocal_lock(chart_id: String) -> void:
+	if chart_id.is_empty():
+		return
+	var keys: Array = [chart_id]
+	var result = lookup_chart(chart_id)
+	if not result.is_empty():
+		var meta: ChartMetadata = result["metadata"]
+		for k in [result["folder_name"], meta.id, meta.midi_id, meta.hash, meta.file_hash]:
+			var ks := str(k)
+			if not ks.is_empty() and not keys.has(ks):
+				keys.append(ks)
+	_release_vocal_lock(keys)
+
+## 释放播放器对当前曲人声的占用（停播 + 卸载原生 decoder）。
+## 【为什么必须停播+卸载】人声走 miniaudio 流式解码，decoder 在整个播放期间持有
+## vocal.* 的文件句柄；Windows 上打开中的文件删不掉（DirAccess.remove 返回非 OK）。
+## 只 unload_vocal 不停播会留下"MIDI 从内存缓存继续渲染、文件却已不在"的定时炸弹
+## （循环/seek 时会再炸），所以删除当前曲时停播是正确语义。
+## chart_keys：待删谱面的所有可能键（folder_name/id/hash/file_hash），与播放器
+## 当前曲（get_current_key，规范键=folder_name）比对，命中才动作。
+func _release_vocal_lock(chart_keys: Array) -> void:
+	if chart_keys.is_empty():
+		return
+	if MeltySynth == null or not MeltySynth.has_method("get_current_key"):
+		return
+	var current_key: String = str(MeltySynth.get_current_key())
+	if current_key.is_empty() or not chart_keys.has(current_key):
+		return
+	if MeltySynth.has_method("stop_transport"):
+		MeltySynth.stop_transport()
+	if MeltySynth.has_method("unload_vocal"):
+		MeltySynth.unload_vocal()
+	GLogger.info("Released player vocal lock before delete: %s" % current_key, "FileSystemMGR")
+
 ## 删除音频文件，并从 audio_files_index 移除；同步清理引用该文件的 MidiData 人声配置
 func delete_audio(file_path: String) -> bool:
-	if not delete_file(file_path):
-		return false
+	# 先只读解析引用关系（folder + chart_id），用于删文件前释放播放锁——
+	# 人声正在播放时 Windows 上文件删不掉（err 1），必须先让播放器卸载 decoder。
 	var affected_chart_ids: Array[String] = []
 	var affected_folders: Array = []
-	for i in range(audio_files_index.size() - 1, -1, -1):
-		if audio_files_index[i].get("path", "") == file_path:
-			var chart_id := str(audio_files_index[i].get("chart_id", ""))
+	for e in audio_files_index:
+		if e.get("path", "") == file_path:
+			var chart_id := str(e.get("chart_id", ""))
 			if not chart_id.is_empty() and not affected_chart_ids.has(chart_id):
 				affected_chart_ids.append(chart_id)
+	for e in _audio_file_entries:
+		if e.get("path", "") == file_path:
+			var fn := str(e.get("folder_name", ""))
+			if not fn.is_empty() and not affected_folders.has(fn):
+				affected_folders.append(fn)
+	var lock_keys: Array = affected_folders.duplicate()
+	for cid: String in affected_chart_ids:
+		if not lock_keys.has(cid):
+			lock_keys.append(cid)
+	_release_vocal_lock(lock_keys)
+
+	# 先删文件：失败则索引原样保留（与 _delete_single_chart_files 同序：先盘后索引）
+	if not delete_file(file_path):
+		return false
+	for i in range(audio_files_index.size() - 1, -1, -1):
+		if audio_files_index[i].get("path", "") == file_path:
 			audio_files_index.remove_at(i)
 	# 人声速查索引 / 落库条目 / DB 速查库同步移除该音频
 	for i in range(_audio_file_entries.size() - 1, -1, -1):
 		if _audio_file_entries[i].get("path", "") == file_path:
-			var fn := str(_audio_file_entries[i].get("folder_name", ""))
-			if not fn.is_empty() and not affected_folders.has(fn):
-				affected_folders.append(fn)
 			_audio_file_entries.remove_at(i)
 	for fn: String in affected_folders:
 		if vocal_files_index.get(fn, "") == file_path:
