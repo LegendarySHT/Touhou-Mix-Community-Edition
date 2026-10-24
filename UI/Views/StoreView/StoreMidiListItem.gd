@@ -144,10 +144,12 @@ func _update_download_state_ui() -> void:
 	match download_state:
 		ResourceManager.DownloadState.DOWNLOADED:
 			_stop_pulse_animation()
-			# 显示播放图标前缀，提示可点击游玩
-			# 保留 set_remote_display 中设置的原始歌曲名
-			if not _original_song_name.is_empty():
-				song_name.set_scroll_text("▶ " + _original_song_name)
+			# 显示播放图标前缀，提示可点击游玩；保留 set_remote_display 中设置的原始歌曲名
+			# ⚠️ 曲名为空（服务端 songName 为空串，键存在故 .get 默认值不生效）时
+			# 不能跳过 set_scroll_text，否则文本停留在"下载中..."——
+			# 下载完成了 UI 却不刷新（2026-10-24 修复）
+			var song_label := _original_song_name if not _original_song_name.is_empty() else "点击游玩"
+			song_name.set_scroll_text("▶ " + song_label)
 		ResourceManager.DownloadState.DOWNLOADING:
 			song_name.set_scroll_text("下载中...")
 			_start_pulse_animation()

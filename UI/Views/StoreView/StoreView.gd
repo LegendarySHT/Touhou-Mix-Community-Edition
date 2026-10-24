@@ -337,12 +337,18 @@ func _download_chart(chart_hash: String) -> void:
 
 ## 更新指定 hash 的列表项下载状态
 func _update_item_download_state(chart_hash: String, state: int) -> void:
+	var matched := false
 	for item in list_items:
 		if item and is_instance_valid(item) and item is StoreMidiListItem:
 			var store_item = item as StoreMidiListItem
 			if store_item.chart_hash == chart_hash:
 				store_item.download_state = state
 				store_item._update_download_state_ui()
+				matched = true
+	if not matched:
+		# 列表项缺失（下载期间离开商店等）：状态机以 ResMGR 为准、重进商店会按
+		# get_download_state 重建显示，此处仅记录，避免静默丢失难以排查
+		GLogger.warning("No list item matched hash %s (state=%d)" % [chart_hash, state], "StoreView")
 
 ## 从本地查找已下载的 MidiData 并跳转 MidiView
 func _jump_to_midi_view(chart_hash: String) -> void:
