@@ -326,9 +326,20 @@ func _download_chart(chart_hash: String) -> void:
 	# 更新列表项状态为下载中
 	_update_item_download_state(chart_hash, ResourceManager.DownloadState.DOWNLOADING)
 
+	# 从列表项取下载 hint（列表项已带 ChartResponse 全量）：四键齐全时
+	# 元数据/MIDI/封面三请求并行，省一次元数据 TTFB；无匹配列表项则传空字典，
+	# ResourceManager 自动回退串行流程
+	var hint := {}
+	for item in list_items:
+		if item and is_instance_valid(item) and item is StoreMidiListItem:
+			var store_item = item as StoreMidiListItem
+			if store_item.chart_hash == chart_hash:
+				hint = store_item.get_download_hint()
+				break
+
 	# 进度回调：绑定 chart_hash，把 ResMGR 的 (stage, percent) 转给对应列表项
 	var result: Dictionary = await ResMGR.download_chart(chart_hash,
-		Callable(self, "_on_download_progress").bind(chart_hash))
+		Callable(self, "_on_download_progress").bind(chart_hash), hint)
 
 	if result.get("ok", false):
 		_update_item_download_state(chart_hash, ResourceManager.DownloadState.DOWNLOADED)

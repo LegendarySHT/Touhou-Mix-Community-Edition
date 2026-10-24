@@ -16,6 +16,10 @@ var midi_data:MidiData
 
 ## 资源哈希（用于下载和状态查询）
 var chart_hash: String = ""
+
+## 列表项原始数据（set_remote_display 收到的 ChartResponse 全量字典）：
+## 供 get_download_hint() 提取下载预取字段（三请求并行用）
+var chart_data: Dictionary = {}
 ## 下载状态
 var download_state: int = 0  # ResourceManager.DownloadState
 ## 是否为远程 chart（非本地 MidiData）
@@ -110,6 +114,7 @@ func _resolve_cover_path() -> String:
 
 ## 设置远程 chart 数据显示（从服务端列表获取）
 func set_remote_display(chart_data: Dictionary) -> void:
+	self.chart_data = chart_data
 	chart_hash = str(chart_data.get("hash", ""))
 	is_remote_chart = true
 	download_state = ResMGR.get_download_state(chart_hash)
@@ -133,6 +138,19 @@ func set_remote_display(chart_data: Dictionary) -> void:
 	_load_remote_cover(chart_hash)
 
 	init_finished.emit()
+
+## 下载预取字段：商店列表项已带 ChartResponse 全量（列表/详情同源），
+## 提取四键供 ResourceManager 三请求并行（元数据/MIDI/封面同时发起）。
+## 非远程项或数据缺失时返回空字典 → 下载走串行回退路径
+func get_download_hint() -> Dictionary:
+	if not is_remote_chart or chart_data.is_empty():
+		return {}
+	return {
+		"fileSize": int(chart_data.get("fileSize", 0)),
+		"hasCover": bool(chart_data.get("hasCover", false)),
+		"songName": str(chart_data.get("songName", "")),
+		"difficulty": str(chart_data.get("difficulty", "")),
+	}
 
 ## 更新下载状态的 UI 显示
 func _update_download_state_ui() -> void:

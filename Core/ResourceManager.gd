@@ -24,6 +24,12 @@ var _download_states: Dictionary = {}
 var _cover_done := true
 var _cover_result: Dictionary = {"ok": false, "error": "not_started"}
 
+## 元数据 / MIDI 并行下载信箱（三请求并行路径用，语义同封面信箱）
+var _meta_done := true
+var _meta_result: Dictionary = {"ok": false, "error": "not_started"}
+var _midi_done := true
+var _midi_result: Dictionary = {"ok": false, "error": "not_started"}
+
 func _ready() -> void:
 	if instance == null:
 		instance = self
@@ -60,8 +66,12 @@ func get_chart_list(page: int = 1, limit: int = 20, search: String = "",
 ## 下载 MIDI 到本地
 ## on_progress: 可选进度回调 Callable(stage: int, percent: float)——阶段见 DownloadStage，
 ##               percent < 0 表示该阶段无字节进度（仅阶段文案）。主线程定时调用，需保持轻量。
+## hint: 可选列表项预取字段（ChartResponse 全量：fileSize/hasCover/songName/difficulty）。
+##        四键齐全时走**三请求并行**（元数据/MIDI/封面同时发起，省一次元数据 TTFB）；
+##        否则回退串行流程（元数据前置）。商店入口传 hint，其他调用方可不传。
 ## 返回 {"ok": bool, "error": String}
-func download_chart(chart_hash: String, on_progress: Callable = Callable()) -> Dictionary:
+func download_chart(chart_hash: String, on_progress: Callable = Callable(),
+		hint: Dictionary = {}) -> Dictionary:
 	if NetManager.instance == null or not NetManager.instance.is_online:
 		return {"ok": false, "error": "offline"}
 	if chart_hash.is_empty():
@@ -74,6 +84,87 @@ func download_chart(chart_hash: String, on_progress: Callable = Callable()) -> D
 	
 	_download_states[chart_hash] = DownloadState.DOWNLOADING
 
+	if _hint_is_valid(hint):
+		return await _download_chart_parallel(chart_hash, safe_hash, on_progress, hint)
+	return await _download_chart_sequential(chart_hash, safe_hash, on_progress)
+
+## 三请求并行下载路径：元数据/MIDI/封面互不依赖，同时发起后 join。
+## 前置条件：hint 四键齐全（fileSize/hasCover/songName/difficulty）——目录可先行建立，
+## MIDI 的期望大小与封面的有无也不必等元数据。
+func _download_chart_parallel(chart_hash: String, safe_hash: String,
+		on_progress: Callable, hint: Dictionary) -> Dictionary:
+	var base_url := NetManager.instance.server_url
+	var meta_url := "%s/api/charts/%s" % [base_url, safe_hash]
+	var midi_url := "%s/media/charts/%s.mid" % [base_url, safe_hash]
+	var cover_url := "%s/api/charts/%s/cover" % [base_url, safe_hash]
+
+	# 1. 先用 hint 建目录。目录名仅人类可读：FileSystemManager 按 info.json 的
+	#    hash 字段识别目录（_hash_to_folder），songName 变化不影响映射
+	var folder_name := _folder_name_for(safe_hash, hint)
+	var chart_dir := FileSystemManager.CHARTS_DIR.path_join(folder_name)
+	var mkdir_err := DirAccess.make_dir_recursive_absolute(chart_dir)
+	if mkdir_err != OK:
+		_download_states[chart_hash] = DownloadState.FAILED
+		return {"ok": false, "error": "mkdir_failed"}
+	var created_files: Array[String] = []
+	var cover_path := chart_dir.path_join("cover.jpg")
+	var midi_path := chart_dir.path_join("song.mid")
+
+	# 2. 三路同时发起（均为语句形式 Callable 启动 + 信箱回调回收结果，
+	#    见下方 _fetch_metadata / _on_*_downloaded 注释）
+	_report_progress(on_progress, DownloadStage.METADATA, -1.0)
+	_meta_done = false
+	_meta_result = {"ok": false, "error": "not_started"}
+	Callable(self, "_fetch_metadata").call(meta_url, Callable(self, "_on_metadata_downloaded"))
+
+	var cover_needed := bool(hint.get("hasCover", false))
+	_cover_done = not cover_needed
+	if cover_needed:
+		Callable(self, "_download_file").call(cover_url, cover_path, 0, 3,
+			Callable(self, "_on_cover_downloaded"), on_progress, DownloadStage.COVER)
+
+	_midi_done = false
+	_midi_result = {"ok": false, "error": "not_started"}
+	_report_download(safe_hash)  # beacon 与文件下载并行，不等待
+	Callable(self, "_download_file").call(midi_url, midi_path,
+		int(hint.get("fileSize", 0)), 3,
+		Callable(self, "_on_midi_downloaded"), on_progress, DownloadStage.MIDI)
+
+	# 3. join 三路：先判断后轮询，任一先完成都不会漏等待（信箱见成员变量区）
+	while not (_meta_done and _midi_done and _cover_done):
+		await get_tree().create_timer(0.05).timeout
+
+	# 4. 元数据失败 → 清理（三路均已收尾，无文件写入竞态）
+	if not _meta_result.get("ok", false):
+		return _fail_download(chart_hash, chart_dir, created_files,
+			"metadata_fetch_failed: %s" % str(_meta_result.get("error", "")))
+	var chart_data: Dictionary = _meta_result.get("data", {})
+
+	# 元数据与 hint 的 songName/difficulty 不一致（极端脏数据）：目录名保持已建版本
+	# （识别靠 info.json hash），仅 warning；info.json 内容以元数据为准
+	var meta_folder := _folder_name_for(safe_hash, chart_data)
+	if meta_folder != folder_name:
+		GLogger.warning("hint/metadata folder mismatch: %s vs %s (keep %s)" % [
+			folder_name, meta_folder, folder_name], "ResMGR")
+
+	if not _midi_result.get("ok", false):
+		return _fail_download(chart_hash, chart_dir, created_files,
+			"midi_download_failed: %s" % str(_midi_result.get("error", "")))
+	created_files.append(midi_path)
+
+	if cover_needed:
+		if _cover_result.get("ok", false):
+			created_files.append(cover_path)
+		else:
+			# 封面下载失败不阻塞整体流程
+			GLogger.warning("Cover download failed for %s: %s" % [safe_hash, str(_cover_result.get("error", ""))], "ResMGR")
+
+	return await _finalize_download(chart_hash, chart_data, chart_dir, created_files, on_progress)
+
+## 串行下载路径（回退）：无列表项上下文时元数据前置，再并行下载封面/MIDI。
+## 保留给非商店入口（如未来的人声/其他调用方）与 hint 不完整时使用。
+func _download_chart_sequential(chart_hash: String, safe_hash: String,
+		on_progress: Callable) -> Dictionary:
 	# 1. 获取元数据
 	_report_progress(on_progress, DownloadStage.METADATA, -1.0)
 	var meta_url := "%s/api/charts/%s" % [NetManager.instance.server_url, safe_hash]
@@ -83,28 +174,22 @@ func download_chart(chart_hash: String, on_progress: Callable = Callable()) -> D
 		return {"ok": false, "error": "metadata_fetch_failed: %s" % str(meta_result.get("error", ""))}
 	
 	var chart_data: Dictionary = meta_result.data
-	
-	# 2. 构建本地文件夹路径
-	var song_name := str(chart_data.get("songName", "unknown"))
-	var difficulty := str(chart_data.get("difficulty", "Normal"))
-	# 清理文件名中的非法字符
-	song_name = _sanitize_folder_name(song_name)
-	difficulty = _sanitize_folder_name(difficulty)
-	var folder_name := "%s_%s_%s" % [safe_hash, song_name, difficulty]
+
+	# 2. 构建本地文件夹路径并确保目录存在
+	var folder_name := _folder_name_for(safe_hash, chart_data)
 	var chart_dir := FileSystemManager.CHARTS_DIR.path_join(folder_name)
-	
-	# 确保目录存在
 	var mkdir_err := DirAccess.make_dir_recursive_absolute(chart_dir)
 	if mkdir_err != OK:
 		_download_states[chart_hash] = DownloadState.FAILED
 		return {"ok": false, "error": "mkdir_failed"}
 	# 记录本次已写入的文件，下载失败时清理
 	var created_files: Array[String] = []
-	
+
 	# 3. 封面与 MIDI 并行下载（互不依赖；封面失败不阻塞整体流程）
 	var cover_path := chart_dir.path_join("cover.jpg")
-	_cover_done = not bool(chart_data.get("hasCover", false))
-	if not _cover_done:
+	var cover_needed := bool(chart_data.get("hasCover", false))
+	_cover_done = not cover_needed
+	if cover_needed:
 		var cover_url := "%s/api/charts/%s/cover" % [NetManager.instance.server_url, safe_hash]
 		# ⚠️ 必须用**语句形式**调用（丢弃返回值）：把协程状态对象
 		# （GDScriptFunctionState）赋值给变量会触发引擎运行时错误
@@ -125,16 +210,22 @@ func download_chart(chart_hash: String, on_progress: Callable = Callable()) -> D
 	# _cover_done 先判断后等待：封面即使先于 MIDI 完成也不会漏等待。
 	while not _cover_done:
 		await get_tree().create_timer(0.05).timeout
-	if _cover_result.get("ok", false):
-		created_files.append(cover_path)
-	else:
-		# 封面下载失败不阻塞整体流程
-		GLogger.warning("Cover download failed for %s: %s" % [safe_hash, str(_cover_result.get("error", ""))], "ResMGR")
+	if cover_needed:
+		if _cover_result.get("ok", false):
+			created_files.append(cover_path)
+		else:
+			# 封面下载失败不阻塞整体流程
+			GLogger.warning("Cover download failed for %s: %s" % [safe_hash, str(_cover_result.get("error", ""))], "ResMGR")
 
 	if not midi_result.get("ok", false):
 		return _fail_download(chart_hash, chart_dir, created_files, "midi_download_failed: %s" % str(midi_result.get("error", "")))
 	created_files.append(midi_path)
-	
+
+	return await _finalize_download(chart_hash, chart_data, chart_dir, created_files, on_progress)
+
+## 下载收尾（并行/串行路径共用）：写 info.json + 刷新本地曲库索引
+func _finalize_download(chart_hash: String, chart_data: Dictionary, chart_dir: String,
+		created_files: Array, on_progress: Callable) -> Dictionary:
 	# 5. 写入元数据 JSON（白名单结构，匹配 ChartNormalizer / ChartDb 派生）
 	_report_progress(on_progress, DownloadStage.JSON, -1.0)
 	var json_data := _build_local_json(chart_data)
@@ -155,8 +246,20 @@ func download_chart(chart_hash: String, on_progress: Callable = Callable()) -> D
 		await FileSystemManager.instance.rescan_resources()
 	
 	_download_states[chart_hash] = DownloadState.DOWNLOADED
-	GLogger.info("Chart downloaded: %s" % safe_hash, "ResMGR")
+	GLogger.info("Chart downloaded: %s" % str(chart_data.get("hash", "")), "ResMGR")
 	return {"ok": true}
+
+## hint 有效性：四键齐全才允许三请求并行（目录先行建立 + MIDI 期望大小已知）。
+## songName 允许空串（按 has() 判断而非真值——空串是合法谱面名）
+func _hint_is_valid(hint: Dictionary) -> bool:
+	return hint.has("fileSize") and hint.has("hasCover") \
+		and hint.has("songName") and hint.has("difficulty")
+
+## 由 chart 数据派生本地目录名（并行路径用 hint、串行路径用元数据，同一函数保证一致）
+func _folder_name_for(safe_hash: String, chart_data: Dictionary) -> String:
+	var song_name := _sanitize_folder_name(str(chart_data.get("songName", "unknown")))
+	var difficulty := _sanitize_folder_name(str(chart_data.get("difficulty", "Normal")))
+	return "%s_%s_%s" % [safe_hash, song_name, difficulty]
 
 ## 校验下载 hash 是否可安全用于本地路径（仅允许 URL-safe 字符，拒绝分隔符/点号/控制字符）
 func _sanitize_hash(chart_hash: String) -> String:
@@ -358,6 +461,24 @@ func _report_download(chart_hash: String) -> void:
 func _on_cover_downloaded(result: Dictionary) -> void:
 	_cover_result = result
 	_cover_done = true
+
+## 元数据并行拉取完成回调（经 _fetch_metadata 的 on_done 触发）
+func _on_metadata_downloaded(result: Dictionary) -> void:
+	_meta_result = result
+	_meta_done = true
+
+## MIDI 并行下载完成回调（经 _download_file 的 on_done 触发）
+func _on_midi_downloaded(result: Dictionary) -> void:
+	_midi_result = result
+	_midi_done = true
+
+## 拉取谱面元数据（供三请求并行路径使用）：完成时经 on_done 回调回收结果。
+## ⚠️ 由 download_chart 以**语句形式** Callable 启动（协程状态禁止赋值给变量，
+## 见 download_chart 注释），结果经 on_done 传回信箱
+func _fetch_metadata(meta_url: String, on_done: Callable) -> void:
+	var result: Dictionary = await NetManager.instance._request("GET", meta_url, null)
+	if on_done.is_valid():
+		on_done.call(result)
 
 ## 上报下载进度（on_progress 无效时静默跳过——无调用方关心进度时零开销）
 func _report_progress(on_progress: Callable, stage: int, percent: float) -> void:
