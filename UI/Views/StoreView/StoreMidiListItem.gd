@@ -141,6 +141,8 @@ func set_remote_display(chart_data: Dictionary) -> void:
 
 ## 下载预取字段：商店列表项已带 ChartResponse 全量（列表/详情同源），
 ## 提取四键供 ResourceManager 三请求并行（元数据/MIDI/封面同时发起）。
+## 另附人声三键（2026-10-24 人声下载）：有 vocal 时第四路并行下载（受设置开关控制），
+## 缺失/为 false 时不影响原有四键并行判定（_hint_is_valid 只查四键）。
 ## 非远程项或数据缺失时返回空字典 → 下载走串行回退路径
 func get_download_hint() -> Dictionary:
 	if not is_remote_chart or chart_data.is_empty():
@@ -150,6 +152,9 @@ func get_download_hint() -> Dictionary:
 		"hasCover": bool(chart_data.get("hasCover", false)),
 		"songName": str(chart_data.get("songName", "")),
 		"difficulty": str(chart_data.get("difficulty", "")),
+		"hasVocal": bool(chart_data.get("hasVocal", false)),
+		"vocalSize": int(chart_data.get("vocalSize", 0)),
+		"vocalFormat": str(chart_data.get("vocalFormat", "")),
 	}
 
 ## 更新下载状态的 UI 显示
@@ -191,6 +196,8 @@ func _stage_text(stage: int) -> String:
 			return "正在写入谱面信息"
 		ResourceManager.DownloadStage.RESCAN:
 			return "正在刷新本地曲库"
+		ResourceManager.DownloadStage.VOCAL:
+			return "正在下载人声音频"
 	return "下载中"
 
 ## 更新下载进度显示（DOWNLOADING 期间的详细信息，由 StoreView 经 ResMGR 回调驱动）

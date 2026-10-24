@@ -7,8 +7,9 @@ class_name ResourceManager
 ## 下载状态枚举
 enum DownloadState { NOT_DOWNLOADED, DOWNLOADING, DOWNLOADED, FAILED }
 
-## 下载阶段枚举（进度上报用，UI 侧映射为中文文案）
-enum DownloadStage { METADATA, COVER, MIDI, JSON, RESCAN }
+## 下载阶段枚举（进度上报用，UI 侧映射为中文文案）。
+## VOCAL 追加在末尾（2026-10-24 人声下载）：保持既有数值稳定
+enum DownloadStage { METADATA, COVER, MIDI, JSON, RESCAN, VOCAL }
 
 ## 下载进度轮询间隔（秒）：引擎 HTTPRequest 无下载进度信号，
 ## 只能定时轮询 get_downloaded_bytes() 逼近（完成回调的最大附加延迟即此值）
@@ -29,6 +30,10 @@ var _meta_done := true
 var _meta_result: Dictionary = {"ok": false, "error": "not_started"}
 var _midi_done := true
 var _midi_result: Dictionary = {"ok": false, "error": "not_started"}
+
+## 人声并行下载信箱（第四路，语义同封面信箱；设置关闭或谱面无人声时初始 true 不参与 join）
+var _vocal_done := true
+var _vocal_result: Dictionary = {"ok": false, "error": "not_started"}
 
 func _ready() -> void:
 	if instance == null:
@@ -66,9 +71,11 @@ func get_chart_list(page: int = 1, limit: int = 20, search: String = "",
 ## 下载 MIDI 到本地
 ## on_progress: 可选进度回调 Callable(stage: int, percent: float)——阶段见 DownloadStage，
 ##               percent < 0 表示该阶段无字节进度（仅阶段文案）。主线程定时调用，需保持轻量。
-## hint: 可选列表项预取字段（ChartResponse 全量：fileSize/hasCover/songName/difficulty）。
-##        四键齐全时走**三请求并行**（元数据/MIDI/封面同时发起，省一次元数据 TTFB）；
-##        否则回退串行流程（元数据前置）。商店入口传 hint，其他调用方可不传。
+## hint: 可选列表项预取字段（ChartResponse 全量：fileSize/hasCover/songName/difficulty，
+##        另含人声三键 hasVocal/vocalSize/vocalFormat）。
+##        四键齐全时走**并行流程**（元数据/MIDI/封面同时发起，省一次元数据 TTFB；
+##        人声在有且设置开启时第四路并行）；否则回退串行流程（元数据前置）。
+##        商店入口传 hint，其他调用方可不传。
 ## 返回 {"ok": bool, "error": String}
 func download_chart(chart_hash: String, on_progress: Callable = Callable(),
 		hint: Dictionary = {}) -> Dictionary:
@@ -88,9 +95,10 @@ func download_chart(chart_hash: String, on_progress: Callable = Callable(),
 		return await _download_chart_parallel(chart_hash, safe_hash, on_progress, hint)
 	return await _download_chart_sequential(chart_hash, safe_hash, on_progress)
 
-## 三请求并行下载路径：元数据/MIDI/封面互不依赖，同时发起后 join。
+## 并行下载路径：元数据/MIDI/封面互不依赖同时发起，人声（可选）第四路并行后 join。
 ## 前置条件：hint 四键齐全（fileSize/hasCover/songName/difficulty）——目录可先行建立，
-## MIDI 的期望大小与封面的有无也不必等元数据。
+## MIDI 的期望大小与封面的有无也不必等元数据。人声三键（hasVocal/vocalSize/vocalFormat）
+## 随 hint 附带：设置开启且有 vocal 时并行下载，失败不阻塞整体流程。
 func _download_chart_parallel(chart_hash: String, safe_hash: String,
 		on_progress: Callable, hint: Dictionary) -> Dictionary:
 	var base_url := NetManager.instance.server_url
@@ -130,8 +138,25 @@ func _download_chart_parallel(chart_hash: String, safe_hash: String,
 		int(hint.get("fileSize", 0)), 3,
 		Callable(self, "_on_midi_downloaded"), on_progress, DownloadStage.MIDI)
 
-	# 3. join 三路：先判断后轮询，任一先完成都不会漏等待（信箱见成员变量区）
-	while not (_meta_done and _midi_done and _cover_done):
+	# 2.5 人声（可选第四路，2026-10-24）：设置开启且 hint 表明有 vocal 才发起。
+	#     与封面同策略——失败不阻塞整体流程（本地可玩，只是没人声）。
+	#     vocalFormat 为空（脏数据）时跳过：无法推定本地文件名 vocal.<ext>
+	var vocal_needed := _vocal_download_enabled() and bool(hint.get("hasVocal", false))
+	var vocal_format := str(hint.get("vocalFormat", ""))
+	var vocal_path := ""
+	if vocal_needed and vocal_format.is_empty():
+		vocal_needed = false
+		GLogger.warning("hasVocal but vocalFormat empty for %s, skip vocal" % safe_hash, "ResMGR")
+	_vocal_done = not vocal_needed
+	if vocal_needed:
+		vocal_path = chart_dir.path_join("vocal.%s" % vocal_format)
+		var vocal_url := "%s/media/charts/%s.vocal" % [base_url, safe_hash]
+		Callable(self, "_download_file").call(vocal_url, vocal_path,
+			int(hint.get("vocalSize", 0)), 3,
+			Callable(self, "_on_vocal_downloaded"), on_progress, DownloadStage.VOCAL)
+
+	# 3. join 四路：先判断后轮询，任一先完成都不会漏等待（信箱见成员变量区）
+	while not (_meta_done and _midi_done and _cover_done and _vocal_done):
 		await get_tree().create_timer(0.05).timeout
 
 	# 4. 元数据失败 → 清理（三路均已收尾，无文件写入竞态）
@@ -158,6 +183,13 @@ func _download_chart_parallel(chart_hash: String, safe_hash: String,
 		else:
 			# 封面下载失败不阻塞整体流程
 			GLogger.warning("Cover download failed for %s: %s" % [safe_hash, str(_cover_result.get("error", ""))], "ResMGR")
+
+	if vocal_needed:
+		if _vocal_result.get("ok", false):
+			created_files.append(vocal_path)
+		else:
+			# 人声下载失败不阻塞整体流程（与封面同策略）
+			GLogger.warning("Vocal download failed for %s: %s" % [safe_hash, str(_vocal_result.get("error", ""))], "ResMGR")
 
 	return await _finalize_download(chart_hash, chart_data, chart_dir, created_files, on_progress)
 
@@ -198,6 +230,22 @@ func _download_chart_sequential(chart_hash: String, safe_hash: String,
 		Callable(self, "_download_file").call(cover_url, cover_path, 0, 3,
 			Callable(self, "_on_cover_downloaded"), on_progress, DownloadStage.COVER)
 
+	# 3.5 人声（可选，2026-10-24）：设置开启且元数据表明有 vocal 时与封面并联发起。
+	#     与封面同策略——失败不阻塞整体流程；vocalFormat 为空（脏数据）时跳过
+	var vocal_needed := _vocal_download_enabled() and bool(chart_data.get("hasVocal", false))
+	var vocal_format := str(chart_data.get("vocalFormat", ""))
+	var vocal_path := ""
+	if vocal_needed and vocal_format.is_empty():
+		vocal_needed = false
+		GLogger.warning("hasVocal but vocalFormat empty for %s, skip vocal" % safe_hash, "ResMGR")
+	_vocal_done = not vocal_needed
+	if vocal_needed:
+		vocal_path = chart_dir.path_join("vocal.%s" % vocal_format)
+		var vocal_url := "%s/media/charts/%s.vocal" % [NetManager.instance.server_url, safe_hash]
+		Callable(self, "_download_file").call(vocal_url, vocal_path,
+			int(chart_data.get("vocalSize", 0)), 3,
+			Callable(self, "_on_vocal_downloaded"), on_progress, DownloadStage.VOCAL)
+
 	# 4. 下载 MIDI：走可缓存媒体路径 /media/charts/{hash}.mid（CF 边缘命中 ~2s），
 	#    计数用并行 beacon 上报（不等待、失败静默）
 	var midi_url := "%s/media/charts/%s.mid" % [NetManager.instance.server_url, safe_hash]
@@ -210,12 +258,21 @@ func _download_chart_sequential(chart_hash: String, safe_hash: String,
 	# _cover_done 先判断后等待：封面即使先于 MIDI 完成也不会漏等待。
 	while not _cover_done:
 		await get_tree().create_timer(0.05).timeout
+	# 人声同理：收尾后再做失败清理（vocal.<ext> 写入与目录删除不能竞态）
+	while not _vocal_done:
+		await get_tree().create_timer(0.05).timeout
 	if cover_needed:
 		if _cover_result.get("ok", false):
 			created_files.append(cover_path)
 		else:
 			# 封面下载失败不阻塞整体流程
 			GLogger.warning("Cover download failed for %s: %s" % [safe_hash, str(_cover_result.get("error", ""))], "ResMGR")
+	if vocal_needed:
+		if _vocal_result.get("ok", false):
+			created_files.append(vocal_path)
+		else:
+			# 人声下载失败不阻塞整体流程（与封面同策略）
+			GLogger.warning("Vocal download failed for %s: %s" % [safe_hash, str(_vocal_result.get("error", ""))], "ResMGR")
 
 	if not midi_result.get("ok", false):
 		return _fail_download(chart_hash, chart_dir, created_files, "midi_download_failed: %s" % str(midi_result.get("error", "")))
@@ -282,6 +339,13 @@ func _fail_download(chart_hash: String, chart_dir: String, created_files: Array,
 	DirAccess.remove_absolute(chart_dir.path_join("song.mid.part.tmp"))
 	DirAccess.remove_absolute(chart_dir.path_join("cover.jpg.part"))
 	DirAccess.remove_absolute(chart_dir.path_join("cover.jpg.part.tmp"))
+	# 人声扩展名不固定（vocal.ogg/.wav/.mp3/.flac），按前缀扫描清理
+	var fail_dir := DirAccess.open(chart_dir)
+	if fail_dir != null:
+		for part_file in fail_dir.get_files():
+			if part_file.begins_with("vocal.") and \
+					(part_file.ends_with(".part") or part_file.ends_with(".part.tmp")):
+				DirAccess.remove_absolute(chart_dir.path_join(part_file))
 	DirAccess.remove_absolute(chart_dir)  # 非空目录删除会失败，忽略
 	_download_states[chart_hash] = DownloadState.FAILED
 	return {"ok": false, "error": error_msg}
@@ -472,6 +536,20 @@ func _on_midi_downloaded(result: Dictionary) -> void:
 	_midi_result = result
 	_midi_done = true
 
+## 人声并行下载完成回调（经 _download_file 的 on_done 触发）：置位信箱，
+## 唤醒 download_chart 中的 join 轮询（第四路）
+func _on_vocal_downloaded(result: Dictionary) -> void:
+	_vocal_result = result
+	_vocal_done = true
+
+## 是否随谱面一并下载人声：[General] download_vocal（0=关，1=开，默认开）。
+## 与 config.ini 默认值一致——ConfigManager 不可用（单测/极早期初始化）时按开启处理。
+## 关闭时仅影响「随谱面一并下载」，不影响 download_vocal() 单独补下入口
+func _vocal_download_enabled() -> bool:
+	if ConfigManager.instance == null:
+		return true
+	return ConfigManager.instance.get_int("General", "download_vocal", 1) == 1
+
 ## 拉取谱面元数据（供三请求并行路径使用）：完成时经 on_done 回调回收结果。
 ## ⚠️ 由 download_chart 以**语句形式** Callable 启动（协程状态禁止赋值给变量，
 ## 见 download_chart 注释），结果经 on_done 传回信箱
@@ -564,9 +642,54 @@ func get_download_state(chart_hash: String) -> DownloadState:
 
 # ========== 预留接口（未来实现） ==========
 
-## 下载人声音频（预留接口）
-func download_vocal(_target_hash: String) -> Dictionary:
-	return {"ok": false, "error": "not_implemented"}
+## 下载人声音频到本地**已下载**谱面的目录（vocal.{格式}，2026-10-24 实装）。
+## 服务端权威：先拉元数据取 hasVocal/vocalFormat/vocalSize，无人声直接返回。
+## StoreView 下载流程内的「一并下载」走 _download_chart_* 的并联逻辑，不经此函数；
+## 本函数供「已下载谱面从服务端单独补下人声」的 UI 调用（当前无入口，接口就绪）。
+## 幂等：本地 vocal.<ext> 已存在且字节数与服务端一致时直接返回 ok。
+## 返回 {"ok": bool, "error": String}
+func download_vocal(target_hash: String) -> Dictionary:
+	if NetManager.instance == null or not NetManager.instance.is_online:
+		return {"ok": false, "error": "offline"}
+	var safe_hash := _sanitize_hash(target_hash)
+	if safe_hash.is_empty():
+		return {"ok": false, "error": "invalid_hash"}
+	# 本地必须已有该谱面目录：本函数是「补下」，不负责谱面本体
+	var folder_name := ""
+	if FileSystemManager.instance and FileSystemManager.instance._hash_to_folder.has(safe_hash):
+		folder_name = str(FileSystemManager.instance._hash_to_folder[safe_hash])
+	if folder_name.is_empty():
+		return {"ok": false, "error": "chart_not_downloaded"}
+	var chart_dir := FileSystemManager.CHARTS_DIR.path_join(folder_name)
+
+	# 元数据：hasVocal / vocalFormat / vocalSize（与列表/详情同源）
+	var meta_url := "%s/api/charts/%s" % [NetManager.instance.server_url, safe_hash]
+	var meta_result: Dictionary = await NetManager.instance._request("GET", meta_url, null)
+	if not meta_result.get("ok", false):
+		return {"ok": false, "error": "metadata_fetch_failed: %s" % str(meta_result.get("error", ""))}
+	var chart_data: Dictionary = meta_result.data
+	if not bool(chart_data.get("hasVocal", false)):
+		return {"ok": false, "error": "no_vocal"}
+	var vocal_format := str(chart_data.get("vocalFormat", ""))
+	if vocal_format.is_empty():
+		return {"ok": false, "error": "vocal_format_missing"}
+	var vocal_path := chart_dir.path_join("vocal.%s" % vocal_format)
+
+	# 幂等：已有同字节数文件视为已下载
+	if FileAccess.file_exists(vocal_path) and _file_size(vocal_path) == int(chart_data.get("vocalSize", 0)):
+		return {"ok": true}
+
+	var vocal_url := "%s/media/charts/%s.vocal" % [NetManager.instance.server_url, safe_hash]
+	var result: Dictionary = await _download_file(vocal_url, vocal_path,
+		int(chart_data.get("vocalSize", 0)), 3)
+	if not result.get("ok", false):
+		return result
+
+	# 刷新本地索引（vocal_files_index / DB audio_files），让 MidiData 立刻指到新人声
+	if FileSystemManager.instance:
+		await FileSystemManager.instance.rescan_resources()
+	GLogger.info("Vocal downloaded: %s (%s)" % [safe_hash, vocal_format], "ResMGR")
+	return {"ok": true}
 
 ## 下载 SF2 音源（预留接口）
 func download_soundfont(_id: String) -> Dictionary:

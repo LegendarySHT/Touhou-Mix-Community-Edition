@@ -12,6 +12,7 @@ static var mappings: Dictionary = {
 	# ========== 常规设置 ==========
 	"online_mode": {"section": "General", "key": "online_mode", "value_type": "int"},
 	"auto_upload_score": {"section": "General", "key": "auto_upload_score", "value_type": "int"},
+	"download_vocal": {"section": "General", "key": "download_vocal", "value_type": "int"},
 	"display_debug_info": {"section": "General", "key": "display_debug_info", "value_type": "int"},
 	"show_advanced_settings": {"section": "General", "key": "show_advanced_settings", "value_type": "int"},
 	"language": {"section": "General", "key": "language", "value_type": "int"},

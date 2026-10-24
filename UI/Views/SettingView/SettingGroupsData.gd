@@ -91,6 +91,18 @@ static func get_setting_groups() -> Array:
 				{"text_en": "On", "text_zh": "开启"}
 			]
 		},
+		{
+			"id": "download_vocal",
+			"name_en": "Download Vocal",
+			"name_zh": "同时下载音频文件",
+			"description": "开启后下载谱面时，会一并下载该谱面的人声音频（如有）",
+			"type": "TYPE_OPTION",
+			"default_value": "1",
+			"options": [
+				{"text_en": "Off", "text_zh": "关闭"},
+				{"text_en": "On", "text_zh": "开启"}
+			]
+		},
 			{
 				"id": "language",
 				"name_en": "Language",
