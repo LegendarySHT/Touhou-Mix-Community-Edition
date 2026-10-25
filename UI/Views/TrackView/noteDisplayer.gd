@@ -193,18 +193,26 @@ func _process(_delta):
 	var ct := _computed_ct
 
 	# ct 异常保护：循环播放时 Sequencer.Position 可能继续增长而不跳回 0，
-	# 导致 ct 超过所有音符的 end_tick。此时不做移除操作，等待 TrackView 循环检测恢复
+	# 导致 ct 超过所有音符的 end_tick。此时不做移除操作，等待位置回绕
 	# 同时清空活动音符，防止旧音符残留累积拖慢渲染
+	# （计数不在此处处理：回绕帧由下方 wrapped 分支按新 ct 全量重算，见注释）
 	if _max_end_tick > 0 and ct > _max_end_tick + area_width / scale_factor:
 		_clear_all_notes()
 		_last_ct = ct
 		return
 
-	# 检测 ct 回退（循环跳回 0 或 seek 回退）：重置所有 bucket cursor 和活动音符
+	# 检测 ct 回退（循环跳回 0 或 seek 回退）：重置所有 bucket cursor 和活动音符。
+	# 回退即播放头被放回早前位置，已通过计数必须按新 ct 重算（见下方 wrapped 分支）——
+	# 历史缺陷：计数归零曾完全依赖 TrackView 的 ms 域循环检测（_is_playback_looped，
+	# 带曲尾阈值 + 30 帧抑制窗口），与该 tick 域检测一旦不同步（seek / 焦点回归 /
+	# 系统媒体命令激活抑制窗口、后台换曲路径重启），音符显示复位了而计数停在旧值
+	# 继续累加，表现为"循环自动重放后已播放音符数不归零、持续增长"。
+	var wrapped := false
 	if _last_ct >= 0 and ct < _last_ct - area_width / scale_factor:
 		_clear_all_notes()
 		for b in buckets:
 			b.cursor = 0
+		wrapped = true
 	_last_ct = ct
 
 	# 提前计算视野边界
@@ -246,6 +254,14 @@ func _process(_delta):
 		for n in to_remove:
 			arr.erase(n)
 			active_notes.erase(n)
+
+	# 回退帧（循环自动重放 / 回退 seek）：按新 ct 全量重算已通过计数。
+	# 必须排在本帧生成 + 计数之后：_compute_counts_from 要能看到新生成的在视野音符，
+	# 才能把 start_tick < ct 的音符标记为已通过，避免它们被后续帧重复计数。
+	# 与 TrackView._reset_player → reset_playhead_position 的重算幂等（同为全量重算），
+	# 两条路径都触发也不会双算；任一条失效计数都能自行归零。
+	if wrapped:
+		_compute_counts_from(ct)
 
 	# 单帧一次重绘：master 自身 + 每个子 displayer（子绘制用自身几何，读共享 ct）
 	if _draw_node and on_screen:
