@@ -400,7 +400,7 @@ public partial class MeltySynthPlayer
 		// Performance 只装配不起播（DeferToCaller）：PlayView 的起播时机由预卷
 		// 倒计时决定（到期显式调 play()），不由本入口决定。
 		if (!LoadAndPlayCore(key, db, path, preferSystemIo: false, mode: mode,
-			    startPlayback: mode != SongMode.Performance, resumePosMs: resumePosMs))
+				startPlayback: mode != SongMode.Performance, resumePosMs: resumePosMs))
 		{
 			ThreadSafeLog.Print("[MeltySynthPlayer] transport: midi load deferred (soundfont loading)");
 			return false;
@@ -1100,6 +1100,23 @@ public partial class MeltySynthPlayer
 				}
 			}
 		}
+		else if (os == "Linux" && _smtcBackend == null)
+		{
+			// Linux：非 autoload，按需实例化 C# MPRIS 节点（非 linuxbsd 构建不编译该文件）。
+			// 通过 MPRIS2 (D-Bus) 暴露系统媒体控件，GNOME/KDE/Xfce 等桌面环境原生支持，
+			// 无需按桌面环境分别适配。
+			var script = GD.Load<Script>("res://CSharp/MediaSessionControlLinux.cs");
+			if (script != null)
+			{
+				var node = script.Call("new").AsGodotObject();
+				if (node is Node n)
+				{
+					AddChild(n);
+					_smtcBackend = n;
+					GD.Print("[MeltySynthPlayer] media backend ready (MediaSessionControlLinux)");
+				}
+			}
+		}
 	}
 
 	private bool _mediaBackendReady = false;
@@ -1248,6 +1265,20 @@ public partial class MeltySynthPlayer
 			return;
 		}
 
+		// MPRIS 的 Shuffle / LoopStatus 写操作：换算成播放列表的 repeat_mode 后交给
+		// set_repeat_mode，与页面自己的循环按钮走同一条持久化/信号链路。
+		if (action == "set_repeat_mode")
+		{
+			int mode = (int)Math.Round(posMs);
+			if (mode < MidiCore.REPEAT_SEQUENTIAL || mode > MidiCore.REPEAT_SHUFFLE)
+			{
+				return;
+			}
+			set_repeat_mode(mode);
+			PushMediaState(true);
+			return;
+		}
+
 		// 上下首：切歌/起播是**播放器行为**，无条件交给中心执行器（与旧 `_on_backend_command`
 		// 一致 —— handle_media_command 内部自己 ensure_user_playlist + play_next/play_previous，
 		// 冷启动/从 TrackView 试听切入时由它负责切到用户歌单）。后台/熄屏时这条纯播放器
@@ -1352,7 +1383,7 @@ public partial class MeltySynthPlayer
 	private void PushMediaState(bool force)
 	{
 		string os = OS.GetName();
-		if (os != "Android" && os != "Windows")
+		if (os != "Android" && os != "Windows" && os != "Linux")
 		{
 			return;
 		}
@@ -1410,6 +1441,11 @@ public partial class MeltySynthPlayer
 		{
 			_smtcBackend.Call("update_state", playing, positionMs, durationMs,
 				_mediaMetaTitle, _mediaMetaAlbum, _mediaMetaCover);
+			// Linux MPRIS 额外暴露循环/随机；属性变化由后端自己发 PropertiesChanged
+			if (_smtcBackend.HasMethod("update_repeat_mode"))
+			{
+				_smtcBackend.Call("update_repeat_mode", get_repeat_mode());
+			}
 		}
 	}
 
