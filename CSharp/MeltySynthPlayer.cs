@@ -1586,15 +1586,18 @@ public partial class MeltySynthPlayer : Node
 		_audioOutput?.SetVocalVolume(_vocalVolumeLinear);
 	}
 
-	// ============ 播放器页面的全局音量（后台换曲优先使用）============
-	// 玩家在播放器页调的 MIDI/人声音量才是"实际听到的音量"；per-MIDI 配置里的
-	// vocal_volume 等只是从未在播放器页调整过时的默认值。熄屏/深后台换曲由后台线程
-	// 完成，GDScript 早已停摆、读不到页面状态，故由主线程在页面调整音量时缓存到这里。
-	// 负值 = 未设置 → 后台换曲回退 per-MIDI 配置。
+	// ============ 播放器页面的全局音量（只属于播放器页会话）============
+	// 两条换曲路径的音量来源互不干涉：
+	//   - 播放器页会话（SongMode.Playlist，含熄屏/深后台自动换曲）读这里的页面音量；
+	//   - TrackView 试听 / PlayView 打歌（Preview/Performance）读谱面自己的 midi_volume /
+	//     vocal_volume，不碰这里的值。
+	// 每一边"没有配置"时才回退全局默认（default_midi_volume / default_vocal_volume）。
+	// 熄屏/深后台换曲由后台线程完成，GDScript 早已停摆、读不到页面状态，
+	// 故由主线程在页面调整音量时缓存到这里。负值 = 页面没设置过 → 回退全局默认。
 	private volatile float _playerMidiVolumeLinear = -1.0f;
 	private volatile float _playerVocalVolumeLinear = -1.0f;
 
-	/// <summary>缓存播放器页面的全局音量（线性值；负值 = 未设置，后台换曲回退 per-MIDI 配置）</summary>
+	/// <summary>缓存播放器页面的全局音量（线性值；负值 = 未设置，播放器页会话回退全局默认）</summary>
 	public void set_player_volumes(float midiLinear, float vocalLinear)
 	{
 		_playerMidiVolumeLinear = midiLinear;
@@ -1612,15 +1615,31 @@ public partial class MeltySynthPlayer : Node
 
 	/// <summary>音源未就绪而推迟载入 MIDI 时记下的谱面 key：finalize 后补应用一次配置</summary>
 	private string _pendingConfigChartKey = "";
+	/// <summary>推迟应用时要保留的打歌语义（Performance 局在音源未就绪时也一致）</summary>
+	private bool _pendingConfigUseGameplayConfig = false;
+	/// <summary>推迟应用时要保留的"读播放器页音量配置"语义（播放器页为 true，试听/打歌为 false）</summary>
+	private bool _pendingConfigUsePlayerVolume = false;
 
 	/// <summary>主线程入口：应用某谱面的全部音频侧运行时配置（不启动设备）</summary>
-	public void apply_chart_audio_config(string chartKey)
+	/// <param name="useGameplayConfig">
+	/// 打歌（Performance）语义：按“音轨启用”门控发声。
+	/// </param>
+	/// <param name="usePlayerVolumeConfig">
+	/// 音量来自哪一份配置（按换曲路径区分，不是优先级）：
+	/// 播放器页会话（SongMode.Playlist，含后台自动换曲）为 true，直接读页面自己的
+	/// [Playback] 音量；TrackView 试听 / PlayView 打歌为 false，读谱面自己的
+	/// midi_volume / vocal_volume。任一侧没有配置时才回退全局默认。
+	/// 因此播放器页与谱面配置互不覆盖（谱面 0 不会再被页面音量盖成有声）。
+	/// </param>
+	public void apply_chart_audio_config(string chartKey, bool useGameplayConfig = false,
+		bool usePlayerVolumeConfig = false)
 	{
-		apply_chart_audio_config(chartKey, GetNodeOrNull<ChartDb>("/root/ChartDB"));
+		apply_chart_audio_config(chartKey, GetNodeOrNull<ChartDb>("/root/ChartDB"), useGameplayConfig, usePlayerVolumeConfig);
 	}
 
 	/// <summary>后台换曲线程入口：db 由调用方传入（后台线程不做节点查找）</summary>
-	public void apply_chart_audio_config(string chartKey, ChartDb db)
+	public void apply_chart_audio_config(string chartKey, ChartDb db, bool useGameplayConfig = false,
+		bool usePlayerVolumeConfig = false)
 	{
 		if (string.IsNullOrEmpty(chartKey))
 		{
@@ -1659,12 +1678,12 @@ public partial class MeltySynthPlayer : Node
 
 		ApplyTrackVolumeConfig(cfg, pairs);
 		ThreadSafeLog.Print($"[MeltySynthPlayer] cfg: volume ({cfgs.ElapsedMilliseconds}ms)");
-		ApplyTrackMuteConfig(cfg, pairs);
+		ApplyTrackMuteConfig(cfg, pairs, useGameplayConfig);
 		ThreadSafeLog.Print($"[MeltySynthPlayer] cfg: mute ({cfgs.ElapsedMilliseconds}ms)");
 		ApplyInstrumentOverrides(cfg);
 		ThreadSafeLog.Print($"[MeltySynthPlayer] cfg: instr ({cfgs.ElapsedMilliseconds}ms)");
-		ApplyChartMidiVolume(cfg);
-		ApplyChartVocal(cfg, chartKey, db);
+		ApplyChartMidiVolume(cfg, usePlayerVolumeConfig);
+		ApplyChartVocal(cfg, chartKey, db, usePlayerVolumeConfig);
 		ThreadSafeLog.Print($"[MeltySynthPlayer] cfg: vocal ({cfgs.ElapsedMilliseconds}ms)");
 		set_use_system_stopwatch(_cachedUseSystemStopwatch);
 		// 当前曲 key（媒体通知/状态查询用）：谱面配置是"换曲"的唯一信息点，在此记录
@@ -1673,6 +1692,8 @@ public partial class MeltySynthPlayer : Node
 		// MIDI 还没载入（音源仍在异步加载，LoadMidiFile 早退）：配置会在 finalize 的
 		// LoadMidiFile 之后被清空，故记下 key 待那时补应用
 		_pendingConfigChartKey = _midiFile == null ? chartKey : "";
+		_pendingConfigUseGameplayConfig = _midiFile == null && useGameplayConfig;
+		_pendingConfigUsePlayerVolume = _midiFile == null && usePlayerVolumeConfig;
 	}
 
 	/// <summary>
@@ -1686,9 +1707,13 @@ public partial class MeltySynthPlayer : Node
 			return;
 		}
 		string key = _pendingConfigChartKey;
+		bool useGameplayConfig = _pendingConfigUseGameplayConfig;
+		bool usePlayerVolumeConfig = _pendingConfigUsePlayerVolume;
 		_pendingConfigChartKey = "";
-		ThreadSafeLog.Print($"[MeltySynthPlayer] applying deferred chart config: {key}");
-		apply_chart_audio_config(key);
+		_pendingConfigUseGameplayConfig = false;
+		_pendingConfigUsePlayerVolume = false;
+		ThreadSafeLog.Print($"[MeltySynthPlayer] applying deferred chart config: {key} (gameplay={useGameplayConfig}, playerVol={usePlayerVolumeConfig})");
+		apply_chart_audio_config(key, useGameplayConfig, usePlayerVolumeConfig);
 	}
 
 	/// <summary>路径是否为原生文件系统路径（非 res:// / user://）。
@@ -1768,6 +1793,39 @@ public partial class MeltySynthPlayer : Node
 		return false;
 	}
 
+	private static bool PlainToChannelIndex(object o, out int channel)
+	{
+		channel = 0;
+		if (o is long l) { channel = (int)l; return true; }
+		if (o is double d) { channel = (int)Math.Round(d); return true; }
+		if (o is string s) return int.TryParse(s, out channel);
+		return false;
+	}
+
+	/// <summary>
+	/// selected_track_configs 里该 (track,channel) 是否启用。键与通道号都按 int/float/string 全认：
+	/// 配置经 GDScript Dictionary → BSON → Godot Dictionary 往返，JSON 兼容层不保证数值仍是 int。
+	/// </summary>
+	private static bool IsChannelSelected(Dictionary<string, object> selected, int track, int channel)
+	{
+		if (selected == null || !selected.TryGetValue(track.ToString(), out var arrObj))
+		{
+			return false;
+		}
+		if (!(arrObj is System.Collections.Generic.List<object> arr))
+		{
+			return false;
+		}
+		foreach (var ch in arr)
+		{
+			if (PlainToChannelIndex(ch, out int c) && c == channel)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/// <summary>轨道-通道音量：有配置按配置；无配置统一 0.5（与 TrackView 新谱面默认一致）</summary>
 	private void ApplyTrackVolumeConfig(Dictionary<string, object> cfg, int[] pairs)
 	{
@@ -1806,13 +1864,13 @@ public partial class MeltySynthPlayer : Node
 	}
 
 	/// <summary>
-	/// 静音：先按持久化状态下发，再叠加 solo 的运行时静音（顺序不可颠倒：
+	/// 静音：先按持久化状态下发，再叠加 solo / 启用通道门控的运行时静音（顺序不可颠倒：
 	/// 持久化状态里 muted=false 会解除静音，运行时静音必须最后压上）。LoadMidiFile 已清空
 	/// 静音集合，故配置里没提到的通道天然不静音。
-	/// 注意：音轨"启用/禁用"（selected_track_configs）不在此做门控——它只决定该轨音符
-	/// 是否参与游戏内生成与显示，是否发声由静音/独演负责（见 TrackView._on_track_enable_toggled）。
+	/// 启用通道门控只在打歌（Performance）模式生效：未启用的音轨既不出音符也不发声，
+	/// 播放器页 / TrackView 仍播完整编曲（它们不传 useGameplayConfig）。
 	/// </summary>
-	private void ApplyTrackMuteConfig(Dictionary<string, object> cfg, int[] pairs)
+	private void ApplyTrackMuteConfig(Dictionary<string, object> cfg, int[] pairs, bool useGameplayConfig = false)
 	{
 		var mute = PlainDict(cfg, "track_channel_mute_state");
 		if (mute != null)
@@ -1846,6 +1904,48 @@ public partial class MeltySynthPlayer : Node
 					set_track_channel_mute(t, c, true);
 				}
 			}
+		}
+
+		if (!useGameplayConfig)
+		{
+			return;
+		}
+		// 启用/禁用通道（TrackView 的音轨开关）：打歌时未启用的通道运行时静音，
+		// 与“音符是否参与打歌生成”保持一致。从未配置过的谱面按“全部启用”处理。
+		if (!PlainBool(cfg, "_track_config_initialized", out bool initialized) || !initialized)
+		{
+			return;
+		}
+		var selected = PlainDict(cfg, "selected_track_configs");
+		if (selected == null)
+		{
+			return;
+		}
+		var unselected = new System.Collections.Generic.List<int>();
+		int selectedCount = 0;
+		foreach (int pair in pairs)
+		{
+			if (IsChannelSelected(selected, pair >> 8, pair & 0xFF))
+			{
+				selectedCount++;
+			}
+			else
+			{
+				unselected.Add(pair);
+			}
+		}
+		// selected 非空却一个都没解析成“已启用”，几乎只可能是键/值类型没对上；
+		// 真按它静音会把整首变哑，故按“全部启用”兜底。
+		// selected 为空则是合法状态：_track_config_initialized=true 表示用户主动禁用了全部音轨，
+		// 此时应全部静音（与 PlayView 生成 0 个音符一致）。
+		if (selectedCount == 0 && selected.Count > 0)
+		{
+			ThreadSafeLog.PrintErr("[MeltySynthPlayer] selected_track_configs 解析为空，按全部启用兜底（请检查键/值类型）");
+			return;
+		}
+		foreach (int pair in unselected)
+		{
+			set_track_channel_mute(pair >> 8, pair & 0xFF, true);
 		}
 	}
 
@@ -1907,31 +2007,35 @@ public partial class MeltySynthPlayer : Node
 	}
 
 	/// <summary>
-	/// MIDI 主音量：播放器页面的音量优先（见 _playerMidiVolumeLinear），否则 per-MIDI 显式值，
-	/// 未配置（<0，约定 -1）回退主线程缓存的全局 default_midi_volume；
+	/// MIDI 主音量：按换曲路径选来源，两条路径互不覆盖。
+	///   - 播放器页（usePlayerVolumeConfig=true）：读页面自己的 [Playback] 音量，
+	///     没设置过（&lt;0）回退全局 default_midi_volume；
+	///   - 试听/打歌（false）：读谱面自己的 midi_volume（0=静音也算显式值），
+	///     没配置（&lt;0）回退全局 default_midi_volume —— 与显示侧
+	///     get_effective_midi_volume 同规则，保证"看到的就是听到的"。
+	/// 不能把两者做成优先级链：任何一方不该去读另一方的配置（谱面 0 会被页面音量盖成有声）。
 	/// UI 线性值 × 8 增益后转 dB，下限 -80（与 apply_ui_midi_volume 同规则）。
 	/// </summary>
-	private void ApplyChartMidiVolume(Dictionary<string, object> cfg)
+	private void ApplyChartMidiVolume(Dictionary<string, object> cfg, bool usePlayerVolumeConfig)
 	{
 		const double gain = 8.0;
 		const double minDb = -80.0;
-		if (_playerMidiVolumeLinear >= 0.0f)
+		double vol;
+		if (usePlayerVolumeConfig)
 		{
-			set_volume_db((float)Math.Max(Mathf.LinearToDb(_playerMidiVolumeLinear * gain), minDb));
-			return;
+			vol = _playerMidiVolumeLinear >= 0.0f ? _playerMidiVolumeLinear : _cachedDefaultMidiVolume;
 		}
-		double vol = -1.0;
-		if (!PlainDouble(cfg, "midi_volume", out vol))
+		else if (PlainDouble(cfg, "midi_volume", out double cfgVol) && !double.IsNaN(cfgVol) && cfgVol >= 0.0)
 		{
-			vol = -1.0;
+			vol = cfgVol;
 		}
-		if (vol < 0.0)
+		else
 		{
 			vol = _cachedDefaultMidiVolume;
 		}
 		if (double.IsNaN(vol))
 		{
-			return;
+			vol = 1.0;
 		}
 		vol = Math.Clamp(vol, 0.0, 1.0);
 		set_volume_db((float)Math.Max(Mathf.LinearToDb(vol * gain), minDb));
@@ -1939,10 +2043,13 @@ public partial class MeltySynthPlayer : Node
 
 	/// <summary>
 	/// 人声：读该谱面的启用/路径/音量/偏移，装载解码器并就位到 0（偏移 &gt; 0 时由音频回调的
-	/// 门控放行）。播放器页面的音量优先：per-MIDI 的 vocal_volume 只是"没在播放器页调过"的
-	/// 默认值。存的人声路径失效时回退到谱面元数据的 audio_path。
+	/// 门控放行）。音量同样按换曲路径选来源，互不覆盖：
+	///   - 播放器页：页面自己的 [Playback] 人声音量，没设置过回退全局默认；
+	///   - 试听/打歌：谱面显式 vocal_volume（0=静音也算显式值），没配置回退全局默认。
+	/// 存的人声路径失效时回退到谱面元数据的 audio_path。
 	/// </summary>
-	private void ApplyChartVocal(Dictionary<string, object> cfg, string chartKey, ChartDb db)
+	private void ApplyChartVocal(Dictionary<string, object> cfg, string chartKey, ChartDb db,
+		bool usePlayerVolumeConfig)
 	{
 		if (!(_audioOutput is MiniaudioAudioOutputBridge ma))
 		{
@@ -1958,8 +2065,19 @@ public partial class MeltySynthPlayer : Node
 		}
 		bool enabled = true;   // 未配置过 vocal_enabled 时默认跟随"是否有音频"（与 DataManager 一致）
 		string path = "";
-		bool playerVolumeSet = _playerVocalVolumeLinear >= 0.0f;
-		float vol = playerVolumeSet ? _playerVocalVolumeLinear : _vocalVolumeLinear;
+		float vol;
+		if (usePlayerVolumeConfig)
+		{
+			vol = _playerVocalVolumeLinear >= 0.0f ? _playerVocalVolumeLinear : _cachedDefaultVocalLinear;
+		}
+		else if (PlainDouble(cfg, "vocal_volume", out double cfgVol) && !double.IsNaN(cfgVol) && cfgVol >= 0.0)
+		{
+			vol = (float)Math.Clamp(cfgVol, 0.0, 1.0);
+		}
+		else
+		{
+			vol = _cachedDefaultVocalLinear;
+		}
 		double offsetMs = 0.0;
 		if (PlainBool(cfg, "vocal_enabled", out bool ev))
 		{
@@ -1969,14 +2087,11 @@ public partial class MeltySynthPlayer : Node
 		{
 			path = pv;
 		}
-		if (!playerVolumeSet && PlainDouble(cfg, "vocal_volume", out double vv))
-		{
-			vol = (float)vv;
-		}
 		if (PlainDouble(cfg, "vocal_offset_ms", out double ov))
 		{
 			offsetMs = ov;
 		}
+		vol = Math.Clamp(vol, 0f, 1f);
 		// 与前台 VocalTrackController.resolve_vocal_path 同语义：路径失效则回退到谱面 audio_path
 		if (!enabled || string.IsNullOrEmpty(path) || !FileExistsSafe(path))
 		{
@@ -3285,10 +3400,12 @@ public partial class MeltySynthPlayer : Node
 				_sequencerStarted = true;
 				ApplyInstrumentOverridesToSynth();
 			});
-			// 谱面运行时配置：LoadMidiFile 已清空轨道状态，必须重放（与换曲走同一份实现）
+			// 谱面运行时配置：LoadMidiFile 已清空轨道状态，必须重放（与换曲走同一份实现）。
+			// 音量来源沿用当前会话模式：播放器页读页面音量，试听/打歌读谱面配置。
 			if (!string.IsNullOrEmpty(_currentKey))
 			{
-				apply_chart_audio_config(_currentKey);
+				apply_chart_audio_config(_currentKey,
+					usePlayerVolumeConfig: _currentSongMode == (int)SongMode.Playlist);
 			}
 			// 位置恢复放在配置之后：此时人声解码器已按配置重新装载/归零，
 			// seek_ms 会一并把人声重定位到同一位置。

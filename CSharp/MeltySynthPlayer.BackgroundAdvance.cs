@@ -380,7 +380,7 @@ public partial class MeltySynthPlayer
 			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] bg advance: midi path not found for key={key}");
 			return false;
 		}
-		if (!LoadAndPlayCore(key, db, path, preferSystemIo: true, startPlayback: true))
+		if (!LoadAndPlayCore(key, db, path, preferSystemIo: true, mode: SongMode.Playlist, startPlayback: true))
 		{
 			// 音源仍在切换/未就绪：LoadMidiFile 已早退。恢复 playing 以便下次轮询重试，
 			// 且不消费 EndOfSequence 标志。

@@ -805,6 +805,8 @@ func _load_and_convert_midi_notes(midi_data: MidiData) -> void:
 	# TrackView 中保存的运行时配置（音量/静音/独奏/启用通道门控/人声偏移）由入口内部
 	# C# apply_chart_audio_config 统一应用（含启用通道门控，与熄屏后台换曲同一份），
 	# 此处不再重复下发。
+	# 音量来源按换曲路径区分：PERFORMANCE 只读本谱面保存的 midi_volume / vocal_volume
+	# （没配置才回退全局默认），播放器页音量只属于播放器页会话；同时按音轨启用状态门控发声。
 	if not playback_mgr.play_song(
 			playback_mgr.chart_key_of(midi_data), PlaybackTypesLib.SongMode.PERFORMANCE):
 		push_error("Failed to load MIDI for gameplay")

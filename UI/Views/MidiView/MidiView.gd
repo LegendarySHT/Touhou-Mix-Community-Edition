@@ -373,7 +373,7 @@ func _on_del_btn_pressed():
 			# 更新内存
 			midi_to_del.vocal_file_path = ""
 			midi_to_del.vocal_offset_ms = 0
-			midi_to_del.vocal_volume = 0.5
+			midi_to_del.vocal_volume = -1.0  # -1=未配置（跟随全局 default_vocal_volume）
 			# 写回 chart_runtime（权威 DB），经 MidiCore 配置权威入口
 			MidiCore.UpdateConfig(chart_id, midi_to_del.export_runtime_config())
 			GLogger.info("已删除人声音频: %s" % vocal_path, "MidiView")
@@ -387,6 +387,7 @@ func _on_del_btn_pressed():
 			midi_to_del.track_channel_instrument_overrides.clear()
 			midi_to_del.solo_pairs.clear()
 			midi_to_del.midi_volume = -1.0  # -1=未配置（跟随全局 default_midi_volume）
+			midi_to_del.vocal_volume = -1.0  # -1=未配置（跟随全局 default_vocal_volume）
 			# 重置 _track_config_initialized=false：使下次进入 TrackView 时 PlaybackDisplay.load_midi
 			# 重新解析简介并应用推荐轨道（修复 #59：删除设定后不会回落到从简介读取音轨配置的状态）
 			midi_to_del.set_track_config_initialized(false)

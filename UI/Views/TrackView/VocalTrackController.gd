@@ -174,6 +174,8 @@ func on_vocal_file_selected(file_path: String) -> void:
 	vocal_file_path = destination_path
 	if current_midi_data:
 		current_midi_data.vocal_file_path = destination_path
+	# 显式改动（导入人声）：去抖落盘
+	_track_view.schedule_config_save()
 
 	# 刷新UI显示
 	init_vocal_btn_display()
@@ -194,6 +196,8 @@ func on_vocal_enable_btn_toggled(toggle_on: bool) -> void:
 	var current_midi_data = _track_view.current_midi_data
 	if current_midi_data:
 		current_midi_data.vocal_enabled = not toggle_on
+		# 显式改动（开关人声）：去抖落盘
+		_track_view.schedule_config_save()
 		var midi_playback_manager = _track_view.midi_playback_manager
 		if midi_playback_manager and midi_playback_manager.is_playing:
 			if current_midi_data.vocal_enabled:
@@ -263,11 +267,17 @@ func init_vocal_btn_display() -> void:
 	_vocal_vol_label.visible = enable
 
 	# 如果有人声文件，恢复音量设置
+	# 用载入时算好的"生效值"（restore_midi_data_config 已把未配置 -1 回退到全局默认），
+	# 不能直接读配置原值：-1 会显示成 0%/-100%，且与已应用的发声音量不一致。
 	var current_midi_data = _track_view.current_midi_data
 	if enable and current_midi_data:
-		_vocal_vol_slider.value = current_midi_data.vocal_volume
-		set_display_vocal_volume(current_midi_data.vocal_volume)
+		var effective_vol: float = _track_view.vocal_volume_at_load
+		_vocal_vol_slider.value = effective_vol
+		set_display_vocal_volume(effective_vol)
+		# 恢复 UI 状态不是用户改动：屏蔽信号，避免误置"有改动待保存"
+		_vocal_enable_btn.set_block_signals(true)
 		_vocal_enable_btn.button_pressed = not current_midi_data.vocal_enabled
+		_vocal_enable_btn.set_block_signals(false)
 		_vocal_enable_btn.text = "人声已启用" if current_midi_data.vocal_enabled else "人声已关闭"
 
 

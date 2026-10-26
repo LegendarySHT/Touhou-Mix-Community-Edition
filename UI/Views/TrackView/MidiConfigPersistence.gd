@@ -10,20 +10,24 @@ func setup(track_view: TrackView) -> void:
 	_track_view = track_view
 
 
+## 是否有「用户显式改动」尚未落盘。
+##
+## 只有编辑回调（音量/静音/独奏/启用/乐器/人声…）会置位；单纯进出页面不置位。
+## 因此退出本页时不会把"其实没改过"的整份配置再写一遍，符合"改了才保存"的语义。
+var _dirty: bool = false
+
 ## 保存当前MIDI配置到 chart_runtime（权威 DB，替代 JSON 写回）
 ##
-## 内容与上次落盘完全一致时直接跳过：LiteDB 写是同步的，退场那帧写盘会顶掉
-## 出场动画的首帧（表现为"出场动画基本没有"）。多数退出（只是看了看、按了返回）
-## 实际什么都没改，没必要每次进页都写一次库。
+## 只在有显式改动时真正写库：LiteDB 写是同步的，退场那帧写盘会顶掉出场动画的首帧
+## （表现为"出场动画基本没有"）。只是看了看、按了返回的退出不该产生任何写入。
 func save_midi_config() -> void:
+	if not _dirty:
+		GLogger.debug("[TrackView] MIDI config not edited, skip DB write", "TrackView")
+		return
 	var current_midi_data = _track_view.current_midi_data
 	if current_midi_data == null:
 		push_warning("[TrackView] No MIDI data to save")
 		return
-
-	# 更新MidiData中的音量值（滑块为线性 0-1）
-	if not is_equal_approx(_track_view.midi_vol_slider.value, _track_view.midi_volume_at_load):
-		current_midi_data.midi_volume = _track_view.midi_vol_slider.value
 
 	# 更新人声文件路径
 	current_midi_data.vocal_file_path = _track_view._vocal_controller.vocal_file_path
@@ -44,15 +48,18 @@ func save_midi_config() -> void:
 	# 脏检查：与上次真正落盘的内容一致就什么都不做
 	var sig := _config_signature(runtime_config)
 	if chart_id == _last_saved_chart_id and sig == _last_saved_sig:
+		_dirty = false
 		GLogger.debug("[TrackView] MIDI config unchanged, skip DB write", "TrackView")
 		return
 
 	var t0 := Time.get_ticks_usec()
 	if MidiCore != null and MidiCore.UpdateConfig(chart_id, runtime_config):
+		_dirty = false
 		_last_saved_chart_id = chart_id
 		_last_saved_sig = sig
-		GLogger.info("MIDI config saved to DB in %.1f ms (volume: %d/%d, solo: %d, track_enabled: %s, vocal: %s)" %
-			[(Time.get_ticks_usec() - t0) / 1000.0, current_midi_data.midi_volume, current_midi_data.vocal_volume,
+		# 音量按百分比打印（-1% 表示"未配置/跟随全局默认"），避免 %d 截断后 17%/33% 都显示 0
+		GLogger.info("MIDI config saved to DB in %.1f ms (volume: %.0f%%/%.0f%%, solo: %d, track_enabled: %s, vocal: %s)" %
+			[(Time.get_ticks_usec() - t0) / 1000.0, current_midi_data.midi_volume * 100.0, current_midi_data.vocal_volume * 100.0,
 			_track_view.solo_pairs.size(), current_midi_data.selected_track_configs, _track_view._vocal_controller.vocal_file_path], "TrackView")
 	else:
 		push_error("[TrackView] MidiCore.UpdateConfig failed for: %s" % current_midi_data.id)
@@ -62,18 +69,37 @@ func save_midi_config() -> void:
 var _last_saved_chart_id: String = ""
 var _last_saved_sig: String = ""
 
-## 落盘延迟（秒）。退场动画约 0.3s：把同步的 LiteDB 写排到动画结束之后，
-## 否则写盘会占掉出场动画的首帧，看起来就是"出场动画基本没有"。
-## 0.6s 末仍有内容判重兜底——期间没有新编辑就不会重复写。
+## 落盘延迟（秒）：页内编辑的去抖窗口。拖动音量滑块时每个 value_changed 都重新计时，
+## 松手（或停止编辑）0.6s 后才真正写一次库，避免拖动过程中反复写。
+## 本页退出/切后台/退出应用不走这个窗口，见 flush_save()。
 const SAVE_DELAY_SEC := 0.6
 const SAVE_TWEEN_ID := "track_cfg_save"
 
-## 退场时使用：延迟落盘，避开出场动画
+## 去抖落盘：编辑过程中使用
 func schedule_save_midi_config() -> void:
+	_dirty = true
 	if AniMGR != null:
 		AniMGR.delay_call(save_midi_config, SAVE_DELAY_SEC, SAVE_TWEEN_ID)
 	else:
 		save_midi_config.call_deferred()
+
+## 立即落盘（丢弃待执行的去抖保存）。
+## 离开本页/切后台/退出应用用：此刻之后配置随时会被读走（PlayView 起播、重新水合）
+## 或随进程消失，不能等去抖窗口，否则用户改动看起来"永远没保存"。
+## 没有任何显式改动时直接返回，不写库（退出页面不再"顺手保存整份配置"）。
+func flush_save() -> void:
+	if AniMGR != null:
+		AniMGR.stop_tween(SAVE_TWEEN_ID)
+	if not _dirty:
+		return
+	save_midi_config()
+
+## 换曲/重新水合：上一首未落盘的改动不再属于当前曲，丢弃脏标记与待执行的去抖保存。
+## 调用方（TrackView._load_midi）在换曲前已先 flush_save()，故不会丢用户改动。
+func reset_dirty() -> void:
+	if AniMGR != null:
+		AniMGR.stop_tween(SAVE_TWEEN_ID)
+	_dirty = false
 
 ## 把运行时配置压成与键序无关、与时间戳无关的稳定字符串，用于"内容是否变了"的比较。
 ## 必须排除 saved_at：它每次导出都不同，带上就永远判定为"有变化"。
@@ -105,12 +131,33 @@ func _value_signature(v) -> String:
 	return str(v)
 
 
+## 全局默认人声音量（线性 0-1）。归一化规则与 C# set_global_playback_config 一致：
+## >1 视为百分数（旧存值），<=0 视为 dB。优先取设置页当前值，取不到再回落到配置单例。
+func _global_default_vocal_volume() -> float:
+	var raw := 50.0
+	var setting_view = _track_view.get_node_or_null(PathRegistry.SETTING_VIEW)
+	if setting_view and setting_view.has_method("get_setting_value"):
+		var v = setting_view.get_setting_value("default_vocal_volume")
+		if v != null:
+			raw = float(v)
+	elif ConfigManager != null and ConfigManager.instance != null:
+		raw = ConfigManager.instance.get_float("Gameplay", "default_vocal_volume")
+	var vol := raw
+	if vol > 1.0:
+		vol /= 100.0
+	elif vol <= 0.0:
+		vol = db_to_linear(vol)
+	return clampf(vol, 0.0, 1.0)
+
+
 ## 恢复MIDI配置的数据部分（音量、进度条、独奏状态）
 ## 在_load_midi中早期调用，此时list_items还未创建
 func restore_midi_data_config() -> void:
 	var current_midi_data = _track_view.current_midi_data
 	if current_midi_data == null:
 		return
+	# 新一轮水合：进入本页时没有任何"用户显式改动"，退出时不该无条件写库
+	reset_dirty()
 
 	var midi_vol_slider = _track_view.midi_vol_slider
 	var vocal_vol_slider = _track_view.vocal_vol_slider
@@ -121,26 +168,21 @@ func restore_midi_data_config() -> void:
 	midi_vol_slider.set_block_signals(true)
 	vocal_vol_slider.set_block_signals(true)
 
-	# 获取音量值，默认值(0.5)时回退全局 default_midi_volume（与 PlayView 统一解析，并 clamp 到滑块范围）
+	# 获取音量值，未配置(-1)时回退全局 default_midi_volume（与 PlayView 统一解析，并 clamp 到滑块范围）
 	var midi_vol = midi_playback_manager.get_effective_midi_volume(current_midi_data.midi_volume)
 	var vocal_vol = current_midi_data.vocal_volume
 
-	if vocal_vol == 0.5:  # 默认值
-		var setting_view = _track_view.get_node_or_null(PathRegistry.SETTING_VIEW)
-		if setting_view and setting_view.has_method("get_setting_value"):
-			var global_vocal_vol = setting_view.get_setting_value("default_vocal_volume")
-			if global_vocal_vol != null:
-				vocal_vol = float(global_vocal_vol)
-				if vocal_vol > 1.0:
-					vocal_vol /= 100.0  # 兼容旧版 0-100 配置
+	if vocal_vol < 0.0:  # 未配置：回退全局 default_vocal_volume
+		vocal_vol = _global_default_vocal_volume()
 
 	midi_vol_slider.value = midi_vol
 	vocal_vol_slider.value = vocal_vol
 
-	# 记录载入时的生效值（取滑块赋值后的值，规避滑块 step 量化差异）：
-	# 退出落盘时仅当滑块偏离它才写 midi_volume，见 save_midi_config。
+	# 记录载入时的生效值（取滑块赋值后的值，规避滑块 step 量化差异）+ 配置原值（-1=未配置）：
+	# 滑块改动时立即按这两个值判断是否要还原原值，见 TrackView._on_midi_volume_changed。
 	_track_view.midi_volume_at_load = midi_vol_slider.value
-	# 人声音量同构：生效值 + 配置原值（0.5=未配置）。改动回到生效值时还原原值，
+	_track_view.midi_volume_cfg_at_load = current_midi_data.midi_volume
+	# 人声音量同构：生效值 + 配置原值（-1=未配置）。改动回到生效值时还原原值，
 	# 不把"等于全局默认"的值钉进配置，见 TrackView._on_vocal_volume_changed。
 	_track_view.vocal_volume_at_load = vocal_vol_slider.value
 	_track_view.vocal_volume_cfg_at_load = current_midi_data.vocal_volume

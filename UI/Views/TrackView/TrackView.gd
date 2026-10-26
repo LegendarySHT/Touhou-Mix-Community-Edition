@@ -36,14 +36,15 @@ var is_progress_dragging: bool = false
 # 静音按钮记住的上一次音量条值（<0 表示本次会话尚未静音过，恢复时用默认值）
 var _prev_midi_vol: float = -1.0
 var _prev_vocal_vol: float = -1.0
-# 本页载入时 MIDI 音量条的生效值（可能是全局默认）。退出落盘时仅当滑块偏离它才把
-# midi_volume 写进配置——否则"从没手动调过音量"的曲子也会被钉上一个生效值，
-# 之后全局默认音量再改，对这些曲子不再生效（见 MidiConfigPersistence.save_midi_config）。
+# 本页载入时 MIDI 音量条的生效值（可能是全局默认）。滑块改动时立即写回 MidiData：
+# 改动回到生效值时还原配置原值（cfg_at_load），不把默认值钉进配置；否则记下真正的新值。
+# 同时立刻排队落盘，避免依赖退出时的延迟保存（0.6s 内又被下一次进页覆盖）。
 var midi_volume_at_load: float = -1.0
+var midi_volume_cfg_at_load: float = -1.0
 # 人声音量同构：at_load 为载入时生效值（含全局默认回落），cfg_at_load 为配置里的原值
-# （0.5 = 未配置哨兵）。改动回到生效值时还原原值，不把默认值钉进配置。
+# （-1 = 未配置哨兵）。改动回到生效值时还原原值，不把默认值钉进配置。
 var vocal_volume_at_load: float = -1.0
-var vocal_volume_cfg_at_load: float = 0.5
+var vocal_volume_cfg_at_load: float = -1.0
 
 var current_tick: int = 0
 var last_position_ms: float = 0.0  # 用于检测循环播放重置
@@ -183,6 +184,9 @@ func _exit_tree() -> void:
 
 # 加载并播放midi
 func _load_midi(midi: MidiData) -> void:
+	# 换到另一首之前，先把上一首尚未落盘的显式改动写掉（本页内切歌也会走到这里）
+	if _config_persistence != null and current_midi_data != null and current_midi_data != midi:
+		_config_persistence.flush_save()
 	current_midi_data = midi
 	# 清空独奏状态
 	solo_pairs.clear()
@@ -539,6 +543,11 @@ func _on_volume_btn_toggled(toggle_on: bool, btn: TextureButton) -> void:
 			_prev_midi_vol = midi_vol_slider.value
 			_set_display_midi_volume(0.0)
 			midi_playback_manager.set_volume_db(MUTE_DB)
+			# 静音也是一次显式改动：记 0 并落盘，否则 PlayView 仍按旧配置发声
+			# （_set_display_midi_volume 屏蔽了信号，不会触发 _on_midi_volume_changed）
+			if current_midi_data != null:
+				current_midi_data.midi_volume = 0.0
+				_config_persistence.schedule_save_midi_config()
 		else:
 			_on_midi_volume_changed(_prev_midi_vol if _prev_midi_vol >= 0.0 else DEFAULT_MIDI_VOL)
 	elif btn == vocal_vol_btn:
@@ -546,6 +555,9 @@ func _on_volume_btn_toggled(toggle_on: bool, btn: TextureButton) -> void:
 			_prev_vocal_vol = vocal_vol_slider.value
 			_vocal_controller.set_display_vocal_volume(0.0)
 			midi_playback_manager.set_vocal_volume_db(MUTE_DB)
+			if current_midi_data != null:
+				current_midi_data.vocal_volume = 0.0
+				_config_persistence.schedule_save_midi_config()
 		else:
 			_on_vocal_volume_changed(_prev_vocal_vol if _prev_vocal_vol >= 0.0 else DEFAULT_VOCAL_VOL)
 
@@ -561,6 +573,17 @@ func _on_midi_volume_changed(value: float) -> void:
 
 	# MIDI音量实际效果为UI值的 MIDI_VOLUME_GAIN 倍（0.5=+6dB, 1.0=+12dB）
 	midi_playback_manager.apply_ui_midi_volume(value)
+
+	# 立即写回 MidiData：拖回载入时的生效值就还原配置原值（-1=未配置），否则记下新值。
+	# 不能只依赖退出时的延迟保存——那 0.6s 内若再次进页，restore 会先把滑块/配置按旧值
+	# 覆盖，改动就丢了（表现为"音量永远停在进入 MidiView 时加载的值"）。
+	if current_midi_data != null:
+		if is_equal_approx(value, midi_volume_at_load):
+			current_midi_data.midi_volume = midi_volume_cfg_at_load
+		else:
+			current_midi_data.midi_volume = value
+		# 去抖落盘：留在本页时也尽快写入 DB，PlayView 开局读到的就是最新值
+		_config_persistence.schedule_save_midi_config()
 
 	# 更新标签
 	_set_display_midi_volume(value)
@@ -588,6 +611,8 @@ func _on_vocal_volume_changed(value: float) -> void:
 			current_midi_data.vocal_volume = vocal_volume_cfg_at_load
 		else:
 			current_midi_data.vocal_volume = value
+		# 与 MIDI 音量一致：改动后立即去抖落盘，不依赖退出时的延迟保存
+		_config_persistence.schedule_save_midi_config()
 
 	# 更新标签
 	_vocal_controller.set_display_vocal_volume(value)
@@ -629,12 +654,16 @@ func _on_track_enable_toggled(is_checked: bool, track_index: int, channel: int) 
 		return
 
 	# 更新指定(track, channel)启用状态
+	# 初始化回填按钮时也会触发 toggled：只有状态真的变了才算一次用户显式改动
+	var changed := current_midi_data.is_track_channel_selected(track_index, channel) != is_checked
 	current_midi_data.set_track_channel_enabled(track_index, channel, is_checked)
+	if changed:
+		# 显式改动：去抖落盘（打歌时该状态还参与发声门控）
+		_config_persistence.schedule_save_midi_config()
 
-	# 启用状态只决定该音轨的音符是否作为游戏内音符生成（PlayView 谱面 / 音符量统计）
-	# 与音符显示可见性，不控制是否发声——出声与否由静音/独奏负责。
-	# （历史上曾把取消启用同步为合成器运行时静音，导致"取消启用即静音"，已移除；
-	# 加载期的同型门控见 MeltySynthPlayer.ApplyTrackMuteConfig，亦已移除。）
+	# 本页（试听）不因启用状态改变发声：出声与否由静音/独奏负责。
+	# 打歌（PlayView/Performance）则把启用状态也作为发声门控（未启用轨既不出音符也不发声），
+	# 由 MeltySynthPlayer.ApplyTrackMuteConfig 在 Performance 模式下应用。
 
 	# 同步主音符显示器（按 selected_track_configs 过滤音符可见性）
 	if master_note_displayer:
@@ -648,6 +677,8 @@ func _on_track_mute_toggled(is_muted: bool, track_index: int, channel: int) -> v
 
 	# 调用PlaybackDisplay的实时mute接口（会同步MidiData）
 	midi_playback_manager.set_track_channel_mute(track_index, channel, is_muted)
+	# 显式改动：去抖落盘
+	_config_persistence.schedule_save_midi_config()
 
 # 轨道独奏切换
 func _on_track_solo_toggled(is_solo: bool, track_index: int, channel: int) -> void:
@@ -680,6 +711,9 @@ func _on_track_solo_toggled(is_solo: bool, track_index: int, channel: int) -> vo
 	# 独奏贴图是全局语义：任一音轨开启独奏后，未开启独奏的音轨要换成斜杠麦克风
 	_refresh_all_solo_icons()
 
+	# 显式改动：去抖落盘（solo_pairs 由导出时写入）
+	_config_persistence.schedule_save_midi_config()
+
 # 刷新所有音轨的独奏按钮贴图（本轨/全局独奏态变化后调用）
 func _refresh_all_solo_icons() -> void:
 	for track_ui in list_items:
@@ -710,6 +744,8 @@ func _on_track_volume_changed(value: float, track_index: int, channel: int ) -> 
 	# 同时保存到MidiData以支持持久化
 	if current_midi_data != null:
 		current_midi_data.set_track_channel_volume(track_index, channel, volume_linear)
+		# 显式改动：去抖落盘
+		_config_persistence.schedule_save_midi_config()
 	
 	GLogger.info("Track %d Channel %d volume changed: %.1f%%" % [track_index, channel, value], "TrackView")
 	
@@ -734,6 +770,8 @@ func _on_track_instrument_changed(track_index: int, channel: int, bank: int, pro
 		instr_data["program"],
 		instr_data["name"]
 	)
+	# 显式改动：去抖落盘
+	_config_persistence.schedule_save_midi_config()
 	
 	# 2. 立即应用到后端播放器
 	if not midi_playback_manager:
@@ -784,6 +822,8 @@ func _on_track_instrument_reset(track_index: int, channel: int) -> void:
 	
 	# 清除用户覆盖
 	current_midi_data.clear_track_channel_instrument_override(track_index, channel)
+	# 显式改动：去抖落盘
+	_config_persistence.schedule_save_midi_config()
 	
 	# 从 MIDI 原始数据恢复
 	if midi_playback_manager:
@@ -986,6 +1026,8 @@ func _notification(what: int) -> void:
 	# 是常态，失焦不代表该停。
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		_set_note_displayers_process(false)
+		# 切后台可能被系统回收：把还没到点的去抖保存立刻落盘
+		flush_config_save()
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
 		_on_focus_regained()
 		if ui_stat_mgr.current_state == work_state and midi_playback_manager.is_playing:
@@ -1124,13 +1166,28 @@ func _initialize_track_volumes_for_new_midi() -> void:
 	
 	GLogger.info("Initialized %d tracks with default volume 50%%" % initialized_count, "TrackView")
 
+## 标记一次「用户显式改动」并去抖落盘（供子控制器调用）。
+## 只有真的改了值才调用它：退出本页时只 flush 这些改动，不会整份重写。
+func schedule_config_save() -> void:
+	if _config_persistence != null and current_midi_data != null:
+		_config_persistence.schedule_save_midi_config()
+
+## 立即把当前 MIDI 配置落盘（取消待执行的去抖保存）。
+## 离开本页、切后台、退出应用时调用：这些时刻之后配置可能立刻被读取或被进程丢弃。
+func flush_config_save() -> void:
+	if _config_persistence != null and current_midi_data != null:
+		_config_persistence.flush_save()
+
 # 页面状态回调
 func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateManager.UIState) -> void:
-	# 保存当前MIDI配置到JSON文件。
-	# 用"延迟落盘"而不是 call_deferred：LiteDB 写是同步的，压在本帧等于占掉出场
-	# 动画的首帧（动画看着像没播）；内容与上次一致时内部还会直接跳过，不白写。
-	if current_midi_data != null:
-		_config_persistence.schedule_save_midi_config()
+	# 离开本页：只把「用户显式改过、还没落盘」的那份改动立刻写掉，而不是等 0.6s 去抖。
+	# 没有任何改动时 flush 是空操作——进出页面本身不产生 DB 写入。
+	# 离开后很快就会有别的读者拿配置：PlayView 起播读 MidiCore.GetConfig、MidiView 重新水合、
+	# 进程退出——去抖窗口内读到的都是旧值（表现为"打歌/重进时音量还是进页面时的那个"）。
+	# 更糟的是若在窗口内又进一次本页，restore 会先按旧配置覆盖滑块，改动就永久丢了。
+	# 滞留在页内拖动滑块时仍走去抖（见 _on_midi_volume_changed），避免每个 value_changed 都写库。
+	if old_state == work_state and current_midi_data != null:
+		flush_config_save()
 
 	# 去播放器页 / 设置页都不算退出播放：前者是同一首歌的另一种视图，后者只是配置页。
 	# 这两种情况保留媒体会话（不清通知、不 stop）——避免"清掉再重建"的闪烁，
@@ -1233,6 +1290,8 @@ func _on_latency_changed(new_text: String) -> void:
 
 	# 更新MidiData中的偏移值
 	current_midi_data.vocal_offset_ms = offset_ms
+	# 显式改动：去抖落盘
+	_config_persistence.schedule_save_midi_config()
 
 	# 应用到PlaybackDisplay
 	midi_playback_manager.set_vocal_offset_ms(offset_ms)

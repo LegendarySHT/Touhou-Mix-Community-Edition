@@ -77,7 +77,7 @@ func _ready() -> void:
 		mgr.transport_changed.connect(_on_transport_changed)
 		mgr.playback_state_changed.connect(_on_playback_state_changed)
 		mgr.repeat_mode_changed.connect(_on_repeat_mode_changed)
-		# 本页音量就是"实际听到的音量"，优先于 per-MIDI 配置：滑块初值取自本页音量
+		# 本页会话读自己的总音量配置（[Playback]），不读谱面音量：滑块初值取自本页音量
 		# （不用 per-MIDI 值回填，否则会把上一首的 per-MIDI 音量固化成页面设置）
 		_midi_vol_slider.set_block_signals(true)
 		_vocal_vol_slider.set_block_signals(true)
@@ -169,7 +169,7 @@ func _activate_page() -> void:
 	PlaybackDisplay.instance.register_view(self)
 	var mgr := PlaybackDisplay.instance
 	if mgr != null:
-		# 本页音量为本页会话的播放基准（优先于 per-MIDI 配置）：回页面后重新下发
+		# 本页会话读自己的总音量配置（[Playback]），不读谱面音量：回页面后重新下发
 		mgr.set_player_volumes(_midi_vol_slider.value, _vocal_vol_slider.value)
 		# 熄屏/深后台期间 C# 可能已自行切到下一首（纯音频）：先对账把显示/配置补齐，
 		# 再决定是否起播（对账后 current_midi_data 才与 C# 当前曲一致）

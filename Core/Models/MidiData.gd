@@ -150,8 +150,9 @@ var track_channel_instruments: Dictionary = {}
 ## 注意：0.5 是合法显式值（用户设 50%），不再兼任"未配置"哨兵
 var midi_volume: float = -1.0
 
-## 人声音量（线性 0.0-1.0）
-var vocal_volume: float = 0.5
+## 人声音量（线性 0.0-1.0；-1=未配置，使用全局 default_vocal_volume）
+## 与 midi_volume 同构：0.5 是合法显式值（用户设 50%），不再兼任"未配置"哨兵
+var vocal_volume: float = -1.0
 
 ## 人声文件路径（完整路径或相对路径）
 var vocal_file_path: String = ""
@@ -262,12 +263,7 @@ func from_json(json_data: Dictionary, chart_key: String = "") -> void:
 		runtime_config = json_data.get("_runtime", {})
 	if runtime_config is Dictionary:
 		midi_volume = float(runtime_config.get("midi_volume", -1.0))
-		# 迁移：历史版本把"未配置"存成 0.5（默认值落盘），与显式 50% 无法区分。
-		# 由于旧代码下显式 0.5 也总是回退全局默认，迁移为 -1（未配置）与原行为一致，
-		# 且修复了"用户显式设 50% 被全局默认覆盖"的问题（此后显式值才真正生效）。
-		if midi_volume == 0.5:
-			midi_volume = -1.0
-		vocal_volume = float(runtime_config.get("vocal_volume", 0.5))
+		vocal_volume = float(runtime_config.get("vocal_volume", -1.0))
 		# 兼容旧版 0-100 存值：大于 1 视为旧百分比，折算为 0-1
 		if midi_volume > 1.0:
 			midi_volume /= 100.0

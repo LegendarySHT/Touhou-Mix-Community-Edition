@@ -23,6 +23,10 @@ public partial class MeltySynthPlayer
 	/// <summary>当前曲目的 chart_key（C# 权威）。【跨线程】后台换曲线程经
 	/// NotifySongChangedFromBackground 写入，主线程 get_current_key / PushMediaState 读取。</summary>
 	private volatile string _currentKey = "";
+	/// <summary>当前会话的换曲模式（SongMode）。决定音量读哪份配置：Playlist=播放器页自己的
+	/// [Playback] 音量，Preview/Performance=谱面自己的 midi_volume/vocal_volume。
+	/// 音源重载（reload_soundfont）重放配置时没有 mode 参数，靠这个字段保持同一来源。</summary>
+	private volatile int _currentSongMode = (int)SongMode.Playlist;
 	/// <summary>UI 状态暂停策略的注册标志</summary>
 	private bool _uiPolicyConnected = false;
 	/// <summary>媒体命令轮询节流累计（秒）</summary>
@@ -395,7 +399,7 @@ public partial class MeltySynthPlayer
 		}
 		// Performance 只装配不起播（DeferToCaller）：PlayView 的起播时机由预卷
 		// 倒计时决定（到期显式调 play()），不由本入口决定。
-		if (!LoadAndPlayCore(key, db, path, preferSystemIo: false,
+		if (!LoadAndPlayCore(key, db, path, preferSystemIo: false, mode: mode,
 			    startPlayback: mode != SongMode.Performance, resumePosMs: resumePosMs))
 		{
 			ThreadSafeLog.Print("[MeltySynthPlayer] transport: midi load deferred (soundfont loading)");
@@ -443,7 +447,7 @@ public partial class MeltySynthPlayer
 	/// <see cref="BackgroundLoadAndPlay"/>（BackgroundAdvance.cs）共用同一主体。
 	/// </summary>
 	private bool LoadAndPlayCore(string key, ChartDb db, string path, bool preferSystemIo,
-		bool startPlayback, double resumePosMs = -1.0)
+		SongMode mode, bool startPlayback, double resumePosMs = -1.0)
 	{
 		// path 由壳解析并判空（前台 ResolveMidiPath / 后台 ResolveMidiPathBg，各自日志前缀不同）
 
@@ -457,7 +461,15 @@ public partial class MeltySynthPlayer
 			// （后台壳要置回 playing 以便下次轮询重试，前台壳按原语义直接失败返回）。
 			return false;
 		}
-		apply_chart_audio_config(key, db);
+		// 音量按换曲路径选来源，不做优先级链：
+		//   - 播放器页会话（Playlist，含后台自动换曲）读页面自己的 [Playback] 音量；
+		//   - 试听（TrackView/MidiView）与打歌（PlayView）读谱面自己的 midi_volume /
+		//     vocal_volume，与 TrackView 滑块显示同源（否则会出现"显示 0、试听却有声音"）。
+		// 两侧各自"没有配置"时才回退全局默认。
+		_currentSongMode = (int)mode;
+		apply_chart_audio_config(key, db,
+				useGameplayConfig: mode == SongMode.Performance,
+				usePlayerVolumeConfig: mode == SongMode.Playlist);
 		// 恢复位置必须先于起播排队（理由见 LoadAndPlayKey 的 resumePosMs 注释：
 		// 先播再 seek 会先渲染一份曲首音频）。设备停着时 seek_ms 直落 + 挂 pending，
 		// 起播后回调在第一次 Render 之前消费 pending。

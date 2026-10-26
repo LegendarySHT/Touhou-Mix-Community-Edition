@@ -121,7 +121,8 @@ func push_global_playback_config() -> void:
 		cfg.get_int("Playback", "use_system_stopwatch") != 0,
 		float(cfg.get_int("Gameplay", "audio_sync_threshold")),
 		float(cfg.get_float("Gameplay", "default_vocal_volume")))
-	# 恢复"播放器页音量"（本页音量优先于全局默认）—— 不接这一步，存进 [Playback] 的值永远读不回来
+	# 恢复"播放器页音量"：它只属于播放器页会话（换曲模式 Playlist），与谱面配置互不覆盖。
+	# 不接这一步，存进 [Playback] 的值永远读不回来
 	_load_player_volumes()
 
 func _forward(src: Object, sig: String, cb: Callable) -> void:
