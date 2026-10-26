@@ -10,7 +10,8 @@
 #  使用前:
 #    1. 确保 miniaudio 子模块已拉取 (miniaudio/miniaudio.h, 勿手动下载覆盖):
 #         git submodule update --init --recursive
-#    2. Linux: 安装 gcc 和 libasound2-dev (ALSA) / libpulse-dev (PulseAudio)
+#    2. Linux: 安装 gcc 即可 (miniaudio 运行时通过 dlopen 加载 ALSA/PulseAudio,
+#       无需 libasound2-dev / libpulse-dev 等开发包, 只要系统存在运行时库 libasound.so.2)
 #    3. macOS: 安装 Xcode Command Line Tools
 #    4. Android: 设置 NDK 路径, 例如:
 #         export NDK=$HOME/Android/Sdk/ndk/26.1.10909125
@@ -32,9 +33,14 @@ CFLAGS="-O2 -fPIC -DNDEBUG -DMA_BRIDGE_EXPORTS"
 case "$TARGET" in
     linux)
         echo "[1/2] Compiling for Linux x86_64..."
+        # 注意: miniaudio 在 Linux 上通过 dlopen 在运行时动态加载 ALSA/PulseAudio
+        #       (libasound.so.2 / libpulse.so.0), 编译期无需 -lasound / -lpulse 链接。
+        #       因此即使系统未安装 libasound2-dev (只有运行时 libasound2) 也能正常编译,
+        #       运行时只要存在 libasound.so.2 即可 (绝大多数发行版默认已带)。
+        LINUX_LIBS="-lpthread -lm"
         gcc $CFLAGS -shared miniaudio_bridge.c \
             -o libminiaudio_bridge.so \
-            -lasound -lpthread -lm
+            $LINUX_LIBS
         mkdir -p ../libs/linux
         cp libminiaudio_bridge.so ../libs/linux/
         echo "[SUCCESS] → ../libs/linux/libminiaudio_bridge.so"

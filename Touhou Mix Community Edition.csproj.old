@@ -1,14 +1,46 @@
-<Project Sdk="Godot.NET.Sdk/4.7.0">
+<Project Sdk="Godot.NET.Sdk/4.7.2">
   <PropertyGroup>
+    <!-- TFM 按 GodotTargetPlatform 选择（该属性由 Godot.NET.Sdk 从宿主 OS 或导出目标推导）：
+         windows → windows10 TFM，获得 CsWinRT 投影（系统媒体控制 SMTC 需要）；
+         android → net9.0；其余（linuxbsd / macos / web…）→ 纯 net8.0。
+         纯 net8.0 下无 WinRT 投影，SMTC 源文件不参与编译。 -->
     <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'windows' ">net8.0-windows10.0.19041.0</TargetFramework>
     <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
+    <!-- 允许在 Linux / macOS 上交叉构建 Windows 目标，首次会联网拉取 Microsoft.Windows.SDK.NET.Ref -->
+    <EnableWindowsTargeting Condition=" '$(GodotTargetPlatform)' == 'windows' ">true</EnableWindowsTargeting>
+    <!-- 固定版本，使引用包与下面手动复制的 CsWinRT 运行时 DLL 版本一致 -->
+    <WindowsSdkPackageVersion Condition=" '$(GodotTargetPlatform)' == 'windows' ">10.0.19041.57</WindowsSdkPackageVersion>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>TouhouMixCommunityEdition</RootNamespace>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <SupportedOSPlatformVersion Condition=" '$(GodotTargetPlatform)' == 'windows' ">10.0.17763.0</SupportedOSPlatformVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="LiteDB" Version="5.0.21" />
     <PackageReference Include="OpenccNetLib" Version="1.6.1" />
+    <!-- Linux 系统媒体控制（MPRIS2）走 D-Bus，使用 Tmds.DBus（纯托管 NuGet 包，不引入原生二进制）。
+         仅 linuxbsd 构建需要；该文件及依赖都不参与 Windows/Android 构建，避免无关依赖。 -->
+    <PackageReference Include="Tmds.DBus" Version="0.95.1" Condition=" '$(GodotTargetPlatform)' == 'linuxbsd' " />
+  </ItemGroup>
+  <ItemGroup Condition=" '$(GodotTargetPlatform)' == 'windows' ">
+    <!-- windows10 TFM 隐式引用的 microsoft.windows.sdk.net.ref 只作为「引用程序集」参与编译，
+         其 lib/net8.0/ 下的 Microsoft.Windows.SDK.NET.dll 与 WinRT.Runtime.dll 是 CsWinRT
+         运行时实现。标准 SDK 会自动复制，但 Godot.NET.Sdk 接管了输出逻辑，导致运行时
+         FileNotFoundException。该包类型为 DotnetPlatform，不能用 PackageReference 显式引用
+         （NU1213），故直接按路径复制。 -->
+    <None Include="$(NuGetPackageRoot)microsoft.windows.sdk.net.ref/10.0.19041.57/lib/net8.0/Microsoft.Windows.SDK.NET.dll"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(NuGetPackageRoot)microsoft.windows.sdk.net.ref/10.0.19041.57/lib/net8.0/WinRT.Runtime.dll"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Windows SMTC 桥接依赖 CsWinRT（仅 windows10 TFM 具备），非 Windows 侧
+         （Android 用 Java MediaSessionControl 插件、Linux/macOS 不支持）故不编译此文件。
+         它不是 autoload，由 Game/SystemMediaSession.gd 在 Windows 下按需实例化。 -->
+    <Compile Remove="CSharp/MediaSessionControlCs.cs" Condition=" '$(GodotTargetPlatform)' != 'windows' " />
+    <!-- Linux MPRIS2 桥接仅在 linuxbsd 构建编译（其他平台无 D-Bus，且 Tmds.DBus 仅该构建引用）。 -->
+    <Compile Remove="CSharp/MediaSessionControlLinux.cs" Condition=" '$(GodotTargetPlatform)' != 'linuxbsd' " />
   </ItemGroup>
 </Project>
