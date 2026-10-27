@@ -1,6 +1,6 @@
 ## 含封面视差效果的列表项基类
 ## 继承自 ListItemBase,为含 cover_texture 的子类提供统一的视差移动与封面加载/释放
-## 封面加载采用异步线程池:主线程入队 CoverLoader,后台线程纯 I/O 读 Image,主线程回调创建 ImageTexture
+## 封面加载采用异步线程池:主线程入队 CoverLoader,后台线程读盘并做显存优化,主线程回调创建 ImageTexture
 ## 取消机制:用 _loading_path 一致性校验替代版本号,避免实例级版本号与 CoverLoader 全局版本号不同步
 extends ListItemBase
 class_name CoverListItemBase
@@ -36,7 +36,7 @@ func _get_cover_texture() -> Texture2D:
 
 ## 启动封面加载(异步)
 ## 1. 主线程查 WeakRef 缓存(命中零开销同步应用)
-## 2. 未命中 → 路径查询(主线程) → 入 CoverLoader 队列 → 后台线程读 Image → 主线程回调创建 Texture
+## 2. 未命中 → 路径查询(主线程) → 入 CoverLoader 队列 → 后台线程读盘并优化显存 → 主线程回调创建 Texture
 ## 已加载(_cover_loaded=true)时直接 return,避免重复加载
 ## 路径暂不可用时 return,由列表 trigger_cover_chain 统一重试
 func start_cover_load() -> void:

@@ -2222,7 +2222,7 @@ func load_cover_with_cache(path: String) -> Texture2D:
 			return load_cover_with_cache(DEFAULT_COVER_PATH)
 		var image := ImageUtil.load_image_file(path)
 		if image:
-			texture = ImageTexture.create_from_image(image)
+			texture = ImageUtil.create_display_texture(image)
 		else:
 			GLogger.warning("Failed to load cover image: %s" % path, "FileSystemMGR")
 			return load_cover_with_cache(DEFAULT_COVER_PATH)

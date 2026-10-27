@@ -59,41 +59,14 @@ static func _start_request(url: String) -> void:
 static func _on_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray, url: String, http: HTTPRequest) -> void:
 	var tex: Texture2D = null
 	if result == HTTPRequest.RESULT_SUCCESS and response_code == 200 and body.size() > 0:
-		var image := _decode_image(body)
+		var image := ImageUtil.decode_image_buffer(body)
 		if image:
-			tex = ImageTexture.create_from_image(image)
+			tex = ImageUtil.create_display_texture(image)
 			if tex:
 				if _texture_cache.size() >= MAX_CACHE_SIZE:
 					_texture_cache.clear()
 				_texture_cache[url] = tex
 	_finish_pending(url, tex, http)
-
-## 按文件签名选择唯一解码器；用错误解码器探测会触发 Godot 引擎错误日志。
-static func _decode_image(body: PackedByteArray) -> Image:
-	var image := Image.new()
-	var decode_error := ERR_FILE_UNRECOGNIZED
-	if _has_png_signature(body):
-		decode_error = image.load_png_from_buffer(body)
-	elif _has_jpeg_signature(body):
-		decode_error = image.load_jpg_from_buffer(body)
-	elif _has_webp_signature(body):
-		decode_error = image.load_webp_from_buffer(body)
-	if decode_error != OK:
-		return null
-	return image
-
-static func _has_png_signature(body: PackedByteArray) -> bool:
-	return body.size() >= 8 \
-		and body[0] == 0x89 and body[1] == 0x50 and body[2] == 0x4E and body[3] == 0x47 \
-		and body[4] == 0x0D and body[5] == 0x0A and body[6] == 0x1A and body[7] == 0x0A
-
-static func _has_jpeg_signature(body: PackedByteArray) -> bool:
-	return body.size() >= 3 and body[0] == 0xFF and body[1] == 0xD8 and body[2] == 0xFF
-
-static func _has_webp_signature(body: PackedByteArray) -> bool:
-	return body.size() >= 12 \
-		and body[0] == 0x52 and body[1] == 0x49 and body[2] == 0x46 and body[3] == 0x46 \
-		and body[8] == 0x57 and body[9] == 0x45 and body[10] == 0x42 and body[11] == 0x50
 
 static func _finish_pending(url: String, tex: Texture2D, http: HTTPRequest) -> void:
 	var pending: Array = _inflight.get(url, [])

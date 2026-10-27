@@ -347,23 +347,14 @@ func _load_avatar_async(avatar_url: String) -> void:
 	if not response_body is PackedByteArray or response_body.size() == 0:
 		GLogger.warning("Avatar response body empty: url=%s" % full_url, "ProfilePage")
 		return
-	var image := Image.new()
-	var err := OK
-	# 根据扩展名选择解码器，避免无关解码器报错
-	var ext := full_url.get_extension().to_lower()
-	if ext == "jpg" or ext == "jpeg":
-		err = image.load_jpg_from_buffer(response_body)
-	elif ext == "png":
-		err = image.load_png_from_buffer(response_body)
-	else:
-		# 未知扩展名：尝试两种格式
-		err = image.load_png_from_buffer(response_body)
-		if err != OK:
-			err = image.load_jpg_from_buffer(response_body)
-	if err != OK:
-		GLogger.warning("Avatar image decode failed (not PNG/JPG): url=%s" % full_url, "ProfilePage")
+	var image := ImageUtil.decode_image_buffer(response_body)
+	if image == null:
+		GLogger.warning("Avatar image decode failed: url=%s" % full_url, "ProfilePage")
 		return
-	var tex := ImageTexture.create_from_image(image)
+	var tex := ImageUtil.create_display_texture(image)
+	if tex == null:
+		GLogger.warning("Avatar texture creation failed: url=%s" % full_url, "ProfilePage")
+		return
 	profile_avatar_rect.texture = tex
 	avatar_border.set_display_texture(tex)
 	avatar_loaded.emit(tex)

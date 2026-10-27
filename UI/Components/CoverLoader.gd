@@ -14,6 +14,7 @@
 ##   - _task_queue / _result_queue 仅通过 _mutex 访问
 ##   - _pending_callbacks / _item_versions / _waiters_by_path / _inflight 仅主线程访问
 ##   - 后台线程只读 LoadTask 字段，只写 LoadResult.image，不访问任何 Node/Resource/Singleton
+##   - ImageUtil.load_display_image 内部只做解码/16 位格式转换，不访问场景节点
 ##   - Image.load_from_file 在 Godot 4.x 线程安全
 extends Node
 
@@ -62,6 +63,8 @@ var _path_requests: Dictionary = {}
 
 
 func _ready() -> void:
+	# 先在主线程探测显示纹理格式并缓存，后台线程只能读缓存（无法访问 RenderingServer）
+	ImageUtil.get_display_format()
 	# 启动后台线程
 	for i in THREAD_COUNT:
 		var t := Thread.new()
@@ -166,6 +169,9 @@ func _process(_delta: float) -> void:
 		# 若缓存已存在（重复任务/其他路径已加载同内容），直接复用，避免再上传一份 GPU 纹理
 		var tex := _shared_texture(r.path, r.image)
 		if tex == null:
+			# 纹理创建失败：同样投递 null，让等待者走默认封面回退，避免一直等待
+			for req_ in waiters:
+				_deliver_callback(req_["item_id"], req_["version"], r.path, null)
 			continue
 
 		# 广播给该路径所有等待者
@@ -197,8 +203,8 @@ func _shared_texture(path: String, image: Image) -> Texture2D:
 		var cached := fs_mgr.get_cached_cover_texture(path)
 		if cached:
 			return cached
-	var tex: Texture2D = ImageTexture.create_from_image(image)
-	if fs_mgr:
+	var tex := ImageUtil.create_display_texture(image)
+	if fs_mgr and tex:
 		fs_mgr._cache_cover_texture(path, tex)
 	return tex
 
@@ -233,7 +239,7 @@ func _thread_loop() -> void:
 		_mutex.unlock()
 
 
-## 子线程读 Image(纯 I/O,无 Node/Resource 访问)
+## 子线程读盘并做显存优化(转 GPU 支持的 16 位格式,无 Node/Resource 访问)
 ## 仅处理 user:// 路径(res:// 已在主线程同步加载)
 ## 失败返回 null
 ## 注:子线程不直接调 GLogger(非线程安全),错误信息通过 call_deferred 推到主线程
@@ -248,7 +254,7 @@ func _load_image(path: String) -> Image:
 	if not FileAccess.file_exists(path):
 		call_deferred("_log_warning", "CoverLoader: Cover file not found: %s" % path)
 		return null
-	var img := ImageUtil.load_image_file(path)
+	var img := ImageUtil.load_display_image(path)
 	if img == null:
 		call_deferred("_log_warning", "CoverLoader: Failed to load cover image: %s" % path)
 	return img
