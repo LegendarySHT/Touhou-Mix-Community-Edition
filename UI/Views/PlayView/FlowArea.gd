@@ -166,7 +166,7 @@ const F_JUDGED := 2       # 已被判定过（长条为首判/头部判定）
 const F_CAN_JUDGE := 4    # 滑块可被认领（键盘模式）
 const F_HELD := 8         # 长条被按住
 const F_PASSED := 16      # 已过判定线
-const F_TAIL_JUDGED := 32 # 长条尾部已判定（双判定模型的第二次判定：按完=Perfect / 断开=Miss）
+const F_TAIL_JUDGED := 32 # 长条尾部已判定（双判定模型的第二次判定：按完=Perfect / 临近结束松手按偏差判定 / 断开=Miss）
 var _rt_flags: PackedByteArray = PackedByteArray()
 var _rt_x: PackedFloat32Array = PackedFloat32Array()            # cached_x（左缘）
 var _rt_cx: PackedFloat32Array = PackedFloat32Array()            # cached_center_x（判定/绘制用）
@@ -1216,16 +1216,26 @@ func _handle_release(touch_id: int, input_time_ms: float = -1.0, released_lane: 
 	var note_index: int = active_holds[touch_id]
 	_rt_flags[note_index] &= ~F_HELD
 
-	# 长条双判定：中途松开 = 尾部 Miss（计入评分与 combo，断开即断 combo）。
+	# 长条双判定：中途松开按距结束的提前量判尾——不超过 Good 窗口视为接住尾部，
+	# 按偏差落入 Perfect/Great/Good；超出 Good 窗口才计 Miss（计入评分与 combo，断开即断 combo）。
 	# 尾部已完成的同帧竞态（渲染钟已到结束时刻但 _process 尚未派发 Perfect）不补 Miss，
 	# 交给 active_holds 完成路径；按住的时长不足一个画面帧时也不会误判
 	var long_end_time = _st_start[note_index] + max(0.0, _st_dur[note_index])
 	if not (_rt_flags[note_index] & F_TAIL_JUDGED) and _render_time_ms < long_end_time:
-		_judge_long_tail(note_index, "Miss")
-		# 演奏模式：按压中断立即 NoteOff——否则合成器里的原音符会一直响到
-		# （可能被压缩/缩放的）结束时刻，听感上"手已松开声音还在继续"
-		if parent_node.play_mode:
-			_manual_off_scheduler.trigger_off_now(note_index)
+		var remaining_ms: float = long_end_time - judge_time_ms
+		if remaining_ms <= float(judge_windows["good"]):
+			var tail_result: String = "Good"
+			if remaining_ms <= float(judge_windows["perfect"]):
+				tail_result = "Perfect"
+			elif remaining_ms <= float(judge_windows["great"]):
+				tail_result = "Great"
+			_judge_long_tail(note_index, tail_result, absf(remaining_ms) / 1000.0, remaining_ms / 1000.0)
+		else:
+			_judge_long_tail(note_index, "Miss")
+			# 演奏模式：按压中断立即 NoteOff——否则合成器里的原音符会一直响到
+			# （可能被压缩/缩放的）结束时刻，听感上"手已松开声音还在继续"
+			if parent_node.play_mode:
+				_manual_off_scheduler.trigger_off_now(note_index)
 
 	# 移除音符
 	_remove_note(note_index)
@@ -1512,16 +1522,24 @@ func _judge_note(note_index: int, trigger_vibration: bool = false, input_time_ms
 		_generate_particle(result, hit_pos)
 
 ## 长条尾部判定（双判定模型的第二次判定）：
-## 持续按完整个长条 = Perfect；中途断开 / 从未击打而落出屏幕 = Miss。
+## 持续按完整个长条 = Perfect；临近结束提前松手且距结束不超过 Good 窗口时按偏差判定；
+## 超出该窗口的中途断开 / 从未击打而落出屏幕 = Miss。
 ## 与首判同级计入评分、combo 与准度（is_long_sustain=false，不走 long_holding 的只加分路径）；
 ## block_type 恒为 Long，long_instance_id 让 ScoreCalculator 走该长条的衰减链（首判之后的下一次）。
+## timing_sec: 偏差绝对值（秒），缺省按 Miss=1.0 / 其他=0.0
+## signed_offset_sec: 带符号偏差（秒，>0 = Early），用于 Early/Late 统计与偏移显示
 ## 同一长条仅判定一次（F_TAIL_JUDGED 守卫），调用方负责随后的移除/清场。
-func _judge_long_tail(note_index: int, result: String) -> void:
+func _judge_long_tail(note_index: int, result: String, timing_sec: float = -1.0,
+		signed_offset_sec: float = 0.0) -> void:
 	if _rt_flags[note_index] & F_TAIL_JUDGED:
 		return
 	_rt_flags[note_index] |= F_TAIL_JUDGED
-	var timing_sec: float = 1.0 if result == "Miss" else 0.0
-	note_judged.emit(result, "", FlowNote.NoteType.Long, timing_sec, 0.0, _rt_long_id[note_index])
+	if timing_sec < 0.0:
+		timing_sec = 1.0 if result == "Miss" else 0.0
+	var offset := ""
+	if result != "Miss" and signed_offset_sec != 0.0:
+		offset = "%s%.1f ms" % ["+" if signed_offset_sec > 0.0 else "", signed_offset_sec * 1000.0]
+	note_judged.emit(result, offset, FlowNote.NoteType.Long, timing_sec, signed_offset_sec, _rt_long_id[note_index])
 
 var _is_pause: bool = false
 var _cached_viewport_height: float = 0.0
