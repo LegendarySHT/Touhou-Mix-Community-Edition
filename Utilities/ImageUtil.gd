@@ -9,10 +9,24 @@ extends RefCounted
 static func load_image_file(path: String) -> Image:
 	if path.is_empty():
 		return null
+	# SVG 不是位图：按扩展名直接栅格化，不依赖 Image.load_from_file 的格式分发
+	if path.get_extension().to_lower() == "svg":
+		return _load_svg_file(path)
 	var img := Image.load_from_file(path)
 	if img and img.get_width() > 0 and img.get_height() > 0:
 		return img
 	# 扩展名未命中正确解码器时，读取字节按内容重试
+	if not FileAccess.file_exists(path):
+		return null
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return null
+	var bytes := f.get_buffer(f.get_length())
+	f.close()
+	return decode_image_buffer(bytes)
+
+## 读取 SVG 文本并栅格化为位图（用户皮肤等外部素材的矢量贴图入口）
+static func _load_svg_file(path: String) -> Image:
 	if not FileAccess.file_exists(path):
 		return null
 	var f := FileAccess.open(path, FileAccess.READ)
@@ -35,9 +49,16 @@ static func decode_image_buffer(bytes: PackedByteArray) -> Image:
 		decode_error = image.load_jpg_from_buffer(bytes)
 	elif _has_webp_signature(bytes):
 		decode_error = image.load_webp_from_buffer(bytes)
+	elif _has_svg_signature(bytes):
+		decode_error = image.load_svg_from_buffer(bytes)
 	if decode_error != OK:
 		return null
 	return image
+
+## SVG 是文本 XML：只检查文件头是否含 <svg 根节点，避免整文件转字符串
+static func _has_svg_signature(bytes: PackedByteArray) -> bool:
+	var head := bytes.slice(0, mini(bytes.size(), 1024)).get_string_from_utf8()
+	return head.find("<svg") != -1
 
 ## 是否已探测过显示格式（后台线程只看结果，不做探测）
 static var _probed := false

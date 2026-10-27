@@ -46,7 +46,8 @@ const IMPORT_TIP_TEXT := "正在导入数据，请稍后"
 const SCAN_TIP_TEXT := "正在扫描谱面，请稍后"
 
 ## 图片文件扩展名列表（Godot 导出时会被转换为 .ctex，无法通过 FileAccess 直接读取）
-const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp"]
+## SVG 同样经导入器转为纹理资源，复制到 user:// 时栅格化为 PNG（见 _copy_image_via_resource_loader）
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "svg"]
 
 ## .import 文件后缀（Godot 导出后，res:// 中的图片以 xxx.jpg.import 形式存在）
 const IMPORT_SUFFIX = ".import"
@@ -576,6 +577,10 @@ func _copy_image_via_resource_loader(src_path: String, dest_path: String) -> boo
 		)
 		return false
 	
+	# SVG 只能经 ResourceLoader 取到栅格结果，落盘统一转为 PNG（user:// 侧不需要保留矢量源）
+	if dest_path.get_extension().to_lower() == "svg":
+		dest_path = dest_path.get_basename() + ".png"
+
 	# 根据目标文件扩展名选择保存格式
 	var ext = dest_path.get_extension().to_lower()
 	var error: Error

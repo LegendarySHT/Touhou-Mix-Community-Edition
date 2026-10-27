@@ -458,19 +458,24 @@ func get_available_skins() -> Array:
 
 	return result
 
-## 获取皮肤贴图文件映射
-const SKIN_TEXTURES = {
-	"short": "short.png",
-	"short_core": "short-core.png",
-	"instant": "instant.png",
-	"instant_core": "instant-core.png",
-	"long_t": "long-t.png",
-	"long_t_core": "long-t-core.png",
-	"long_f": "long-f.png",
-	"long_f_core": "long-f-core.png",
-	"long_b": "long-b.png",
-	"long_b_core": "long-b-core.png"
+## 皮肤贴图文件映射：逻辑类型 → 文件名基础名候选（按顺序尝试）
+## 点块同时兼容 short / block 两种命名习惯；其余类型各皮肤命名一致
+const SKIN_TEXTURE_BASE_NAMES = {
+	"short": ["short", "block"],
+	"short_core": ["short-core", "block-core"],
+	"instant": ["instant"],
+	"instant_core": ["instant-core"],
+	"long_t": ["long-t"],
+	"long_t_core": ["long-t-core"],
+	"long_f": ["long-f"],
+	"long_f_core": ["long-f-core"],
+	"long_b": ["long-b"],
+	"long_b_core": ["long-b-core"]
 }
+
+## 皮肤贴图扩展名候选（按顺序尝试）
+## res:// 内置皮肤的 SVG 由导入器转成纹理资源；user:// 用户皮肤的 SVG 由 ImageUtil 运行时栅格化
+const SKIN_TEXTURE_EXTENSIONS = ["png", "svg"]
 
 ## 获取指定皮肤的贴图字典
 func get_skin_textures(skin_name: String) -> Dictionary:
@@ -496,22 +501,22 @@ func get_skin_textures(skin_name: String) -> Dictionary:
 	if skin_path.is_empty():
 		return result
 
-	# 加载所有贴图
-	for texture_key in SKIN_TEXTURES:
-		var file_name = SKIN_TEXTURES[texture_key]
-		var file_path = skin_path.path_join(file_name)
+	# 加载所有贴图（按候选基础名/扩展名解析实际文件）
+	for texture_key in SKIN_TEXTURE_BASE_NAMES:
+		var file_path = _resolve_skin_texture_path(skin_path, texture_key)
+		if file_path.is_empty():
+			continue
 
 		if file_path.begins_with("res://"):
 			# 内置资源直接加载
 			if ResourceLoader.exists(file_path):
 				result[texture_key] = load(file_path)
 		else:
-			# 用户目录资源动态加载 - 先检查文件是否存在
-			if PathHelper.file_exists(file_path):
-				var image = ImageUtil.load_image_file(file_path)
-				if image:
-					var texture = ImageTexture.create_from_image(image)
-					result[texture_key] = texture
+			# 用户目录资源动态加载（SVG 由 ImageUtil 栅格化）
+			var image = ImageUtil.load_image_file(file_path)
+			if image:
+				var texture = ImageTexture.create_from_image(image)
+				result[texture_key] = texture
 
 	# 缓存结果（非空时）。单套皮肤贴图 10 张 600x450 RGBA8 ≈ 10.8MB，
 	# 而这套缓存只进不出（clear_skin_cache 无调用点），皮肤预览多翻几套就能堆到几十 MB。
@@ -526,6 +531,20 @@ func get_skin_textures(skin_name: String) -> Dictionary:
 			_skin_textures_cache.erase(oldest)
 
 	return result
+
+## 按候选基础名/扩展名解析某个逻辑贴图在皮肤目录下的实际文件路径
+## res:// 与 user:// 使用各自的存在性判断；全部候选缺失时返回空串（由调用方跳过该贴图）
+func _resolve_skin_texture_path(skin_path: String, texture_key: String) -> String:
+	var base_names: Array = SKIN_TEXTURE_BASE_NAMES.get(texture_key, [])
+	for base_name in base_names:
+		for ext in SKIN_TEXTURE_EXTENSIONS:
+			var file_path: String = skin_path.path_join("%s.%s" % [base_name, ext])
+			if file_path.begins_with("res://"):
+				if ResourceLoader.exists(file_path):
+					return file_path
+			elif PathHelper.file_exists(file_path):
+				return file_path
+	return ""
 
 ## 清空皮肤贴图缓存（皮肤切换/删除/重扫时调用）
 func clear_skin_cache(skin_name: String = "") -> void:
