@@ -62,6 +62,10 @@ var play_mode: bool = true
 
 var _is_finishing_game: bool = false
 
+## 退出请求进行中标记：网络上传与状态切换之间不再 await，但按钮仍可能被连点，
+## 用它把同一局的多次退出请求折叠成一次，避免连续回退多级页面
+var _is_quitting: bool = false
+
 ## 游戏是否已正式开始, 用于区分开局准备阶段是否完成并可以开始
 var _game_started: bool = false
 
@@ -398,6 +402,8 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 		is_pause = true
 
 	if enable:
+		# 每次重新进入打歌页都允许再次退出（同一节点会跨局复用）
+		_is_quitting = false
 		GLogger.info("Node: %s , ProcessMode: %s" % [self.name, enable], "PlayView")
 		# 从设置界面切回时，背景配置可能已变更，重新应用 play 背景（含 cover 模式烘焙）
 		if _oldState == UIStateManager.UIState.SETTINGS_VIEW and current_midi != null:
@@ -1244,13 +1250,20 @@ func _upload_score_async(midi: MidiData, snapshot: Dictionary) -> void:
 
 ## 退出游戏（中途退出）
 func _on_quit_pressed() -> void:
-	# 中途退出：上传成绩（评级强制为 W），等待上传完成后再返回，确保排行榜刷新时数据已写入
-	await _upload_score_on_quit()
+	if _is_quitting:
+		return
+	_is_quitting = true
+	# 不等待上传：上传要经过「查谱面 + 鉴权续期 + 提交成绩」多次网络往返，
+	# 等待它只会把页面转场推迟数秒；完成后由 EvtBus.score_uploaded 通知排行榜刷新。
+	# 上传协程在首个 await 前已同步取好快照与本地成绩，可安全脱离本函数继续执行。
+	_upload_score_on_quit()
 	# 返回上级界面（_on_state_changed 统一处理 MIDI 停止、音符回收、背景清理等）
-	UiStatMGR.go_back()
+	if not UiStatMGR.go_back():
+		# 无历史可退（异常边界）：放开标记，避免本页退出按钮永久失效
+		_is_quitting = false
 
 ## 中途退出时上传成绩：评级强制 W，cleared=false
-## await 此方法可等待上传完成
+## 调用方不需要等待；成绩写入后通过 score_uploaded 事件刷新排行榜
 func _upload_score_on_quit() -> void:
 	if current_midi == null or current_midi.file_hash.is_empty():
 		return
