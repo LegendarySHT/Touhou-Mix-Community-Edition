@@ -27,7 +27,8 @@ var _glow_enabled: bool = false
 var _glow_intensity: float = 1.0
 var _glow_size: float = 20.0
 # 加色混合子层（PlayView.tscn 预挂节点：GlowLayer.gd，z_index=-1 保证在音符之下、背景之上）
-@onready var _glow_layer: GlowLayer = $GlowLayer
+# 皮肤预览复用本节点时不挂 GlowLayer，用 get_node_or_null 避免缺节点报错
+@onready var _glow_layer: GlowLayer = get_node_or_null("GlowLayer")
 
 # 光效高斯峰值：加色混合逐通道相加，峰值 ≥0.5 时两个相同颜色的光效叠加就达 1.0（白）
 # 0.45 保证两个光效叠加不超过 0.9，不白但接近白；调高更亮更易白，调低更压白
@@ -41,11 +42,21 @@ var _slide_half_height: float = 50.0
 var _long_head_half_height: float = 50.0
 var _long_tail_half_height: float = 50.0
 var _long_body_tex_height: float = 50.0
+# body 分条周期/映射基准所用的参考贴图（base 优先，缺 base 时用 core）。
+# body 允许只有 core 没有 base，参考尺寸不能取自透明占位贴图，否则周期与取样区间都会错
+var _long_body_ref_tex: Texture2D = null
 # body 中部贴图应用方式："repeat"（水平拉伸+垂直重复）或 "stretch"（固定比例映射，不随身体压缩）
 var _long_body_mode: String = "repeat"
 # stretch 模式的贴图映射方式："screen"（方案 A：屏幕固定映射，按位置裁剪）
 # 或 "length"（方案 B：按身体基准长度固定比例映射，随长条移动）
 var _long_stretch_mode: String = "length"
+
+# 皮肤预览状态（见 set_long_preview）：命中后 _draw 只画这一条长条，不读实战数据
+var _preview_active: bool = false
+var _preview_body_rect: Rect2 = Rect2()
+var _preview_connect_center: bool = false
+var _preview_color: Color = Color.WHITE
+var _preview_ref_h: float = 0.0
 
 # 渲染裁剪参数（与 FlowArea._note_cull_margin_* 对齐）
 var _cull_margin_top: float = 120.0
@@ -84,7 +95,7 @@ var flow_area: Object = null
 var _transparent_tex: Texture2D = null
 
 # 上色方式：先画 base（固定色结构层），再画 core（纯白 + alpha 蒙版）并 modulate 音符色。
-# 与 NoteSkinAdjust 预览（core 子节点 + modulate）一致，也与
+# 实战与皮肤预览共用这套绘制，观感一致；与
 # draw_texture_rect(core, rect, false, color) 的 alpha 加权混合等价。
 # 注意：不要用 Image.blend_rect_mask 预合成 —— 该 API 只判 mask.a != 0 做二值门整体覆盖，
 # 会把 core 的软边与亮度渐变全部涂成纯色（整片色块、轮廓丢失）。
@@ -141,6 +152,8 @@ func set_long_textures(head_tex: Texture2D, head_core_tex: Texture2D,
 	_long_head_core_tex = head_core_tex if head_core_tex else _transparent_tex
 	_long_body_tex = body_tex if body_tex else _transparent_tex
 	_long_body_core_tex = body_core_tex if body_core_tex else _transparent_tex
+	# 参考贴图按原始入参决定：缺 base 的皮肤（只画 core 的 body）用 core 的尺寸
+	_long_body_ref_tex = body_tex if body_tex else body_core_tex
 	_long_tail_tex = tail_tex if tail_tex else _transparent_tex
 	_long_tail_core_tex = tail_core_tex if tail_core_tex else _transparent_tex
 	_recompute_heights()
@@ -152,6 +165,34 @@ func set_long_body_mode(mode: String) -> void:
 ## 设置 stretch 模式的贴图映射方式（"screen" 屏幕固定映射 / "length" 按身体基准长度映射）
 func set_long_stretch_mode(mode: String) -> void:
 	_long_stretch_mode = mode
+
+
+# ========== 皮肤预览（NoteSkinAdjust 弹窗） ==========
+# 预览不走 _draw_order/_rt_* 的实战数据流，而是直接给一块身体区域，
+# 由同一套几何规则与绘制函数产出画面，保证预览与实战的连接/分条观感一致
+
+## 预览状态：body_rect 为本节点局部坐标下的身体区域；ref_h 供 screen 拉伸模式作参考高度
+func set_long_preview(body_rect: Rect2, connect_center: bool, color: Color, ref_h: float) -> void:
+	_preview_active = true
+	_preview_body_rect = body_rect
+	_preview_connect_center = connect_center
+	_preview_color = color
+	_preview_ref_h = ref_h
+	queue_redraw()
+
+## 预览各部件矩形（键：body/tail/head），供弹窗摆放光效；坐标与本节点一致
+func get_long_preview_rects() -> Dictionary:
+	var body := _preview_body_rect
+	var tail_half := _long_tail_half_height
+	var head_half := _long_head_half_height
+	# center 连接：head/tail 中心分别落在 body 的上/下边缘，各向 body 内偏移半高
+	var tail_top: float = body.position.y - tail_half if _preview_connect_center else body.position.y - tail_half * 2.0
+	var head_top: float = body.position.y + body.size.y - head_half if _preview_connect_center else body.position.y + body.size.y
+	return {
+		"body": body,
+		"tail": Rect2(body.position.x, tail_top, body.size.x, tail_half * 2.0),
+		"head": Rect2(body.position.x, head_top, body.size.x, head_half * 2.0),
+	}
 
 ## Long 头/尾半高（spawn 时由 FlowArea 读取）
 func get_long_head_half_height() -> float:
@@ -199,17 +240,24 @@ func get_max_half_height() -> float:
 
 ## 绘制一个音符部件的两层：base（固定色结构层，原样绘制）→ core（纯白蒙版，modulate 音符色）。
 ## 必须分两次绘制、不能用 Image.blend_rect_mask 预合成：该 API 只按 mask.a != 0 做二值门整体覆盖，
-## 会丢掉 core 的软边与亮度渐变（整片纯色），与 NoteSkinAdjust 预览的 core 子节点 + modulate 不一致。
+## 会丢掉 core 的软边与亮度渐变（整片纯色），与预览/实战统一的分层绘制不一致。
 func _draw_note_layers(base_tex: Texture2D, core_tex: Texture2D, rect: Rect2, color: Color) -> void:
-	draw_texture_rect(base_tex, rect, false)
-	draw_texture_rect(core_tex, rect, false, color)
+	# 预览可能在皮肤贴图注入前先触发一次重绘，缺层时跳过而不是把 null 传给绘制接口
+	if base_tex:
+		draw_texture_rect(base_tex, rect, false)
+	if core_tex:
+		draw_texture_rect(core_tex, rect, false, color)
 
 func _recompute_heights() -> void:
 	_block_half_height = _compute_half_height(_block_tex)
 	_slide_half_height = _compute_half_height(_slide_tex)
 	_long_head_half_height = _compute_half_height(_long_head_tex)
 	_long_tail_half_height = _compute_half_height(_long_tail_tex)
-	_long_body_tex_height = _compute_tex_height(_long_body_tex)
+	_long_body_tex_height = _compute_tex_height(_long_body_ref_texture())
+
+## body 分条周期/映射基准贴图：base 缺失时用 core，两者都缺失时退回透明占位贴图
+func _long_body_ref_texture() -> Texture2D:
+	return _long_body_ref_tex if _long_body_ref_tex else _long_body_tex
 
 func _compute_half_height(tex: Texture2D) -> float:
 	if tex == null or tex.get_width() <= 0:
@@ -262,6 +310,9 @@ func _setup_glow_layer() -> void:
 ## 只跳过已移除音符：Long 被按住时 is_judged=true 但仍需显示，不能按 is_judged 跳过。
 ## 每音符 2 次绘制：base（固定色结构层）+ core（modulate 音符色）
 func _draw() -> void:
+	if _preview_active:
+		_draw_long_preview()
+		return
 	if _draw_order.is_empty():
 		return
 	var view_h = _viewport_height
@@ -330,18 +381,25 @@ func _draw_long_body(note_index: int, fa: Object, top_limit: float, bottom_limit
 ## （屏幕下方 / 被判定线吞掉）直接裁掉。
 ## 极端情况（视口/基准长度未就绪）回退整图缩放填充，避免出现空洞
 func _draw_long_body_stretch(note_index: int, fa: Object, x: float, body_top: float, body_h: float, color: Color) -> void:
-	var tex_w := float(_long_body_tex.get_width())
-	var tex_h := float(_long_body_tex.get_height())
+	_draw_long_body_stretch_rect(x, body_top, body_h, fa._rt_body_ref_len[note_index], _viewport_height, color)
+
+## stretch 的公共实现（实战与皮肤预览共用）：
+## ref_len = "length" 模式的长条基准长度；ref_h = "screen" 模式的屏幕参考高度
+func _draw_long_body_stretch_rect(x: float, body_top: float, body_h: float,
+		ref_len: float, ref_h: float, color: Color) -> void:
+	# 映射基准取 base（缺 base 时取 core），两层再按同一归一化区间各自取样
+	var ref_tex: Texture2D = _long_body_ref_texture()
+	var tex_w := float(ref_tex.get_width())
+	var tex_h := float(ref_tex.get_height())
 	var mapped: Dictionary
 	if _long_stretch_mode == "screen":
-		if _viewport_height <= 0.0:
+		if ref_h <= 0.0:
 			_draw_note_layers(_long_body_tex, _long_body_core_tex,
 				Rect2(x, body_top, _note_width, body_h), color)
 			return
 		mapped = NoteFallCalculator.compute_screen_span_rect(
-			x, _note_width, body_top, body_h, _viewport_height, tex_w, tex_h)
+			x, _note_width, body_top, body_h, ref_h, tex_w, tex_h)
 	else:
-		var ref_len: float = fa._rt_body_ref_len[note_index]
 		if ref_len <= 0.0:
 			_draw_note_layers(_long_body_tex, _long_body_core_tex,
 				Rect2(x, body_top, _note_width, body_h), color)
@@ -352,8 +410,29 @@ func _draw_long_body_stretch(note_index: int, fa: Object, x: float, body_top: fl
 		return
 	var src: Rect2 = mapped["src"]
 	var dst: Rect2 = mapped["dst"]
-	draw_texture_rect_region(_long_body_tex, dst, src)
-	draw_texture_rect_region(_long_body_core_tex, dst, src, color)
+	var v0 := src.position.y / tex_h
+	var v1 := (src.position.y + src.size.y) / tex_h
+	_draw_long_body_slice(_long_body_tex, dst, v0, v1)
+	_draw_long_body_slice(_long_body_core_tex, dst, v0, v1, color)
+
+## 皮肤预览绘制：几何与绘制顺序均与实战一致（body 最底 → tail → head）。
+## 预览没有下落时长，stretch+length 取"身体长度 = 基准长度"，等价于恒速下落时贴图整幅铺满
+func _draw_long_preview() -> void:
+	var rects := get_long_preview_rects()
+	var body: Rect2 = rects["body"]
+	var tail_rect: Rect2 = rects["tail"]
+	var head_rect: Rect2 = rects["head"]
+	if body.size.y > 0.0:
+		if _long_body_mode == "repeat":
+			var phase := 0.0
+			if _long_stretch_mode == "screen" and _long_body_tex_height > 0.0:
+				phase = fposmod(body.position.y, _long_body_tex_height)
+			_draw_long_body_repeat(_long_body_tex, _long_body_core_tex, body, _preview_color, phase)
+		else:
+			_draw_long_body_stretch_rect(body.position.x, body.position.y, body.size.y,
+				body.size.y, _preview_ref_h, _preview_color)
+	_draw_note_layers(_long_tail_tex, _long_tail_core_tex, tail_rect, _preview_color)
+	_draw_note_layers(_long_head_tex, _long_head_core_tex, head_rect, _preview_color)
 
 ## 绘制 Long tail（尾部）
 func _draw_long_tail(note_index: int, fa: Object, top_limit: float, bottom_limit: float, color: Color) -> void:
@@ -377,13 +456,14 @@ func _draw_long_head(note_index: int, fa: Object, top_limit: float, bottom_limit
 ## phase = 身体上端在分条周期内已越过的贴图高度（像素，范围 [0, tex_h)）：
 ##   0（默认）= 分条锚定身体上端 → 图案随长条整体下移（与 LongBodyRepeat shader v_offset=0 一致）
 ##   >0       = 分条网格锚定屏幕 → 图案固定于屏幕，长条滚过其上
-## 最后一条不足贴图高度时只取该条剩余的贴图部分；base/core 两层逐条分别绘制
+## 最后一条不足贴图高度时只取该条剩余的贴图部分；base/core 两层逐条分别绘制。
+## 取样区间按归一化 UV 表达，base 与 core 各自按自身像素尺寸换算：
+## 皮肤允许 body 只提供 core（缺 base），此时不能拿 base 的像素宽高去取样 core
 func _draw_long_body_repeat(base_tex: Texture2D, core_tex: Texture2D, rect: Rect2, color: Color, phase: float = 0.0) -> void:
 	var tex_h := _long_body_tex_height
 	if tex_h <= 0.0:
 		_draw_note_layers(base_tex, core_tex, rect, color)
 		return
-	var tex_w := base_tex.get_width()
 	var top := rect.position.y
 	var remain := rect.size.y
 	var src_y: float = fposmod(phase, tex_h)
@@ -393,12 +473,24 @@ func _draw_long_body_repeat(base_tex: Texture2D, core_tex: Texture2D, rect: Rect
 	while remain > 0.01:
 		var h := minf(tex_h - src_y, remain)
 		var dst := Rect2(rect.position.x, top, rect.size.x, h)
-		var src := Rect2(0, src_y, tex_w, h)
-		draw_texture_rect_region(base_tex, dst, src)
-		draw_texture_rect_region(core_tex, dst, src, color)
+		var v0 := src_y / tex_h
+		var v1 := (src_y + h) / tex_h
+		_draw_long_body_slice(base_tex, dst, v0, v1)
+		_draw_long_body_slice(core_tex, dst, v0, v1, color)
 		top += h
 		remain -= h
 		src_y = 0.0
 		guard += 1
 		if guard > 256:
 			break
+
+## 按归一化纵向区间 [v0, v1) 取贴图一段横向整幅铺到 dst。
+## 归一化而非像素区间：base/core 画布尺寸不一致时两层仍落在同一段上，不会错位或漏画
+func _draw_long_body_slice(tex: Texture2D, dst: Rect2, v0: float, v1: float, color: Color = Color.WHITE) -> void:
+	if tex == null:
+		return
+	var tex_w := float(tex.get_width())
+	var tex_h := float(tex.get_height())
+	if tex_w <= 0.0 or tex_h <= 0.0 or v1 - v0 <= 0.0:
+		return
+	draw_texture_rect_region(tex, dst, Rect2(0.0, v0 * tex_h, tex_w, (v1 - v0) * tex_h), color)

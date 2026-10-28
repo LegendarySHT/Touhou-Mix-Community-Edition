@@ -3,12 +3,15 @@ extends HBoxContainer
 class_name NoteSkinAdjust
 
 const NOTE_GLOW_SHADER: Shader = preload("res://UI/Components/PopupWindow/NoteGlow.gdshader")
-const LONG_BODY_REPEAT_SHADER: Shader = preload("res://UI/Components/PopupWindow/LongBodyRepeat.gdshader")
 
 @onready var _note_preview_hboxc: HBoxContainer = $NotePreview/HBoxC
 @onready var _note_block_node: TextureRect = $NotePreview/HBoxC/VBoxC/block
 @onready var _note_slide_node: TextureRect = $NotePreview/HBoxC/VBoxC/slide
 @onready var _note_long_node: Control = $NotePreview/HBoxC/long
+# 长条预览用与实战相同的绘制器（NoteBatchDrawer），不再依赖节点布局拼接
+@onready var _long_drawer: NoteBatchDrawer = $NotePreview/HBoxC/long/NoteDrawer
+@onready var _long_glow_tail: Control = $NotePreview/HBoxC/long/GlowTail
+@onready var _long_glow_head: Control = $NotePreview/HBoxC/long/GlowHead
 @onready var _skin_option_btn: OptionButton = $VBoxC/OptionButton
 
 # 新增设置项控件
@@ -42,9 +45,8 @@ const _LONG_MODE_UI_ORDER := {
 var _working_config: Dictionary = {}
 # 当前选中的皮肤名（含 [内置] 后缀）
 var _current_skin_name: String = ""
-# 预览 body/core 的原始贴图（screen 拉伸模式预览需包一层 AtlasTexture，切模式/换肤时恢复原图）
-var _preview_long_body_tex: Texture2D = null
-var _preview_long_body_core_tex: Texture2D = null
+# 长条预览当前使用的音符颜色（容器尺寸变化时需按同一颜色重绘）
+var _long_preview_color: Color = Color.WHITE
 
 func _ready() -> void:
 	_skin_option_btn.item_selected.connect(_on_skin_option_selected)
@@ -52,10 +54,9 @@ func _ready() -> void:
 	_l_conn_mode_btn.item_selected.connect(_on_setting_changed)
 	_l_repeat_mode_btn.item_selected.connect(_on_setting_changed)
 	_l_stretch_mode_btn.item_selected.connect(_on_setting_changed)
-	# 预览长条容器尺寸变化：screen 拉伸模式的 AtlasTexture 裁剪区域需按新尺寸重算
-	_note_long_node.resized.connect(_on_long_preview_resized)
-	# 长条连接模式偏移依赖 head/tail 布局尺寸，布局落地后需自动重算（详见 _bind_connect_mode_fit）
-	_bind_connect_mode_fit()
+	# 预览长条容器尺寸/可见性变化：按新尺寸重算身体区域与头尾矩形后重绘
+	_note_long_node.resized.connect(_refresh_long_preview)
+	_note_long_node.visibility_changed.connect(_refresh_long_preview)
 	_enable_glow_cb.toggled.connect(_on_setting_changed)
 	# 自定义颜色总开关：单独处理，联动启用/禁用后续颜色子项
 	_custom_color_cb.toggled.connect(_on_custom_color_toggled)
@@ -257,8 +258,7 @@ func _apply_preview_from_config() -> void:
 		long_color = resolved.get("long", Color.WHITE)
 	_note_block_node.get_node("core").modulate = block_color
 	_note_slide_node.get_node("core").modulate = slide_color
-	for child in _note_long_node.get_node("VBoxC").get_children():
-		child.get_node("core").modulate = long_color
+	_long_preview_color = long_color
 
 	# 2. 光效：enable_glow=true 时挂 shader 并设颜色；false 时清除 material
 	# 强度/范围取自全局外观设置，与运行时光效同源（PlayView 读同两项，NoteBatchDrawer 同样钳制）
@@ -268,53 +268,13 @@ func _apply_preview_from_config() -> void:
 		ConfigManager.instance.get_float("Appearance", "note_glow_size", 5.0), 1.0, 30.0)
 	_apply_preview_glow(_note_block_node, block_color, enable_glow, glow_intensity, glow_size)
 	_apply_preview_glow(_note_slide_node, slide_color, enable_glow, glow_intensity, glow_size)
-	if _note_long_node.has_node("VBoxC"):
-		# 只给 head/tail 挂光效：与运行时 GlowLayer 一致（长条 body 不画光效）。
-		# 显式列出节点而非遍历全部子节点，避免后续给 body 加 _glow 时与运行时行为分叉
-		for part in ["tail", "head"]:
-			var part_node := _note_long_node.get_node_or_null("VBoxC/" + part)
-			if part_node is TextureRect:
-				_apply_preview_glow(part_node, long_color, enable_glow, glow_intensity, glow_size)
+	# 只给 head/tail 挂光效：与运行时 GlowLayer 一致（长条 body 不画光效）
+	_apply_glow_material(_long_glow_tail, long_color, enable_glow, glow_intensity, glow_size)
+	_apply_glow_material(_long_glow_head, long_color, enable_glow, glow_intensity, glow_size)
 
-	# 3. 长条连接模式：center → head/tail 各向 body 偏移半高；edge → 重置
-	#    （偏移量依赖 head/tail 的布局尺寸，布局未稳定时算出的值无效，
-	#     故除在此应用外，还通过 _bind_connect_mode_fit 绑定 resized 自动重算）
-	_apply_connect_mode_offset()
-
-	# 4. 长条延伸模式：repeat → LongBodyRepeat shader；stretch → 固定比例映射
-	#    （stretch 的映射方式：screen 用 AtlasTexture 裁出身体对应段，length 显示整图）
-	_refresh_long_body_preview()
-
-## 长条连接模式预览偏移：center → head/tail 各向 body 偏移半高；edge → 重置
-## 偏移量 = 半个 head/tail 布局高度，依赖布局尺寸，必须在布局稳定后计算：
-## 弹窗首次打开时 init_adjust() 早于 popup()，预览容器不可见、尚未布局（size 为 0），
-## 此时算出的偏移是 0，预览恒表现为"边缘连接"，且之后无人重算——直到用户改动选项才恢复正常。
-## 因此除 _apply_preview_from_config 调用外，还经 _bind_connect_mode_fit 绑定
-## head/tail 的 resized / visibility_changed，布局落地（popup 显示、换肤、尺寸变化）后自动重算。
-func _apply_connect_mode_offset() -> void:
-	var conn_mode: String = _working_long_modes().get("long_connect_mode", SkinManager.LONG_CONNECT_MODE_EDGE)
-	var head_node = _note_long_node.get_node_or_null("VBoxC/head")
-	var tail_node = _note_long_node.get_node_or_null("VBoxC/tail")
-	if head_node and tail_node:
-		if conn_mode == SkinManager.LONG_CONNECT_MODE_CENTER:
-			head_node.offset_transform_position.y = -head_node.size.y * 0.5
-			tail_node.offset_transform_position.y = tail_node.size.y * 0.5
-		else:
-			head_node.offset_transform_position.y = 0.0
-			tail_node.offset_transform_position.y = 0.0
-
-## 绑定长条连接模式偏移的自动重算（只绑一次，与 _bind_glow_fit 同思路）
-## resized：布局落地/尺寸变化后按新尺寸重算（弹窗 popup() 后布局稳定、换肤后头尾高度变化都会触发）；
-## visibility_changed：弹窗 popup() 后补一次，覆盖"隐藏状态下完成布局、resized 不触发"的情况。
-func _bind_connect_mode_fit() -> void:
-	if _note_long_node.has_meta("_conn_fit_bound"):
-		return
-	_note_long_node.set_meta("_conn_fit_bound", true)
-	for part in ["head", "tail"]:
-		var part_node := _note_long_node.get_node_or_null("VBoxC/" + part)
-		if part_node is Control:
-			part_node.resized.connect(_apply_connect_mode_offset)
-			part_node.visibility_changed.connect(_apply_connect_mode_offset)
+	# 3. 长条：连接模式 / 延伸模式 / 颜色全部交给绘制器，
+	#    几何与绘制顺序与实战同源（不再依赖节点布局拼接，也就不会出现预览独有的缝隙）
+	_refresh_long_preview()
 
 ## 解析预览颜色：随机模式时生成一个临时随机色（仅用于预览，不写回配置）
 func _resolve_preview_color(key: String, enable_cb: CheckBox, picker: ColorPickerButton, random_cb: CheckBox) -> Color:
@@ -350,24 +310,33 @@ func _apply_preview_glow(note_root: Node, glow_color: Color, enable_glow: bool,
 	var glow = note_root.get_node_or_null("_glow")
 	if glow == null:
 		return
+	if not _apply_glow_material(glow, glow_color, enable_glow, glow_intensity, glow_size):
+		return
+	_bind_glow_fit(glow, note_root)
+
+## 给光效节点应用或清除 NoteGlow shader（不负责摆位）。
+## UV 标定与运行时 GlowLayer 一致：方形 quad 贴 1/6 半径单位的光晕纹理，
+## note_uv_half 固定 1/6（1 单位 = quad 边长 / 6）。
+## 返回是否已挂上光效材质，供调用方决定是否需要继续摆位
+func _apply_glow_material(glow: CanvasItem, glow_color: Color, enable_glow: bool,
+		glow_intensity: float, glow_size: float) -> bool:
+	if glow == null:
+		return false
 	if not enable_glow:
 		glow.material = null
-		return
-	if glow.material == null or not (glow.material is ShaderMaterial) or (glow.material as ShaderMaterial).shader != NOTE_GLOW_SHADER:
-		var mat := ShaderMaterial.new()
+		return false
+	var mat := glow.material as ShaderMaterial
+	if mat == null or mat.shader != NOTE_GLOW_SHADER:
+		mat = ShaderMaterial.new()
 		mat.shader = NOTE_GLOW_SHADER
 		glow.material = mat
-	var mat2 := glow.material as ShaderMaterial
-	mat2.set_shader_parameter("glow_color", glow_color)
-	mat2.set_shader_parameter("glow_intensity", glow_intensity)
-	mat2.set_shader_parameter("glow_size", glow_size)
-	mat2.set_shader_parameter("glow_stretch", 1.0)
-	# 与运行时 GlowLayer 完全一致的方形 quad + UV 标定：
-	# 运行时光效是边长 max(宽,高)*GLOW_QUAD_SCALE 的方形 quad 贴 1/6 半径单位的光晕纹理，
-	# 故预览也用同尺寸方形 quad，note_uv_half 固定 1/6（1 单位 = quad 边长 / 6）。
-	_bind_glow_fit(glow, note_root)
-	mat2.set_shader_parameter("note_uv_center", Vector2(0.5, 0.5))
-	mat2.set_shader_parameter("note_uv_half", Vector2(1.0 / 6.0, 1.0 / 6.0))
+	mat.set_shader_parameter("glow_color", glow_color)
+	mat.set_shader_parameter("glow_intensity", glow_intensity)
+	mat.set_shader_parameter("glow_size", glow_size)
+	mat.set_shader_parameter("glow_stretch", 1.0)
+	mat.set_shader_parameter("note_uv_center", Vector2(0.5, 0.5))
+	mat.set_shader_parameter("note_uv_half", Vector2(1.0 / 6.0, 1.0 / 6.0))
+	return true
 
 ## 让 _glow 的方形 quad 跟随 note_root 尺寸重算（连接 resized，只绑一次）。
 ## 不能只在应用预览时拟合一次：弹窗首次打开时 init_adjust() 早于 popup()，
@@ -410,72 +379,49 @@ func _fit_glow_quad(glow: Node, note_root: Node) -> void:
 	glow_ctrl.offset_right = 0.0
 	glow_ctrl.offset_bottom = 0.0
 
-## 应用预览 body/core 的 long-f 中部贴图样式（延伸模式 + 拉伸映射方式）。
-## 抽出为独立入口：预览容器尺寸变化时，repeat 的分条周期与 screen 的裁剪区域都需重算
-func _refresh_long_body_preview() -> void:
+## 长条预览：几何与绘制全部交给 NoteBatchDrawer（与实战同一套函数），
+## 这里只决定身体区域大小、连接模式与颜色，避免节点布局拼接产生的缝隙
+func _refresh_long_preview() -> void:
+	if _note_long_node == null or _long_drawer == null or not is_instance_valid(_long_drawer):
+		return
+	var sz: Vector2 = _note_long_node.size
+	if sz.x <= 0.0 or sz.y <= 0.0:
+		return
+	_long_drawer.set_note_width(sz.x)
 	var modes := _working_long_modes()
-	var f_mode: String = modes.get("long_f_mode", SkinManager.LONG_F_MODE_REPEAT)
-	var stretch_mode: String = modes.get("long_stretch_mode", SkinManager.LONG_STRETCH_MODE_LENGTH)
-	_apply_preview_long_f_mode(_note_long_node.get_node_or_null("VBoxC/body"),
-		_preview_long_body_tex, f_mode, stretch_mode)
-	_apply_preview_long_f_mode(_note_long_node.get_node_or_null("VBoxC/body/core"),
-		_preview_long_body_core_tex, f_mode, stretch_mode)
+	var center: bool = modes.get("long_connect_mode", SkinManager.LONG_CONNECT_MODE_EDGE) == SkinManager.LONG_CONNECT_MODE_CENTER
+	_long_drawer.set_long_body_mode(modes.get("long_f_mode", SkinManager.LONG_F_MODE_REPEAT))
+	_long_drawer.set_long_stretch_mode(modes.get("long_stretch_mode", SkinManager.LONG_STRETCH_MODE_LENGTH))
+	# 头尾各按贴图宽高比缩放；edge 连接时头尾整体在身体外，center 连接时各向身体内嵌半高
+	var tail_half: float = _long_drawer.get_long_tail_half_height()
+	var head_half: float = _long_drawer.get_long_head_half_height()
+	var vis_h: float = (tail_half + head_half) if center else (tail_half + head_half) * 2.0
+	var body_h: float = maxf(sz.y - vis_h, 1.0)
+	var body_top: float = (sz.y - (body_h + vis_h)) * 0.5 + (tail_half if center else tail_half * 2.0)
+	_long_drawer.set_long_preview(Rect2(0.0, body_top, sz.x, body_h), center, _long_preview_color, sz.y)
+	_place_long_glow()
 
-## 给预览 body 节点应用 long-f 中部贴图样式：
-## repeat → 挂 LongBodyRepeat shader（垂直重复，分条周期=节点高/贴图高；
-##          屏幕固定时相位按参考容器锚定，与运行时同机制）
-## stretch + screen → 包 AtlasTexture，按"预览长条容器"参考区间裁出身体对应的贴图段（与运行时同机制）
-## stretch + length → 原始贴图整体填充（运行时按身体基准长度映射，恒速下落时即为整图铺满）
-func _apply_preview_long_f_mode(body_node: Node, base_tex: Texture2D, f_mode: String, stretch_mode: String) -> void:
-	if not (body_node is TextureRect):
+## 按绘制器给出的头尾矩形摆放长条光效（节点只负责光晕，本体由绘制器画）
+func _place_long_glow() -> void:
+	var rects: Dictionary = _long_drawer.get_long_preview_rects()
+	_place_preview_glow(_long_glow_tail, rects["tail"])
+	_place_preview_glow(_long_glow_head, rects["head"])
+
+## 把光效摆成与运行时 GlowLayer 一致的方形 quad，中心与对应部件中心重合：
+## 正方形而非按节点矩形铺开，扁 cap 的光晕才不会被矩形短边硬切
+func _place_preview_glow(glow: Control, rect: Rect2) -> void:
+	if glow == null:
 		return
-	var rect: TextureRect = body_node
-	# 恢复原始贴图，避免上次 screen 模式包装的 AtlasTexture 残留在本次模式上
-	rect.texture = base_tex if base_tex else _create_transparent_texture()
-	var is_screen: bool = stretch_mode == SkinMGR.LONG_STRETCH_MODE_SCREEN
-	if f_mode == SkinMGR.LONG_F_MODE_REPEAT:
-		var mat := rect.material as ShaderMaterial
-		if mat == null or mat.shader != LONG_BODY_REPEAT_SHADER:
-			mat = ShaderMaterial.new()
-			mat.shader = LONG_BODY_REPEAT_SHADER
-			rect.material = mat
-		# 分条周期：节点高 / 贴图高（与运行时 1:1 分条一致）
-		var tex_h: float = float(rect.texture.get_height())
-		if tex_h > 0.0 and rect.size.y > 0.0:
-			mat.set_shader_parameter("v_repeat", rect.size.y / tex_h)
-			var v_offset: float = 0.0
-			if is_screen:
-				# 屏幕固定：分条网格锚定参考容器（预览容器左上），图案固定于参考系
-				var top: float = rect.global_position.y - _note_long_node.global_position.y
-				v_offset = fposmod(top, tex_h) / tex_h
-			mat.set_shader_parameter("v_offset", v_offset)
-		return
-	# stretch：清除 shader，按映射方式处理贴图
-	rect.material = null
-	if is_screen:
-		rect.texture = _make_preview_screen_atlas(rect, rect.texture)
-
-## 构造 screen 模式预览用的 AtlasTexture：把"预览长条容器"当参考区间，
-## 取身体在区间中覆盖的那段贴图（与运行时屏幕固定映射同机制，只是参考区间用预览容器高度）
-func _make_preview_screen_atlas(node: Control, base_tex: Texture2D) -> AtlasTexture:
-	var tex_w: float = float(base_tex.get_width())
-	var tex_h: float = float(base_tex.get_height())
-	var ref_h: float = maxf(_note_long_node.size.y, 1.0)
-	var top: float = node.global_position.y - _note_long_node.global_position.y
-	var v0: float = clampf(top / ref_h, 0.0, 1.0)
-	var v1: float = clampf((top + node.size.y) / ref_h, 0.0, 1.0)
-	var max_h: float = maxf(tex_h - v0 * tex_h, 1.0)
-	var region_h: float = clampf((v1 - v0) * tex_h, 1.0, max_h)
-	var atlas := AtlasTexture.new()
-	atlas.atlas = base_tex
-	atlas.filter_clip = true
-	atlas.region = Rect2(0.0, v0 * tex_h, tex_w, region_h)
-	return atlas
-
-## 预览长条容器尺寸变化：body 的 repeat 分条周期（v_repeat）依赖 body 高度、
-## screen 模式的 AtlasTexture 裁剪依赖容器高度与节点位置，均需按新尺寸重算——与当前模式无关
-func _on_long_preview_resized() -> void:
-	_refresh_long_body_preview()
+	var side: float = maxf(rect.size.x, rect.size.y) * GlowLayer.GLOW_QUAD_SCALE
+	var center: Vector2 = rect.get_center()
+	glow.anchor_left = 0.0
+	glow.anchor_top = 0.0
+	glow.anchor_right = 0.0
+	glow.anchor_bottom = 0.0
+	glow.offset_left = center.x - side * 0.5
+	glow.offset_top = center.y - side * 0.5
+	glow.offset_right = center.x + side * 0.5
+	glow.offset_bottom = center.y + side * 0.5
 
 ## 不触发信号设置 CheckBox 状态
 func _set_checkbox_no_signal(cb: CheckBox, pressed: bool) -> void:
@@ -490,7 +436,7 @@ func _create_transparent_texture(width: int = 64, height: int = 64) -> Texture2D
 # 应用指定皮肤的贴图到 NotePreview 预览节点
 # 复用 FlowArea.set_note_texture 的节点路径约定：
 #   block/slide: 根 texture + core 子节点 texture
-#   long: VBoxC/{head,head/core,body,body/core,tail,tail/core}
+#   long: NoteDrawer.set_long_textures（与实战同一个绘制器）
 func _apply_skin_to_preview(skin_name: String) -> void:
 	var skin_textures: Dictionary = {}
 	skin_textures = SkinMGR.get_skin_textures(skin_name)
@@ -518,16 +464,9 @@ func _apply_skin_to_preview(skin_name: String) -> void:
 	_note_slide_node.texture = tex_arr[2] if tex_arr[2] else _transparent
 	_note_slide_node.get_node("core").texture = tex_arr[3] if tex_arr[3] else _transparent
 
-	# long: head / body / tail
-	_note_long_node.get_node("VBoxC/head").texture = tex_arr[4] if tex_arr[4] else _transparent
-	_note_long_node.get_node("VBoxC/head/core").texture = tex_arr[5] if tex_arr[5] else _transparent
-	_note_long_node.get_node("VBoxC/body").texture = tex_arr[6] if tex_arr[6] else _transparent
-	_note_long_node.get_node("VBoxC/body/core").texture = tex_arr[7] if tex_arr[7] else _transparent
-	# 记录原始 body/core 贴图：screen 拉伸模式预览需包一层 AtlasTexture，切模式/换肤时恢复原图
-	_preview_long_body_tex = tex_arr[6] if tex_arr[6] else _transparent
-	_preview_long_body_core_tex = tex_arr[7] if tex_arr[7] else _transparent
-	_note_long_node.get_node("VBoxC/tail").texture = tex_arr[8] if tex_arr[8] else _transparent
-	_note_long_node.get_node("VBoxC/tail/core").texture = tex_arr[9] if tex_arr[9] else _transparent
+	# long: 交给与实战同源的绘制器（head / body / tail 的原图直接传入，
+	# 缺层保持 null，由绘制器按同一规则回退/取参考尺寸）
+	_long_drawer.set_long_textures(tex_arr[4], tex_arr[5], tex_arr[6], tex_arr[7], tex_arr[8], tex_arr[9])
 
 # 填充皮肤选项列表，选中当前配置的皮肤
 func _refresh_skin_options() -> void:

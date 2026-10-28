@@ -1,28 +1,17 @@
 [gd_scene format=3 uid="uid://6x22q0274hxw"]
 
 [ext_resource type="Script" uid="uid://dy3ing4k0ohsf" path="res://UI/Components/PopupWindow/NoteSkinAdjust.gd" id="3_gghdr"]
-[ext_resource type="Texture2D" uid="uid://bpgl1nsjuf8yf" path="res://Resources/Components/CancelBtn.png" id="3_wi0v8"]
 [ext_resource type="Script" uid="uid://bouqpji0hyu7b" path="res://UI/Components/PopupWindow/DelayAdjust.gd" id="3_xybxw"]
 [ext_resource type="Theme" uid="uid://clu7eeeh6aitj" path="res://UI/Theme/BtnTheme/R12NoBorder.tres" id="4_4gkd0"]
-[ext_resource type="Texture2D" uid="uid://1q15cy2pddpj" path="res://Resources/Components/ConfirmBtn.png" id="4_yttj5"]
-[ext_resource type="Texture2D" uid="uid://dty1c7rmcvog8" path="res://Resources/Skins/旧版2/short.png" id="5_lcba5"]
-[ext_resource type="Texture2D" uid="uid://7n85g6v6g6fb" path="res://Resources/Skins/旧版2/short-core.png" id="6_4gkd0"]
 [ext_resource type="Script" uid="uid://c2ylo07cj00rw" path="res://UI/Components/TouchScrollOptionButton.gd" id="6_fyi7o"]
 [ext_resource type="Script" uid="uid://cyad78ab6lgat" path="res://UI/Components/PopupWindow/ParticleAdjust.gd" id="6_ukd1n"]
 [ext_resource type="Script" uid="uid://birrx3o1ktn31" path="res://UI/Components/PopupWindow/ImageAdjust.gd" id="6_v2710"]
-[ext_resource type="Texture2D" uid="uid://l8ea12v6pxcj" path="res://Resources/Skins/旧版2/instant.png" id="7_y8iwb"]
-[ext_resource type="Texture2D" uid="uid://fabmpyvd83ml" path="res://Resources/Skins/旧版2/instant-core.png" id="8_e72im"]
-[ext_resource type="Texture2D" uid="uid://p8ay6vm1nqur" path="res://Resources/Skins/旧版2/long-t.png" id="9_uuek7"]
-[ext_resource type="Texture2D" uid="uid://dq0wisp34wi7q" path="res://Resources/Skins/旧版2/long-t-core.png" id="10_gnu8x"]
-[ext_resource type="Texture2D" uid="uid://cajl5tclnp81v" path="res://Resources/Skins/旧版2/long-f.png" id="11_52hqx"]
 [ext_resource type="Script" uid="uid://bybph8jhlvdlx" path="res://UI/Components/PopupWindow/KBModeAdjust.gd" id="11_krk8y"]
-[ext_resource type="Texture2D" uid="uid://cvvug867frcsn" path="res://Resources/Skins/旧版2/long-f-core.png" id="12_5sb8f"]
-[ext_resource type="Texture2D" uid="uid://cmyfsfeqqdncw" path="res://Resources/Skins/旧版2/long-b.png" id="13_hty1c"]
 [ext_resource type="Script" uid="uid://drs7ctrsh2gjs" path="res://UI/Components/PopupWindow/FallingAdjust.gd" id="13_tewhg"]
-[ext_resource type="Texture2D" uid="uid://d1wixwjbj4pcj" path="res://Resources/Skins/旧版2/long-b-core.png" id="14_mv616"]
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="20_4gkd0"]
-[ext_resource type="Script" path="res://UI/Components/PopupWindow/StorageLocationAdjust.gd" id="21_storage"]
-[ext_resource type="Script" path="res://UI/Components/PopupWindow/StorageConflictAdjust.gd" id="22_conflict"]
+[ext_resource type="Script" uid="uid://xmf1c4vlwxw3" path="res://UI/Components/PopupWindow/StorageLocationAdjust.gd" id="21_storage"]
+[ext_resource type="Script" uid="uid://dk51vefnbwc1w" path="res://UI/Components/PopupWindow/StorageConflictAdjust.gd" id="22_conflict"]
+[ext_resource type="Script" uid="uid://b47npyuqw7acg" path="res://UI/Views/PlayView/NoteBatchDrawer.gd" id="23_drawer"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_qxcsx"]
 content_margin_left = 50.0
@@ -76,9 +65,6 @@ corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
-[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_5mvff"]
-load_path = "res://.godot/imported/CancelBtn.png-fb51b90adc315a392d0c0ce4d454cb7e.ctex"
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_oye8v"]
 bg_color = Color(0.0353, 0.0471, 0.0745, 1)
 border_width_left = 1
@@ -90,9 +76,6 @@ corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
-
-[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_oye8v"]
-load_path = "res://.godot/imported/CancelBtn.png-fb51b90adc315a392d0c0ce4d454cb7e.ctex"
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sph85"]
 bg_color = Color(0.1333, 0.1647, 0.2314, 1)
@@ -118,9 +101,6 @@ corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
-[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_o7g6l"]
-load_path = "res://.godot/imported/ConfirmBtn.png-41e783e6bcfdb1e53346e617b6103b0d.ctex"
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vi5kq"]
 bg_color = Color(0.1451, 0.2588, 0.6431, 1)
 border_width_left = 1
@@ -132,9 +112,6 @@ corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
-
-[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_5mkgo"]
-load_path = "res://.godot/imported/ConfirmBtn.png-41e783e6bcfdb1e53346e617b6103b0d.ctex"
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3ccbu"]
 bg_color = Color(0.3569, 0.549, 1, 1)
@@ -185,20 +162,12 @@ corner_radius_bottom_left = 12
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_fanli"]
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ff7qk"]
-
 [sub_resource type="ButtonGroup" id="ButtonGroup_judges"]
-allow_unpress = false
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ff7qk"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2xvos"]
 bg_color = Color(0.576, 0.706, 1, 0.9)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_3b0ty"]
-atlas = ExtResource("20_4gkd0")
-region = Rect2(160, 80, 80, 80)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_j02sm"]
-bg_color = Color(1, 1, 1, 0.5)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_addbtn_normal"]
 corner_radius_top_left = 10
@@ -217,6 +186,13 @@ corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_3b0ty"]
+atlas = ExtResource("20_4gkd0")
+region = Rect2(160, 80, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_j02sm"]
+bg_color = Color(1, 1, 1, 0.5)
 
 [node name="TabC" type="TabContainer" unique_id=1542807723]
 anchors_preset = -1
@@ -450,7 +426,6 @@ offset_transform_enabled = true
 offset_transform_position = Vector2(0, -40)
 offset_transform_visual_only = false
 mouse_filter = 2
-texture = ExtResource("5_lcba5")
 expand_mode = 4
 stretch_mode = 5
 
@@ -462,7 +437,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-texture = ExtResource("6_4gkd0")
 expand_mode = 1
 stretch_mode = 5
 
@@ -487,7 +461,6 @@ offset_transform_enabled = true
 offset_transform_position = Vector2(0, 40)
 offset_transform_visual_only = false
 mouse_filter = 2
-texture = ExtResource("7_y8iwb")
 expand_mode = 4
 stretch_mode = 5
 
@@ -499,7 +472,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-texture = ExtResource("8_e72im")
 expand_mode = 1
 stretch_mode = 5
 
@@ -517,8 +489,6 @@ mouse_filter = 2
 color = Color(1, 1, 1, 0)
 
 [node name="long" type="Panel" parent="NoteSkinAdjust/NotePreview/HBoxC" unique_id=193727071]
-modulate = Color(1, 1, 1, 1)
-self_modulate = Color(1, 1, 1, 1)
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -527,106 +497,18 @@ offset_transform_visual_only = false
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxEmpty_fanli")
 
-[node name="VBoxC" type="VBoxContainer" parent="NoteSkinAdjust/NotePreview/HBoxC/long" unique_id=1714797954]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
-mouse_filter = 2
-theme_override_constants/separation = 0
+[node name="NoteDrawer" type="Node2D" parent="NoteSkinAdjust/NotePreview/HBoxC/long" unique_id=1714797954]
+script = ExtResource("23_drawer")
 
-[node name="tail" type="TextureRect" parent="NoteSkinAdjust/NotePreview/HBoxC/long/VBoxC" unique_id=189974738]
-z_index = 2
-layout_mode = 2
-size_flags_vertical = 8
-offset_transform_enabled = true
-offset_transform_visual_only = false
-mouse_filter = 2
-texture = ExtResource("9_uuek7")
-expand_mode = 5
-stretch_mode = 6
-
-[node name="core" type="TextureRect" parent="NoteSkinAdjust/NotePreview/HBoxC/long/VBoxC/tail" unique_id=1210380996]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-texture = ExtResource("10_gnu8x")
-expand_mode = 1
-stretch_mode = 5
-
-[node name="_glow" type="ColorRect" parent="NoteSkinAdjust/NotePreview/HBoxC/long/VBoxC/tail" unique_id=370521889]
-z_as_relative = false
-layout_mode = 1
-anchors_preset = -1
-anchor_left = -1.0
-anchor_top = -1.0
-anchor_right = 2.0
-anchor_bottom = 2.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="GlowTail" type="ColorRect" parent="NoteSkinAdjust/NotePreview/HBoxC/long" unique_id=189974738]
+z_index = -1
+layout_mode = 0
 mouse_filter = 2
 color = Color(1, 1, 1, 0)
 
-[node name="body" type="TextureRect" parent="NoteSkinAdjust/NotePreview/HBoxC/long/VBoxC" unique_id=2011043594]
-z_index = 1
-layout_mode = 2
-size_flags_vertical = 3
-mouse_filter = 2
-texture = ExtResource("11_52hqx")
-expand_mode = 1
-
-[node name="core" type="TextureRect" parent="NoteSkinAdjust/NotePreview/HBoxC/long/VBoxC/body" unique_id=297831054]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-texture = ExtResource("12_5sb8f")
-expand_mode = 1
-
-[node name="head" type="TextureRect" parent="NoteSkinAdjust/NotePreview/HBoxC/long/VBoxC" unique_id=163416007]
-z_index = 3
-layout_mode = 2
-size_flags_vertical = 0
-offset_transform_enabled = true
-offset_transform_visual_only = false
-mouse_filter = 2
-texture = ExtResource("13_hty1c")
-expand_mode = 5
-stretch_mode = 6
-
-[node name="core" type="TextureRect" parent="NoteSkinAdjust/NotePreview/HBoxC/long/VBoxC/head" unique_id=733083095]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-texture = ExtResource("14_mv616")
-expand_mode = 3
-stretch_mode = 5
-
-[node name="_glow" type="ColorRect" parent="NoteSkinAdjust/NotePreview/HBoxC/long/VBoxC/head" unique_id=253231214]
-z_as_relative = false
-layout_mode = 1
-anchors_preset = -1
-anchor_left = -1.0
-anchor_top = -1.0
-anchor_right = 2.0
-anchor_bottom = 2.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="GlowHead" type="ColorRect" parent="NoteSkinAdjust/NotePreview/HBoxC/long" unique_id=1210380996]
+z_index = -1
+layout_mode = 0
 mouse_filter = 2
 color = Color(1, 1, 1, 0)
 
@@ -857,43 +739,43 @@ text = "Perfect 特效设定"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="JudgeSwitch" type="HBoxContainer" parent="ParticleAdjust/VBoxC"]
+[node name="JudgeSwitch" type="HBoxContainer" parent="ParticleAdjust/VBoxC" unique_id=1651674100]
 custom_minimum_size = Vector2(600, 0)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_constants/separation = 12
 alignment = 1
 
-[node name="Perfect" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch"]
+[node name="Perfect" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch" unique_id=318200298]
 custom_minimum_size = Vector2(135, 50)
 layout_mode = 2
+theme_override_font_sizes/font_size = 24
 toggle_mode = true
 button_group = SubResource("ButtonGroup_judges")
-theme_override_font_sizes/font_size = 24
 text = "Perfect"
 
-[node name="Great" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch"]
+[node name="Great" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch" unique_id=822155664]
 custom_minimum_size = Vector2(135, 50)
 layout_mode = 2
+theme_override_font_sizes/font_size = 24
 toggle_mode = true
 button_group = SubResource("ButtonGroup_judges")
-theme_override_font_sizes/font_size = 24
 text = "Great"
 
-[node name="Good" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch"]
+[node name="Good" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch" unique_id=2022596920]
 custom_minimum_size = Vector2(135, 50)
 layout_mode = 2
+theme_override_font_sizes/font_size = 24
 toggle_mode = true
 button_group = SubResource("ButtonGroup_judges")
-theme_override_font_sizes/font_size = 24
 text = "Good"
 
-[node name="Bad" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch"]
+[node name="Bad" type="Button" parent="ParticleAdjust/VBoxC/JudgeSwitch" unique_id=259602688]
 custom_minimum_size = Vector2(135, 50)
 layout_mode = 2
+theme_override_font_sizes/font_size = 24
 toggle_mode = true
 button_group = SubResource("ButtonGroup_judges")
-theme_override_font_sizes/font_size = 24
 text = "Bad"
 
 [node name="Options" type="GridContainer" parent="ParticleAdjust/VBoxC" unique_id=1648522083]
@@ -1598,7 +1480,6 @@ grow_horizontal = 2
 offset_transform_enabled = true
 offset_transform_visual_only = false
 mouse_filter = 2
-texture = ExtResource("5_lcba5")
 expand_mode = 4
 stretch_mode = 5
 
@@ -1610,7 +1491,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-texture = ExtResource("6_4gkd0")
 expand_mode = 1
 stretch_mode = 5
 
@@ -1954,7 +1834,7 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "确定"
 
-[node name="StorageConflictAdjust" type="VBoxContainer" parent="."]
+[node name="StorageConflictAdjust" type="VBoxContainer" parent="." unique_id=101296777]
 visible = false
 layout_mode = 2
 theme_override_constants/separation = 30
@@ -1962,7 +1842,7 @@ alignment = 1
 script = ExtResource("22_conflict")
 metadata/_tab_index = 8
 
-[node name="Title" type="Label" parent="StorageConflictAdjust"]
+[node name="Title" type="Label" parent="StorageConflictAdjust" unique_id=2015806499]
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
@@ -1970,27 +1850,26 @@ text = "发现已有配置文件"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="FilesLabel" type="Label" parent="StorageConflictAdjust"]
+[node name="FilesLabel" type="Label" parent="StorageConflictAdjust" unique_id=243565951]
 custom_minimum_size = Vector2(700, 220)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
-text = ""
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
 
-[node name="Btns" type="HBoxContainer" parent="StorageConflictAdjust"]
+[node name="Btns" type="HBoxContainer" parent="StorageConflictAdjust" unique_id=1108899121]
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_constants/separation = 40
 
-[node name="Overwrite" type="Button" parent="StorageConflictAdjust/Btns"]
+[node name="Overwrite" type="Button" parent="StorageConflictAdjust/Btns" unique_id=1839857165]
 custom_minimum_size = Vector2(300, 70)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "保留当前版本（覆盖目标）"
 
-[node name="KeepTarget" type="Button" parent="StorageConflictAdjust/Btns"]
+[node name="KeepTarget" type="Button" parent="StorageConflictAdjust/Btns" unique_id=375911883]
 custom_minimum_size = Vector2(300, 70)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
