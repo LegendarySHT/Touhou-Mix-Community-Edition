@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cajl5tclnp81v"
-path="res://.godot/imported/long-f.png-eff60d021832cda628e640d1b75d8cff.ctex"
+uid="uid://cr4nnh5h5r3w3"
+path="res://.godot/imported/long-f-core.svg-2c3dce820217e70f424e8a0c1c01db5b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Resources/Skins/Squre45/long-f.png"
-dest_files=["res://.godot/imported/long-f.png-eff60d021832cda628e640d1b75d8cff.ctex"]
+source_file="res://Resources/Skins/Squre45/long-f-core.svg"
+dest_files=["res://.godot/imported/long-f-core.svg-2c3dce820217e70f424e8a0c1c01db5b.ctex"]
 
 [params]
 
@@ -38,3 +38,6 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
+svg/scale=1.0
+editor/scale_with_editor_scale=false
+editor/convert_colors_with_editor_theme=false
