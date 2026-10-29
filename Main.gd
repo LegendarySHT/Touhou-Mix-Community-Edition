@@ -568,13 +568,8 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 			if key == "online_mode" and net_manager:
 				net_manager.set_online_mode(int(value) == 1)
 
-		"Gameplay":
-			pass
-
-		"Playback":
-			pass
-		
-		"Display":
+		# 窗口状态没有设置页入口，存在 [System]
+		"System":
 			if key == "fullscreen":
 				var is_fullscreen = ConfigManager.parse_bool(value)
 				if is_fullscreen:

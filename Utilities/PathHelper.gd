@@ -75,7 +75,7 @@ static func get_storage_root() -> String:
 		return _storage_root_override
 	return get_boot_dir()
 
-## 惰性解析：读固定引导目录下的 storage_pointer.ini（[Storage] custom_storage_path）。
+## 惰性解析：读固定引导目录下的 storage_pointer.ini（[General] custom_storage_path）。
 ## 只为让"早于 StorageManager 的读取方"拿到正确路径；失败/无指针则保持默认。
 static func _resolve_override_from_pointer() -> void:
 	_pointer_probed = true
@@ -83,7 +83,9 @@ static func _resolve_override_from_pointer() -> void:
 	if not FileAccess.file_exists(pointer_path):
 		return
 	var parsed: Dictionary = IniParser.parse(FileAccess.get_file_as_string(pointer_path))
-	var sec: Variant = parsed.get("Storage", {})
+	# section 名与 StorageManager.CFG_SECTION 保持一致（设置分组合并后由 Storage 改为 General）。
+	# 老版本写的是 [Storage]，一并认下，避免升级后读不到指针而静默回退默认根。
+	var sec: Variant = parsed.get("General", parsed.get("Storage", {}))
 	if not (sec is Dictionary):
 		return
 	var cfg := normalize_storage_path(str((sec as Dictionary).get("custom_storage_path", "")))

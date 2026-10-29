@@ -409,21 +409,16 @@ func _apply_display() -> void:
 
 
 ## 配置变更：仅影响 Note 数量/连接关系的字段才清除缓存并重算
-## Appearance 段中只有 generate_short_connect / generate_instant_connect / instant_connect_max_time / block_size
-## 会影响谱面（连接合并、尺寸换算），block_skin_preset 等纯贴图字段不应触发重算
+## [Gameplay] 段整体都是生成规则（音符什么时候存在、连接怎么合并）→ 全段重算
+## [Performance] 段多是读谱几何与输入，只有 block_size（尺寸换算）和键位（改 lane_count）影响谱面
+## [Appearance] 段是纯贴图/发光，一个都不影响（generate_* 与 block_size 已随重组迁出）
 func _on_config_changed(key: String, section: String, _value: Variant) -> void:
 	var should_recompute := false
 	match section:
-		"Generator", "Lane":
+		"Gameplay":
 			should_recompute = true
-		"Appearance":
-			# 仅这些字段影响 Note 数量或 MPP 显示
-			should_recompute = key in [
-				"generate_short_connect",
-				"generate_instant_connect",
-				"instant_connect_max_time",
-				"block_size",
-			]
+		"Performance":
+			should_recompute = key in ["block_size", "keyboard_mode", "keyboard_mode_keys"]
 	if not should_recompute:
 		return
 	for mid_id in _info_cache.keys():

@@ -239,29 +239,11 @@ func _load_config_parameters() -> void:
 func _on_config_changed(key: String, section: String, value: Variant) -> void:
 	_cache_key = ""
 	match section:
-		"Lane":
+		# 生成规则与轨道几何：音符什么时候存在、能同时点多快
+		"Gameplay":
 			match key:
 				"lane_count":
 					lane_count = int(value)
-				"keyboard_mode":
-					var km = int(value) == 1
-					if km:
-						max_touch_move_velocity = 999999.0
-						hand_model_enabled = false
-						var keys = ConfigParser.parse_keyboard_keys(ConfigManager.instance.get_string("Performance", "keyboard_mode_keys", "A,S,D,F,J,K,L,;"))
-						if keys.size() > 0:
-							lane_count = keys.size()
-					else:
-						max_touch_move_velocity = ConfigManager.instance.get_float("Gameplay", "max_touch_move_speed")
-						hand_model_enabled = true
-						lane_count = ConfigManager.instance.get_int("Gameplay", "lane_count", 12)
-				"keyboard_mode_keys":
-					if ConfigManager.instance.get_int("Performance", "keyboard_mode", 0) == 1:
-						var new_keys = ConfigParser.parse_keyboard_keys(str(value))
-						if new_keys.size() > 0:
-							lane_count = new_keys.size()
-		"Generator":
-			match key:
 				"instant_block_max_time":
 					instant_block_threshold = float(value)
 				"short_block_max_time":
@@ -281,19 +263,36 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 					long_max_time = max(0.0, float(value))
 				"long_block_length_scaling":
 					long_length_scaling = clampf(float(value) / 100.0, 0.01, 1.0)
-		"Appearance":
-			match key:
 				"generate_short_connect":
 					generate_short_connect = ConfigManager.parse_bool(value, true)
 				"generate_instant_connect":
 					generate_instant_connect = ConfigManager.parse_bool(value, true)
 				"instant_connect_max_time":
 					max_instant_connect_seconds = float(value)
+				"min_block_spacing":
+					min_block_spacing = _validate_min_block_spacing(int(value))
+		# 输入与读谱几何
+		"Performance":
+			match key:
+				"keyboard_mode":
+					var km = int(value) == 1
+					if km:
+						max_touch_move_velocity = 999999.0
+						hand_model_enabled = false
+						var keys = ConfigParser.parse_keyboard_keys(ConfigManager.instance.get_string("Performance", "keyboard_mode_keys", "A,S,D,F,J,K,L,;"))
+						if keys.size() > 0:
+							lane_count = keys.size()
+					else:
+						max_touch_move_velocity = ConfigManager.instance.get_float("Gameplay", "max_touch_move_speed")
+						hand_model_enabled = true
+						lane_count = ConfigManager.instance.get_int("Gameplay", "lane_count", 12)
+				"keyboard_mode_keys":
+					if ConfigManager.instance.get_int("Performance", "keyboard_mode", 0) == 1:
+						var new_keys = ConfigParser.parse_keyboard_keys(str(value))
+						if new_keys.size() > 0:
+							lane_count = new_keys.size()
 				"block_size":
 					key_width = float(value)
-		"Judge":
-			if key == "min_block_spacing":
-				min_block_spacing = _validate_min_block_spacing(int(value))
 
 ## 清空 C# 输出与缓存（PlayView/离开 MidiList 项时调用，释放常驻）
 func clear_sequences() -> void:
