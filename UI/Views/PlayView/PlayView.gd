@@ -203,6 +203,12 @@ const _VISUAL_ANCHOR_RATE := 0.02
 const _VISUAL_ANCHOR_MAX_MS := 0.5
 # 需要硬锚定（开始播放/暂停恢复时对齐音频钟，避免大跳）
 var _visual_time_needs_anchor: bool = true
+# 起播对齐保持（毫秒，>0 生效）：起播后音频钟会被钉在 0（设备启动 + 设备/环形缓冲延迟补偿
+# + 视觉校准延迟），这段时间内音频位置根本不推进。若让视觉钟按墙钟自由推进，渲染钟就会领先
+# 音频钟一个"设备启动延迟"，音符生成点偏低（出现在屏幕中间）并被软锚缓慢拉回。
+# 故在音频钟真正开始推进前持续硬锚，最长保持 _VISUAL_STARTUP_HOLD_MS 后交回软锚。
+const _VISUAL_STARTUP_HOLD_MS := 800.0
+var _visual_startup_hold_ms: float = 0.0
 # 方向 3（输入及时性）：演奏视图内关闭 Input 事件累积，触摸事件立即派发，
 # 可减少 Godot 输入按帧合并带来的 0~16.7ms 延迟；退出播放视图时恢复原值。
 var _saved_accumulated_input: bool = true
@@ -232,9 +238,15 @@ func _process(delta: float) -> void:
 				current_time = playback_mgr.get_position_ms()
 			hud.set_progress(current_time)
 			# 视觉时钟：墙钟累加 + 软锚定音频钟（渲染平滑，判定仍用音频钟）
-			if _visual_time_needs_anchor:
+			# 起播对齐保持期内（音频钟尚未开始推进）改为逐帧硬锚，避免渲染钟抢跑
+			if _visual_time_needs_anchor or _visual_startup_hold_ms > 0.0:
 				_visual_time_ms = current_time
 				_visual_time_needs_anchor = false
+				if _visual_startup_hold_ms > 0.0:
+					_visual_startup_hold_ms -= delta * 1000.0
+					# 音频钟已越过 0（设备出声、延迟补偿已走完）→ 两钟此刻相等，交回软锚
+					if current_time > 0.0:
+						_visual_startup_hold_ms = 0.0
 			else:
 				_visual_time_ms += delta * 1000.0
 				var drift: float = current_time - _visual_time_ms
@@ -715,6 +727,10 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	# （is_pause=true），倒计时起了也白起——原实现在这里 seek 负值、再靠 game start
 	# 重新 seek 兜底，双阶段补丁已随预卷去负化取消。
 	_prepare_pre_roll_duration()
+	# 关闭准备动画时扣掉预卷的空白余量：那段没有面板遮挡、也没有任何音符，
+	# 只剩"等"；扣掉后预卷 = 音符下落时间，资源一预热完音符就开始入场。
+	_pre_roll_skip_ms = 0.0 if play_ready_animation else \
+			maxf(0.0, _pre_roll_duration_ms - flow_area.note_generation_lead_time)
 	# 视觉钟硬锚定：开局 pre-roll 从负时间起，首次 resume 对齐音频钟
 	_visual_time_needs_anchor = true
 	is_pause = true
@@ -896,6 +912,10 @@ func _is_current_game_gen(gen: int, stage: String) -> bool:
 ## 状态：_pre_roll_remaining_ms < 0 = 未激活；> 0 = 倒计时中；== 0 = 已起播。
 var _pre_roll_duration_ms: float = 0.0
 var _pre_roll_remaining_ms: float = -1.0
+# 预卷里需要跳过的空白余量（毫秒）：预卷 = PrerollMarginMs(1000) + 音符下落时间，
+# 其中余量那段屏幕上还没有任何音符。有准备动画面板遮着时看不见，关掉动画后它就是
+# "资源都预热完了还干等"的那段时间，故关闭动画时扣掉，只保留下落时间。
+var _pre_roll_skip_ms: float = 0.0
 
 ## 本局是否已经真正起播过（预卷跑完、进入正常播放）。
 ## 用于区分"准备阶段就呼出的暂停菜单"（预卷还没被看到，继续时要重起预卷）
@@ -911,10 +931,11 @@ func _prepare_pre_roll_duration() -> void:
 
 ## 起算预卷倒计时（玩家即将看到音符的那一刻：game start / 菜单续播）。
 func _begin_pre_roll(stage: String) -> void:
-	_pre_roll_remaining_ms = _pre_roll_duration_ms
+	_pre_roll_remaining_ms = maxf(0.0, _pre_roll_duration_ms - _pre_roll_skip_ms)
 	# 视觉钟硬锚定：预卷从负时间起，起播时对齐音频钟
 	_visual_time_needs_anchor = true
-	GLogger.info("Pre-roll countdown started: %.0fms (%s)" % [_pre_roll_duration_ms, stage], "PlayView")
+	_visual_startup_hold_ms = 0.0
+	GLogger.info("Pre-roll countdown started: %.0fms (%s)" % [_pre_roll_remaining_ms, stage], "PlayView")
 
 ## 预卷倒计时到期：显式起播（sequencer 从 0 开始 + 拉设备）。
 ## 设备起播有启动延迟，起播后第一次读位置前必须硬锚定视觉钟，否则 current_time
@@ -922,6 +943,9 @@ func _begin_pre_roll(stage: String) -> void:
 func _begin_actual_playback() -> void:
 	_pre_roll_remaining_ms = 0.0
 	_visual_time_needs_anchor = true
+	# 起播对齐：设备启动 + 延迟补偿期间音频钟停在 0，这段时间让视觉钟跟着停，
+	# 等音频钟越过 0 再交给软锚（见 _process 中的 _visual_startup_hold_ms）。
+	_visual_startup_hold_ms = _VISUAL_STARTUP_HOLD_MS
 	# 预卷期间（设备停着）native producer 已把 vocal ring 填满：起播首帧偏移门控
 	# 一放行，人声就从 ring 头部满音量瞬入 —— 人声文件开头非静音的曲目，
 	# 听感就是起播时"呲的一声"（播放器页同位置起播没这现象：那条路径 ring
