@@ -315,6 +315,7 @@ func update_display(data: Dictionary) -> void:
 	_load_avatar_async(str(avatar_url))
 
 ## 异步加载头像（从服务端 URL），同时更新 Profile 页和 Edit 页预览
+## 走 HttpImageLoader：同 URL 复用内存/本地磁盘缓存，避免每次进页面重复下载
 func _load_avatar_async(avatar_url: String) -> void:
 	if avatar_url.is_empty():
 		return
@@ -323,42 +324,15 @@ func _load_avatar_async(avatar_url: String) -> void:
 	_avatar_load_token += 1
 	var my_token := _avatar_load_token
 	var full_url := "%s%s" % [NetManager.instance.server_url, avatar_url]
-	var http := HTTPRequest.new()
-	add_child(http)
-	var req_err := http.request(full_url, PackedStringArray(), HTTPClient.METHOD_GET, "")
-	if req_err != OK:
-		GLogger.warning("Avatar request failed to start: err=%d url=%s" % [req_err, full_url], "ProfilePage")
-		http.queue_free()
-		return
-	var resp = await http.request_completed
-	if my_token != _avatar_load_token:
-		http.queue_free()
-		return
-	var result_code = resp[0]
-	var response_code = resp[1]
-	var response_body = resp[3]
-	http.queue_free()
-	if result_code != HTTPRequest.RESULT_SUCCESS:
-		GLogger.warning("Avatar download failed: result=%d url=%s" % [result_code, full_url], "ProfilePage")
-		return
-	if response_code != 200:
-		GLogger.warning("Avatar HTTP %d: url=%s" % [response_code, full_url], "ProfilePage")
-		return
-	if not response_body is PackedByteArray or response_body.size() == 0:
-		GLogger.warning("Avatar response body empty: url=%s" % full_url, "ProfilePage")
-		return
-	var image := ImageUtil.decode_image_buffer(response_body)
-	if image == null:
-		GLogger.warning("Avatar image decode failed: url=%s" % full_url, "ProfilePage")
-		return
-	var tex := ImageUtil.create_display_texture(image)
-	if tex == null:
-		GLogger.warning("Avatar texture creation failed: url=%s" % full_url, "ProfilePage")
-		return
-	profile_avatar_rect.texture = tex
-	avatar_border.set_display_texture(tex)
-	avatar_loaded.emit(tex)
-	GLogger.info("Avatar loaded: %s" % full_url, "ProfilePage")
+	HttpImageLoader.load(full_url, self, func(tex: Texture2D) -> void:
+		# token 失效说明已有更新的头像请求，丢弃本次结果
+		if my_token != _avatar_load_token or tex == null:
+			return
+		profile_avatar_rect.texture = tex
+		avatar_border.set_display_texture(tex)
+		avatar_loaded.emit(tex)
+		GLogger.info("Avatar loaded: %s" % full_url, "ProfilePage")
+	)
 
 # ========== Edit 页面：资料修改 ==========
 

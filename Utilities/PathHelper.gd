@@ -150,6 +150,11 @@ static func get_soundfont_dir() -> String:
 static func get_background_dir() -> String:
 	return get_storage_root() + "BackgroundImage/"
 
+## 网络资源缓存目录（头像/远程封面等按内容标识缓存的图片字节，可随时重建）
+## 注意：位于存储根下，与「外部游戏导入」源目录 files/THMIX_Import/WebCache/ 无关
+static func get_web_cache_dir() -> String:
+	return get_storage_root() + "WebCache/"
+
 ## 日志目录
 static func get_logs_dir() -> String:
 	return get_files_dir() + "Logs/"
