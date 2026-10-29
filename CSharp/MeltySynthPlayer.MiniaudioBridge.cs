@@ -464,15 +464,18 @@ public partial class MeltySynthPlayer
 
 	private void TickEndOfSequenceInCallback()
 	{
-	if (_sequencer != null && _sequencer.EndOfSequence && Volatile.Read(ref _endOfSequenceFlag) == 0)
-	{
+		// 仅在"真正有 MIDI 在播放"时才允许闩上曲终。延迟校准 / 演奏直连（DIRECT MODE）没有加载
+		// MIDI，此时 sequencer.midiFile == null，而 EndOfSequence 在 midiFile==null 时恒为 true
+		// （见 MidiFileSequencer.EndOfSequence 注释）。若不拦截，首帧回调就会误闩"曲终" → 主线程
+		// HandleSongEnded 试图 play() 一首不存在的曲子 → 报 "Cannot play: no MIDI file loaded"。
+		if (_sequencer == null || !_sequencer.IsSongLoaded || !_sequencer.EndOfSequence
+			|| Volatile.Read(ref _endOfSequenceFlag) != 0)
+		{
+			return;
+		}
 		Volatile.Write(ref _endOfSequenceFlag, 1);
-			// 有交棒就先换手：换成功则本次"曲终"已被处理，标志立刻清掉（不让主线程再处理一次）；
-			// 失败（如音源未就绪）则把交棒放回，标志留给前台正规路径。
-		// 音频线程不能碰引擎：ThreadSafeLog 会入队，主线程 flush。带绝对时间戳便于对表
 		ThreadSafeLog.Print($"[MeltySynthPlayer] end-of-sequence latched (t={System.Environment.TickCount64})");
 	}
-}
 
 /// <summary>
 /// "已播完"闩锁（0/1）。

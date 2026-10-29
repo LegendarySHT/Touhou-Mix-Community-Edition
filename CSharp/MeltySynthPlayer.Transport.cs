@@ -584,6 +584,13 @@ public partial class MeltySynthPlayer
 	private bool HandleSongEnded()
 	{
 		var core = MidiCore.Instance;
+		// 防御：没有加载 MIDI 却收到"曲终"（延迟校准/演奏直连模式误触发）时，直接消费标志，
+		// 不要走 FinishPlayback + play() 重播，否则会报 "Cannot play: no MIDI file loaded"。
+		if (_midiFile == null)
+		{
+			ThreadSafeLog.Print("[MeltySynthPlayer] song ended: no MIDI loaded, ignoring (likely direct-mode false trigger)");
+			return true;
+		}
 		ThreadSafeLog.Print($"[MeltySynthPlayer] song ended: count={core?.GetCount()} idx={core?.GetIndex()} "
 			+ $"repeat={core?.GetRepeatMode()} single={core?.IsSessionSingle()} loopFile={_sessionLoopFile}");
 

@@ -558,6 +558,17 @@ namespace MeltySynth
         }
 
         /// <summary>
+        /// Gets a value indicating whether a MIDI file is currently loaded into the sequencer.
+        /// </summary>
+        /// <remarks>
+        /// True only after <see cref="Play(MidiFile, bool)">Play</see> has been called with a non-null file,
+        /// and before <see cref="Stop">Stop</see> is called. This is the reliable discriminator between
+        /// "a real song is playing" and "no song is loaded" (e.g. manual-note / latency-calibration direct
+        /// mode), where <see cref="EndOfSequence"/> is permanently <c>true</c>.
+        /// </remarks>
+        public bool IsSongLoaded => midiFile != null;
+
+        /// <summary>
         /// Gets or sets the playback speed.
         /// </summary>
         /// <remarks>
