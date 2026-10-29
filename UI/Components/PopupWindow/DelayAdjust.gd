@@ -11,6 +11,9 @@ signal finish_requested
 @onready var _shadow_line: PanelContainer = $DelayIndicator/ShadowLine
 @onready var _delay_value: LineEdit = $HBoxC/Value
 @onready var delay_btn: Button = $Button
+# 左右两条校准进度条（子节点挂在 Button 下，纯视觉反馈；fill_mode 已设为对称：L 右→左、R 左→右）
+@onready var _progress_l: ProgressBar = $Progress/ProgressL
+@onready var _progress_r: ProgressBar = $Progress/ProgressR
 @onready var _bt_status: Label = $BtStatus
 @onready var _bt_toggle: CheckButton = $BtToggle
 
@@ -71,6 +74,13 @@ func start_calibration(current_delay: int = 0) -> void:
 	_calib_samples.clear()
 	_stable_count = 0
 	_last_sample = NAN
+
+	# 进度条：关掉 indeterminate 动画，最大刻度 = 完成所需连续稳定样本数
+	_progress_l.indeterminate = false
+	_progress_r.indeterminate = false
+	_progress_l.max_value = _CALIB_DONE_STABLE
+	_progress_r.max_value = _CALIB_DONE_STABLE
+	_set_calib_progress(0)
 
 	# 刷新蓝牙输出检测提示与开关初始状态（调用方已强制刷新过检测，此处读缓存）
 	_update_bt_status()
@@ -227,6 +237,8 @@ func _on_delay_btn_pressed() -> void:
 		else:
 			_stable_count = 0
 	_last_sample = delay
+	# 同步校准进度到左右进度条（连续稳定样本数 / 完成阈值）
+	_set_calib_progress(_stable_count)
 	# 进入稳定状态（连续3个样本稳定，即 _stable_count >= 2）→ 开始更新 CenterLine 和 LineEdit
 	if _stable_count >= _STABLE_START_THRESHOLD:
 		var avg: float = _compute_stable_average()
@@ -321,6 +333,15 @@ func _set_delay_value(delay_ms: float) -> void:
 	_setting_delay_text = false
 	_prev_delay_text = _delay_value.text
 	_update_center_line(delay_ms)
+
+# 同步校准进度到左右两条进度条（纯视觉反馈）。
+# progress = 连续稳定样本数 / 完成阈值（_CALIB_DONE_STABLE）。
+# 两条条 fill_mode 相反（tscn 里 L=END_TO_BEGIN、R=BEGIN_TO_END），设同一 value 即呈对称填充。
+# 校准完成瞬间 _stable_count 已到阈值 → 进度满格；某次点击失准则 _stable_count 归零 → 进度条回落。
+func _set_calib_progress(stable: int) -> void:
+	var p := clampf(float(stable) / float(_CALIB_DONE_STABLE), 0.0, 1.0)
+	_progress_l.value = p * _progress_l.max_value
+	_progress_r.value = p * _progress_r.max_value
 
 # 手动拖动 DelayIndicator：在面板范围内点击/拖动 → CenterLine 移动到手指位置并更新延迟
 # 注意：TabContainer 切换到本页时本节点 visible=true；PopupWindow hide() 不改子节点 visible，
