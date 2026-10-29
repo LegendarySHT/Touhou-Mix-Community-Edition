@@ -46,7 +46,8 @@ func setup_item(ID: String, content: String, desc: String, valueType: ValueType,
 		ValueType.TYPE_OPTION:
 			v_node = load(item_value_option).instantiate()
 			var option_btn: OptionButton = v_node
-			option_btn.connect("item_selected", Callable(self, "_on_option_selected"))
+			# 连接拖拽判定后的确认信号，仅在有效点选时通知值变化
+			option_btn.connect("item_confirmed", Callable(self, "_on_option_selected"))
 
 			var popup_menu: PopupMenu = option_btn.get_popup()
 			popup_menu.about_to_popup.connect(_on_popup_menu_popup.bind(popup_menu))
