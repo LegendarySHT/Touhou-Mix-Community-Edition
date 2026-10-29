@@ -144,11 +144,14 @@ func _initialize_core_systems() -> void:
 	config_loader.load_and_set_current()
 	if logger:
 		logger.info("Configuration pre-loaded before Manager initialization", "Main")
+	# 2.5.1 默认值自检：config.ini 是默认值的唯一来源，映射表漏写键会在这里暴露，
+	#       而不是让代码里 get_xxx 的兜底值静默生效（失败不中断启动）
+	config_loader.validate_defaults()
 
 	# 2.6. 刚完成迁移提交时，把 custom_storage_path 幂等补写进 settings.ini
 	# （committed 与配置落盘之间可能崩溃，需保证无日志引导时也能定位新根）
 	if bool(storage_resolve.get("needs_config_commit", false)):
-		config_loader.set_value("Storage", "custom_storage_path", str(storage_resolve.get("pending_root", "")))
+		config_loader.set_value("General", "custom_storage_path", str(storage_resolve.get("pending_root", "")))
 		config_loader.save_config(ConfigManager.USER_CONFIG_PATH, config_loader.get_current_config())
 		if logger:
 			logger.info("Storage config committed to settings.ini", "Main")
@@ -502,15 +505,15 @@ func _reload_all_settings() -> void:
 
 	# 应用Gameplay设置（包括SoundFont）
 	if PlaybackDisplay.instance:
-		var soundfont_name = config_loader.get_value("Gameplay", "soundfont_file")
+		var soundfont_name = config_loader.get_value("Audio", "soundfont_file")
 		var cur_basename = PlaybackDisplay.instance.current_soundfont_path.get_file().get_basename()
 		var new_basename = soundfont_name.replace(".sf2", "").replace("[内置]", "").strip_edges()
 		if new_basename != cur_basename:
 			PlaybackDisplay.instance.set_soundfont(soundfont_name)
 
 	# 应用显示设置
-	var fullscreen = config_loader.get_bool("Display", "fullscreen", true)
-	var vsync = config_loader.get_bool("Display", "vsync_enabled", true)
+	var fullscreen = config_loader.get_bool("System", "fullscreen", true)
+	var vsync = config_loader.get_bool("System", "vsync_enabled", true)
 
 	if fullscreen:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)

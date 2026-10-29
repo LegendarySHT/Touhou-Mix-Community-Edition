@@ -134,7 +134,7 @@ func _connect_scan_ready() -> void:
 
 ## 角色切换（[Chara] chara_id）时刷新展示
 func _on_config_changed(key: String, section: String, _value: Variant) -> void:
-	if key == "chara_id" and section == "Chara":
+	if key == "chara_id" and section == "System":
 		_load_chara_display()
 
 ## 加载当前选中角色的立绘、背景与名字/作者到 Displayer

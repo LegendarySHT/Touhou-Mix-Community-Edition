@@ -48,7 +48,7 @@ const MIGRATABLE_FILES: Array[String] = [
 ## 可写性测试文件名（验证后立即删除）
 const WRITE_TEST_FILE := ".thmix_write_test"
 ## 配置键
-const CFG_SECTION := "Storage"
+const CFG_SECTION := "General"
 const CFG_KEY := "custom_storage_path"
 
 func _ready() -> void:

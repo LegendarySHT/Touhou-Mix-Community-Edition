@@ -38,13 +38,13 @@ const _SPEED_MULT_MAX: float = 5.0
 ## 由 PopupWindow.show_falling_adjust 调用：初始化控件值并启动预览
 func init_adjust() -> void:
 	# 从配置读取初始值
-	var fall_mode := ConfigManager.instance.get_int("Generator", "note_fall_mode")
-	var fall_time := ConfigManager.instance.get_float("Generator", "note_fall_time")
-	var fall_speed_mult := ConfigManager.instance.get_float("Generator", "note_fall_speed_after_judge_multiplier")
-	var before_func := ConfigManager.instance.get_string("Generator", "note_fall_easing_before_func", "LINEAR")
-	var before_phase := ConfigManager.instance.get_string("Generator", "note_fall_easing_before_phase", "IN")
-	var after_func := ConfigManager.instance.get_string("Generator", "note_fall_easing_after_func", "LINEAR")
-	var after_phase := ConfigManager.instance.get_string("Generator", "note_fall_easing_after_phase", "IN")
+	var fall_mode := ConfigManager.instance.get_int("Performance", "note_fall_mode")
+	var fall_time := ConfigManager.instance.get_float("Performance", "note_fall_time")
+	var fall_speed_mult := ConfigManager.instance.get_float("Performance", "note_fall_speed_after_judge_multiplier")
+	var before_func := ConfigManager.instance.get_string("Performance", "note_fall_easing_before_func", "LINEAR")
+	var before_phase := ConfigManager.instance.get_string("Performance", "note_fall_easing_before_phase", "IN")
+	var after_func := ConfigManager.instance.get_string("Performance", "note_fall_easing_after_func", "LINEAR")
+	var after_phase := ConfigManager.instance.get_string("Performance", "note_fall_easing_after_phase", "IN")
 
 	# 同步到 UI
 	_mode_option.select(clampi(fall_mode, 0, 2))
@@ -79,15 +79,15 @@ func save_config() -> void:
 	var result := get_result()
 	var cm := ConfigManager.instance
 	# 无条件写入，确保 _current_config 与 UI 一致
-	cm.set_value("Generator", "note_fall_mode", int(result["note_fall_mode"]))
-	cm.set_value("Generator", "note_fall_time", float(result["note_fall_time"]))
-	cm.set_value("Generator", "note_fall_speed_after_judge_multiplier", float(result["note_fall_speed_after_judge_multiplier"]))
-	cm.set_value("Generator", "note_fall_easing_before_func", String(result["note_fall_easing_before_func"]))
-	cm.set_value("Generator", "note_fall_easing_before_phase", String(result["note_fall_easing_before_phase"]))
-	cm.set_value("Generator", "note_fall_easing_after_func", String(result["note_fall_easing_after_func"]))
-	cm.set_value("Generator", "note_fall_easing_after_phase", String(result["note_fall_easing_after_phase"]))
+	cm.set_value("Performance", "note_fall_mode", int(result["note_fall_mode"]))
+	cm.set_value("Performance", "note_fall_time", float(result["note_fall_time"]))
+	cm.set_value("Performance", "note_fall_speed_after_judge_multiplier", float(result["note_fall_speed_after_judge_multiplier"]))
+	cm.set_value("Performance", "note_fall_easing_before_func", String(result["note_fall_easing_before_func"]))
+	cm.set_value("Performance", "note_fall_easing_before_phase", String(result["note_fall_easing_before_phase"]))
+	cm.set_value("Performance", "note_fall_easing_after_func", String(result["note_fall_easing_after_func"]))
+	cm.set_value("Performance", "note_fall_easing_after_phase", String(result["note_fall_easing_after_phase"]))
 	# 统一 emit 一次信号，触发 FlowArea 热重载
-	EvtBus.config_changed.emit("note_fall_mode", "Generator", int(result["note_fall_mode"]))
+	EvtBus.config_changed.emit("note_fall_mode", "Performance", int(result["note_fall_mode"]))
 
 ## 返回当前编辑结果（供 PopupWindow.show_falling_adjust 返回给 SettingList）
 func get_result() -> Dictionary:

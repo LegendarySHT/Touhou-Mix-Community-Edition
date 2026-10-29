@@ -34,7 +34,7 @@ signal retry_pressed
 
 # 难度预设显示名（下标即 difficulty id：0=Easy,1=Normal,2=Hard,3=Lunatic,4=Custom）
 const DIFFICULTY_NAMES: Array[String] = ["Easy", "Normal", "Hard", "Lunatic", "Custom"]
-const DIFFICULTY_CFG_SECTION: String = "Generator"
+const DIFFICULTY_CFG_SECTION: String = "System"
 const DIFFICULTY_CFG_KEY: String = "difficulty"
 
 # 轨道光效及键位显示
@@ -448,7 +448,7 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 		hud.set_debug_enabled(int(value) == 1)
 		return
 
-	if section == "Playback" and key == "auto_mode":
+	if section == "System" and key == "auto_mode":
 		var auto_enabled = int(value) == 1
 		if flow_area:
 			flow_area.auto_mode = auto_enabled
@@ -456,7 +456,7 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 		GLogger.info("PlayView auto mode changed: %s" % ("ON" if auto_enabled else "OFF"), "PlayView")
 		return
 
-	if section == "Playback" and key == "performing_mode":
+	if section == "Performance" and key == "performing_mode":
 		var new_mode = int(value) == 1
 
 		# 只在值实际改变时处理
@@ -669,7 +669,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	_interrupted_pause = false
 
 	# 读取“播放准备动画”设置（0=关闭, 1=开启）
-	var play_ready_animation: bool = ConfigManager.instance.get_int("Playback", "play_ready_animation") == 1
+	var play_ready_animation: bool = ConfigManager.instance.get_int("Performance", "play_ready_animation") == 1
 	GLogger.info("Play ready animation: %s" % ("ON" if play_ready_animation else "OFF"), "PlayView")
 	# 歌曲信息面板开始显示的时刻（遮罩期起点，用于动态计算剩余等待时长）
 	var panel_start_ms := Time.get_ticks_msec()
@@ -703,7 +703,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	playback_mgr.claim_session(self)
 
 	# 新增：从配置读取演奏模式
-	var performing_mode = ConfigManager.instance.get_int("Playback", "performing_mode")
+	var performing_mode = ConfigManager.instance.get_int("Performance", "performing_mode")
 	play_mode = (performing_mode == 1)
 	GLogger.info("Performing mode: %s" % ("ON" if play_mode else "OFF"), "PlayView")
 
@@ -727,7 +727,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	if setting_view and setting_view.has_method("get_setting_value"):
 		sync_threshold = setting_view.get_setting_value("audio_sync_threshold")
 	if sync_threshold == null:
-		sync_threshold = ConfigManager.instance.get_int("Gameplay", "audio_sync_threshold")
+		sync_threshold = ConfigManager.instance.get_int("Audio", "audio_sync_threshold")
 	playback_mgr.set_sync_threshold(float(sync_threshold))
 	GLogger.info("Audio sync threshold set to %.0f ms" % float(sync_threshold), "PlayView")
 
@@ -961,27 +961,27 @@ func _load_lane_parameters() -> void:
 	var config_mgr = ConfigManager.instance
 	
 	# 加载轨道数量（默认12）
-	lane_count = config_mgr.get_int("Lane", "lane_count", 12)
+	lane_count = config_mgr.get_int("Gameplay", "lane_count", 12)
 	# 加载左右安全区（默认100）
-	lane_padding = config_mgr.get_int("Judge", "canvas_horizontal_padding", 100)
+	lane_padding = config_mgr.get_int("Performance", "canvas_horizontal_padding", 100)
 	# 加载判定线高度（默认200）
-	judge_line_offset_y = max(0, config_mgr.get_int("Judge", "judge_line_position", 200))
+	judge_line_offset_y = max(0, config_mgr.get_int("Performance", "judge_line_position", 200))
 	
 	# 加载键盘模式（0=关闭，1=开启，默认0）
-	keyboard_mode = config_mgr.get_int("Lane", "keyboard_mode", 0) == 1
+	keyboard_mode = config_mgr.get_int("Performance", "keyboard_mode", 0) == 1
 	
 	# 加载键盘键位字符串（默认 "A,S,D,F,J,K,L,;"）
-	var keyboard_keys_str = config_mgr.get_string("Lane", "keyboard_mode_keys", "A,S,D,F,J,K,L,;")
+	var keyboard_keys_str = config_mgr.get_string("Performance", "keyboard_mode_keys", "A,S,D,F,J,K,L,;")
 	key_map = ConfigParser.parse_keyboard_keys(keyboard_keys_str)
 	# 加载键盘键位显示名称（与 key_map 对齐，空字符串=使用按键默认名）
-	var keyboard_names_str = config_mgr.get_string("Lane", "keyboard_mode_display_names", "")
+	var keyboard_names_str = config_mgr.get_string("Performance", "keyboard_mode_display_names", "")
 	key_display_names = ConfigParser.parse_keyboard_display_names(keyboard_names_str, key_map.size())
 
 	# 加载交替轨道颜色（默认开启；仅键盘模式生效）
-	keyboard_alt_color = config_mgr.get_bool("Lane", "keyboard_alt_color", true)
-	keyboard_alt_color_count = max(1, config_mgr.get_int("Lane", "keyboard_alt_color_count", 2))
+	keyboard_alt_color = config_mgr.get_bool("Performance", "keyboard_alt_color", true)
+	keyboard_alt_color_count = max(1, config_mgr.get_int("Performance", "keyboard_alt_color_count", 2))
 	keyboard_alt_colors = _parse_alt_colors(
-		config_mgr.get_string("Lane", "keyboard_alt_colors", "#ff0000,#0000ff")
+		config_mgr.get_string("Performance", "keyboard_alt_colors", "#ff0000,#0000ff")
 	)
 	# 颜色数组对齐到声明的数量（不足补白，多余截断）
 	while keyboard_alt_colors.size() < keyboard_alt_color_count:
@@ -989,16 +989,16 @@ func _load_lane_parameters() -> void:
 	keyboard_alt_colors.resize(keyboard_alt_color_count)
 
 	# 左右间距（偶数键位时中间额外间距）
-	keyboard_mode_gap = max(0, config_mgr.get_int("Lane", "keyboard_mode_gap", 0))
+	keyboard_mode_gap = max(0, config_mgr.get_int("Performance", "keyboard_mode_gap", 0))
 	# 轨道分隔线（仅键盘模式生效）
-	keyboard_lane_separator = config_mgr.get_bool("Lane", "keyboard_lane_separator", false)
+	keyboard_lane_separator = config_mgr.get_bool("Performance", "keyboard_lane_separator", false)
 
 	GLogger.info(
 		"PlayView lane parameters loaded: lane_count=%d, lane_padding=%d, keyboard_mode=%s, key_map_size=%d" % 
 		[lane_count, lane_padding, str(keyboard_mode), key_map.size()],
 		"PlayView"
 	)
-	beam_alpha = config_mgr.get_float("Lane", "flash_alpha", 0.8)
+	beam_alpha = config_mgr.get_float("Appearance", "flash_alpha", 0.8)
 	if lane_area and lane_area.has_method("set_beam_alpha"):
 		lane_area.set_beam_alpha(beam_alpha)
 	var note_glow_intensity = config_mgr.get_float("Appearance", "note_glow_intensity", 0.5)
@@ -1007,14 +1007,16 @@ func _load_lane_parameters() -> void:
 		flow_area.set_glow_params(note_glow_intensity, note_glow_size)
 
 
-## 处理 Lane/Judge 段配置变更（轨道数量、键位、左右安全区）
+## 处理轨道/键位/判定线相关的配置变更（轨道数量、键位、左右安全区、光柱）
+## 这些键现在分属 Gameplay（lane_count）、Performance（键位/判定线）、Appearance（flash_alpha），
+## 所以入口放行三组，内部再按 key + section 精确匹配。
 func _on_lane_config_changed(key: String, section: String, value: Variant) -> void:
-	if section != "Lane" and section != "Judge":
+	if section != "Gameplay" and section != "Performance" and section != "Appearance":
 		return
 	
 	var should_reinit = false
 
-	if section == "Judge" and key == "judge_line_position":
+	if section == "Performance" and key == "judge_line_position":
 		var new_offset : int = max(0, int(value))
 		if new_offset != judge_line_offset_y:
 			judge_line_offset_y = new_offset
@@ -1023,7 +1025,7 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 				flow_area._apply_judge_line_position()
 			GLogger.info("PlayView judge_line_offset_y updated: %d" % judge_line_offset_y, "PlayView")
 
-	if section == "Judge" and key == "canvas_horizontal_padding":
+	if section == "Performance" and key == "canvas_horizontal_padding":
 		var new_lane_padding = int(value)
 		if new_lane_padding != lane_padding:
 			lane_padding = new_lane_padding
@@ -1032,7 +1034,7 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 	
 	match key:
 		"lane_count":
-			if section == "Lane":
+			if section == "Gameplay":
 				var new_lane_count = int(value)
 				if new_lane_count != lane_count:
 					lane_count = new_lane_count
@@ -1042,7 +1044,7 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 					GLogger.info("PlayView lane_count updated: %d" % lane_count, "PlayView")
 		
 		"keyboard_mode":
-			if section == "Lane":
+			if section == "Performance":
 				var new_mode = int(value) == 1
 				if new_mode != keyboard_mode:
 					keyboard_mode = new_mode
@@ -1050,13 +1052,13 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 					GLogger.info("PlayView keyboard_mode updated: %s" % str(keyboard_mode), "PlayView")
 		
 		"keyboard_mode_keys":
-			if section == "Lane":
+			if section == "Performance":
 				var new_keys = ConfigParser.parse_keyboard_keys(str(value))
 				if new_keys.size() != key_map.size() or _are_keys_different(new_keys, key_map):
 					key_map = new_keys
 					# 键位变化时同步重算 display_names（按新 key 数量对齐）
 					key_display_names = ConfigParser.parse_keyboard_display_names(
-						ConfigManager.instance.get_string("Lane", "keyboard_mode_display_names", ""),
+						ConfigManager.instance.get_string("Performance", "keyboard_mode_display_names", ""),
 						key_map.size()
 					)
 					# 仅在键盘模式时需要重初始化
@@ -1065,7 +1067,7 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 					GLogger.info("PlayView keyboard_mode_keys updated: %d keys" % key_map.size(), "PlayView")
 
 		"keyboard_mode_display_names":
-			if section == "Lane":
+			if section == "Performance":
 				key_display_names = ConfigParser.parse_keyboard_display_names(str(value), key_map.size())
 				# 仅在键盘模式时需要重初始化（刷新标签文本）
 				if keyboard_mode:
@@ -1073,7 +1075,7 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 				GLogger.info("PlayView keyboard_mode_display_names updated: %d names" % key_display_names.size(), "PlayView")
 
 		"keyboard_alt_color", "keyboard_alt_color_count", "keyboard_alt_colors":
-			if section == "Lane":
+			if section == "Performance":
 				var old_alt_color := keyboard_alt_color
 				var old_alt_count := keyboard_alt_color_count
 				var old_alt_colors: Array = keyboard_alt_colors.duplicate()
@@ -1092,7 +1094,7 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 					[str(keyboard_alt_color), keyboard_alt_color_count, str(keyboard_alt_colors)], "PlayView")
 
 		"keyboard_mode_gap":
-			if section == "Lane":
+			if section == "Performance":
 				var new_gap: int = max(0, int(value))
 				if new_gap != keyboard_mode_gap:
 					keyboard_mode_gap = new_gap
@@ -1100,7 +1102,7 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 					GLogger.info("PlayView keyboard_mode_gap updated: %d" % keyboard_mode_gap, "PlayView")
 
 		"keyboard_lane_separator":
-			if section == "Lane":
+			if section == "Performance":
 				var new_sep := int(value) == 1
 				if new_sep != keyboard_lane_separator:
 					keyboard_lane_separator = new_sep
@@ -1109,7 +1111,7 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 					GLogger.info("PlayView keyboard_lane_separator updated: %s" % str(keyboard_lane_separator), "PlayView")
 
 		"flash_alpha":
-			if section == "Lane":
+			if section == "Appearance":
 				beam_alpha = float(value)
 				if lane_area and lane_area.has_method("set_beam_alpha"):
 					lane_area.set_beam_alpha(beam_alpha)
@@ -1149,13 +1151,13 @@ func _reinit_lane_display() -> void:
 
 ## 从配置加载演奏模式设置
 func _load_play_mode_setting() -> void:
-	var performing_mode = ConfigManager.instance.get_int("Playback", "performing_mode")
+	var performing_mode = ConfigManager.instance.get_int("Performance", "performing_mode")
 	play_mode = (performing_mode == 1)
 	GLogger.info("PlayView play mode: %s" % ("ON" if play_mode else "OFF"), "PlayView")
 	# 蓝牙输出时自动关闭演奏模式（高延迟下演奏手感不佳）；
 	# 仅当局会话生效（不覆写全局 performing_mode 配置），玩家可在游戏中手动重开
 	if play_mode and AudioBtDetector.is_bluetooth_output() \
-			and ConfigManager.instance.get_int("Gameplay", "bt_auto_disable_performing_mode") == 1:
+			and ConfigManager.instance.get_int("Audio", "bt_auto_disable_performing_mode") == 1:
 		play_mode = false
 		GLogger.info("Performing mode auto-disabled: bluetooth audio output detected", "PlayView")
 

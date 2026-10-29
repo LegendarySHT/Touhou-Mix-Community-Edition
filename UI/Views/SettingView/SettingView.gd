@@ -123,8 +123,11 @@ func _load_config_from_file() -> void:
 		setting_list.load_settings({})
 		return
 
-	# 检查并迁移配置版本
-	ini_config = config_manager.check_and_migrate(ini_config, config_path)
+	# 检查并迁移配置版本。
+	# 只对用户配置做迁移：内置 res:// 默认配置永远是最新结构，而且导出版里是只读的 PCK，
+	# 拿它去迁移只会尝试写一个不可写路径。
+	if config_path == CONFIG_PATH:
+		ini_config = config_manager.check_and_migrate(ini_config, config_path)
 
 	# 转换 INI 格式为 SettingList 格式
 	var settings_dict = SettingsMapper.ini_to_settings(ini_config)

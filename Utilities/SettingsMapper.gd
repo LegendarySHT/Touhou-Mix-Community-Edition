@@ -1,127 +1,121 @@
 ## 设置映射器
 ## 负责 SettingList 的配置ID与 config.ini 的 section/key 之间的双向映射
+##
+## 默认值不在这里 —— config.ini 是默认值的唯一来源，本表只声明「存到哪」和「什么类型」。
+## section 与 config.ini 的 section 一一对应，分组顺序也一致，方便两边对拍。
 class_name SettingsMapper
 
-## 配置映射表：setting_id → {section, key, default_value, value_type}
+## 配置映射表：setting_id → {section, key, value_type}
 ## value_type: "int", "float", "bool", "string", "color"
 static var mappings: Dictionary = {
-	# ========== 浏览设置 ==========
-	"album_sort_method": {"section": "Browse", "key": "album_sort_method", "value_type": "string"},
-	"album_sort_direction": {"section": "Browse", "key": "album_sort_direction", "value_type": "string"},
-	
-	# ========== 常规设置 ==========
+	# ========== 常规设置（General）==========
+	"show_advanced_settings": {"section": "General", "key": "show_advanced_settings", "value_type": "int"},
+	"display_debug_info": {"section": "General", "key": "display_debug_info", "value_type": "int"},
+	"language": {"section": "General", "key": "language", "value_type": "int"},
+	"album_sort_method": {"section": "General", "key": "album_sort_method", "value_type": "string"},
+	"album_sort_direction": {"section": "General", "key": "album_sort_direction", "value_type": "string"},
 	"online_mode": {"section": "General", "key": "online_mode", "value_type": "int"},
 	"auto_upload_score": {"section": "General", "key": "auto_upload_score", "value_type": "int"},
 	"download_vocal": {"section": "General", "key": "download_vocal", "value_type": "int"},
-	"display_debug_info": {"section": "General", "key": "display_debug_info", "value_type": "int"},
-	"show_advanced_settings": {"section": "General", "key": "show_advanced_settings", "value_type": "int"},
-	"language": {"section": "General", "key": "language", "value_type": "int"},
 	"server_address": {"section": "General", "key": "server_address", "value_type": "string"},
+	"storage_location": {"section": "General", "key": "custom_storage_path", "value_type": "string"},
 
-	# ========== 存储设置 ==========
-	"storage_location": {"section": "Storage", "key": "custom_storage_path", "value_type": "string"},
+	# ========== 音频设置（Audio）==========
+	"soundfont_select": {"section": "Audio", "key": "soundfont_file", "value_type": "string"},
+	"playback_speed_scaling": {"section": "Audio", "key": "playback_speed_scaling", "value_type": "float"},
+	"max_polyphony": {"section": "Audio", "key": "max_polyphony", "value_type": "int"},
+	"default_midi_volume": {"section": "Audio", "key": "default_midi_volume", "value_type": "int"},
+	"default_vocal_volume": {"section": "Audio", "key": "default_vocal_volume", "value_type": "int"},
+	"audio_playback_delay": {"section": "Audio", "key": "audio_playback_delay", "value_type": "int"},
+	"audio_sync_threshold": {"section": "Audio", "key": "audio_sync_threshold", "value_type": "int"},
+	"audio_playback_delay_bt": {"section": "Audio", "key": "audio_playback_delay_bt", "value_type": "int"},
+	"bt_auto_disable_performing_mode": {"section": "Audio", "key": "bt_auto_disable_performing_mode", "value_type": "int"},
 
-	# ========== 播放设置 ==========
-	"performing_mode": {"section": "Playback", "key": "performing_mode", "value_type": "int"},
-	"play_ready_animation": {"section": "Playback", "key": "play_ready_animation", "value_type": "int"},
-	"playback_speed_scaling": {"section": "Playback", "key": "playback_speed_scaling", "value_type": "float"},
-	"vibrate_on_touch": {"section": "Playback", "key": "vibrate_on_touch", "value_type": "int"},
-	"vibration_duration": {"section": "Playback", "key": "vibration_duration", "value_type": "int"},
-	"use_system_stopwatch": {"section": "Playback", "key": "use_system_stopwatch", "value_type": "int"},
-	"max_polyphony": {"section": "Playback", "key": "max_polyphony", "value_type": "int"},
-	
-	# ========== 音源设置 ==========
-	"soundfont_select": {"section": "Gameplay", "key": "soundfont_file", "value_type": "string"},
-	"default_midi_volume": {"section": "Gameplay", "key": "default_midi_volume", "value_type": "int"},
-	"default_vocal_volume": {"section": "Gameplay", "key": "default_vocal_volume", "value_type": "int"},
-	"audio_sync_threshold": {"section": "Gameplay", "key": "audio_sync_threshold", "value_type": "int"},
-	"audio_playback_delay": {"section": "Gameplay", "key": "audio_playback_delay", "value_type": "int"},
-	"audio_playback_delay_bt": {"section": "Gameplay", "key": "audio_playback_delay_bt", "value_type": "int"},
-	"bt_auto_disable_performing_mode": {"section": "Gameplay", "key": "bt_auto_disable_performing_mode", "value_type": "int"},
+	# ========== 生成设置（Gameplay）==========
+	"lane_count": {"section": "Gameplay", "key": "lane_count", "value_type": "int"},
+	"min_block_spacing": {"section": "Gameplay", "key": "min_block_spacing", "value_type": "int"},
+	"perfect_time": {"section": "Gameplay", "key": "perfect_time", "value_type": "float"},
+	"great_time": {"section": "Gameplay", "key": "great_time", "value_type": "float"},
+	"good_time": {"section": "Gameplay", "key": "good_time", "value_type": "float"},
+	"bad_time": {"section": "Gameplay", "key": "bad_time", "value_type": "float"},
+	"instant_block_max_time": {"section": "Gameplay", "key": "instant_block_max_time", "value_type": "float"},
+	"short_block_max_time": {"section": "Gameplay", "key": "short_block_max_time", "value_type": "float"},
+	"long_block_max_time": {"section": "Gameplay", "key": "long_block_max_time", "value_type": "float"},
+	"long_block_length_scaling": {"section": "Gameplay", "key": "long_block_length_scaling", "value_type": "float"},
+	"max_simultaneous_blocks": {"section": "Gameplay", "key": "max_simultaneous_blocks", "value_type": "int"},
+	"min_tap_interval": {"section": "Gameplay", "key": "min_tap_interval", "value_type": "float"},
+	"min_touch_cooldown_time": {"section": "Gameplay", "key": "min_touch_cooldown_time", "value_type": "float"},
+	"max_touch_move_speed": {"section": "Gameplay", "key": "max_touch_move_speed", "value_type": "int"},
+	"max_block_coalesce_time": {"section": "Gameplay", "key": "max_block_coalesce_time", "value_type": "int"},
+	"generate_short_connect": {"section": "Gameplay", "key": "generate_short_connect", "value_type": "int"},
+	"generate_instant_connect": {"section": "Gameplay", "key": "generate_instant_connect", "value_type": "int"},
+	"instant_connect_max_time": {"section": "Gameplay", "key": "instant_connect_max_time", "value_type": "float"},
 
-	"lane_count": {"section": "Lane", "key": "lane_count", "value_type": "int"},
-	"keyboard_mode": {"section": "Lane", "key": "keyboard_mode", "value_type": "int"},
-	"keyboard_mode_keys": {"section": "Lane", "key": "keyboard_mode_keys", "value_type": "string"},
-	"keyboard_mode_display_names": {"section": "Lane", "key": "keyboard_mode_display_names", "value_type": "string"},
-	"keyboard_alt_color": {"section": "Lane", "key": "keyboard_alt_color", "value_type": "int"},
-	"keyboard_alt_color_count": {"section": "Lane", "key": "keyboard_alt_color_count", "value_type": "int"},
-	"keyboard_alt_colors": {"section": "Lane", "key": "keyboard_alt_colors", "value_type": "string"},
-	"keyboard_mode_gap": {"section": "Lane", "key": "keyboard_mode_gap", "value_type": "int"},
-	"keyboard_lane_separator": {"section": "Lane", "key": "keyboard_lane_separator", "value_type": "int"},
-	"flash_alpha": {"section": "Lane", "key": "flash_alpha", "value_type": "float"},
-	"perfect_spark_preset": {"section": "Lane", "key": "perfect_spark_preset", "value_type": "string"},
-	"perfect_spark_emitter": {"section": "Lane", "key": "perfect_spark_emitter", "value_type": "string"},
-	"perfect_spark_scaling": {"section": "Lane", "key": "perfect_spark_scaling", "value_type": "int"},
-	"perfect_spark_alpha": {"section": "Lane", "key": "perfect_spark_alpha", "value_type": "int"},
-	"perfect_spark_emitter_scaling": {"section": "Lane", "key": "perfect_spark_emitter_scaling", "value_type": "int"},
-	"great_spark_preset": {"section": "Lane", "key": "great_spark_preset", "value_type": "string"},
-	"great_spark_emitter": {"section": "Lane", "key": "great_spark_emitter", "value_type": "string"},
-	"great_spark_scaling": {"section": "Lane", "key": "great_spark_scaling", "value_type": "int"},
-	"great_spark_alpha": {"section": "Lane", "key": "great_spark_alpha", "value_type": "int"},
-	"great_spark_emitter_scaling": {"section": "Lane", "key": "great_spark_emitter_scaling", "value_type": "int"},
-	"good_spark_preset": {"section": "Lane", "key": "good_spark_preset", "value_type": "string"},
-	"good_spark_emitter": {"section": "Lane", "key": "good_spark_emitter", "value_type": "string"},
-	"good_spark_scaling": {"section": "Lane", "key": "good_spark_scaling", "value_type": "int"},
-	"good_spark_alpha": {"section": "Lane", "key": "good_spark_alpha", "value_type": "int"},
-	"good_spark_emitter_scaling": {"section": "Lane", "key": "good_spark_emitter_scaling", "value_type": "int"},
-	"bad_spark_preset": {"section": "Lane", "key": "bad_spark_preset", "value_type": "string"},
-	"bad_spark_emitter": {"section": "Lane", "key": "bad_spark_emitter", "value_type": "string"},
-	"bad_spark_scaling": {"section": "Lane", "key": "bad_spark_scaling", "value_type": "int"},
-	"bad_spark_alpha": {"section": "Lane", "key": "bad_spark_alpha", "value_type": "int"},
-	"bad_spark_emitter_scaling": {"section": "Lane", "key": "bad_spark_emitter_scaling", "value_type": "int"},
-	
-	# ========== 判定设置 ==========
-	"judge_window_ms": {"section": "Judge", "key": "judge_window_ms", "value_type": "int"},
-	"check_instant_blocks_when_finger_up": {"section": "Judge", "key": "check_instant_blocks_when_finger_up", "value_type": "int"},
-	"only_perfect_instant_blocks_before_judge": {"section": "Judge", "key": "only_perfect_instant_blocks_before_judge", "value_type": "int"},
-	"judge_line_position": {"section": "Judge", "key": "judge_line_position", "value_type": "int"},
-	"block_judging_width": {"section": "Judge", "key": "block_judging_width", "value_type": "float"},
-	"min_block_spacing": {"section": "Judge", "key": "min_block_spacing", "value_type": "int"},
-	"canvas_horizontal_padding": {"section": "Judge", "key": "canvas_horizontal_padding", "value_type": "int"},
-	"perfect_time": {"section": "Judge", "key": "perfect_time", "value_type": "float"},
-	"great_time": {"section": "Judge", "key": "great_time", "value_type": "float"},
-	"good_time": {"section": "Judge", "key": "good_time", "value_type": "float"},
-	"bad_time": {"section": "Judge", "key": "bad_time", "value_type": "float"},
-	
-	# ========== 生成设置 ==========
-	"instant_block_max_time": {"section": "Generator", "key": "instant_block_max_time", "value_type": "float"},
-	"short_block_max_time": {"section": "Generator", "key": "short_block_max_time", "value_type": "float"},
-	"long_block_max_time": {"section": "Generator", "key": "long_block_max_time", "value_type": "float"},
-	"long_block_length_scaling": {"section": "Generator", "key": "long_block_length_scaling", "value_type": "float"},
-	"max_simultaneous_blocks": {"section": "Generator", "key": "max_simultaneous_blocks", "value_type": "int"},
-	"min_tap_interval": {"section": "Generator", "key": "min_tap_interval", "value_type": "float"},
-	"min_touch_cooldown_time": {"section": "Generator", "key": "min_touch_cooldown_time", "value_type": "float"},
-	"max_touch_move_speed": {"section": "Generator", "key": "max_touch_move_speed", "value_type": "int"},
-	"max_block_coalesce_time": {"section": "Generator", "key": "max_block_coalesce_time", "value_type": "int"},
-	"note_fall_time": {"section": "Generator", "key": "note_fall_time", "value_type": "float"},
-	
-	# ========== 外观设置 ==========
-	
-		# ========== 音符下落方式 ==========
-		"note_fall_mode": {"section": "Generator", "key": "note_fall_mode", "value_type": "int"},
-		"note_fall_speed_after_judge_multiplier": {"section": "Generator", "key": "note_fall_speed_after_judge_multiplier", "value_type": "float"},
-		"note_fall_easing_before_func": {"section": "Generator", "key": "note_fall_easing_before_func", "value_type": "string"},
-		"note_fall_easing_before_phase": {"section": "Generator", "key": "note_fall_easing_before_phase", "value_type": "string"},
-		"note_fall_easing_after_func": {"section": "Generator", "key": "note_fall_easing_after_func", "value_type": "string"},
-		"note_fall_easing_after_phase": {"section": "Generator", "key": "note_fall_easing_after_phase", "value_type": "string"},
-	"custom_block_skin_texture_filter_mode": {"section": "Appearance", "key": "custom_block_skin_texture_filter_mode", "value_type": "int"},
+	# ========== 演奏设置（Performance）==========
+	"performing_mode": {"section": "Performance", "key": "performing_mode", "value_type": "int"},
+	"play_ready_animation": {"section": "Performance", "key": "play_ready_animation", "value_type": "int"},
+	"keyboard_mode_keys": {"section": "Performance", "key": "keyboard_mode_keys", "value_type": "string"},
+	"use_system_stopwatch": {"section": "Performance", "key": "use_system_stopwatch", "value_type": "int"},
+	"note_fall_time": {"section": "Performance", "key": "note_fall_time", "value_type": "float"},
+	"note_fall_mode": {"section": "Performance", "key": "note_fall_mode", "value_type": "int"},
+	"note_fall_speed_after_judge_multiplier": {"section": "Performance", "key": "note_fall_speed_after_judge_multiplier", "value_type": "float"},
+	"note_fall_easing_before_func": {"section": "Performance", "key": "note_fall_easing_before_func", "value_type": "string"},
+	"note_fall_easing_before_phase": {"section": "Performance", "key": "note_fall_easing_before_phase", "value_type": "string"},
+	"note_fall_easing_after_func": {"section": "Performance", "key": "note_fall_easing_after_func", "value_type": "string"},
+	"note_fall_easing_after_phase": {"section": "Performance", "key": "note_fall_easing_after_phase", "value_type": "string"},
+	"block_size": {"section": "Performance", "key": "block_size", "value_type": "float"},
+	"block_judging_width": {"section": "Performance", "key": "block_judging_width", "value_type": "float"},
+	"judge_window_ms": {"section": "Performance", "key": "judge_window_ms", "value_type": "int"},
+	"check_instant_blocks_when_finger_up": {"section": "Performance", "key": "check_instant_blocks_when_finger_up", "value_type": "int"},
+	"only_perfect_instant_blocks_before_judge": {"section": "Performance", "key": "only_perfect_instant_blocks_before_judge", "value_type": "int"},
+	"canvas_horizontal_padding": {"section": "Performance", "key": "canvas_horizontal_padding", "value_type": "int"},
+	"judge_line_position": {"section": "Performance", "key": "judge_line_position", "value_type": "int"},
+	"judge_line_thickness": {"section": "Performance", "key": "judge_line_thickness", "value_type": "int"},
+	"vibrate_on_touch": {"section": "Performance", "key": "vibrate_on_touch", "value_type": "int"},
+	"vibration_duration": {"section": "Performance", "key": "vibration_duration", "value_type": "int"},
+	"keyboard_mode": {"section": "Performance", "key": "keyboard_mode", "value_type": "int"},
+	"keyboard_mode_display_names": {"section": "Performance", "key": "keyboard_mode_display_names", "value_type": "string"},
+	"keyboard_alt_color": {"section": "Performance", "key": "keyboard_alt_color", "value_type": "int"},
+	"keyboard_alt_color_count": {"section": "Performance", "key": "keyboard_alt_color_count", "value_type": "int"},
+	"keyboard_alt_colors": {"section": "Performance", "key": "keyboard_alt_colors", "value_type": "string"},
+	"keyboard_mode_gap": {"section": "Performance", "key": "keyboard_mode_gap", "value_type": "int"},
+	"keyboard_lane_separator": {"section": "Performance", "key": "keyboard_lane_separator", "value_type": "int"},
+
+	# ========== 外观设置（Appearance）==========
 	"block_skin_preset": {"section": "Appearance", "key": "block_skin_preset", "value_type": "string"},
-	"block_size": {"section": "Appearance", "key": "block_size", "value_type": "float"},
 	"note_draw_order": {"section": "Appearance", "key": "note_draw_order", "value_type": "int"},
-	"note_glow_intensity": {"section": "Appearance", "key": "note_glow_intensity", "value_type": "float"},
-	"note_glow_size": {"section": "Appearance", "key": "note_glow_size", "value_type": "float"},
+	"custom_block_skin_texture_filter_mode": {"section": "Appearance", "key": "custom_block_skin_texture_filter_mode", "value_type": "int"},
 	"randomize_block_color": {"section": "Appearance", "key": "randomize_block_color", "value_type": "int"},
 	"sync_color_across_block_type": {"section": "Appearance", "key": "sync_color_across_block_type", "value_type": "int"},
-	"short_block_color": {"section": "Appearance", "key": "short_block_color", "value_type": "color"},
 	"instant_block_color": {"section": "Appearance", "key": "instant_block_color", "value_type": "color"},
+	"short_block_color": {"section": "Appearance", "key": "short_block_color", "value_type": "color"},
 	"long_block_color": {"section": "Appearance", "key": "long_block_color", "value_type": "color"},
+	"note_glow_intensity": {"section": "Appearance", "key": "note_glow_intensity", "value_type": "float"},
+	"note_glow_size": {"section": "Appearance", "key": "note_glow_size", "value_type": "float"},
+	"perfect_spark_preset": {"section": "Appearance", "key": "perfect_spark_preset", "value_type": "string"},
+	"perfect_spark_emitter": {"section": "Appearance", "key": "perfect_spark_emitter", "value_type": "string"},
+	"perfect_spark_scaling": {"section": "Appearance", "key": "perfect_spark_scaling", "value_type": "int"},
+	"perfect_spark_alpha": {"section": "Appearance", "key": "perfect_spark_alpha", "value_type": "int"},
+	"perfect_spark_emitter_scaling": {"section": "Appearance", "key": "perfect_spark_emitter_scaling", "value_type": "int"},
+	"great_spark_preset": {"section": "Appearance", "key": "great_spark_preset", "value_type": "string"},
+	"great_spark_emitter": {"section": "Appearance", "key": "great_spark_emitter", "value_type": "string"},
+	"great_spark_scaling": {"section": "Appearance", "key": "great_spark_scaling", "value_type": "int"},
+	"great_spark_alpha": {"section": "Appearance", "key": "great_spark_alpha", "value_type": "int"},
+	"great_spark_emitter_scaling": {"section": "Appearance", "key": "great_spark_emitter_scaling", "value_type": "int"},
+	"good_spark_preset": {"section": "Appearance", "key": "good_spark_preset", "value_type": "string"},
+	"good_spark_emitter": {"section": "Appearance", "key": "good_spark_emitter", "value_type": "string"},
+	"good_spark_scaling": {"section": "Appearance", "key": "good_spark_scaling", "value_type": "int"},
+	"good_spark_alpha": {"section": "Appearance", "key": "good_spark_alpha", "value_type": "int"},
+	"good_spark_emitter_scaling": {"section": "Appearance", "key": "good_spark_emitter_scaling", "value_type": "int"},
+	"bad_spark_preset": {"section": "Appearance", "key": "bad_spark_preset", "value_type": "string"},
+	"bad_spark_emitter": {"section": "Appearance", "key": "bad_spark_emitter", "value_type": "string"},
+	"bad_spark_scaling": {"section": "Appearance", "key": "bad_spark_scaling", "value_type": "int"},
+	"bad_spark_alpha": {"section": "Appearance", "key": "bad_spark_alpha", "value_type": "int"},
+	"bad_spark_emitter_scaling": {"section": "Appearance", "key": "bad_spark_emitter_scaling", "value_type": "int"},
+	"flash_alpha": {"section": "Appearance", "key": "flash_alpha", "value_type": "float"},
+	"beam_width_mode": {"section": "Appearance", "key": "beam_width_mode", "value_type": "int"},
 	"background_image_flash_color": {"section": "Appearance", "key": "background_image_flash_color", "value_type": "color"},
-	"background_dim_color": {"section": "Appearance", "key": "background_dim_color", "value_type": "color"},
-		"beam_width_mode": {"section": "Appearance", "key": "beam_width_mode", "value_type": "int"},
-	"judge_line_thickness": {"section": "Appearance", "key": "judge_line_thickness", "value_type": "int"},
-	"generate_short_connect": {"section": "Appearance", "key": "generate_short_connect", "value_type": "int"},
-	"generate_instant_connect": {"section": "Appearance", "key": "generate_instant_connect", "value_type": "int"},
-	"instant_connect_max_time": {"section": "Appearance", "key": "instant_connect_max_time", "value_type": "float"},
+	"background_dim_color": {"section": "Appearance", "key": "background_dim_color", "value_type": "color"}
 }
 
 ## 将 INI 配置转换为 SettingList 格式的字典
@@ -219,15 +213,17 @@ static func settings_to_ini(settings: Dictionary) -> Dictionary:
 			"string":
 				result[section][key] = str(value)
 	
-	# 特殊处理：Browse 设置从选项索引转换为字符串值
-	if result.has("Browse") and result["Browse"] is Dictionary:
-		var browse: Dictionary = result["Browse"]
-		if browse.has("album_sort_method"):
-			var idx = int(browse["album_sort_method"])
-			browse["album_sort_method"] = ["creation_time", "download_time"][clamp(idx, 0, 1)]
-		if browse.has("album_sort_direction"):
-			var idx = int(browse["album_sort_direction"])
-			browse["album_sort_direction"] = "asc" if idx == 0 else "desc"
+	# 特殊处理：专辑排序两项在 UI 里是选项索引，写盘要换成字符串。
+	# section 不写死（它们现在在 General），统一从映射表取，避免以后搬组时再次失效。
+	var sort_sec: String = mappings["album_sort_method"].section
+	if result.has(sort_sec) and result[sort_sec] is Dictionary:
+		var sort_sec_data: Dictionary = result[sort_sec]
+		if sort_sec_data.has("album_sort_method"):
+			var idx := int(sort_sec_data["album_sort_method"])
+			sort_sec_data["album_sort_method"] = ["creation_time", "download_time"][clamp(idx, 0, 1)]
+		if sort_sec_data.has("album_sort_direction"):
+			var dir_idx := int(sort_sec_data["album_sort_direction"])
+			sort_sec_data["album_sort_direction"] = "asc" if dir_idx == 0 else "desc"
 	
 	return result
 

@@ -101,20 +101,20 @@ func _update_switch_buttons() -> void:
 func _load_current_values() -> void:
 	var jl := _judge_type.to_lower()
 	# 基础粒子 preset（配置存粒子包名字，找不到回退 None=索引0）
-	var preset_name: String = ConfigManager.instance.get_string("Lane", jl + "_spark_preset", "")
+	var preset_name: String = ConfigManager.instance.get_string("Appearance", jl + "_spark_preset", "")
 	_basic_particle_btn.selected = _preset_index_of(preset_name, _base_presets)
 	# 散射粒子 preset
-	var emitter_name: String = ConfigManager.instance.get_string("Lane", jl + "_spark_emitter", "")
+	var emitter_name: String = ConfigManager.instance.get_string("Appearance", jl + "_spark_emitter", "")
 	_emitter_btn.selected = _preset_index_of(emitter_name, _emitter_presets)
 	# 三个数值（临时断开信号避免回环）
 	_total_scale_edit.text_changed.disconnect(_on_value_changed)
-	_total_scale_edit.text = str(ConfigManager.instance.get_int("Lane", jl + "_spark_scaling", 100))
+	_total_scale_edit.text = str(ConfigManager.instance.get_int("Appearance", jl + "_spark_scaling", 100))
 	_total_scale_edit.text_changed.connect(_on_value_changed)
 	_total_alpha_edit.text_changed.disconnect(_on_value_changed)
-	_total_alpha_edit.text = str(ConfigManager.instance.get_int("Lane", jl + "_spark_alpha", 100))
+	_total_alpha_edit.text = str(ConfigManager.instance.get_int("Appearance", jl + "_spark_alpha", 100))
 	_total_alpha_edit.text_changed.connect(_on_value_changed)
 	_emitter_scale_edit.text_changed.disconnect(_on_value_changed)
-	_emitter_scale_edit.text = str(ConfigManager.instance.get_int("Lane", jl + "_spark_emitter_scaling", 150))
+	_emitter_scale_edit.text = str(ConfigManager.instance.get_int("Appearance", jl + "_spark_emitter_scaling", 150))
 	_emitter_scale_edit.text_changed.connect(_on_value_changed)
 
 ## 刷新粒子包选项列表（索引 0=None，1 起按 ParticleMGR 扫描顺序）
@@ -187,11 +187,11 @@ func stop_preview() -> void:
 ## 将当前所有控件值写入对应判定类型的配置字段（set_value_and_notify 即时应用 + 热更新）
 func _save_current() -> void:
 	var jl := _judge_type.to_lower()
-	ConfigManager.instance.set_value_and_notify("Lane", jl + "_spark_preset", _base_presets[_basic_particle_btn.selected])
-	ConfigManager.instance.set_value_and_notify("Lane", jl + "_spark_emitter", _emitter_presets[_emitter_btn.selected])
-	ConfigManager.instance.set_value_and_notify("Lane", jl + "_spark_scaling", _read_pct(_total_scale_edit, 100))
-	ConfigManager.instance.set_value_and_notify("Lane", jl + "_spark_alpha", _read_pct(_total_alpha_edit, 100))
-	ConfigManager.instance.set_value_and_notify("Lane", jl + "_spark_emitter_scaling", _read_pct(_emitter_scale_edit, 150))
+	ConfigManager.instance.set_value_and_notify("Appearance", jl + "_spark_preset", _base_presets[_basic_particle_btn.selected])
+	ConfigManager.instance.set_value_and_notify("Appearance", jl + "_spark_emitter", _emitter_presets[_emitter_btn.selected])
+	ConfigManager.instance.set_value_and_notify("Appearance", jl + "_spark_scaling", _read_pct(_total_scale_edit, 100))
+	ConfigManager.instance.set_value_and_notify("Appearance", jl + "_spark_alpha", _read_pct(_total_alpha_edit, 100))
+	ConfigManager.instance.set_value_and_notify("Appearance", jl + "_spark_emitter_scaling", _read_pct(_emitter_scale_edit, 150))
 
 ## 切换基础/散射粒子下拉：即时保存到对应判定类型的配置字段并播放一次预览
 func _on_preset_changed(_index: int) -> void:
@@ -219,10 +219,10 @@ func get_result() -> Dictionary:
 	for judge in JUDGE_TYPES:
 		var jl := judge.to_lower()
 		by_judge[judge] = {
-			"preset": ConfigManager.instance.get_string("Lane", jl + "_spark_preset", ""),
-			"emitter": ConfigManager.instance.get_string("Lane", jl + "_spark_emitter", ""),
-			"scaling": ConfigManager.instance.get_int("Lane", jl + "_spark_scaling", 100),
-			"alpha": ConfigManager.instance.get_int("Lane", jl + "_spark_alpha", 100),
-			"emitter_scaling": ConfigManager.instance.get_int("Lane", jl + "_spark_emitter_scaling", 150),
+			"preset": ConfigManager.instance.get_string("Appearance", jl + "_spark_preset", ""),
+			"emitter": ConfigManager.instance.get_string("Appearance", jl + "_spark_emitter", ""),
+			"scaling": ConfigManager.instance.get_int("Appearance", jl + "_spark_scaling", 100),
+			"alpha": ConfigManager.instance.get_int("Appearance", jl + "_spark_alpha", 100),
+			"emitter_scaling": ConfigManager.instance.get_int("Appearance", jl + "_spark_emitter_scaling", 150),
 		}
 	return {"by_judge": by_judge}

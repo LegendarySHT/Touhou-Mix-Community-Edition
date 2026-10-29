@@ -120,7 +120,7 @@ public partial class MeltySynthPlayer : Node
 	/// 开局预卷时长（毫秒，正值表示"提前量"）。
 	///
 	/// 【为什么计算收在这里】预卷时长是**播放时序知识**，原先有两条独立读数：
-	/// PlayView 用 `ConfigManager.get_float("Generator","note_fall_time")` 算
+	/// PlayView 用 `ConfigManager.get_float("Performance","note_fall_time")` 算
 	/// `-(1000 + fall*1000)`；FlowArea 又把同一个配置读一遍、按
 	/// `max(1.0, fall*1000)` 算出音符生成提前量。两条规则并不等价（前者恒加 1s 余量、
 	/// 后者有 1s 下限），默认配置（0.7s）下恰好都不显形，一旦 note_fall_time > 1.0

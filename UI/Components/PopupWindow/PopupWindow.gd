@@ -227,9 +227,9 @@ func show_kb_mode_adjust(current_keys: String = "", current_display_names: Strin
 		current_lane_sep: Variant = 0) -> Dictionary:
 	# 优先使用传入的 pending 值；为空时回退到配置文件（兼容直接调用）
 	var keys_str := current_keys if not current_keys.is_empty() else \
-		ConfigManager.instance.get_string("Lane", "keyboard_mode_keys", "A,S,D,F,J,K,L,;")
+		ConfigManager.instance.get_string("Performance", "keyboard_mode_keys", "A,S,D,F,J,K,L,;")
 	var names_str := current_display_names if not current_display_names.is_empty() else \
-		ConfigManager.instance.get_string("Lane", "keyboard_mode_display_names", "")
+		ConfigManager.instance.get_string("Performance", "keyboard_mode_display_names", "")
 	_kb_mode_adjust.init_adjust(keys_str, names_str, current_kb_mode, current_alt_color, current_alt_count, current_alt_colors, current_gap, current_lane_sep)
 	
 	_pop_up_window(5)

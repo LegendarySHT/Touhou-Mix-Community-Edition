@@ -16,7 +16,7 @@ const DIFFICULTY_LOCKED_IDS: Array[String] = [
 	"max_block_coalesce_time",
 ]
 const DIFFICULTY_CUSTOM_ID: int = 4
-const DIFFICULTY_CFG_SECTION: String = "Generator"
+const DIFFICULTY_CFG_SECTION: String = "System"
 const DIFFICULTY_CFG_KEY: String = "difficulty"
 
 # 进入 SettingView 时的配置快照（setting_id → 原始值，类型已转换好）
@@ -102,7 +102,7 @@ func load_settings(setting: Dictionary = {}):
 			# （见 _apply_advanced_visibility）。目的是缩短首次进入设置页的构建耗时
 			if setting_data.get("advanced", false) and not show_advanced:
 				continue
-			var init_value = _pending_config.get(setting_data.id, setting_data.default_value)
+			var init_value = _pending_config.get(setting_data.id, null)
 			add_setting_item(setting_data, init_value, group_idx)
 		group_idx += 1
 
@@ -173,8 +173,9 @@ func add_setting_item(setting_data: Dictionary, init_value: Variant = "", group_
 	var display_name = setting_data["name_%s" % language] if language in ["en", "zh"] else setting_data.name_en
 	var description = setting_data.description
 
-	# 设置初始值（从保存的数据或默认值）
-	var initial_value = init_value if init_value != null and str(init_value) != "" else setting_data.default_value
+	# 设置初始值：默认值只来自 config.ini（经 SettingsMapper 转成 _pending_config），
+	# 数据表不再声明 default_value。不持久化到 INI 的项（主题/外观/背景图）在下面各自兜底。
+	var initial_value = init_value if init_value != null and str(init_value) != "" else null
 	# theme_preset 不持久化到 INI，从 ThemeManager 读取当前主题名作为初始值，确保下拉框选中当前主题
 	if setting_data.id == "theme_preset" and (initial_value == null or str(initial_value) == "") and ThemeMGR:
 		initial_value = ThemeMGR.get_theme_name()
@@ -479,14 +480,14 @@ func _popup_kb_mode_adjust() -> void:
 		return
 	# 键盘模式弹窗内部未写 ConfigManager，此处统一即时提交（apply=true）
 	_commit_popup_result(result, [
-		{"from":"keys","section":"Lane","key":"keyboard_mode_keys","type":"string","apply":true},
-		{"from":"display_names","section":"Lane","key":"keyboard_mode_display_names","type":"string","apply":true},
-		{"from":"keyboard_mode","section":"Lane","key":"keyboard_mode","type":"int","apply":true},
-		{"from":"keyboard_mode_gap","section":"Lane","key":"keyboard_mode_gap","type":"int","apply":true},
-		{"from":"alt_color","section":"Lane","key":"keyboard_alt_color","type":"int","apply":true},
-		{"from":"alt_count","section":"Lane","key":"keyboard_alt_color_count","type":"int","apply":true},
-		{"from":"alt_colors","section":"Lane","key":"keyboard_alt_colors","type":"string","apply":true},
-		{"from":"lane_separator","section":"Lane","key":"keyboard_lane_separator","type":"int","apply":true},
+		{"from":"keys","section":"Performance","key":"keyboard_mode_keys","type":"string","apply":true},
+		{"from":"display_names","section":"Performance","key":"keyboard_mode_display_names","type":"string","apply":true},
+		{"from":"keyboard_mode","section":"Performance","key":"keyboard_mode","type":"int","apply":true},
+		{"from":"keyboard_mode_gap","section":"Performance","key":"keyboard_mode_gap","type":"int","apply":true},
+		{"from":"alt_color","section":"Performance","key":"keyboard_alt_color","type":"int","apply":true},
+		{"from":"alt_count","section":"Performance","key":"keyboard_alt_color_count","type":"int","apply":true},
+		{"from":"alt_colors","section":"Performance","key":"keyboard_alt_colors","type":"string","apply":true},
+		{"from":"lane_separator","section":"Performance","key":"keyboard_lane_separator","type":"int","apply":true},
 	])
 	GLogger.info("keyboard_mode_keys updated: %s, kb_mode=%s" % [p.get("keyboard_mode_keys"), result.get("keyboard_mode")], "SettingList")
 
@@ -498,13 +499,13 @@ func _popup_falling_adjust() -> void:
 	if result.is_empty():
 		return
 	_commit_popup_result(result, [
-		{"from":"note_fall_mode","section":"Generator","key":"note_fall_mode","type":"int"},
-		{"from":"note_fall_time","section":"Generator","key":"note_fall_time","type":"float"},
-		{"from":"note_fall_speed_after_judge_multiplier","section":"Generator","key":"note_fall_speed_after_judge_multiplier","type":"float"},
-		{"from":"note_fall_easing_before_func","section":"Generator","key":"note_fall_easing_before_func","type":"string"},
-		{"from":"note_fall_easing_before_phase","section":"Generator","key":"note_fall_easing_before_phase","type":"string"},
-		{"from":"note_fall_easing_after_func","section":"Generator","key":"note_fall_easing_after_func","type":"string"},
-		{"from":"note_fall_easing_after_phase","section":"Generator","key":"note_fall_easing_after_phase","type":"string"},
+		{"from":"note_fall_mode","section":"Performance","key":"note_fall_mode","type":"int"},
+		{"from":"note_fall_time","section":"Performance","key":"note_fall_time","type":"float"},
+		{"from":"note_fall_speed_after_judge_multiplier","section":"Performance","key":"note_fall_speed_after_judge_multiplier","type":"float"},
+		{"from":"note_fall_easing_before_func","section":"Performance","key":"note_fall_easing_before_func","type":"string"},
+		{"from":"note_fall_easing_before_phase","section":"Performance","key":"note_fall_easing_before_phase","type":"string"},
+		{"from":"note_fall_easing_after_func","section":"Performance","key":"note_fall_easing_after_func","type":"string"},
+		{"from":"note_fall_easing_after_phase","section":"Performance","key":"note_fall_easing_after_phase","type":"string"},
 	])
 	GLogger.info("Falling params updated (pending save)" , "SettingList")
 
@@ -966,17 +967,6 @@ func get_option_text(setting_id: String, index: int) -> String:
 		return ""
 	return option_btn.get_item_text(index)
 
-## 重置所有设置为默认值
-func reset_to_defaults():
-	for setting_id in setting_items:
-		for group in setting_groups:
-			for setting_data in group.settings:
-				if setting_data.id == setting_id:
-					var setting_item = setting_items[setting_id]
-					if setting_item:
-						setting_item.set_value(setting_data.default_value)
-					break
-
 ## ========== 可见性控制 ==========
 
 ## 根据 show_advanced_settings 的值显示/隐藏所有标记为 advanced 的设置项。
@@ -1021,7 +1011,7 @@ func _is_advanced_visible() -> bool:
 ## add_setting_item 一律追加到容器末尾，不移动的话新项会全堆到列表最后。
 func _add_advanced_item(setting_data: Dictionary, group_idx: int) -> void:
 	var setting_id: String = setting_data.id
-	var init_value = _pending_config.get(setting_id, setting_data.default_value)
+	var init_value = _pending_config.get(setting_id, null)
 	add_setting_item(setting_data, init_value, group_idx)
 
 	var setting_item: SettingItem = setting_items.get(setting_id)

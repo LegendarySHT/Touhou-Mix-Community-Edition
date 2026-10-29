@@ -117,10 +117,10 @@ func push_global_playback_config() -> void:
 		return
 	# 默认值不写在这里：config.ini 是唯一权威来源（见 Game/PlayerSettings.gd 头部说明）
 	MeltySynth.set_global_playback_config(
-		float(cfg.get_float("Gameplay", "default_midi_volume")),
-		cfg.get_int("Playback", "use_system_stopwatch") != 0,
-		float(cfg.get_int("Gameplay", "audio_sync_threshold")),
-		float(cfg.get_float("Gameplay", "default_vocal_volume")))
+		float(cfg.get_float("Audio", "default_midi_volume")),
+		cfg.get_int("Performance", "use_system_stopwatch") != 0,
+		float(cfg.get_int("Audio", "audio_sync_threshold")),
+		float(cfg.get_float("Audio", "default_vocal_volume")))
 	# 恢复"播放器页音量"：它只属于播放器页会话（换曲模式 Playlist），与谱面配置互不覆盖。
 	# 不接这一步，存进 [Playback] 的值永远读不回来
 	_load_player_volumes()
@@ -502,7 +502,7 @@ func get_backend_volume_db() -> float:
 	return MeltySynth.get_volume_db() if MeltySynth != null else -20.0
 
 func load_soundfont_from_config() -> void:
-	var name: String = str(ConfigManager.instance.get_value("Gameplay", "soundfont_file"))
+	var name: String = str(ConfigManager.instance.get_value("Audio", "soundfont_file"))
 	name = name.replace(".sf2", "").replace("[内置]", "").strip_edges()
 	if not name.is_empty() and set_soundfont(name):
 		return
@@ -858,7 +858,10 @@ func set_volume_db(db: float) -> void:
 	if MeltySynth != null: MeltySynth.set_volume_db(db)
 func get_volume_db() -> float:
 	return MeltySynth.get_volume_db() if MeltySynth != null else 0.0
-const PLAYER_VOL_SECTION := "Playback"
+## 播放器页音量的持久化位置。
+## 注意：这两个键**刻意不写进默认 config.ini**——读取时用 -1.0 作「从未存过」哨兵，
+## 一旦默认文件里有值，就会把「没设置过」误判成「存过」，从而覆盖全局音量默认。
+const PLAYER_VOL_SECTION := "System"
 const PLAYER_MIDI_KEY := "player_midi_linear"
 const PLAYER_VOCAL_KEY := "player_vocal_db"
 

@@ -141,7 +141,7 @@ func _global_default_vocal_volume() -> float:
 		if v != null:
 			raw = float(v)
 	elif ConfigManager != null and ConfigManager.instance != null:
-		raw = ConfigManager.instance.get_float("Gameplay", "default_vocal_volume")
+		raw = ConfigManager.instance.get_float("Audio", "default_vocal_volume")
 	var vol := raw
 	if vol > 1.0:
 		vol /= 100.0

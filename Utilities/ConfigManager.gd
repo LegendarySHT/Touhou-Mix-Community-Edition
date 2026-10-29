@@ -3,12 +3,12 @@
 ## 
 ## 新API使用方式（推荐）：
 ##   ConfigManager.instance.load_and_set_current(ConfigManager.DEFAULT_CONFIG_PATH)
-##   var lane_count = ConfigManager.instance.get_int("Lane", "lane_count", 12)
-##   ConfigManager.instance.set_value_and_notify("Lane", "lane_count", 16)
+##   var lane_count = ConfigManager.instance.get_int("Gameplay", "lane_count", 12)
+##   ConfigManager.instance.set_value_and_notify("Gameplay", "lane_count", 16)
 ##
 ## 兼容旧API（传入config参数）：
 ##   var config = ConfigManager.instance.load_config(ConfigManager.DEFAULT_CONFIG_PATH)
-##   var lane_count = ConfigManager.instance.get_int("Lane", "lane_count", 12, config)
+##   var lane_count = ConfigManager.instance.get_int("Gameplay", "lane_count", 12, config)
 ##
 ## 配置变更通知：
 ##   EvtBus.config_changed.connect(_on_config_changed)
@@ -49,7 +49,14 @@ static var SOUNDFONT_DIR: String:
 	get: return PathHelper.get_soundfont_dir()
 
 ## 配置版本号
-const CONFIG_VERSION = "1.2.0"
+## 2.0.0：section 按设置页分类重组（General/Audio/Gameplay/Performance/Appearance/System），
+##        默认值统一由 config.ini 提供。旧版本用户配置会按 key 名自动迁移（见 check_and_migrate）。
+const CONFIG_VERSION = "2.0.0"
+
+## 当前版本使用的 section 集合。不在这个集合里的 section 视为历史结构，迁移时按键名搬迁。
+const KNOWN_SECTIONS: Array[String] = [
+	"General", "Audio", "Gameplay", "Performance", "Appearance", "System"
+]
 
 # ============ 内部状态 ============
 
@@ -166,8 +173,8 @@ func load_and_set_current(_file_path: String = "") -> Dictionary:
 # ============ 配置读取方法 ============
 
 ## 获取配置值（使用当前活跃配置或指定配置）
-## 简化用法：get_value("Lane", "lane_count", 12)
-## 兼容用法：get_value("Lane", "lane_count", 12, some_config)
+## 简化用法：get_value("Gameplay", "lane_count", 12)
+## 兼容用法：get_value("Gameplay", "lane_count", 12, some_config)
 func get_value(section: String, key: String, default: Variant = "", config: Variant = null) -> Variant:
 	if config == null or not (config is Dictionary):
 		config = _current_config
@@ -212,8 +219,8 @@ func get_string(section: String, key: String, default: String = "", config: Vari
 # ============ 配置写入方法 ============
 
 ## 设置配置值并发送变更通知（使用当前活跃配置或指定配置）
-## 简化用法：set_value_and_notify("Lane", "lane_count", 12)
-## 兼容用法：set_value_and_notify("Lane", "lane_count", 12, some_config)
+## 简化用法：set_value_and_notify("Gameplay", "lane_count", 12)
+## 兼容用法：set_value_and_notify("Gameplay", "lane_count", 12, some_config)
 func set_value_and_notify(section: String, key: String, value: Variant, config: Variant = null) -> void:
 	if config == null:
 		config = _current_config
@@ -377,43 +384,140 @@ func reload_config() -> bool:
 	return true
 
 ## 检查并迁移配置版本
-## 当用户配置版本过旧时，从默认配置中恢复缺失部分
+## 版本不匹配时按 **key 名** 迁移：从旧结构 section 里逐个取出键，到新默认配置里找它
+## 现在属于哪个 section，再写过去。key 全局唯一（同一个键不会出现在两个 section），
+## 所以即使 section 全部改名，用户的值也不会丢。
+## 已是新结构的 section 里的用户值优先保留（那是用户在当前版本写过的）。
 func check_and_migrate(config: Variant = null, file_path: String = "") -> Dictionary:
 	if config == null:
 		config = _current_config
-	
-	var version = get_value("Game", "config_version", "0.0.0", config)
-	
+
+	if not (config is Dictionary):
+		return {}
+
+	var version = get_value("System", "config_version", "0.0.0", config)
 	if version == CONFIG_VERSION:
 		GLogger.debug("Configuration version is current", "ConfigManager")
 		return config
-	
-	# 版本不匹配，进行迁移
-	GLogger.info("Migrating config from version %s to %s" % [version, CONFIG_VERSION], "ConfigManager")
-	
-	# 加载默认配置以获取新增部分
+
+	# 默认配置作为迁移骨架：新 section、新键、新默认值都从它来
 	var default_config = load_config(DEFAULT_CONFIG_PATH)
 	if default_config.is_empty():
 		push_error("Failed to load default config for migration")
+		GLogger.error("Migration aborted: default config missing", "ConfigManager")
 		return config
-	
-	# 合并配置（保留用户设置，添加新的默认值）
-	var migrated = merge_with_defaults(config, default_config)
-	
-	# 更新版本号
-	set_value("Game", "config_version", CONFIG_VERSION, migrated)
-	
-	# 保存迁移后的配置到用户配置文件
+
+	GLogger.info("Migrating config from %s to %s (by key name)" % [version, CONFIG_VERSION], "ConfigManager")
+	var migrated: Dictionary = default_config.duplicate(true)
+
+	# 1) 当前结构的 section：用户写过的值覆盖默认层
+	for section in config.keys():
+		if not (section in KNOWN_SECTIONS):
+			continue
+		if not migrated.has(section) or not (migrated[section] is Dictionary):
+			continue
+		var sec_data = config[section]
+		if not (sec_data is Dictionary):
+			continue
+		for key in sec_data.keys():
+			migrated[section][key] = sec_data[key]
+
+	# 2) 历史 section：按 key 名搬到它现在所属的 section
+	var moved := 0
+	var dropped: Array[String] = []
+	for section in config.keys():
+		if section in KNOWN_SECTIONS:
+			continue
+		if not (config[section] is Dictionary):
+			continue
+		for key in config[section].keys():
+			var target := _find_section_of_key(key, migrated)
+			if target.is_empty():
+				dropped.append("%s/%s" % [section, key])
+				continue
+			migrated[target][key] = config[section][key]
+			moved += 1
+
+	GLogger.info("Migration moved %d keys, dropped %d obsolete" % [moved, dropped.size()], "ConfigManager")
+	if not dropped.is_empty():
+		GLogger.info("Dropped obsolete keys: %s" % ", ".join(dropped), "ConfigManager")
+
+	if not migrated.has("System"):
+		migrated["System"] = {}
+	migrated["System"]["config_version"] = CONFIG_VERSION
+
 	var save_path = USER_CONFIG_PATH if file_path.is_empty() else file_path
 	if save_config(save_path, migrated):
 		GLogger.info("Configuration migrated and saved to %s" % save_path, "ConfigManager")
 	else:
 		GLogger.warning("Failed to save migrated configuration", "ConfigManager")
-	
-	# 更新当前活跃配置
+
 	_current_config = migrated
-	
 	return migrated
+
+## 在配置里查某个 key 现在属于哪个 section。
+## key 全局唯一是本函数成立的前提（见 config.ini 头部说明与 validate_defaults 自检）。
+func _find_section_of_key(key: String, config: Dictionary) -> String:
+	for section in config.keys():
+		var sec_data = config[section]
+		if sec_data is Dictionary and sec_data.has(key):
+			return String(section)
+	return ""
+
+## 启动自检：默认值只在 config.ini 一处维护，本函数就是这条约定的护栏。
+## 检查两件事：
+##   1. SettingsMapper 里声明的每个 section/key 在默认 config.ini 中确实存在；
+##      缺失意味着该项永远拿不到默认值（UI 空、或代码里的兜底值悄悄生效）。
+##   2. key 在整份默认配置里全局唯一——迁移逻辑（按 key 名搬 section）依赖这一点。
+## 返回 false 时说明配置有结构性错误，但不会中断启动（仍用现有默认值运行）。
+func validate_defaults() -> bool:
+	var default_config = load_config(DEFAULT_CONFIG_PATH)
+	if default_config.is_empty():
+		push_error("[Config] 默认配置加载失败，无法校验: %s" % DEFAULT_CONFIG_PATH)
+		GLogger.error("validate_defaults: default config unavailable", "ConfigManager")
+		return false
+
+	var missing: Array[String] = []
+	for setting_id in SettingsMapper.mappings.keys():
+		var m: Dictionary = SettingsMapper.mappings[setting_id]
+		var sec: String = m.get("section", "")
+		var key: String = m.get("key", "")
+		if sec.is_empty() or key.is_empty():
+			missing.append("%s -> 映射缺 section/key" % setting_id)
+			continue
+		if not default_config.has(sec) or not (default_config[sec] is Dictionary) \
+				or not default_config[sec].has(key):
+			missing.append("%s -> [%s] %s" % [setting_id, sec, key])
+
+	# key 唯一性
+	var seen := {}
+	var dup: Array[String] = []
+	for section in default_config.keys():
+		var sec_data = default_config[section]
+		if not (sec_data is Dictionary):
+			continue
+		for key in sec_data.keys():
+			if seen.has(key):
+				dup.append("%s（[%s] 与 [%s]）" % [key, seen[key], section])
+			else:
+				seen[key] = section
+
+	if missing.is_empty() and dup.is_empty():
+		# 默认文件自己的版本号必须与常量一致：不一致时每个新用户首次启动都会白跑一次迁移
+		var ini_version := str(default_config.get("System", {}).get("config_version", ""))
+		if ini_version != CONFIG_VERSION:
+			push_error("[Config] config.ini 的 config_version=%s 与 CONFIG_VERSION=%s 不一致" % [ini_version, CONFIG_VERSION])
+			GLogger.error("validate_defaults: version mismatch in default config", "ConfigManager")
+			return false
+		GLogger.info("validate_defaults OK: %d 项映射全部命中默认配置，key 无重复，版本 %s" % [SettingsMapper.mappings.size(), CONFIG_VERSION], "ConfigManager")
+		return true
+
+	for item in missing:
+		push_error("[Config] 默认配置缺少映射项: %s（应补进 config.ini 对应 section）" % item)
+	for item in dup:
+		push_error("[Config] key 重复: %s（迁移按 key 名搬迁，重复会导致串值）" % item)
+	GLogger.error("validate_defaults 失败：缺 %d 项，重复 %d 项" % [missing.size(), dup.size()], "ConfigManager")
+	return false
 
 # ============ JSON 文件操作方法 ============
 

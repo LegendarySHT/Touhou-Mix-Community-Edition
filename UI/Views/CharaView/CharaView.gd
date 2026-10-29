@@ -178,7 +178,7 @@ func _hide_detail() -> void:
 ## 选中角色：写入配置持久化并把 SelectBtn 置灰
 func _select_chara(chara_key: String) -> void:
 	if ConfigManager.instance:
-		ConfigManager.instance.set_value_and_notify("Chara", "chara_id", chara_key)
+		ConfigManager.instance.set_value_and_notify("System", "chara_id", chara_key)
 		ConfigManager.instance.save_config(ConfigManager.instance.USER_CONFIG_PATH)
 	_detail_select_btn.disabled = true
 	_detail_select_btn.text = "已选中"
