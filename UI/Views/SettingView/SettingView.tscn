@@ -45,61 +45,79 @@ theme_override_constants/separation = 160
 
 [node name="ShortCut" type="VBoxContainer" parent="HBoxC" unique_id=1510637142]
 z_index = 2
-custom_minimum_size = Vector2(250, 0)
+custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 offset_transform_enabled = true
+offset_transform_position = Vector2(50, 0)
+offset_transform_visual_only = false
 focus_mode = 1
 alignment = 1
 
 [node name="Btn1" type="Button" parent="HBoxC/ShortCut" unique_id=156541801]
-custom_minimum_size = Vector2(0, 150)
+custom_minimum_size = Vector2(0, 110)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
-focus_previous = NodePath("../Btn6")
+focus_previous = NodePath("../Btn8")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
 text = "常规"
 
 [node name="Btn2" type="Button" parent="HBoxC/ShortCut" unique_id=1013103172]
-custom_minimum_size = Vector2(0, 150)
+custom_minimum_size = Vector2(0, 110)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
-text = "播放"
+text = "音频"
 
 [node name="Btn3" type="Button" parent="HBoxC/ShortCut" unique_id=619785561]
-custom_minimum_size = Vector2(0, 150)
-layout_mode = 2
-focus_neighbor_right = NodePath("../../SettingList/GridC")
-toggle_mode = true
-button_group = SubResource("ButtonGroup_tf36t")
-text = "轨道"
-
-[node name="Btn4" type="Button" parent="HBoxC/ShortCut" unique_id=1322863020]
-custom_minimum_size = Vector2(0, 150)
+custom_minimum_size = Vector2(0, 110)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
 text = "判定"
 
-[node name="Btn5" type="Button" parent="HBoxC/ShortCut" unique_id=1115311117]
-custom_minimum_size = Vector2(0, 150)
+[node name="Btn4" type="Button" parent="HBoxC/ShortCut" unique_id=1322863020]
+custom_minimum_size = Vector2(0, 110)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
 text = "生成"
 
+[node name="Btn5" type="Button" parent="HBoxC/ShortCut" unique_id=1115311117]
+custom_minimum_size = Vector2(0, 110)
+layout_mode = 2
+focus_neighbor_right = NodePath("../../SettingList/GridC")
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tf36t")
+text = "演奏"
+
 [node name="Btn6" type="Button" parent="HBoxC/ShortCut" unique_id=1128822496]
-custom_minimum_size = Vector2(0, 150)
+custom_minimum_size = Vector2(0, 110)
+layout_mode = 2
+focus_neighbor_right = NodePath("../../SettingList/GridC")
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tf36t")
+text = "外观"
+
+[node name="Btn7" type="Button" parent="HBoxC/ShortCut" unique_id=1692895041]
+custom_minimum_size = Vector2(0, 110)
+layout_mode = 2
+focus_neighbor_right = NodePath("../../SettingList/GridC")
+toggle_mode = true
+button_group = SubResource("ButtonGroup_tf36t")
+text = "界面"
+
+[node name="Btn8" type="Button" parent="HBoxC/ShortCut" unique_id=1566842465]
+custom_minimum_size = Vector2(0, 110)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
 focus_next = NodePath("../Btn1")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
-text = "外观"
+text = "关于"
 
 [node name="SettingList" type="ScrollContainer" parent="HBoxC" unique_id=864187716]
 z_index = 1
@@ -126,6 +144,15 @@ offset_transform_visual_only = false
 theme_override_constants/h_separation = 60
 theme_override_constants/v_separation = 20
 columns = 2
+
+[node name="AboutPage" type="Panel" parent="HBoxC" unique_id=702840665]
+visible = false
+z_index = 1
+custom_minimum_size = Vector2(800, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 5.0
+offset_transform_enabled = true
 
 [node name="DelView" type="HBoxContainer" parent="." unique_id=2038911108]
 visible = false

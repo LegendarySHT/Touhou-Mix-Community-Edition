@@ -1,6 +1,15 @@
 extends Control
 @onready var setting_list: SettingList = $HBoxC/SettingList
 @onready var short_cut_btn = $HBoxC/ShortCut
+@onready var about_page: Panel = $HBoxC/AboutPage
+
+## 「关于」按钮在 ShortCut 中的下标。
+## 该按钮不对应任何设置分组——按下它时把列表区整体换成 AboutPage，而非滚动到某个分组。
+## 因此它必须 >= SettingGroupsData 的组数，否则会与真实分组抢下标。
+const ABOUT_BTN_INDEX: int = 7
+
+## 进入「关于」前停留的分组按钮下标，从关于页返回时用它还原位置
+var _last_group_btn_idx: int = 0
 
 ## 配置文件路径（通过 PathHelper 动态获取，兼容 Android）
 ## 使用 getter 确保运行时才求值
@@ -10,6 +19,9 @@ const DEFAULT_CONFIG_PATH = "res://Resources/Config/config.ini"
 
 
 func _ready() -> void:
+	# 面板初始态：设置列表在前，关于页隐藏。两者互斥显示，由 _show_about 统一切换
+	_show_about(false)
+
 	var idx: int = 0
 	for btn:Button in short_cut_btn.get_children():
 		btn.toggled.connect(_on_button_toggled.bind(idx))
@@ -211,6 +223,15 @@ func _persist_config_to_disk(base_config: Dictionary) -> void:
 var _snap_tween: Tween = null
 # 左侧快速跳转按钮的事件
 func _on_button_toggled(_toggled_on: bool, idx: int):
+	# 「关于」不是设置分组：切面板后直接返回。
+	# 它没有对应的分隔符，继续走下面的滚动定位会算不到目标而空转
+	if idx == ABOUT_BTN_INDEX:
+		_show_about(true)
+		return
+
+	_last_group_btn_idx = idx
+	_show_about(false)
+
 	var target_idx = idx*2
 	var c_idx = 0
 	
@@ -230,6 +251,26 @@ func _on_button_toggled(_toggled_on: bool, idx: int):
 						btn.focus_neighbor_right = neighbor.get_path()
 				)
 			c_idx += 1
+
+## 切换「设置列表 ↔ 关于页」。
+## 两者都是 HBoxC 的直接子节点且都设了 expand，互斥显示即可让 HBoxContainer
+## 只给可见的那个分配宽度——左侧 ShortCut 按钮栏因此保持原位，不会被挤压。
+func _show_about(is_about: bool) -> void:
+	if setting_list:
+		setting_list.visible = not is_about
+	if about_page:
+		about_page.visible = is_about
+
+## 从关于页返回上一次停留的分组。
+## 直接置 button_pressed 会重新触发 toggled → _on_button_toggled，从而复用那里的
+## 滚动吸附与右邻焦点重建，不必在这里重复实现一遍定位逻辑。
+func _restore_last_group() -> void:
+	var btn := short_cut_btn.get_child(_last_group_btn_idx)
+	if btn is Button and not (btn as Button).button_pressed:
+		(btn as Button).button_pressed = true
+	else:
+		# 按钮已是按下态则不会触发 toggled，兜底直接把面板切回去
+		_show_about(false)
 
 # 获取当前ui中的配置
 func _get_config():
@@ -310,5 +351,9 @@ func switch_page_instant() -> void:
 func handle_back_request() -> bool:
 	if delete_page and delete_page.visible and not setting_page.visible:
 		EvtBus.page_right.emit()
+		return true
+	# 关于页可见时，返回键先回设置列表（还原进入前的分组），而不是直接退出设置
+	if about_page and about_page.visible:
+		_restore_last_group()
 		return true
 	return false

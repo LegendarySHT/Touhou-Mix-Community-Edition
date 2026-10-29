@@ -1,6 +1,20 @@
 ## 设置项分组静态数据
 ## 从 SettingList.gd 外移，纯数据无逻辑
 ##
+## ── 分组原则（新增设置项时按此裁决，按顺序取第一个命中项）──
+##   1. 改变「哪些音符存在 / 是什么类型」            → 生成设置
+##   2. 改变「打中之后怎么算」                       → 判定设置
+##   3. 改变「音符摆在哪 / 怎么下落 / 你按哪」        → 演奏设置
+##   4. 以上都不变，只影响渲染                       → 外观设置
+##   5. 与游玩无关（主题、背景图、语言、存储、网络）   → 界面设置 / 常规设置
+##
+##   推论：只影响渲染、不影响判定/发声/谱面数据的项，一律归外观，
+##         不得因为「它属于轨道/音符」而留在功能组里。
+##         需要互相验证的项不可跨组（如判定线高度与下落设置都归演奏）。
+##
+## ── 分组与 SettingView.tscn 的 ShortCut 按钮按下标一一对应 ──
+##   下标 0..6 = 下列 7 组；下标 7 = 「关于」按钮（不进本表，由 SettingView 单独切换）
+##
 ## 设置项可选标记：
 ## - "not_implemented": true  → 该项暂未实装，load_settings 时跳过创建 UI（不显示、不保存）
 ##                              实装后改为 false 或删除该行即可恢复显示
@@ -14,6 +28,46 @@ static func get_setting_groups() -> Array:
 	{
 		"name": "常规设置",
 		"settings": [
+			{
+				"id": "show_advanced_settings",
+				"name_en": "Show Advanced Settings",
+				"name_zh": "显示高级设置项",
+				"description": "控制是否显示通常不需要调整的高级设置项",
+				"type": "TYPE_OPTION",
+				"default_value": "0",
+				"apply_mode": "immediate",
+				"applier": "advanced_visibility",
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
+			{
+				"id": "display_debug_info",
+				"name_en": "Display Debug Info",
+				"name_zh": "显示调试信息",
+				"description": "在游玩界面实时显示FPS、渲染和内存状态",
+				"type": "TYPE_OPTION",
+				"default_value": "0",
+				"advanced": true,
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
+			{
+				"id": "language",
+				"name_en": "Language",
+				"name_zh": "语言",
+				"description": "选择游戏界面的语言",
+				"type": "TYPE_OPTION",
+				"default_value": "1",
+				"not_implemented": true,
+				"options": [
+					{"text_en": "English", "text_zh": "英文"},
+					{"text_en": "Chinese", "text_zh": "中文"}
+				]
+			},
 			{
 				"id": "album_sort_method",
 				"name_en": "Album Sort Method",
@@ -41,79 +95,57 @@ static func get_setting_groups() -> Array:
 				"option_values": ["asc", "desc"]
 			},
 			{
-			"id": "show_advanced_settings",
-			"name_en": "Show Advanced Settings",
-			"name_zh": "显示高级设置项",
-			"description": "控制是否显示通常不需要调整的高级设置项",
-			"type": "TYPE_OPTION",
-			"default_value": "0",
-			"apply_mode": "immediate",
-			"applier": "advanced_visibility",
-			"options": [
-				{"text_en": "Off", "text_zh": "关闭"},
-				{"text_en": "On", "text_zh": "开启"}
-			]
+				"id": "storage_location",
+				"name_en": "Storage Location",
+				"name_zh": "资源存储位置",
+				"description": "设置曲包/音源/皮肤/背景图等资源文件以及设置、收藏、日志的保存路径。更改后游戏会迁移现有资源，并在下次启动时生效",
+				"type": "TYPE_BUTTON",
+				"default_value": null,
+				"on_click": "_popup_storage_location_adjust"
 			},
 			{
-				"id": "display_debug_info",
-				"name_en": "Display Debug Info",
-				"name_zh": "显示调试信息",
-				"description": "在游玩界面实时显示FPS、渲染和内存状态",
+				"id": "reload_builtin_resources",
+				"name_en": "Reload Built-in Resources",
+				"name_zh": "重置内置资源",
+				"description": "点击后，内置的资源将重新加载",
+				"type": "TYPE_BUTTON",
+				"default_value": null,
+				"on_click": "_reload_builtin_resources"
+			},
+			{
+				"id": "online_mode",
+				"name_en": "Online Mode",
+				"name_zh": "线上模式",
+				"description": "是否启用登录，谱面下载等联网功能",
 				"type": "TYPE_OPTION",
 				"default_value": "0",
-				"advanced": true,
 				"options": [
 					{"text_en": "Off", "text_zh": "关闭"},
 					{"text_en": "On", "text_zh": "开启"}
 				]
 			},
 			{
-			"id": "online_mode",
-			"name_en": "Online Mode",
-			"name_zh": "线上模式",
-			"description": "是否启用登录，谱面下载等联网功能",
-			"type": "TYPE_OPTION",
-			"default_value": "0",
-			"options": [
-				{"text_en": "Off", "text_zh": "关闭"},
-				{"text_en": "On", "text_zh": "开启"}
-			]
-		},
-		{
-			"id": "auto_upload_score",
-			"name_en": "Auto Upload Score",
-			"name_zh": "自动上传成绩",
-			"description": "开启后将自动在结算页面上传成绩，否则需手动上传",
-			"type": "TYPE_OPTION",
-			"default_value": "1",
-			"options": [
-				{"text_en": "Off", "text_zh": "关闭"},
-				{"text_en": "On", "text_zh": "开启"}
-			]
-		},
-		{
-			"id": "download_vocal",
-			"name_en": "Download Vocal",
-			"name_zh": "同时下载音频文件",
-			"description": "开启后下载谱面时，会一并下载该谱面的人声音频（如有）",
-			"type": "TYPE_OPTION",
-			"default_value": "1",
-			"options": [
-				{"text_en": "Off", "text_zh": "关闭"},
-				{"text_en": "On", "text_zh": "开启"}
-			]
-		},
-			{
-				"id": "language",
-				"name_en": "Language",
-				"name_zh": "语言",
-				"description": "选择游戏界面的语言",
+				"id": "auto_upload_score",
+				"name_en": "Auto Upload Score",
+				"name_zh": "自动上传成绩",
+				"description": "开启后将自动在结算页面上传成绩，否则需手动上传",
 				"type": "TYPE_OPTION",
 				"default_value": "1",
-				"not_implemented": true,
 				"options": [
-					{"text_en": "English", "text_zh": "英文"},
-					{"text_en": "Chinese", "text_zh": "中文"}
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
+			{
+				"id": "download_vocal",
+				"name_en": "Download Vocal",
+				"name_zh": "同时下载音频文件",
+				"description": "开启后下载谱面时，会一并下载该谱面的人声音频（如有）",
+				"type": "TYPE_OPTION",
+				"default_value": "1",
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
 				]
 			},
 			{
@@ -124,116 +156,21 @@ static func get_setting_groups() -> Array:
 				"type": "TYPE_LINE_EDIT",
 				"default_value": "thmix.org",
 			},
-			{
-			"id": "reload_builtin_resources",
-			"name_en": "Reload Built-in Resources",
-			"name_zh": "重置内置资源",
-			"description": "点击后，内置的资源将重新加载",
-			"type": "TYPE_BUTTON",
-			"default_value": null,
-			"on_click": "_reload_builtin_resources"
-		},
-		{
-			"id": "storage_location",
-			"name_en": "Storage Location",
-			"name_zh": "资源存储位置",
-			"description": "设置曲包/音源/皮肤/背景图等资源文件以及设置、收藏、日志的保存路径。更改后游戏会迁移现有资源，并在下次启动时生效",
-			"type": "TYPE_BUTTON",
-			"default_value": null,
-			"on_click": "_popup_storage_location_adjust"
-		}
 		]
 	},
 	{
-		"name": "播放设置",
+		"name": "音频设置",
 		"settings": [
 			{
-			"id": "performing_mode",
-			"name_en": "Performing Mode",
-			"name_zh": "弹奏模式",
-			"description": "关闭后，即使不去点击下落的音符，选择了的音轨也会正常发声",
-			"type": "TYPE_OPTION",
-			"default_value": "1",
-			"apply_mode": "immediate",
-			"options": [
-				{"text_en": "Off", "text_zh": "关闭"},
-				{"text_en": "On", "text_zh": "开启"}
-			]
-			},
-			{
-				"id": "play_ready_animation",
-				"name_en": "Play Ready Animation",
-				"name_zh": "播放准备动画",
-				"description": "关闭后，音乐开始前不会有准备动画",
+				"id": "soundfont_select",
+				"name_en": "Sound Font",
+				"name_zh": "音源选择",
+				"description": "选择MIDI播放时使用的SoundFont音源文件。",
 				"type": "TYPE_OPTION",
-				"default_value": "1",
-				"options": [
-					{"text_en": "Off", "text_zh": "关闭"},
-					{"text_en": "On", "text_zh": "开启"}
-				]
-			},
-			{
-				"id": "playback_speed_scaling",
-				"name_en": "Playback Speed Scaling",
-				"name_zh": "播放速度设定",
-				"description": "调整音乐的播放倍率，数值越大速度越快",
-				"type": "TYPE_LINE_EDIT",
-				"default_value": "1.0",
-				"not_implemented": true,
-				"unit": "x"
-			},
-			{
-				"id": "vibrate_on_touch",
-				"name_en": "Vibrate on Touch",
-				"name_zh": "触摸震动反馈",
-				"description": "选择是否在点击音符时使设备震动",
-				"type": "TYPE_OPTION",
-				"default_value": "0",
-				"options": [
-					{"text_en": "Off", "text_zh": "关闭"},
-					{"text_en": "On", "text_zh": "开启"}
-				]
-			},
-			{
-				"id": "vibration_duration",
-				"name_en": "Vibration Duration",
-				"name_zh": "震动持续时间",
-				"description": "设置点击音符时震动的持续时间，单位：毫秒",
-				"type": "TYPE_LINE_EDIT",
-				"default_value": "50",
-				"unit": "ms"
-			},
-			{
-				"id": "use_system_stopwatch",
-				"name_en": "Use System Stopwatch",
-				"name_zh": "使用系统时钟",
-				"description": "开启后 MIDI 事件派发与判定均以系统墙钟为真源，低性能设备上可缓解判定滞后/漏判；关闭则回退为按音频渲染帧派发。切换立即生效（切换瞬间音乐可能有轻微跳变）",
-				"type": "TYPE_OPTION",
-				"default_value": "1",
-				"advanced": true,
-				"options": [
-					{"text_en": "Off", "text_zh": "关闭"},
-					{"text_en": "On", "text_zh": "开启"}
-				]
-			},
-			{
-				"id": "audio_playback_delay",
-				"name_en": "Audio Playback Delay",
-				"name_zh": "音频延迟校准",
-				"description": "校准音频输出延迟，使声音到达耳朵的时机与音符判定对齐。普通输出与蓝牙输出分别记录两套延迟，检测到蓝牙时自动使用蓝牙预设",
-				"type": "TYPE_BUTTON",
-				"default_value": null,
-				"on_click": "_popup_delay_adjust"
-			},
-			{
-				"id": "max_polyphony",
-				"name_en": "Max Polyphony",
-				"name_zh": "最大复音数",
-				"description": "设置同时发声的最大音符数，较高的值音质更好但占用更多CPU资源",
-				"type": "TYPE_LINE_EDIT",
-				"default_value": "96",
-				"advanced": true,
-				"unit": "音符"
+				"default_value": "GeneralUser-GS.sf2",
+				"options": [],
+				"dynamic_options": true,
+				"options_provider": "_provide_soundfont_options"
 			},
 			{
 				"id": "default_midi_volume",
@@ -254,6 +191,39 @@ static func get_setting_groups() -> Array:
 				"unit": "%"
 			},
 			{
+				"id": "max_polyphony",
+				"name_en": "Max Polyphony",
+				"name_zh": "最大复音数",
+				"description": "设置同时发声的最大音符数，较高的值音质更好但占用更多CPU资源",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "96",
+				"advanced": true,
+				"unit": "音符"
+			},
+			{
+				"id": "performing_mode",
+				"name_en": "Performing Mode",
+				"name_zh": "弹奏模式",
+				"description": "关闭后，即使不去点击下落的音符，选择了的音轨也会正常发声",
+				"type": "TYPE_OPTION",
+				"default_value": "1",
+				"apply_mode": "immediate",
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
+			{
+				"id": "playback_speed_scaling",
+				"name_en": "Playback Speed Scaling",
+				"name_zh": "播放速度设定",
+				"description": "调整音乐的播放倍率，数值越大速度越快",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "1.0",
+				"not_implemented": true,
+				"unit": "x"
+			},
+			{
 				"id": "audio_sync_threshold",
 				"name_en": "Audio Sync Threshold",
 				"name_zh": "音频不同步阈值",
@@ -262,79 +232,6 @@ static func get_setting_groups() -> Array:
 				"default_value": "200",
 				"unit": "ms"
 			},
-			{
-				"id": "soundfont_select",
-				"name_en": "Sound Font",
-				"name_zh": "音源选择",
-				"description": "选择MIDI播放时使用的SoundFont音源文件。",
-				"type": "TYPE_OPTION",
-				"default_value": "GeneralUser-GS.sf2",
-				"options": [],
-				"dynamic_options": true,
-				"options_provider": "_provide_soundfont_options"
-			},
-
-		]
-	},
-	{
-		"name": "轨道设置",
-		"settings": [
-			{
-				"id": "lane_count",
-				"name_en": "Lane Count",
-				"name_zh": "下落轨道数量",
-				"description": "设置音符的下落轨道数，数值过高可能会提升出现重叠的音符的概率",
-				"type": "TYPE_LINE_EDIT",
-				"default_value": "12",
-				"unit": "lanes"
-			},
-			{
-				"id": "canvas_horizontal_padding",
-				"name_en": "Canvas Horizontal Padding",
-				"name_zh": "轨道两侧安全区域宽度",
-				"description": "控制屏幕最左/最右两端的留白宽度，值越大轨道整体越向屏幕中间收拢",
-				"type": "TYPE_LINE_EDIT",
-				"default_value": "100",
-				"unit": "px"
-			},
-			{
-				"id": "keyboard_mode_keys",
-				"name_en": "Keyboard Mode Settings",
-				"name_zh": "键盘模式设置",
-				"description": "点击按钮打开窗口，设置键盘模式开关、按键顺序、显示名称、左右间距与交替轨道颜色",
-				"type": "TYPE_BUTTON",
-				"default_value": null,
-				"on_click": "_popup_kb_mode_adjust"
-			},
-			{
-				"id": "flash_alpha",
-				"name_en": "Flash Alpha",
-				"name_zh": "光柱不透明度",
-				"description": "修改光柱的不透明度，有效范围为[0, 1]",
-				"type": "TYPE_LINE_EDIT",
-				"default_value": "0.8"
-			},
-			{
-				"id": "beam_width_mode",
-				"name_en": "Beam Width Mode",
-				"name_zh": "轨道光效宽度模式",
-				"description": "控制轨道光效的宽度依据：跟随音符宽度会在音符宽度基础上增加边距，跟随轨道宽度会占满整根轨道（无缝铺满）",
-				"type": "TYPE_OPTION",
-				"default_value": "0",
-				"options": [
-					{"text_en": "Note Width", "text_zh": "跟随音符宽度"},
-					{"text_en": "Lane Width", "text_zh": "跟随轨道宽度"}
-				]
-			},
-			{
-				"id": "spark_adjust",
-				"name_en": "Judgment Spark Effects",
-				"name_zh": "判定特效设定",
-				"description": "调整四种判定的按键特效：基础粒子、散射粒子、整体缩放/不透明度、散射粒子缩放",
-				"type": "TYPE_BUTTON",
-				"default_value": null,
-				"on_click": "_popup_spark_adjust"
-			}
 		]
 	},
 	{
@@ -377,24 +274,6 @@ static func get_setting_groups() -> Array:
 					{"text_en": "Off", "text_zh": "关闭"},
 					{"text_en": "On", "text_zh": "开启"}
 				]
-			},
-			{
-				"id": "judge_line_position",
-				"name_en": "Judge Line Position",
-				"name_zh": "判定线高度",
-				"description": "调整判定线距离屏幕底部的距离",
-				"type": "TYPE_LINE_EDIT",
-				"default_value": "200",
-				"unit": "px"
-			},
-			{
-				"id": "judge_line_thickness",
-				"name_en": "Judge Line Thickness",
-				"name_zh": "判定线宽度",
-				"description": "调整判定线厚度，不影响判定，只影响外观",
-				"type": "TYPE_LINE_EDIT",
-				"default_value": "2",
-				"unit": "px"
 			},
 			{
 				"id": "block_judging_width",
@@ -453,7 +332,50 @@ static func get_setting_groups() -> Array:
 				"default_value": "0.2",
 				"not_implemented": true,
 				"unit": "ms"
-			}
+			},
+			{
+				"id": "audio_playback_delay",
+				"name_en": "Audio Playback Delay",
+				"name_zh": "音频延迟校准",
+				"description": "校准音频输出延迟，使声音到达耳朵的时机与音符判定对齐。普通输出与蓝牙输出分别记录两套延迟，检测到蓝牙时自动使用蓝牙预设",
+				"type": "TYPE_BUTTON",
+				"default_value": null,
+				"on_click": "_popup_delay_adjust"
+			},
+			{
+				"id": "use_system_stopwatch",
+				"name_en": "Use System Stopwatch",
+				"name_zh": "使用系统时钟",
+				"description": "开启后 MIDI 事件派发与判定均以系统墙钟为真源，低性能设备上可缓解判定滞后/漏判；关闭则回退为按音频渲染帧派发。切换立即生效（切换瞬间音乐可能有轻微跳变）",
+				"type": "TYPE_OPTION",
+				"default_value": "1",
+				"advanced": true,
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
+			{
+				"id": "vibrate_on_touch",
+				"name_en": "Vibrate on Touch",
+				"name_zh": "触摸震动反馈",
+				"description": "选择是否在点击音符时使设备震动",
+				"type": "TYPE_OPTION",
+				"default_value": "0",
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
+			{
+				"id": "vibration_duration",
+				"name_en": "Vibration Duration",
+				"name_zh": "震动持续时间",
+				"description": "设置点击音符时震动的持续时间，单位：毫秒",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "50",
+				"unit": "ms"
+			},
 		]
 	},
 	{
@@ -540,50 +462,63 @@ static func get_setting_groups() -> Array:
 				"unit": "组/秒"
 			},
 			{
-				"id": "note_fall_adjust",
-				"name_en": "Note Fall Adjust",
-				"name_zh": "音符下落设置",
-				"description": "音符下落模式、下落时间、过判定线后速度倍率及缓动函数的设置",
-				"type": "TYPE_BUTTON",
-				"default_value": null,
-				"on_click": "_popup_falling_adjust"
-			}
+				"id": "generate_short_connect",
+				"name_en": "Generate Short Connect",
+				"name_zh": "是否连接所有并排的点块",
+				"description": "选择是否生成连接线，连接并排下落的点块、滑块和长条",
+				"type": "TYPE_OPTION",
+				"default_value": "0",
+				"not_implemented": true,
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
+			{
+				"id": "generate_instant_connect",
+				"name_en": "Generate Instant Connect",
+				"name_zh": "是否连接上下相邻的滑块",
+				"description": "选择是否生成连接线，连接同一下落轨道内的时间差在设定范围内的数的音符",
+				"type": "TYPE_OPTION",
+				"default_value": "0",
+				"not_implemented": true,
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
+			{
+				"id": "instant_connect_max_time",
+				"name_en": "Instant Connect Max Time",
+				"name_zh": "被连接音符的最大时间差",
+				"description": "设置被连接音符之间的最大时间间隔",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "0.5",
+				"not_implemented": true,
+				"unit": "s"
+			},
 		]
 	},
 	{
-		"name": "外观设置",
+		"name": "演奏设置",
 		"settings": [
 			{
-			"id": "theme_preset",
-			"name_en": "Theme Preset",
-			"name_zh": "主题色配置",
-			"description": "选择界面主题配色方案",
-			"type": "TYPE_OPTION",
-			"default_value": "",
-			"apply_mode": "immediate",
-			"applier": "theme_preset",
-			"dynamic_options": true,
-			"options_provider": "_provide_theme_preset_options"
+				"id": "lane_count",
+				"name_en": "Lane Count",
+				"name_zh": "下落轨道数量",
+				"description": "设置音符的下落轨道数，数值过高可能会提升出现重叠的音符的概率",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "12",
+				"unit": "lanes"
 			},
 			{
-			"id": "appearance",
-			"name_en": "Appearance Mode",
-			"name_zh": "外观模式",
-			"description": "切换深色 / 浅色界面风格；浅色模式以主题色为主而非通用灰白",
-			"type": "TYPE_OPTION",
-			"default_value": "dark",
-			"apply_mode": "immediate",
-			"applier": "appearance",
-			"options_provider": "_provide_appearance_options"
-			},
-			{
-				"id": "block_skin_preset",
-				"name_en": "Note Skin",
-				"name_zh": "音符外观设定",
-				"description": "点击按钮打开皮肤选择窗口",
-				"type": "TYPE_BUTTON",
-				"default_value": null,
-				"on_click": "_popup_note_skin_adjust"
+				"id": "canvas_horizontal_padding",
+				"name_en": "Canvas Horizontal Padding",
+				"name_zh": "轨道两侧安全区域宽度",
+				"description": "控制屏幕最左/最右两端的留白宽度，值越大轨道整体越向屏幕中间收拢",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "100",
+				"unit": "px"
 			},
 			{
 				"id": "block_size",
@@ -593,6 +528,56 @@ static func get_setting_groups() -> Array:
 				"type": "TYPE_LINE_EDIT",
 				"default_value": "6.5",
 				"unit": "个音符"
+			},
+			{
+				"id": "note_fall_adjust",
+				"name_en": "Note Fall Adjust",
+				"name_zh": "音符下落设置",
+				"description": "音符下落模式、下落时间、过判定线后速度倍率及缓动函数的设置",
+				"type": "TYPE_BUTTON",
+				"default_value": null,
+				"on_click": "_popup_falling_adjust"
+			},
+			{
+				"id": "judge_line_position",
+				"name_en": "Judge Line Position",
+				"name_zh": "判定线高度",
+				"description": "调整判定线距离屏幕底部的距离",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "200",
+				"unit": "px"
+			},
+			{
+				"id": "judge_line_thickness",
+				"name_en": "Judge Line Thickness",
+				"name_zh": "判定线宽度",
+				"description": "调整判定线厚度，不影响判定，只影响外观",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "2",
+				"unit": "px"
+			},
+			{
+				"id": "keyboard_mode_keys",
+				"name_en": "Keyboard Mode Settings",
+				"name_zh": "键盘模式设置",
+				"description": "点击按钮打开窗口，设置键盘模式开关、按键顺序、显示名称、左右间距与交替轨道颜色",
+				"type": "TYPE_BUTTON",
+				"default_value": null,
+				"on_click": "_popup_kb_mode_adjust"
+			},
+		]
+	},
+	{
+		"name": "外观设置",
+		"settings": [
+			{
+				"id": "block_skin_preset",
+				"name_en": "Note Skin",
+				"name_zh": "音符外观设定",
+				"description": "点击按钮打开皮肤选择窗口",
+				"type": "TYPE_BUTTON",
+				"default_value": null,
+				"on_click": "_popup_note_skin_adjust"
 			},
 			{
 				"id": "note_draw_order",
@@ -685,6 +670,102 @@ static func get_setting_groups() -> Array:
 				"default_value": "#45B7D1",
 			},
 			{
+				"id": "flash_alpha",
+				"name_en": "Flash Alpha",
+				"name_zh": "光柱不透明度",
+				"description": "修改光柱的不透明度，有效范围为[0, 1]",
+				"type": "TYPE_LINE_EDIT",
+				"default_value": "0.8"
+			},
+			{
+				"id": "beam_width_mode",
+				"name_en": "Beam Width Mode",
+				"name_zh": "轨道光效宽度模式",
+				"description": "控制轨道光效的宽度依据：跟随音符宽度会在音符宽度基础上增加边距，跟随轨道宽度会占满整根轨道（无缝铺满）",
+				"type": "TYPE_OPTION",
+				"default_value": "0",
+				"options": [
+					{"text_en": "Note Width", "text_zh": "跟随音符宽度"},
+					{"text_en": "Lane Width", "text_zh": "跟随轨道宽度"}
+				]
+			},
+			{
+				"id": "spark_adjust",
+				"name_en": "Judgment Spark Effects",
+				"name_zh": "判定特效设定",
+				"description": "调整四种判定的按键特效：基础粒子、散射粒子、整体缩放/不透明度、散射粒子缩放",
+				"type": "TYPE_BUTTON",
+				"default_value": null,
+				"on_click": "_popup_spark_adjust"
+			},
+			{
+				"id": "play_ready_animation",
+				"name_en": "Play Ready Animation",
+				"name_zh": "播放准备动画",
+				"description": "关闭后，音乐开始前不会有准备动画",
+				"type": "TYPE_OPTION",
+				"default_value": "1",
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
+			{
+				"id": "play_background",
+				"name_en": "Play Background",
+				"name_zh": "游玩界面背景",
+				"description": "点击修改游玩界面背景。支持封面、图片、渐变、纯色四种类型。",
+				"type": "TYPE_BUTTON",
+				"default_value": null,
+				"on_click": "_popup_play_background_adjust"
+			},
+			{
+				"id": "background_image_flash_color",
+				"name_en": "Background Image Flash Color",
+				"name_zh": "背景闪光颜色",
+				"description": "修改打击音符时背景发光的颜色",
+				"type": "TYPE_COLOR",
+				"edit_alpha": true,
+				"default_value": "#FFFFFF00"
+			},
+			{
+				"id": "background_dim_color",
+				"name_en": "Background Dim Color",
+				"name_zh": "背景遮罩颜色",
+				"description": "背景遮罩的颜色，与背景遮罩透明度配合使用来降低背景亮度",
+				"type": "TYPE_COLOR",
+				"edit_alpha": true,
+				"default_value": "#000000FF"
+			},
+		]
+	},
+	{
+		"name": "界面设置",
+		"settings": [
+			{
+				"id": "theme_preset",
+				"name_en": "Theme Preset",
+				"name_zh": "主题色配置",
+				"description": "选择界面主题配色方案",
+				"type": "TYPE_OPTION",
+				"default_value": "",
+				"apply_mode": "immediate",
+				"applier": "theme_preset",
+				"dynamic_options": true,
+				"options_provider": "_provide_theme_preset_options"
+			},
+			{
+				"id": "appearance",
+				"name_en": "Appearance Mode",
+				"name_zh": "外观模式",
+				"description": "切换深色 / 浅色界面风格；浅色模式以主题色为主而非通用灰白",
+				"type": "TYPE_OPTION",
+				"default_value": "dark",
+				"apply_mode": "immediate",
+				"applier": "appearance",
+				"options_provider": "_provide_appearance_options"
+			},
+			{
 				"id": "main_background",
 				"name_en": "Main Background",
 				"name_zh": "主界面背景",
@@ -738,69 +819,6 @@ static func get_setting_groups() -> Array:
 				"default_value": null,
 				"on_click": "_popup_setting_background_adjust"
 			},
-			{
-				"id": "play_background",
-				"name_en": "Play Background",
-				"name_zh": "游玩界面背景",
-				"description": "点击修改游玩界面背景。支持封面、图片、渐变、纯色四种类型。",
-				"type": "TYPE_BUTTON",
-				"default_value": null,
-				"on_click": "_popup_play_background_adjust"
-			},
-			{
-				"id": "background_image_flash_color",
-				"name_en": "Background Image Flash Color",
-				"name_zh": "背景闪光颜色",
-				"description": "修改打击音符时背景发光的颜色",
-				"type": "TYPE_COLOR",
-				"edit_alpha": true,
-				"default_value": "#FFFFFF00"
-			},
-			{
-				"id": "background_dim_color",
-				"name_en": "Background Dim Color",
-				"name_zh": "背景遮罩颜色",
-				"description": "背景遮罩的颜色，与背景遮罩透明度配合使用来降低背景亮度",
-				"type": "TYPE_COLOR",
-				"edit_alpha": true,
-				"default_value": "#000000FF"
-			},
-			{
-				"id": "generate_short_connect",
-				"name_en": "Generate Short Connect",
-				"name_zh": "是否连接所有并排的点块",
-				"description": "选择是否生成连接线，连接并排下落的点块、滑块和长条",
-				"type": "TYPE_OPTION",
-				"default_value": "0",
-				"not_implemented": true,
-				"options": [
-					{"text_en": "Off", "text_zh": "关闭"},
-					{"text_en": "On", "text_zh": "开启"}
-				]
-			},
-			{
-				"id": "generate_instant_connect",
-				"name_en": "Generate Instant Connect",
-				"name_zh": "是否连接上下相邻的滑块",
-				"description": "选择是否生成连接线，连接同一下落轨道内的时间差在设定范围内的数的音符",
-				"type": "TYPE_OPTION",
-				"default_value": "0",
-				"not_implemented": true,
-				"options": [
-					{"text_en": "Off", "text_zh": "关闭"},
-					{"text_en": "On", "text_zh": "开启"}
-				]
-			},
-			{
-				"id": "instant_connect_max_time",
-				"name_en": "Instant Connect Max Time",
-				"name_zh": "被连接音符的最大时间差",
-				"description": "设置被连接音符之间的最大时间间隔",
-				"type": "TYPE_LINE_EDIT",
-				"default_value": "0.5",
-				"not_implemented": true,
-				"unit": "s"
-			}
 		]
 	}
 ]

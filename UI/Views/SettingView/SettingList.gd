@@ -37,6 +37,10 @@ func _ready() -> void:
 	_value_button_instance = VALUE_BUTTON_SCENE.instantiate()
 	apply_button_theme(ThemeMGR.get_color("primary"))
 	get_v_scroll_bar().value_changed.connect(func (_v):
+		# 列表被隐藏时（如切到「关于」面板）不做按钮联动：
+		# 隐藏期间容器仍可能程序性钳制滚动值，会误触发 toggled 把面板强行切回列表
+		if not visible:
+			return
 		var btns = get_parent().get_parent().short_cut_btn.get_children()
 		var idx = _get_current_para_sepa_idx()
 		# 边界检查：分组索引超出快捷按钮数量时跳过
