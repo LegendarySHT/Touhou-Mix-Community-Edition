@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "current": "1.0.0.645",
+  "entries": [
+    {
+      "version": "1.0.0.645",
+      "build": 645,
+      "date": "2026-11-01",
+      "channel": "stable",
+      "title": "第一个正式发行版本",
+      "changes": [
+        "大部分功能已经基本稳定"
+      ],
+      "download_url":"https://thmixce.org"
+    }
+  ]
+}

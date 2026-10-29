@@ -3,9 +3,19 @@
 [ext_resource type="Script" uid="uid://bhrv8p4ecl6nw" path="res://UI/Views/SettingView/SettingView.gd" id="1_4walt"]
 [ext_resource type="Script" uid="uid://cgxt234w25s7r" path="res://UI/Views/SettingView/SettingList.gd" id="2_3x48f"]
 [ext_resource type="Script" uid="uid://dt5lx4f8bkgl0" path="res://UI/Views/SettingView/DelView.gd" id="3_delview"]
+[ext_resource type="Texture2D" uid="uid://co5g8aknrygoc" path="res://Resources/icon/android/adaptive_foreground.svg" id="3_s6epo"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="4_fcfq2"]
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_tf36t"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xkn3i"]
+bg_color = Color(0.2520276, 0.25202766, 0.25202754, 1)
+expand_margin_left = 100.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2rkhg"]
+bg_color = Color(1, 1, 1, 1)
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_2rkhg"]
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_delview"]
 
@@ -145,6 +155,175 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 5.0
 offset_transform_enabled = true
+theme_override_styles/panel = SubResource("StyleBoxFlat_xkn3i")
+
+[node name="Project" type="HBoxContainer" parent="HBoxC/AboutPage" unique_id=392165728]
+custom_minimum_size = Vector2(0, 250)
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+offset_left = -100.0
+offset_top = 25.0
+offset_bottom = 250.0
+grow_horizontal = 2
+alignment = 1
+
+[node name="Icon" type="TextureRect" parent="HBoxC/AboutPage/Project" unique_id=2089133608]
+custom_minimum_size = Vector2(250, 250)
+layout_mode = 2
+offset_transform_enabled = true
+offset_transform_scale = Vector2(1.5, 1.5)
+mouse_filter = 2
+texture = ExtResource("3_s6epo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Info" type="VBoxContainer" parent="HBoxC/AboutPage/Project" unique_id=166152430]
+custom_minimum_size = Vector2(600, 0)
+layout_mode = 2
+theme_override_constants/separation = 30
+alignment = 1
+
+[node name="Name" type="Label" parent="HBoxC/AboutPage/Project/Info" unique_id=504147345]
+layout_mode = 2
+theme_override_font_sizes/font_size = 45
+text = "TouHou Mix Cumunity Edition"
+
+[node name="Version" type="Label" parent="HBoxC/AboutPage/Project/Info" unique_id=740686161]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "v1.0.0.645"
+horizontal_alignment = 2
+
+[node name="Line" type="PanelContainer" parent="HBoxC/AboutPage" unique_id=1810988007]
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+offset_top = 300.0
+offset_right = -100.0
+offset_bottom = 4.0
+grow_horizontal = 2
+size_flags_horizontal = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_2rkhg")
+
+[node name="TabContainer" type="TabContainer" parent="HBoxC/AboutPage" unique_id=2082593045]
+propagate_maximum_size = false
+clip_contents = true
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 310.0
+offset_right = -110.0
+focus_mode = 3
+mouse_filter = 0
+theme_override_font_sizes/font_size = 32
+current_tab = 0
+tab_0/title = "关于项目"
+tab_1/title = "许可证"
+tab_2/title = "版本历史"
+
+[node name="About" type="ScrollContainer" parent="HBoxC/AboutPage/TabContainer" unique_id=1371600096]
+layout_mode = 2
+horizontal_scroll_mode = 0
+metadata/_tab_index = 0
+metadata/_tab_name = "关于项目"
+
+[node name="Margin" type="MarginContainer" parent="HBoxC/AboutPage/TabContainer/About" unique_id=919635480]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="text" type="RichTextLabel" parent="HBoxC/AboutPage/TabContainer/About/Margin" unique_id=919635479]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 0
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+autowrap_mode = 3
+
+[node name="License" type="ScrollContainer" parent="HBoxC/AboutPage/TabContainer" unique_id=1468964403]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 1
+metadata/_tab_name = "许可证"
+
+[node name="text" type="RichTextLabel" parent="HBoxC/AboutPage/TabContainer/License" unique_id=1219638257]
+layout_mode = 2
+
+[node name="History" type="Panel" parent="HBoxC/AboutPage/TabContainer" unique_id=1475621820]
+visible = false
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxEmpty_2rkhg")
+metadata/_tab_index = 2
+
+[node name="Update" type="HBoxContainer" parent="HBoxC/AboutPage/TabContainer/History" unique_id=892804860]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+grow_horizontal = 2
+theme_override_constants/separation = 25
+alignment = 2
+
+[node name="Status" type="Label" parent="HBoxC/AboutPage/TabContainer/History/Update" unique_id=892804861]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+vertical_alignment = 1
+
+[node name="AutoUpdate" type="Button" parent="HBoxC/AboutPage/TabContainer/History/Update" unique_id=1877191385]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+toggle_mode = true
+text = "自动检查更新"
+
+[node name="ManualUpdate" type="Button" parent="HBoxC/AboutPage/TabContainer/History/Update" unique_id=1792173923]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "手动检查更新"
+
+[node name="Content" type="ScrollContainer" parent="HBoxC/AboutPage/TabContainer/History" unique_id=793487029]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 70.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+
+[node name="Margin" type="MarginContainer" parent="HBoxC/AboutPage/TabContainer/History/Content" unique_id=1893114995]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="RichTextLabel" type="RichTextLabel" parent="HBoxC/AboutPage/TabContainer/History/Content/Margin" unique_id=1893114994]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 0
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+autowrap_mode = 3
 
 [node name="DelView" type="HBoxContainer" parent="." unique_id=2038911108]
 visible = false

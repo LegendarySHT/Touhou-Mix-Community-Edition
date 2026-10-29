@@ -565,6 +565,25 @@ func _set_theme_stylebox(theme: Theme, tmp: Theme, type: String, state: String, 
 		dup.shadow_color = shadow
 	tmp.set_stylebox(state, type, dup)
 
+## TabContainer 主题样式
+## 几何（content margin 撑高度/左右留白、圆角、字号）与基础样式全部由 Main.tscn 的
+##   - 选中标签：背景 = 内容面板同色(surface)，与面板视觉合并；
+##   - 未选中标签：tscn 已设纯透明，这里不额外上色；
+##   - 标签按钮在顶部时，底部与内容相接故不圆角、仅顶部圆角（默认按"上方"布局，不区分左右）。
+func _style_tab_container(theme: Theme, tmp: Theme) -> void:
+	var surface := get_color("surface")
+	var border_soft := get_color("border_soft")
+
+	# 选中标签与内容面板同色 → 无缝合并（几何沿用 tscn，仅改底色）
+	_set_theme_stylebox(theme, tmp, "TabContainer", "tab_selected", surface, Color(0, 0, 0, 0))
+	# 内容面板：surface + 弱描边
+	_set_theme_stylebox(theme, tmp, "TabContainer", "panel", surface, border_soft)
+	# 未选中标签保持 tscn 的透明，不在这里上色
+
+	# 文字色随外观模式翻转（深色浅字 / 浅色深字），字号仍由 tscn 的 font_size 决定
+	tmp.set_color("font_selected_color", "TabContainer", get_color("text_primary"))
+	tmp.set_color("font_unselected_color", "TabContainer", get_color("text_secondary"))
+
 func _theme_button_set_color(theme: Theme, tmp: Theme, base_color: Color, type: String = "Button") -> void:
 	var surface := get_color("surface_high")
 	var surface_hover := get_color("surface_hover")
@@ -1006,9 +1025,7 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	tmp.set_color("font_color", "ProgressBar", text_primary)
 
 	# TabContainer
-	_set_theme_stylebox(thm, tmp, "TabContainer", "tab_unselected", surface_low, border_soft)
-	_set_theme_stylebox(thm, tmp, "TabContainer", "tab_selected", surface_high, border)
-	_set_theme_stylebox(thm, tmp, "TabContainer", "panel", surface, border_soft)
+	_style_tab_container(thm, tmp)
 
 	# Tree
 	tmp.set_font_size("font_size", "Tree", get_font_size("body", 32))

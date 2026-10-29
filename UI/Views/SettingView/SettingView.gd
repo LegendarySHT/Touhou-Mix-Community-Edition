@@ -8,8 +8,17 @@ extends Control
 ## 因此它必须 >= SettingGroupsData 的组数，否则会与真实分组抢下标。
 const ABOUT_BTN_INDEX: int = 6
 
+# ============ 关于页链接 ============
+const PROJECT_URL := "https://github.com/LegendarySHT/Touhou-Mix-Community-Edition"
+const WEBSITE_URL := "https://thmixce.org"
+## 富文本链接颜色（暗/亮背景都可读的中蓝）
+const LINK_COLOR := "#5aa9ff"
+
 ## 进入「关于」前停留的分组按钮下标，从关于页返回时用它还原位置
 var _last_group_btn_idx: int = 0
+
+## 关于页「自动检查更新」开关（会话内状态；联网接入后可持久化到配置）
+var _auto_update_enabled: bool = false
 
 ## 配置文件路径（通过 PathHelper 动态获取，兼容 Android）
 ## 使用 getter 确保运行时才求值
@@ -49,12 +58,24 @@ func _ready() -> void:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
 
+	# 关于页动态内容绑定（版本号/关于项目/更新历史，版本以 VerMGR / version_history.json 为准）
+	refresh_about_page()
+
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
 ## SettingList 的 value_button 主题；ShortCut 导航按钮的 focus 直接复用共享 Theme 的 focus StyleBox
 ## （ThemeManager 在 _refresh_theme_colors 里就地改其边框色，不再逐按钮 duplicate 覆盖）
 func apply_theme() -> void:
 	if setting_list:
 		setting_list.apply_button_theme(ThemeMGR.get_color("primary"))
+
+	# 关于页面板：比 TabContainer 内容底(surface)再后退一档——
+	# 暗色模式更深、浅色模式更浅，统一取 surface_low（该 token 在两种模式下都更远离 surface：
+	# 暗色 V 更低、浅色 V 更高）。几何与 alpha 沿用 tscn 的 StyleBoxFlat_xkn3i，仅改 RGB。
+	if about_page and about_page.has_theme_stylebox_override("panel"):
+		var sb := about_page.get_theme_stylebox("panel")
+		if sb is StyleBoxFlat:
+			var c := ThemeMGR.get_color("surface_low")
+			sb.bg_color = Color(c.r, c.g, c.b, sb.bg_color.a)
 
 func _exit_tree() -> void:
 	if ThemeMGR:
@@ -229,12 +250,19 @@ func _on_button_toggled(_toggled_on: bool, idx: int):
 	# 「关于」不是设置分组：切面板后直接返回。
 	# 它没有对应的分隔符，继续走下面的滚动定位会算不到目标而空转
 	if idx == ABOUT_BTN_INDEX:
-		_show_about(true)
+		_enter_about()
 		return
 
 	_last_group_btn_idx = idx
-	_show_about(false)
+	# 若当前停在关于页，先播退出动画，结束后再揭示目标分组；否则直接显示并吸附
+	if about_page.visible:
+		_exit_about(_reveal_group.bind(idx))
+	else:
+		_show_about(false)
+		_reveal_group(idx)
 
+## 揭示指定分组：显示设置列表并吸附滚动到该组（原 _on_button_toggled 内的滚动定位逻辑）
+func _reveal_group(idx: int) -> void:
 	var target_idx = idx*2
 	var c_idx = 0
 	
@@ -264,6 +292,55 @@ func _show_about(is_about: bool) -> void:
 	if about_page:
 		about_page.visible = is_about
 
+## 关于页入场：从右侧滑入 + 淡入；子元素轻微上移错峰增加层次（不改 alpha，避免与整体淡入叠加）
+func _enter_about() -> void:
+	if about_page.visible:
+		return
+	_show_about(true)   # setting_list 隐藏、about_page 显示
+	AniMGR.animate_fade_slide_in(about_page, Vector2(1500, 0), AniMGR.DURATION_NORMAL, "about_enter")
+	_stagger_about_children()
+
+## 关于页子元素错峰入场（仅位移，不改 alpha）
+func _stagger_about_children() -> void:
+	# AboutPage 的三个直接子节点：项目头（Project）/ 分隔线（Line）/ 标签页（TabContainer）
+	var child_names := ["Project", "Line", "TabContainer"]
+	var i := 0
+	for name in child_names:
+		var node := about_page.get_node_or_null(name)
+		if node == null or not (node is Control):
+			continue
+		node.offset_transform_enabled = true
+		node.offset_transform_position = Vector2(0, 40)
+		var tw := AniMGR.create_managed_tween(node, "about_child_%d" % i)
+		if tw == null:
+			i += 1
+			continue
+		tw.set_ease(AnimationManager.EASING_STANDARD)
+		tw.set_trans(Tween.TRANS_CUBIC)
+		tw.tween_property(node, "offset_transform_position", Vector2.ZERO, 0.3).set_delay(0.08 * i)
+		i += 1
+
+## 关于页出场：滑出 + 淡出，结束后显示设置列表并回调（p_on_done 通常为揭示目标分组）
+func _exit_about(p_on_done: Callable = Callable()) -> void:
+	if not about_page.visible:
+		if p_on_done.is_valid():
+			p_on_done.call()
+		return
+	var tween := AniMGR.animate_fade_slide_out(about_page, Vector2(1500, 0), AniMGR.DURATION_QUICK, "about_exit")
+	if tween and tween.is_valid():
+		tween.finished.connect(func() -> void:
+			if is_instance_valid(setting_list):
+				setting_list.visible = true
+				TextScrollMGR.resume_page(setting_list)
+			if p_on_done.is_valid():
+				p_on_done.call()
+		)
+	else:
+		if is_instance_valid(setting_list):
+			setting_list.visible = true
+		if p_on_done.is_valid():
+			p_on_done.call()
+
 ## 从关于页返回上一次停留的分组。
 ## 直接置 button_pressed 会重新触发 toggled → _on_button_toggled，从而复用那里的
 ## 滚动吸附与右邻焦点重建，不必在这里重复实现一遍定位逻辑。
@@ -272,13 +349,178 @@ func _restore_last_group() -> void:
 	if btn is Button and not (btn as Button).button_pressed:
 		(btn as Button).button_pressed = true
 	else:
-		# 按钮已是按下态则不会触发 toggled，兜底直接把面板切回去
-		_show_about(false)
+		# 按钮已是按下态则不会触发 toggled，兜底播退出动画并把面板切回去
+		_exit_about(func() -> void: _show_about(false))
 
 # 获取当前ui中的配置
 func _get_config():
 	var config = setting_list.get_all_settings_as_json()
 	return config
+
+## 关于页版本号动态绑定（避免硬编码，版本以 VerMGR / version_history.json 为准）
+func _refresh_about_version() -> void:
+	if about_page == null or VerMGR == null:
+		return
+	var ver_label := about_page.get_node_or_null("Project/Info/Version")
+	if ver_label is Label:
+		ver_label.text = VerMGR.get_version_label()
+
+## 刷新关于页全部动态内容：版本号、关于项目正文、更新历史、链接与更新按钮。
+## _ready 时调用一次；外部需要时也可再次调用强制刷新。
+func refresh_about_page() -> void:
+	if about_page == null:
+		return
+	_refresh_about_version()
+	_setup_about_content()
+
+## 构建关于项目的 BBCode（含可点击链接）
+func _about_project_bbcode() -> String:
+	var lines := PackedStringArray()
+	lines.append("TouHou Mix Cummunity Edition 是由 TouHou Mix 的爱好者共同开发的 THMIX 社区版")
+	lines.append("如有问题或者改进建议可在 Github 或在 THMIX QQ群 (β群: 1020610194 γ群: 140497416) 中提出")
+	lines.append("目前项目缺少IOS端的测试及擅长UI设计的成员，如果你对此项目感兴趣，欢迎加入我们~")
+	lines.append("")
+	lines.append("项目贡献者: LegendarySHT, YangQwQ")
+	lines.append("")
+	lines.append("[b]相关链接[/b]")
+	lines.append("[url=%s][color=%s]项目地址[/color][/url]	[url=%s][color=%s]临时官网[/color][/url]" % [PROJECT_URL, LINK_COLOR, WEBSITE_URL, LINK_COLOR])
+	return "\n".join(lines)
+
+## 绑定关于页各 RichTextLabel 的动态内容与链接点击、检查更新按钮。
+## 外观/滚动/字号/布局等静态属性全部在 SettingView.tscn 中定义，代码不覆盖。
+func _setup_about_content() -> void:
+	# 关于项目
+	var about_text := about_page.get_node_or_null("TabContainer/About/Margin/text") as RichTextLabel
+	if about_text:
+		_bind_link_signal(about_text)
+		about_text.text = _about_project_bbcode()
+
+	# 版本历史
+	var hist_text := about_page.get_node_or_null("TabContainer/History/Content/Margin/RichTextLabel") as RichTextLabel
+	if hist_text:
+		_bind_link_signal(hist_text)
+		hist_text.text = _history_bbcode()
+
+	# 检查更新按钮
+	var manual_btn := about_page.get_node_or_null("TabContainer/History/Update/ManualUpdate") as Button
+	if manual_btn and not manual_btn.pressed.is_connected(_on_manual_update_pressed):
+		manual_btn.pressed.connect(_on_manual_update_pressed)
+	var auto_btn := about_page.get_node_or_null("TabContainer/History/Update/AutoUpdate") as Button
+	if auto_btn and not auto_btn.toggled.is_connected(_on_auto_update_toggled):
+		auto_btn.toggled.connect(_on_auto_update_toggled)
+
+## 统一配置 RichTextLabel：只负责行为（[url] 点击），
+## 富文本/滚动/字号/布局等静态属性全部在 SettingView.tscn 中定义。
+func _bind_link_signal(rt: RichTextLabel) -> void:
+	if not rt.meta_clicked.is_connected(_on_link_clicked):
+		rt.meta_clicked.connect(_on_link_clicked)
+
+## 点击富文本里的 [url] 链接：交给系统浏览器打开
+func _on_link_clicked(meta: Variant) -> void:
+	var url := str(meta).strip_edges()
+	if url.is_empty():
+		return
+	var err := OS.shell_open(url)
+	if err != OK:
+		GLogger.warning("打开链接失败(%d): %s" % [err, url], "SettingView")
+
+## 生成版本历史的 BBCode
+func _history_bbcode() -> String:
+	if VerMGR == null:
+		return ""
+	var entries: Array = VerMGR.get_history(true)
+	if entries.is_empty():
+		return "[i]暂无版本历史[/i]"
+	var blocks := PackedStringArray()
+	for entry in entries:
+		if entry is Dictionary:
+			blocks.append(_history_entry_bbcode(entry))
+	return "\n\n".join(blocks)
+
+## 单条版本记录：标题 版本号 / 更新内容 / 发布频道 时间 / 下载链接
+func _history_entry_bbcode(entry: Dictionary) -> String:
+	var title := str(entry.get("title", "")).strip_edges()
+	var ver := str(entry.get("version", "")).strip_edges()
+	var channel := str(entry.get("channel", "")).strip_edges()
+	var date := str(entry.get("date", "")).strip_edges()
+	var download := str(entry.get("download_url", "")).strip_edges()
+	var changes: Array = entry.get("changes", [])
+
+	var lines := PackedStringArray()
+	# 1) 标题 版本号
+	var head := ""
+	if not title.is_empty():
+		head += "[b][font_size=34]%s[/font_size][/b]" % title
+	if not ver.is_empty():
+		if not head.is_empty():
+			head += "    "
+		head += "[color=#8b93a1][font_size=28]v%s[/font_size][/color]" % ver
+	if not head.is_empty():
+		lines.append(head)
+	# 2) 更新内容
+	if changes is Array and not changes.is_empty():
+		for c in changes:
+			lines.append("    • %s" % str(c))
+	# 3) 发布频道 时间
+	var meta_parts := PackedStringArray()
+	if not channel.is_empty():
+		meta_parts.append("发布频道：%s" % _channel_label(channel))
+	if not date.is_empty():
+		meta_parts.append("时间：%s" % date)
+	if not meta_parts.is_empty():
+		lines.append("[color=#8b93a1][i]%s[/i][/color]" % "　　".join(meta_parts))
+	# 4) 下载链接（可点击）
+	if not download.is_empty():
+		lines.append("[url=%s][color=%s]下载链接[/color][/url]" % [download, LINK_COLOR])
+	return "\n".join(lines)
+
+## 发布频道值转中文标签（未知值原样返回）
+func _channel_label(channel: String) -> String:
+	match channel.to_lower():
+		"stable", "release", "lts":
+			return "稳定版"
+		"beta":
+			return "测试版"
+		"alpha":
+			return "内测版"
+		"dev", "nightly", "snapshot":
+			return "开发版"
+		_:
+			return channel
+
+## 「手动检查更新」按钮
+func _on_manual_update_pressed() -> void:
+	var status_label := about_page.get_node_or_null("TabContainer/History/Update/Status") as Label
+	check_for_update(status_label)
+
+## 「自动检查更新」开关（当前仅记录会话内状态；联网接入后可持久化）
+func _on_auto_update_toggled(on: bool) -> void:
+	_auto_update_enabled = on
+	if on:
+		_on_manual_update_pressed()
+
+## 检查更新入口（也供外部调用）。
+func check_for_update(status_label: Label = null) -> void:
+	if VerMGR == null:
+		return
+	if status_label:
+		status_label.text = "正在检查更新…"
+	VerMGR.update_check_finished.connect(func(result: Dictionary) -> void:
+		if status_label == null:
+			return
+		if not result.get("ok", false):
+			var reason := str(result.get("reason", ""))
+			if reason == "disabled":
+				status_label.text = "在线更新尚未接入"
+			else:
+				status_label.text = "检查更新失败：%s" % reason
+			return
+		if result.get("has_update", false):
+			status_label.text = "发现新版本：v%s" % str(result.get("latest", ""))
+		else:
+			status_label.text = "已是最新版本（v%s）" % str(result.get("current", ""))
+	, CONNECT_ONE_SHOT)
+	VerMGR.check_for_updates()
 
 ## 获取特定设置的值
 ## 此方法由其他模块（如TrackView、PlayView）调用，用于查询当前设置值
