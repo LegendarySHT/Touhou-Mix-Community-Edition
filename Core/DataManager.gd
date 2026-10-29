@@ -77,6 +77,16 @@ func _rebuild_data_tree() -> void:
 	is_loading = true
 	load_all_midis_async()
 
+## 存储根热切换后重建数据缓存
+## 已水合的 MidiData 里带旧根绝对路径（json / 音频 / 封面），必须全部丢弃重查；
+## DB 已指向新根，视图收到 data_loaded 后会重新按 DB 查询
+func rebuild_after_storage_change() -> void:
+	midis.clear()
+	is_loading = false
+	_pending_reload = false
+	GLogger.info("Data caches rebuilt after storage root switch", "DataMGR")
+	data_loaded.emit()
+
 ## ========== 惰性水合 ==========
 
 ## 按规范键（folder_name）水合 MidiData，缓存命中返回同一实例（对象身份稳定）

@@ -33,6 +33,11 @@ var _confirm: bool = false
 const _POPUP_ANIM_DURATION: float = 0.4
 
 func _pop_up_window(page: int) -> void:
+	# 每次开新页前无条件解除模态：exclusive 只在 show_message(force=true) 期间为 true，
+	# 由那个协程自己复位。一旦协程在 await window_close 处被丢弃（节点释放、切场景、
+	# 信号没等到），复位语句就永远不执行，之后所有弹窗点外部都关不掉 = 玩家没法中止操作。
+	# 这里按"打开即恢复可取消"兜底，force 页在 popup 前再置 true。
+	exclusive = false
 	_tab_c.current_tab = page
 	match page:
 		1:
@@ -72,6 +77,8 @@ func _ready() -> void:
 	about_to_popup.connect(func() -> void: _window_popup_animate(true))
 	# 点击窗口外部时 Godot 会自动隐藏 popup 并发出 popup_hide，此处兜底处理
 	popup_hide.connect(func() -> void:
+		# 任何关闭路径都把模态解除（force 提示的协程可能已被丢弃，不能指望它复位）
+		exclusive = false
 		_delay_adjust.stop_calibration()
 		_particle_adjust.stop_preview()
 		_kb_mode_adjust._cancel_recording()
@@ -264,11 +271,11 @@ func show_storage_location_adjust(current_path: String = "") -> Dictionary:
 	await window_close
 	return _storage_location_adjust.get_result()
 
-# 弹出存储迁移冲突询问窗口（目标目录已存在不可合并文件时）
-## files: 冲突文件名列表（settings.ini / favorites.json / charts.ldb / charts-log.ldb）
-## 返回 true=保留目标已有版本（跳过，不覆盖）；false=保留当前版本（覆盖目标）
-func show_storage_conflict_adjust(files: Array) -> bool:
-	_storage_conflict_adjust.init_adjust(files)
+# 弹出存储迁移冲突处理窗口（目标目录已存在游戏数据时，决定听哪一侧）
+## merge_dirs: 目标已存在的资源目录；conflict_files: 目标已存在的顶层文件
+## 返回 int（StorageConflictAdjust.Choice）：-1=未选择/取消，0=保留目标（合并补缺），1=覆盖目标
+func show_storage_conflict_adjust(merge_dirs: Array, conflict_files: Array) -> int:
+	_storage_conflict_adjust.init_adjust(merge_dirs, conflict_files)
 
 	_pop_up_window(8)
 	await window_close

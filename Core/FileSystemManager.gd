@@ -2109,6 +2109,20 @@ func rescan_resources() -> void:
 	clear_cover_cache()
 	await _scan_all_resources()
 
+## 存储根热切换后重建目录与全部索引
+## 与 initialize_directory_structure 的差别：允许在已初始化状态下重跑，且强制全量扫描
+## （索引与 DB 投影里的绝对路径全部指向旧根，只有全量扫描才能重建）
+func reinitialize_after_storage_change() -> void:
+	await await_busy_done()
+	clear_cover_cache()
+	resources_scanned = false
+	force_full_rescan = true
+	# 新根可能缺少个别空目录（迁移只复制已存在的目录），补齐后再扫描
+	for dir_path in [CHARTS_DIR, SKINS_DIR, PARTICLES_DIR, SOUNDFONT_DIR,
+			BACKGROUND_DIR, LOGS_DIR, SETTINGS_DIR]:
+		_ensure_directory_exists(dir_path)
+	await _scan_all_resources()
+
 ## 重置内置资源：强制重新复制默认谱面、皮肤、背景图到 user:// 目录
 ## 与 _copy_default_resources_async 不同，此方法不检查目录是否为空，强制覆盖
 func reload_default_resources() -> void:

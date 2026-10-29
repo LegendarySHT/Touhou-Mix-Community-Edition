@@ -68,6 +68,14 @@ func _get_favorites_path() -> String:
 	return PathHelper.get_files_dir() + FAVORITES_FILE
 
 
+## 存储根热切换后从新根的 favorites.json 重新加载（内存里的是旧根那份）
+func reload_from_disk() -> void:
+	favorites.clear()
+	_load_favorites()
+	EvtBus.favorites_loaded.emit()
+	EvtBus.favorites_updated.emit()
+
+
 ## 提前通知收藏夹已加载（在 MIDI 扫描完成之前）
 ## UI 可立即显示收藏夹列表，封面图片在 MIDI 扫描完成后通过 favorites_updated 补充
 func _notify_favorites_loaded_early() -> void:
@@ -88,6 +96,16 @@ func _validate_favorites() -> void:
 		return
 
 	var fsm := FileSystemManager.instance
+	# 索引为空或扫描还没完成 = 磁盘扫描没产出可信结果（存储根刚迁移/换根后重建索引中、
+	# Charts 目录还没落地）。此时 lookup_chart 必然全部未命中，继续走下去会把所有收藏
+	# 引用清空并写回磁盘，玩家重启后收藏就没了。未完成的扫描不作为"谱面已删除"的证据。
+	if fsm == null or not fsm.resources_scanned or fsm.charts_index.is_empty():
+		GLogger.warning("Favorites validation skipped (charts index not ready, scanned=%s, entries=%d)"
+				% [str(fsm != null and fsm.resources_scanned), 0 if fsm == null else fsm.charts_index.size()],
+				"FavoriteMGR")
+		EvtBus.favorites_updated.emit()
+		return
+
 	var changed := false
 	for fav in favorites:
 		var original_size := fav.midi_ids.size()
@@ -96,9 +114,6 @@ func _validate_favorites() -> void:
 		# 同时把别名（id / file_hash / hash）统一迁移为规范键 folder_name（TMX-020）
 		var canonical_ids: Array[String] = []
 		for raw_id in fav.midi_ids:
-			if fsm == null:
-				canonical_ids.append(raw_id)
-				continue
 			var lookup := fsm.lookup_chart(raw_id)
 			if lookup.is_empty():
 				continue  # 磁盘上不存在，清理引用
@@ -107,6 +122,8 @@ func _validate_favorites() -> void:
 				canonical_ids.append(key)
 		fav.midi_ids = canonical_ids
 		if fav.midi_ids.size() != original_size:
+			GLogger.info("Favorite '%s': pruned %d stale chart reference(s)"
+					% [fav.name, original_size - fav.midi_ids.size()], "FavoriteMGR")
 			changed = true
 	if changed:
 		_save_favorites()

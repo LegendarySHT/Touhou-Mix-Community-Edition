@@ -217,6 +217,117 @@ public partial class ChartDb : Node
 
     public bool IsOpen() => _isOpen && _db != null;
 
+    // ========== 存储位置迁移：两库合并 ==========
+
+    /// <summary>
+    /// 迁移合并只处理用户数据集合。charts/albums/songs 是磁盘扫描的投影、audio_files 的 _id
+    /// 是文件绝对路径，迁移后的全量扫描会整体重建它们 —— 合并进来只会得到幽灵条目与
+    /// 指向旧根的失效路径。meta 也不合并：schema 等键必须由目标库自己说了算。
+    /// </summary>
+    private static readonly string[] MergeCollections = { "chart_runtime", "local_scores", "community_counts" };
+
+    /// <summary>
+    /// 存储位置迁移：把 sourceDbPath 里「目标库没有的记录」补进 targetDbPath。
+    /// 目标侧优先 —— 同一 _id 已存在于目标库时保持目标记录不变（成绩/播放次数/单曲配置）。
+    /// 两个库都必须处于关闭状态（迁移流程中已 CloseDb）；源库以读写方式打开，
+    /// 以便回放它自己的 -log.ldb 日志，避免读到未提交的旧页面。
+    /// 返回 { ok: bool, added: {集合名: 补入条数}, error: String }
+    /// </summary>
+    public Godot.Collections.Dictionary MergeStorageDatabases(string targetDbPath, string sourceDbPath)
+    {
+        var result = new Godot.Collections.Dictionary
+        {
+            ["ok"] = false,
+            ["added"] = new Godot.Collections.Dictionary(),
+            ["error"] = "",
+        };
+        lock (_lock)
+        {
+            if (IsOpen())
+            {
+                result["error"] = "目标数据库仍处于打开状态";
+                return result;
+            }
+            if (!System.IO.File.Exists(targetDbPath))
+            {
+                result["error"] = "目标数据库不存在";
+                return result;
+            }
+            if (!System.IO.File.Exists(sourceDbPath))
+            {
+                result["ok"] = true; // 当前根没有库，无需合并
+                return result;
+            }
+
+            LiteDatabase target = null, source = null;
+            try
+            {
+                // 目标库打不开 = 致命：目标就是玩家要保留的那一侧
+                try
+                {
+                    target = new LiteDatabase(targetDbPath);
+                }
+                catch (Exception e)
+                {
+                    result["error"] = e.Message;
+                    ThreadSafeLog.PrintErr($"[ChartDb] Merge aborted, cannot open target db: {e.Message}");
+                    return result;
+                }
+                // 源库打不开（损坏/被占用）= 放弃合并但继续迁移：目标侧记录仍完整，
+                // 少搬一部分旧记录好过整次迁移失败
+                try
+                {
+                    source = new LiteDatabase(sourceDbPath);
+                }
+                catch (Exception e)
+                {
+                    ThreadSafeLog.PrintErr($"[ChartDb] Merge skipped, cannot open source db: {e.Message}");
+                    result["ok"] = true;
+                    return result;
+                }
+
+                var added = (Godot.Collections.Dictionary)result["added"];
+                target.BeginTrans();
+                try
+                {
+                    foreach (var name in MergeCollections)
+                    {
+                        var src = source.GetCollection<BsonDocument>(name);
+                        var dst = target.GetCollection<BsonDocument>(name);
+                        int n = 0;
+                        foreach (var doc in src.FindAll())
+                        {
+                            if (!doc.TryGetValue("_id", out var id) || id.IsNull) continue;
+                            if (dst.FindById(id) != null) continue;
+                            dst.Insert(doc);
+                            n++;
+                        }
+                        added[name] = n;
+                    }
+                    target.Commit();
+                }
+                catch
+                {
+                    try { target.Rollback(); } catch { }
+                    throw;
+                }
+                result["ok"] = true;
+                ThreadSafeLog.Print($"[ChartDb] Merged storage DB from {sourceDbPath}");
+            }
+            catch (Exception e)
+            {
+                result["error"] = e.Message;
+                ThreadSafeLog.PrintErr($"[ChartDb] Merge storage DB failed: {e.Message}");
+            }
+            finally
+            {
+                try { source?.Dispose(); } catch { }
+                try { target?.Dispose(); } catch { }
+            }
+        }
+        return result;
+    }
+
     public long CountCharts() => _charts.Count();
     public long CountByStatus(string status) => _charts.Count(Query.EQ("status", status));
     public long CountAlbums() => _albums.Count();

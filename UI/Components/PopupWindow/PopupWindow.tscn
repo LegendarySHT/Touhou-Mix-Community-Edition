@@ -1877,12 +1877,12 @@ metadata/_tab_index = 8
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
-text = "发现已有配置文件"
+text = "目标目录已有游戏数据"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="FilesLabel" type="Label" parent="StorageConflictAdjust" unique_id=243565951]
-custom_minimum_size = Vector2(700, 220)
+custom_minimum_size = Vector2(780, 320)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 horizontal_alignment = 1
@@ -1898,13 +1898,13 @@ theme_override_constants/separation = 40
 custom_minimum_size = Vector2(300, 70)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
-text = "保留当前版本（覆盖目标）"
+text = "用当前版本覆盖目标"
 
 [node name="KeepTarget" type="Button" parent="StorageConflictAdjust/Btns" unique_id=375911883]
 custom_minimum_size = Vector2(300, 70)
 layout_mode = 2
 theme_override_font_sizes/font_size = 26
-text = "保留目标已有版本（跳过）"
+text = "保留目标已有版本（合并补缺）"
 
 [connection signal="focus_exited" from="DelayAdjust/HBoxC/Value" to="DelayAdjust" method="_on_delay_focus_exited"]
 [connection signal="text_changed" from="DelayAdjust/HBoxC/Value" to="DelayAdjust" method="_on_delay_text_changed"]

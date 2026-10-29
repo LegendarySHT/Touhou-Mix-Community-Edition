@@ -172,6 +172,10 @@ func _initialize_core_systems() -> void:
 	add_child(filesystem_manager)
 	# 存储根刚迁移时强制全量扫描（重建 DB 缓存投影中的绝对路径）
 	filesystem_manager.force_full_rescan = bool(storage_resolve.get("needs_full_rescan", false))
+	if filesystem_manager.force_full_rescan:
+		# 扫完即把日志里的重扫标记落盘：之后即使旧根清理失败（cleanup_pending 残留），
+		# 下次启动也不会再白扫一遍全量索引
+		filesystem_manager.resources_ready.connect(storage_manager.mark_rescan_done, CONNECT_ONE_SHOT)
 	if logger:
 		logger.info("FileSystemManager initialized", "Main")
 	
@@ -613,3 +617,69 @@ func _apply_player_setting(key: String, value: Variant) -> bool:
 		_:
 			logger.warning("PlayerSettings entry has unknown apply: %s" % key, "Main")
 	return true
+
+## 存储根热切换：迁移提交后不重启，直接把整个应用切到新根
+## 步骤：关库 → 换根 → 开新库 → 重载配置/收藏/日志/主题 → 全量重建文件系统索引 → 刷新数据与音源
+## 返回 {ok, reason}；返回失败时已回滚到旧根（DB 重开），调用方应回退到"提示重启"流程，
+## 保证任何一步重建失败都不会留下"半个应用指向新根"的状态
+func reinitialize_after_storage_migration(new_root: String) -> Dictionary:
+	var target := PathHelper.normalize_storage_path(new_root)
+	if target.is_empty():
+		return {"ok": false, "reason": "目标路径为空"}
+	var old_root := PathHelper.get_storage_root()
+	if target == old_root:
+		return {"ok": false, "reason": "目标路径与当前存储路径相同"}
+
+	var cache_path := ProjectSettings.globalize_path(PathHelper.get_base_dir()).path_join(".charts_scan_cache.json")
+
+	# 1. 数据层：关旧库 → 换根 → 开新库（迁移已把 charts.ldb 复制到新根）
+	#    新库打不开时立刻回滚旧根并重开旧库，交由调用方走重启流程
+	#    关库前先等后台缓存校验结束，避免工作线程持有旧库引用
+	if filesystem_manager and filesystem_manager.is_busy():
+		await filesystem_manager.await_busy_done()
+	if ChartDB != null and ChartDB.IsOpen():
+		ChartDB.CloseDb()
+	PathHelper.set_storage_root(target)
+	var new_db_dir := ProjectSettings.globalize_path(target)
+	DirAccess.make_dir_recursive_absolute(new_db_dir)
+	if ChartDB == null or not ChartDB.OpenDb(new_db_dir.path_join("charts.ldb"), cache_path):
+		PathHelper.set_storage_root(old_root)
+		if ChartDB != null:
+			ChartDB.OpenDb(ProjectSettings.globalize_path(old_root).path_join("charts.ldb"), cache_path)
+		logger.warning("Storage hot switch aborted: cannot open new chart db", "Main")
+		return {"ok": false, "reason": "无法打开新存储位置的数据索引"}
+
+	# 2. 配置与收藏：settings.ini / favorites.json 已随迁移落到新根，重新加载并记录新根
+	config_loader.clear_cache()
+	config_loader.load_and_set_current()
+	config_loader.set_value("custom_storage_path", target)
+	config_loader.save_config(ConfigManager.USER_CONFIG_PATH, config_loader.get_current_config())
+	if FavoriteManager.instance != null:
+		FavoriteManager.instance.reload_from_disk()
+
+	# 3. 日志目录随根切换
+	if logger:
+		logger.refresh_log_path()
+
+	# 4. 主题与背景（theme.ini 位于存储根；背景图缓存里的纹理来自旧根路径）
+	# 先清缓存再重载：load_theme 内部会 apply_preset → save_theme + refresh_theme_only
+	ThemeMGR.invalidate_background_cache()
+	ThemeMGR.load_theme()
+
+	# 5. 文件系统索引：DB 投影里的绝对路径仍指向旧根，必须全量重建
+	if filesystem_manager:
+		await filesystem_manager.reinitialize_after_storage_change()
+
+	# 6. 视图数据（惰性水合的 MidiData 带旧根绝对路径）与音源（路径变了需重新定位）
+	if data_manager:
+		data_manager.rebuild_after_storage_change()
+	if PlaybackDisplay.instance != null:
+		PlaybackDisplay.instance.load_soundfont_from_config()
+		PlaybackDisplay.instance.preload_soundfont()
+
+	# 7. 落盘标记：新根的索引已重建，复位重扫标记
+	#    （没重建就复位会让下次启动跳过必要的全量扫描）
+	if storage_manager and filesystem_manager:
+		storage_manager.mark_rescan_done()
+	logger.info("Storage hot switch completed: %s -> %s" % [old_root, target], "Main")
+	return {"ok": true, "reason": ""}

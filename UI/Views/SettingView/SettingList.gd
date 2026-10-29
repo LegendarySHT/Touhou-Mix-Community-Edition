@@ -686,16 +686,17 @@ func _popup_storage_location_adjust() -> void:
 		await PopupWindow.instance.show_message(str(v.get("reason", "路径无效")))
 		return
 
-	# 目标目录冲突处理（迁移只创建/合并游戏资源目录，不删除目标内任何内容）
+	# 目标目录已有游戏数据 → 让玩家决定听哪一侧（默认推荐"保留目标"，但可以翻过来）
 	var merge_dirs: Array = v.get("merge_dirs", [])
 	var conflict_files: Array = v.get("conflict_files", [])
-	var keep_target_files := false
-	if not merge_dirs.is_empty():
-		# 目标已存在同名游戏资源目录 → 合并确认
-		var proceed := await PopupWindow.instance.show_message(
-			"目标目录已检测到游戏资源：%s。\n迁移将合并两侧内容（同名文件保留目标已有版本），不删除任何内容。\n是否继续？" % "、".join(merge_dirs), true)
-		if not proceed:
+	var overwrite_target := false
+	if not merge_dirs.is_empty() or not conflict_files.is_empty():
+		var choice: int = await PopupWindow.instance.show_storage_conflict_adjust(merge_dirs, conflict_files)
+		if choice == StorageConflictAdjust.Choice.NONE:
+			# 点弹窗外部/返回键关闭 → 中止迁移（不能当成默认选项继续）
+			GLogger.info("Storage migration cancelled at conflict dialog", "SettingList")
 			return
+		overwrite_target = choice == StorageConflictAdjust.Choice.OVERWRITE
 	elif bool(v.get("target_not_empty", false)):
 		# 目标有其它文件（非游戏资源）→ 现有非空警告
 		var proceed := await PopupWindow.instance.show_message(
@@ -704,28 +705,45 @@ func _popup_storage_location_adjust() -> void:
 		if not proceed:
 			return
 
-	if not conflict_files.is_empty():
-		# 不可合并文件（settings.ini/favorites.json/charts.ldb 等）：统一询问保留哪一侧
-		keep_target_files = await PopupWindow.instance.show_storage_conflict_adjust(conflict_files)
-		# true=保留目标已有版本（跳过）；false=保留当前版本（覆盖目标）
-
 	# 迁移（弹窗已关闭，进度条遮罩可复用）
+	# 路径上一步刚校验过，这里跳过重复校验
 	var fs := FileSystemManager.instance
 	var ui := {}
 	if fs and fs.has_method("show_progress_ui"):
 		ui = fs.show_progress_ui("正在迁移资源，请勿关闭游戏", 1)
 	var mig: Dictionary = await StorageManager.instance.migrate(
-		PathHelper.get_storage_root(), new_path, ui, keep_target_files)
-	if fs and fs.has_method("hide_progress_ui"):
-		fs.hide_progress_ui()
-
+		PathHelper.get_storage_root(), new_path, ui, true, overwrite_target)
 	if not bool(mig.get("ok", false)):
+		if fs and fs.has_method("hide_progress_ui"):
+			fs.hide_progress_ui()
 		await PopupWindow.instance.show_message("迁移失败：%s" % str(mig.get("reason", "未知错误")))
 		return
 
-	# 迁移提交成功：缓存 pending（退出设置页时幂等写回配置），提示重启生效
+	# 迁移提交成功：缓存 pending（退出设置页时幂等写回配置）
 	# 使用规范化路径，与 migrate 提交到 settings.ini 的值保持一致
 	_pending_config["storage_location"] = PathHelper.normalize_storage_path(new_path)
+
+	# 目标自带 settings.ini / theme.ini 时，新根的配置就是玩家选定的那一份，与当前会话
+	# 内存里的配置不一致（热切换会让主题/布局等已构建的状态打架），只能重启生效；
+	# 目标没有配置时配置原样搬过去，可以原地热切换
+	var inherited_config := bool(mig.get("inherited_config", false))
+	var main := get_node_or_null(PathRegistry.MAIN)
+	var can_hot_switch := not inherited_config \
+			and main != null and main.has_method("reinitialize_after_storage_migration")
+	if can_hot_switch:
+		var re: Dictionary = await main.reinitialize_after_storage_migration(new_path)
+		if fs and fs.has_method("hide_progress_ui"):
+			fs.hide_progress_ui()
+		if bool(re.get("ok", false)):
+			await PopupWindow.instance.show_message("资源已迁移到新位置，本次运行即刻生效。")
+			return
+		GLogger.warning("Hot storage switch failed (%s), falling back to restart"
+				% str(re.get("reason", "")), "SettingList")
+	else:
+		if fs and fs.has_method("hide_progress_ui"):
+			fs.hide_progress_ui()
+		if inherited_config:
+			GLogger.info("Storage migrated with inherited target config, restart required", "SettingList")
 	# 自动重启（桌面：拉起新进程后退出）；不支持（Android）或失败时强制重启提示
 	if not StorageManager.instance.request_restart():
 		await _force_restart_prompt()

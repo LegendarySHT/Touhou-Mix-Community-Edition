@@ -7,7 +7,7 @@
 ##   - 可移动存储根（PathHelper.get_storage_root() / get_files_dir()）：
 ##     全部用户数据 —— Charts / Soundfont / Skins / BackgroundImage / Particles /
 ##     Charas / Logs / Settings / THMIX_Import + settings.ini / favorites.json /
-##     charts.ldb / charts-log.ldb —— 玩家可自定义
+##     theme.ini / charts.ldb / charts-log.ldb —— 玩家可自定义
 ##   - 固定引导目录文件（PathHelper.get_auth_file() / get_device_id_file()）：
 ##     auth.json（登录态）/ device_id.txt（设备标识）—— 设备/账号级数据，不随存储根迁移
 ##
@@ -20,6 +20,13 @@
 ##   2. 迁移日志写引导目录（新根即使损坏也可读）
 ##   3. cleanup（删旧备份）永远发生在"下次启动验证新根通过之后"
 ##      → 杜绝"新根失效 + 旧根已删"的双重丢失
+##
+## 合并语义（目标侧优先，单向补缺）：
+##   - 资源目录：同名文件保留目标已有版本，目标缺的从当前根补
+##   - 顶层文件（settings.ini / theme.ini 等）：目标已存在则保留目标版本
+##   - favorites.json：两侧按收藏夹 id 取并集（同 id 保留目标那份）
+##   - 数据库（charts.ldb）：目标已有库时把当前库缺失的记录补进去，同一 _id 保留目标记录
+##   charts.ldb 与 charts-log.ldb（LiteDB 日志）必须成对处理：把源侧日志混进目标主库会写坏库
 ##
 ## 生命周期：Main._ready 最先创建本节点并调用 recover_and_resolve()（先于
 ## ConfigManager.load_and_set_current()，本类不依赖 ConfigManager）。
@@ -42,9 +49,12 @@ const MIGRATABLE_DIRS: Array[String] = [
 ## 随存储根迁移的顶层文件（用户数据 / 数据库）
 ## 注意：auth.json / device_id.txt 为设备/账号级固定文件（存引导目录），永不随根迁移
 const MIGRATABLE_FILES: Array[String] = [
-	"settings.ini", "favorites.json",
+	"settings.ini", "favorites.json", "theme.ini",
 	"charts.ldb", "charts-log.ldb", "charts.ldb.lock", "charts-log.ldb.lock",
 ]
+## 主数据库文件名（与 charts-log.ldb 成对：日志是 LiteDB 的 journal，跨库混用会写坏主库）
+const DB_FILE := "charts.ldb"
+const DB_LOG_FILE := "charts-log.ldb"
 ## 可写性测试文件名（验证后立即删除）
 const WRITE_TEST_FILE := ".thmix_write_test"
 ## 配置键
@@ -127,19 +137,20 @@ static func validate_target_path(path: String) -> Dictionary:
 		"conflict_files": collisions["conflict_files"],
 	}
 
-## 检测目标目录中已存在的游戏数据（迁移冲突分类）：
-##   merge_dirs    —— 目标已存在且非空的 MIGRATABLE_DIRS（可合并：两侧内容合并，同名保留目标）
-##   conflict_files—— 目标已存在的 MIGRATABLE_FILES（不可合并，需询问玩家保留哪一侧；.lock 跟随其主体不单列）
+## 检测目标目录中已存在的游戏数据（迁移提示用）：
+##   merge_dirs    —— 目标已存在且非空的 MIGRATABLE_DIRS（同名保留目标，缺的补齐）
+##   conflict_files—— 目标已存在的 MIGRATABLE_FILES（目标优先保留，.lock 跟随其主体不单列）
+## 只做浅层枚举（每个目录读一层、发现首个条目即停）：冲突分类只需要"有没有内容"，
+## 递归统计文件数在大曲包目录上会让主线程长时间无响应。
 static func _detect_collisions(normalized: String) -> Dictionary:
 	var merge_dirs: Array[String] = []
 	for d in MIGRATABLE_DIRS:
-		if DirAccess.dir_exists_absolute(normalized + d) \
-				and _count_files(normalized + d) > 0:
+		if _dir_has_entries(normalized + d):
 			merge_dirs.append(d)
 	var conflict_files: Array[String] = []
 	for f in MIGRATABLE_FILES:
 		if f.ends_with(".lock"):
-			continue  # 锁文件跟随其主体文件（charts.ldb / charts-log.ldb）的保留决策
+			continue  # 锁文件跟随其主体文件（charts.ldb / charts-log.ldb）
 		if FileAccess.file_exists(normalized + f):
 			conflict_files.append(f)
 	return {"merge_dirs": merge_dirs, "conflict_files": conflict_files}
@@ -187,10 +198,12 @@ static func _journal_state_machine(journal: Dictionary, validate_fn: Callable) -
 					"reason": "新存储路径不可用（%s），已回退到迁移前路径" % str(v.get("reason", "unknown")),
 				}
 			# 新根验证通过 → 采用新根（cleanup 由 recover 在配置同步后执行，幂等可续）
+			# 全量扫描只在"迁移后尚未重建过索引"时执行一次：cleanup 失败会留下
+			# cleanup_pending 日志，若仍按"有日志就重扫"处理，每次启动都会白扫一遍
 			return {
 				"action": "commit",
 				"path": new_root,
-				"needs_full_rescan": true,
+				"needs_full_rescan": bool(journal.get("rescan_pending", true)),
 				"restored": false,
 				"reason": "",
 			}
@@ -246,15 +259,20 @@ func recover_and_resolve() -> Dictionary:
 			var old_root := str(journal.get("old_root", ""))
 			PathHelper.set_storage_root(new_root)
 			_write_pointer(new_root)
-			# 配置同步：旧根 settings.ini 是迁移后本会话的写入目标（最新配置），
-			# 覆盖新根上的迁移快照，避免重启后丢失迁移后修改的设置。
-			# 必须在 cleanup（删旧根）之前执行。
-			var src_cfg := old_root + "settings.ini"
-			if not old_root.is_empty() and FileAccess.file_exists(src_cfg) \
-					and new_root != old_root:
-				_copy_file(src_cfg, new_root + "settings.ini")
+			# 注意：此处绝不能用旧根 settings.ini 覆盖新根。迁移语义是"目标侧优先"，
+			# 新根上的配置就是玩家选定的那份；旧根副本此时已是被放弃的一方。
+			# 新根 settings.ini 里过期的 custom_storage_path 由调用方在配置加载后补写。
 			# cleanup 旧根备份（幂等，中断可续）
-			if _cleanup_old_root(old_root):
+			# 同一会话内连续迁移会留下更早的旧根，记录在 pending_cleanup_roots 里一并清理；
+			# 当前根永远不在清理范围（防御：记录里的路径可能与当前根重合）
+			var cleanup_ok := _cleanup_old_root(old_root)
+			for r in journal.get("pending_cleanup_roots", []):
+				var extra := normalize(str(r))
+				if extra.is_empty() or extra == new_root:
+					continue
+				if not _cleanup_old_root(extra):
+					cleanup_ok = false
+			if cleanup_ok:
 				_delete_journal()
 				GLogger.info("Storage migration committed, old root cleaned", "StorageMGR")
 			else:
@@ -263,7 +281,7 @@ func recover_and_resolve() -> Dictionary:
 				j["updated_at"] = Time.get_unix_time_from_system()
 				_write_journal(j)
 				GLogger.warning("Storage migration committed, old root cleanup pending", "StorageMGR")
-			var res := _result(true, false, "commit")
+			var res := _result(bool(decision.get("needs_full_rescan", true)), false, "commit")
 			# 配置补写交给调用方（此时 ConfigManager 尚未加载）：确保 settings.ini 记录新根
 			res["needs_config_commit"] = true
 			res["pending_root"] = new_root
@@ -311,12 +329,13 @@ func _validate_for_recovery(path: String) -> Dictionary:
 	return {"ok": true, "reason": ""}
 
 ## 新根是否包含迁移数据（任一可迁移目录非空，或 DB 存在）
+## 同样只做浅层枚举：判定"有数据"不需要知道具体文件数
 static func _has_migration_data(root: String) -> bool:
 	var r := normalize(root)
 	if r.is_empty():
 		return false
 	for d in MIGRATABLE_DIRS:
-		if _count_files(r + d) > 0:
+		if _dir_has_entries(r + d):
 			return true
 	for f in MIGRATABLE_FILES:
 		if FileAccess.file_exists(r + f):
@@ -327,28 +346,63 @@ static func _has_migration_data(root: String) -> bool:
 # 迁移（运行期，SettingView 触发）
 # ============================================================
 
-## 完整迁移：复制 → 校验 → 提交。协程，需要 UI 进度时传入 ui（show_progress_ui 返回值）
-## keep_target_files=true 时：目标已存在的顶层文件（settings.ini/favorites.json/charts.ldb 等）
-## 保留目标已有版本、不覆盖（用于玩家在冲突询问中选择"保留目标已有版本"）；
-## 目录类资源不受影响（始终跳过已存在文件 = 两侧合并，同名保留目标）
-## 返回 {ok, reason}；ok=true 表示已提交（重启生效），ok=false 表示失败（数据层可能已关闭，建议重启）
-func migrate(old_root: String, new_root: String, ui: Dictionary = {}, keep_target_files: bool = false) -> Dictionary:
-	var v := validate_target_path(new_root)
-	if not bool(v.get("ok", false)):
-		return {"ok": false, "reason": str(v.get("reason", "路径无效"))}
+## 完整迁移：合并 → 复制 → 校验 → 提交。协程，需要 UI 进度时传入 ui（show_progress_ui 返回值）
+## 两种取值方式（玩家在 StorageConflictAdjust 里选的）：
+##   overwrite_target=false（默认，推荐）：**目标侧优先、单向补缺** —— 目标已有的一律保留，
+##     目标缺的从当前根搬过去；数据库与收藏夹额外做内容合并（同一 _id / 同一收藏夹保留目标那份）
+##   overwrite_target=true：**用当前版本覆盖目标** —— 顶层文件与数据库整份替换目标侧，
+##     不做任何合并（玩家认为当前这份才是对的，比如目标库是空的/旧的）
+## 返回 {ok, reason, inherited_config}；ok=true 表示已提交（重启后生效）
+## inherited_config=true 表示最终生效的是目标自带的配置（设置/外观是目标那份），
+##   当前会话的配置来源已改变，只能重启生效，调用方不得走原地热切换
+## prevalidated=true 表示调用方刚用 validate_target_path() 校验过同一路径，
+##   跳过重复校验（该校验含目标目录枚举，重复执行会让玩家再多等一次）
+## keep_db_closed=true 表示提交后不重开旧根 DB（调用方将原地切到新根并打开新库）
+func migrate(old_root: String, new_root: String, ui: Dictionary = {},
+		prevalidated: bool = false, overwrite_target: bool = false,
+		keep_db_closed: bool = false) -> Dictionary:
+	new_root = normalize(new_root)
+	if not prevalidated:
+		var v := validate_target_path(new_root)
+		if not bool(v.get("ok", false)):
+			return {"ok": false, "reason": str(v.get("reason", "路径无效"))}
+	elif not DirAccess.dir_exists_absolute(new_root):
+		return {"ok": false, "reason": "目标目录已不可用，请重新选择"}
 
 	old_root = normalize(old_root)
-	new_root = normalize(new_root)
 	if old_root == new_root:
 		return {"ok": false, "reason": "目标路径与当前存储路径相同"}
+	# 最终生效的配置来自哪一侧：
+	#   覆盖目标 → 当前根那份（= 会话内存里的配置，热切换安全）
+	#   保留目标且目标有 settings.ini → 目标那份（与会话内配置不同，必须重启）
+	var inherited_config := not overwrite_target and FileAccess.file_exists(new_root + "settings.ini")
 
 	# 1. 写迁移日志（in_progress）
+	# 热切换后可以在同一会话内再次迁移，此时上一次迁移的旧根还没被清理，而新日志会
+	# 覆盖掉它的记录 —— 把这类根记进 pending_cleanup_roots，等下次启动验证新根通过后
+	# 一并清理（仍然遵守"先验证、后删除"，只是把记录带过去，避免留下一份无用副本）
+	var pending_cleanup: Array = []
+	var prev_journal := _read_journal()
+	for r in prev_journal.get("pending_cleanup_roots", []):
+		var pr := normalize(str(r))
+		if not pr.is_empty() and pr != old_root and pr != new_root and pr not in pending_cleanup:
+			pending_cleanup.append(pr)
+	var prev_state := str(prev_journal.get("state", ""))
+	if prev_state == "committed" or prev_state == "cleanup_pending":
+		var prev_old := normalize(str(prev_journal.get("old_root", "")))
+		if not prev_old.is_empty() and prev_old != old_root and prev_old != new_root \
+				and prev_old not in pending_cleanup:
+			pending_cleanup.append(prev_old)
+
 	var journal := {
 		"state": "in_progress",
 		"prev_override": PathHelper._storage_root_override,
 		"old_root": old_root,
 		"new_root": new_root,
-		"keep_target_files": keep_target_files,
+		# 提交后是否需要一次全量扫描（绝对路径已变）；扫描完成后由 mark_rescan_done() 复位
+		"rescan_pending": true,
+		# 更早的迁移残留的旧根（同一会话内连续迁移时），随本次一起在启动验证后清理
+		"pending_cleanup_roots": pending_cleanup,
 		"migration_id": str(Time.get_unix_time_from_system()) + "_" + str(randi()),
 		"started_at": Time.get_unix_time_from_system(),
 		"updated_at": Time.get_unix_time_from_system(),
@@ -356,48 +410,76 @@ func migrate(old_root: String, new_root: String, ui: Dictionary = {}, keep_targe
 	if not _write_journal(journal):
 		return {"ok": false, "reason": "无法写入迁移日志"}
 
-	# 2. 停止播放 + 关闭 DB（LiteDB 单文件锁，必须先关再复制 charts.ldb）
+	# 2. 停止播放 + 关闭 DB（LiteDB 单文件锁，必须先关再复制/合并 charts.ldb）
+	#    先等后台缓存校验/扫描退出：它会读写 ChartDB，与关库并发会撞上已释放的库
+	var fsm := FileSystemManager.instance
+	if fsm != null and fsm.is_busy() and get_tree() != null:
+		await fsm.await_busy_done()
 	if PlaybackDisplay.instance != null:
 		PlaybackDisplay.instance.stop()
 	var db_closed: bool = false
 	if ChartDB != null and ChartDB.IsOpen():
 		ChartDB.CloseDb()
 		db_closed = true
+	var old_cache := ProjectSettings.globalize_path(PathHelper.get_base_dir()).path_join(".charts_scan_cache.json")
 
-	# 3. 复制（让出一帧避免进度 UI 与弹窗遮罩动画冲突）
+	# 3. 先合并两侧用户数据进目标（数据库记录 / 收藏夹条目），再做文件复制。
+	#    放在复制之前：合并失败时目标目录还没被动过，直接中止并重开旧库即可。
+	#    覆盖目标时不做合并 —— 玩家选了"当前这份才算数"
+	var merge_res := {"ok": true}
+	if not overwrite_target:
+		merge_res = _merge_side_data(old_root, new_root)
+	if not bool(merge_res.get("ok", false)):
+		if db_closed and ChartDB != null:
+			ChartDB.OpenDb(ProjectSettings.globalize_path(old_root + DB_FILE), old_cache)
+		_delete_journal()
+		return {"ok": false, "reason": "数据合并失败：%s" % str(merge_res.get("reason", "未知错误"))}
+
+	# 4. 复制（让出一帧避免进度 UI 与弹窗遮罩动画冲突）
 	if get_tree() != null:
 		await get_tree().process_frame
-	var copied := await _copy_storage(old_root, new_root, ui, keep_target_files)
+	var copied := await _copy_storage(old_root, new_root, ui, overwrite_target)
 
-	# 4. 校验：新根已包含迁移数据即可（复制过程已逐文件保证；不做旧根逐文件大小对账，
+	# 5. 校验：新根已包含迁移数据即可（复制过程已逐文件保证；不做旧根逐文件大小对账，
 	#    迁移期间旧根仍在运行（日志/DB 持续写入），size 不一致不代表复制失败）
 	var verified := false
 	if copied:
 		verified = _has_migration_data(new_root)
 
-	# 5. 恢复会话：重开旧根 DB（重启前游戏继续用旧根运行，功能需保持正常）
-	if db_closed and ChartDB != null:
-		var db_path := ProjectSettings.globalize_path(old_root + "charts.ldb")
-		var old_cache := ProjectSettings.globalize_path(PathHelper.get_base_dir()).path_join(".charts_scan_cache.json")
-		ChartDB.OpenDb(db_path, old_cache)
-
+	# 6. 恢复会话：
+	#    - 复制/校验失败：必须把旧根 DB 重开，保证当前会话可用（此前失败会留下 DB 关闭状态）
+	#    - 常规路径：重开旧根 DB，重启前游戏继续用旧根运行
+	#    - 热切换路径（keep_db_closed=true）：保持关闭，由调用方切根后打开新根库
 	if not verified:
+		if db_closed and ChartDB != null:
+			ChartDB.OpenDb(ProjectSettings.globalize_path(old_root + DB_FILE), old_cache)
 		_delete_journal()
 		return {"ok": false, "reason": "迁移复制或校验失败，数据层已恢复，建议重启游戏"}
+	if db_closed and ChartDB != null and not keep_db_closed:
+		ChartDB.OpenDb(ProjectSettings.globalize_path(old_root + DB_FILE), old_cache)
 
-	# 6. 提交：journal → committed，配置立即落盘，更新引导指针
+	# 7. 提交：journal → committed，更新引导指针
+	#    不在写新根 settings.ini：配置采用目标侧那份，过期键由重启后 needs_config_commit 补写；
+	#    此时 PathHelper 仍指向旧根，往旧根写一遍没有意义（旧根验证通过后即被清理）
 	journal["state"] = "committed"
 	journal["updated_at"] = Time.get_unix_time_from_system()
 	if not _write_journal(journal):
 		return {"ok": false, "reason": "迁移已完成但无法写入提交日志，请重启游戏"}
 	if not _write_pointer(new_root):
 		return {"ok": false, "reason": "迁移已完成但无法更新引导指针，请重启游戏"}
-	ConfigManager.instance.set_value(CFG_KEY, new_root)
-	ConfigManager.instance.save_config(
-		ConfigManager.USER_CONFIG_PATH, ConfigManager.instance.get_current_config())
 
 	GLogger.info("Storage migration committed: %s -> %s (restart required)" % [old_root, new_root], "StorageMGR")
-	return {"ok": true, "reason": ""}
+	return {"ok": true, "reason": "", "inherited_config": inherited_config}
+
+## 迁移后的全量扫描完成：复位日志中的重扫标记。
+## 只有真正扫完才复位，扫描中途崩溃时下次启动会继续补扫
+func mark_rescan_done() -> void:
+	var j := _read_journal()
+	if j.is_empty() or not bool(j.get("rescan_pending", false)):
+		return
+	j["rescan_pending"] = false
+	j["updated_at"] = Time.get_unix_time_from_system()
+	_write_journal(j)
 
 ## 请求重启（桌面导出环境尝试自动重启后退出）
 ## 返回 true 表示已触发重启（游戏即将退出），false 表示需要强制提示玩家手动重启
@@ -610,18 +692,30 @@ func _read_pointer_or_legacy_config() -> String:
 # ============================================================
 
 ## 复制可迁移内容（全部用户数据目录 + 顶层文件）
-## keep_target_files=true 时顶层文件跳过目标已存在者（保留目标版本）；目录始终跳过已存在文件（合并）
+## overwrite_target=false：目录与顶层文件都"跳过已存在"（目标优先，缺的补齐），绝不覆盖目标
+## overwrite_target=true：顶层文件与数据库整份覆盖目标（目录仍按文件粒度补缺，不删目标多余文件）
 ## ui: FileSystemManager.show_progress_ui 返回值 {overlay, tip, bar}，可为空
-func _copy_storage(old_root: String, new_root: String, ui: Dictionary, keep_target_files: bool) -> bool:
-	# 统计总文件数用于进度条
+func _copy_storage(old_root: String, new_root: String, ui: Dictionary,
+		overwrite_target: bool = false) -> bool:
+	var bar: ProgressBar = ui.get("bar", null)
+	var tip: Label = ui.get("tip", null)
+	# 统计总文件数用于进度条。这一步与复制一样要遍历整棵树，故分帧让出，
+	# 否则进度条刚显示就会在主线程上僵住（大曲库可达数秒）。
+	# 统计期间进度条必然停在 0，提示文案先说明当前在做什么，避免看起来像卡死。
+	var restore_tip := ""
+	if tip:
+		restore_tip = tip.text
+		tip.text = "正在统计待迁移文件，请稍后"
+	var count_state := {"visited": 0, "last_yield": 0}
 	var total := 0
 	for d in MIGRATABLE_DIRS:
 		if DirAccess.dir_exists_absolute(old_root + d):
-			total += _count_files(old_root + d)
+			total += await _count_files_async(old_root + d, count_state)
 	for f in MIGRATABLE_FILES:
 		if not f.ends_with(".lock") and FileAccess.file_exists(old_root + f):
 			total += 1
-	var bar: ProgressBar = ui.get("bar", null)
+	if tip:
+		tip.text = restore_tip
 	if bar and total > 0:
 		bar.max_value = maxf(total, 1)
 		bar.value = 0
@@ -639,19 +733,106 @@ func _copy_storage(old_root: String, new_root: String, ui: Dictionary, keep_targ
 		if not await _copy_dir_async(src, new_root + d, progress_cb, counter):
 			return false
 
-	# 复制顶层文件（用户数据 + 数据库；.lock 属会话锁文件，不复制）
-	for f in MIGRATABLE_FILES:
-		if f.ends_with(".lock"):
-			continue
-		var src := old_root + f
-		if FileAccess.file_exists(src):
-			if keep_target_files and FileAccess.file_exists(new_root + f):
-				# 玩家选择"保留目标已有版本"：目标已存在则不覆盖（仍计入进度）
-				progress_cb.call()
-				continue
-			if not _copy_file(src, new_root + f):
+	# 数据库单独先处理：主库与日志必须成对，且"先主库后日志"
+	var target_has_db := FileAccess.file_exists(new_root + DB_FILE)
+	var src_db := old_root + DB_FILE
+	var src_log := old_root + DB_LOG_FILE
+	var dst_log := new_root + DB_LOG_FILE
+	# 需要写入数据库的两种情况：玩家选了覆盖目标；或目标本来就没有库（只能整份搬过去）。
+	# 目标是"保留"且已有主库时两者都留目标侧（缺失记录已由 _merge_side_data 补进去），
+	# 绝不能把源侧 charts-log.ldb 混进目标主库 —— 那是另一个库的 journal，回放会写坏库。
+	if overwrite_target or not target_has_db:
+		if FileAccess.file_exists(src_db):
+			if not _copy_file(src_db, new_root + DB_FILE):
 				return false
 			progress_cb.call()
+		if FileAccess.file_exists(src_log):
+			if not _copy_file(src_log, dst_log):
+				return false
+			progress_cb.call()
+		elif FileAccess.file_exists(dst_log):
+			# 目标侧残留的日志与新主库不配套，留着会被回放到新库上
+			# （页面类型不匹配 → LiteDB 判库损坏 → RemoveCorruptDb 删库，等于白搬）
+			DirAccess.remove_absolute(dst_log)
+
+	# 复制其余顶层文件（用户数据；.lock 属会话锁文件，不复制）
+	# 默认（overwrite_target=false）：目标已存在的一律保留目标版本，只补目标缺的文件
+	for f in MIGRATABLE_FILES:
+		if f.ends_with(".lock") or f == DB_FILE or f == DB_LOG_FILE:
+			continue  # 数据库上面已处理
+		var src := old_root + f
+		if not FileAccess.file_exists(src):
+			continue
+		if not overwrite_target and FileAccess.file_exists(new_root + f):
+			progress_cb.call()
+			continue
+		if not _copy_file(src, new_root + f):
+			return false
+		progress_cb.call()
+	return true
+
+## 合并两侧用户数据到目标侧（目标优先，只补缺）：
+##   charts.ldb     —— 目标已有库时逐集合补入缺失 _id（委托 ChartDb.MergeStorageDatabases）
+##   favorites.json —— 两侧收藏夹按 id 取并集，同 id 保留目标那份
+## 仅在"保留目标"模式下调用；"覆盖目标"模式由 _copy_storage 整份替换，不需要合并
+## 返回 {ok, reason}；任一环节失败即中止迁移（此时尚未复制任何文件）
+func _merge_side_data(old_root: String, new_root: String) -> Dictionary:
+	if FileAccess.file_exists(new_root + DB_FILE):
+		var src_db := old_root + DB_FILE
+		if FileAccess.file_exists(src_db):
+			if ChartDB == null:
+				return {"ok": false, "reason": "数据层不可用"}
+			var r: Dictionary = ChartDB.MergeStorageDatabases(
+				ProjectSettings.globalize_path(new_root + DB_FILE),
+				ProjectSettings.globalize_path(src_db))
+			if not bool(r.get("ok", false)):
+				return {"ok": false, "reason": str(r.get("error", "数据库合并失败"))}
+			GLogger.info("Storage DB merged (target wins): %s" % str(r.get("added", {})), "StorageMGR")
+	var src_fav := old_root + "favorites.json"
+	var dst_fav := new_root + "favorites.json"
+	if FileAccess.file_exists(src_fav) and FileAccess.file_exists(dst_fav):
+		# 收藏夹合并失败不中止迁移：最多是少合并几条旧收藏，没理由让整次搬库失败
+		if not _merge_favorites_file(dst_fav, src_fav):
+			GLogger.warning("Favorites merge failed (target file not writable)", "StorageMGR")
+	return {"ok": true, "reason": ""}
+
+## 收藏夹合并：把源侧独有的收藏夹追加到目标侧（同 id 保留目标那份），只写目标文件
+## 解析失败一律按"不动目标"处理 —— 目标侧是玩家要保留的一方，宁可少合并也不破坏它
+func _merge_favorites_file(dst_path: String, src_path: String) -> bool:
+	var target = JSON.parse_string(FileAccess.get_file_as_string(dst_path))
+	var source = JSON.parse_string(FileAccess.get_file_as_string(src_path))
+	if target is not Dictionary or source is not Dictionary:
+		GLogger.warning("Favorites merge skipped: unparsable json", "StorageMGR")
+		return true
+	var t_list: Array = target.get("favorites", [])
+	var s_list: Array = source.get("favorites", [])
+	if not (t_list is Array) or not (s_list is Array):
+		return true
+	var known := {}
+	for e in t_list:
+		if e is Dictionary:
+			var eid := str(e.get("id", ""))
+			if not eid.is_empty():
+				known[eid] = true
+	var added := 0
+	for e in s_list:
+		if e is not Dictionary:
+			continue
+		var sid := str(e.get("id", ""))
+		if sid.is_empty() or known.has(sid):
+			continue
+		t_list.append(e)
+		known[sid] = true
+		added += 1
+	if added == 0:
+		return true
+	target["favorites"] = t_list
+	var f := FileAccess.open(dst_path, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string(JSON.stringify(target, "\t"))
+	f.close()
+	GLogger.info("Favorites merged: %d list(s) appended from current root" % added, "StorageMGR")
 	return true
 
 ## 递归复制目录（跳过已存在文件；每 8 个文件让出一帧保持界面响应）
@@ -676,11 +857,18 @@ func _copy_dir_async(src_dir: String, dst_dir: String, progress_cb: Callable, co
 						return false
 				progress_cb.call()
 				counter["n"] = int(counter["n"]) + 1
-				if int(counter["n"]) % 8 == 0 and get_tree() != null:
+				# 按时间片让出（每帧 8ms），而不是每 8 个文件让出一次：
+				# 后者在几万文件时会把迁移拖成"每秒几百个"的龟速
+				var now := Time.get_ticks_usec()
+				if now - _copy_yield_usec > 8000 and get_tree() != null:
+					_copy_yield_usec = now
 					await get_tree().process_frame
 		entry = dir.get_next()
 	dir.list_dir_end()
 	return true
+
+## 迁移复制的分帧时间片起点（微秒）
+var _copy_yield_usec: int = 0
 
 ## 复制单个文件（整块读取写入）
 static func _copy_file(src: String, dst: String) -> bool:
@@ -696,22 +884,39 @@ static func _copy_file(src: String, dst: String) -> bool:
 	g.close()
 	return true
 
-## 统计目录下文件总数（递归，忽略隐藏条目）
-static func _count_files(dir_path: String) -> int:
+## 目录顶层是否存在非隐藏条目（只读一层，发现首个条目立即返回）
+## 用于"目录是否已有内容"的判定；隐藏条目（. 开头）与迁移复制的忽略规则保持一致
+static func _dir_has_entries(dir_path: String) -> bool:
 	var dir := DirAccess.open(dir_path)
 	if dir == null:
-		return 0
-	var count := 0
+		return false
+	var found := false
 	dir.list_dir_begin()
 	var entry := dir.get_next()
 	while entry != "":
 		if not entry.begins_with("."):
-			if dir.current_is_dir():
-				count += _count_files(dir_path.path_join(entry))
-			else:
-				count += 1
+			found = true
+			break
 		entry = dir.get_next()
 	dir.list_dir_end()
+	return found
+
+## 统计目录下文件总数（递归，忽略隐藏条目）
+## 分帧让出：每遍历约 2000 个文件让出一帧，避免进度条在统计阶段卡死界面
+## state: 跨递归共享 {visited, last_yield}，用于判断何时让出
+func _count_files_async(dir_path: String, state: Dictionary) -> int:
+	var count := 0
+	for f in DirAccess.get_files_at(dir_path):
+		if not f.begins_with("."):
+			count += 1
+	state["visited"] = int(state["visited"]) + count
+	if int(state["visited"]) - int(state["last_yield"]) >= 2000:
+		state["last_yield"] = int(state["visited"])
+		if get_tree() != null:
+			await get_tree().process_frame
+	for d in DirAccess.get_directories_at(dir_path):
+		if not d.begins_with("."):
+			count += await _count_files_async(dir_path.path_join(d), state)
 	return count
 
 ## 清理旧根备份（幂等）：删全部可迁移目录 + 顶层文件（含 charts-log.ldb / lock），绝不删根自身
