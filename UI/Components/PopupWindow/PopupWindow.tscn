@@ -250,6 +250,7 @@ popup/item_0/text = "歌曲及人声音频"
 popup/item_0/id = 0
 popup/item_1/text = "仅歌曲"
 popup/item_1/id = 1
+script = ExtResource("6_fyi7o")
 
 [node name="Btns" type="HBoxContainer" parent="Default" unique_id=760666686]
 custom_minimum_size = Vector2(0, 100)
@@ -548,6 +549,8 @@ size_flags_horizontal = 4
 size_flags_vertical = 0
 theme_override_font_sizes/font_size = 32
 alignment = 1
+clip_text = true
+script = ExtResource("6_fyi7o")
 
 [node name="OtherOptions" type="GridContainer" parent="NoteSkinAdjust/VBoxC" unique_id=991880897]
 custom_minimum_size = Vector2(0, 450)
@@ -896,6 +899,8 @@ layout_mode = 2
 size_flags_vertical = 0
 theme_override_font_sizes/font_size = 32
 alignment = 1
+clip_text = true
+script = ExtResource("6_fyi7o")
 
 [node name="Label3" type="Label" parent="ParticleAdjust/VBoxC/Options" unique_id=1296577285]
 custom_minimum_size = Vector2(0, 60)
@@ -911,6 +916,8 @@ layout_mode = 2
 size_flags_vertical = 0
 theme_override_font_sizes/font_size = 32
 alignment = 1
+clip_text = true
+script = ExtResource("6_fyi7o")
 
 [node name="Label" type="Label" parent="ParticleAdjust/VBoxC/Options" unique_id=2032973593]
 custom_minimum_size = Vector2(0, 60)
