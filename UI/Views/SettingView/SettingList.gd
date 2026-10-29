@@ -16,7 +16,6 @@ const DIFFICULTY_LOCKED_IDS: Array[String] = [
 	"max_block_coalesce_time",
 ]
 const DIFFICULTY_CUSTOM_ID: int = 4
-const DIFFICULTY_CFG_SECTION: String = "System"
 const DIFFICULTY_CFG_KEY: String = "difficulty"
 
 # 音符颜色的互斥关系：随机音符颜色开启时，统一颜色才有意义、三个单色设置被随机值覆盖；
@@ -345,7 +344,7 @@ func _apply_setting_runtime(id: String, data: Dictionary, converted: Variant) ->
 		return
 	if SettingsMapper.mappings.has(id):
 		var m: Dictionary = SettingsMapper.mappings[id]
-		ConfigManager.instance.set_value_and_notify(m["section"], m["key"], converted)
+		ConfigManager.instance.set_value_and_notify(m["key"], converted)
 
 ## theme_preset 即时应用到 ThemeManager（不持久化到 INI，持久化由 ThemeMGR 自身处理）
 func _apply_theme_preset(v: Variant) -> void:
@@ -443,17 +442,15 @@ func _flush_pending_to_runtime() -> void:
 	for setting_id in _pending_config:
 		if not SettingsMapper.mappings.has(setting_id):
 			continue
-		var mapping = SettingsMapper.mappings[setting_id]
-		var section = mapping.get("section", "")
-		var key = mapping.get("key", "")
-		if section.is_empty() or key.is_empty():
+		var key = String(SettingsMapper.mappings[setting_id].get("key", ""))
+		if key.is_empty():
 			continue
-		cm.set_value_and_notify(section, key, _pending_config[setting_id])
+		cm.set_value_and_notify(key, _pending_config[setting_id])
 
 # 弹窗结果统一提交：按声明式 result_map 把弹窗返回值写入 _pending_config，并（可选）即时应用到运行时
-## entry: {from, key, section, type, apply}
+## entry: {from, key, type, apply}
 ##   from  = result 字典中的键；key = 写入 _pending_config / ConfigManager 的键（通常即 setting_id）
-##   section / type = ConfigManager 段与转换类型；apply=true 时额外 set_value_and_notify
+##   type  = 转换类型；apply=true 时额外 set_value_and_notify（按 key 落盘，不需要 section）
 ## 返回值未包含的 entry 自动跳过；此助手消除了各弹窗里逐字段赋值 + 专属 _apply_*_to_runtime 的样板
 func _commit_popup_result(result: Dictionary, result_map: Array) -> void:
 	var cm := ConfigManager.instance
@@ -472,9 +469,7 @@ func _commit_popup_result(result: Dictionary, result_map: Array) -> void:
 			_: val = raw
 		_pending_config[key] = val
 		if bool(entry.get("apply", false)):
-			var section := String(entry.get("section", ""))
-			if not section.is_empty():
-				cm.set_value_and_notify(section, key, val)
+			cm.set_value_and_notify(key, val)
 
 # ===== 键位设置弹窗入口 =====
 # 弹出键位设置窗口，关闭后即时应用（set_value_and_notify）+ 缓存 _pending_config
@@ -497,14 +492,14 @@ func _popup_kb_mode_adjust() -> void:
 		return
 	# 键盘模式弹窗内部未写 ConfigManager，此处统一即时提交（apply=true）
 	_commit_popup_result(result, [
-		{"from":"keys","section":"Performance","key":"keyboard_mode_keys","type":"string","apply":true},
-		{"from":"display_names","section":"Performance","key":"keyboard_mode_display_names","type":"string","apply":true},
-		{"from":"keyboard_mode","section":"Performance","key":"keyboard_mode","type":"int","apply":true},
-		{"from":"keyboard_mode_gap","section":"Performance","key":"keyboard_mode_gap","type":"int","apply":true},
-		{"from":"alt_color","section":"Performance","key":"keyboard_alt_color","type":"int","apply":true},
-		{"from":"alt_count","section":"Performance","key":"keyboard_alt_color_count","type":"int","apply":true},
-		{"from":"alt_colors","section":"Performance","key":"keyboard_alt_colors","type":"string","apply":true},
-		{"from":"lane_separator","section":"Performance","key":"keyboard_lane_separator","type":"int","apply":true},
+		{"from":"keys","key":"keyboard_mode_keys","type":"string","apply":true},
+		{"from":"display_names","key":"keyboard_mode_display_names","type":"string","apply":true},
+		{"from":"keyboard_mode","key":"keyboard_mode","type":"int","apply":true},
+		{"from":"keyboard_mode_gap","key":"keyboard_mode_gap","type":"int","apply":true},
+		{"from":"alt_color","key":"keyboard_alt_color","type":"int","apply":true},
+		{"from":"alt_count","key":"keyboard_alt_color_count","type":"int","apply":true},
+		{"from":"alt_colors","key":"keyboard_alt_colors","type":"string","apply":true},
+		{"from":"lane_separator","key":"keyboard_lane_separator","type":"int","apply":true},
 	])
 	GLogger.info("keyboard_mode_keys updated: %s, kb_mode=%s" % [p.get("keyboard_mode_keys"), result.get("keyboard_mode")], "SettingList")
 
@@ -516,13 +511,13 @@ func _popup_falling_adjust() -> void:
 	if result.is_empty():
 		return
 	_commit_popup_result(result, [
-		{"from":"note_fall_mode","section":"Performance","key":"note_fall_mode","type":"int"},
-		{"from":"note_fall_time","section":"Performance","key":"note_fall_time","type":"float"},
-		{"from":"note_fall_speed_after_judge_multiplier","section":"Performance","key":"note_fall_speed_after_judge_multiplier","type":"float"},
-		{"from":"note_fall_easing_before_func","section":"Performance","key":"note_fall_easing_before_func","type":"string"},
-		{"from":"note_fall_easing_before_phase","section":"Performance","key":"note_fall_easing_before_phase","type":"string"},
-		{"from":"note_fall_easing_after_func","section":"Performance","key":"note_fall_easing_after_func","type":"string"},
-		{"from":"note_fall_easing_after_phase","section":"Performance","key":"note_fall_easing_after_phase","type":"string"},
+		{"from":"note_fall_mode","key":"note_fall_mode","type":"int"},
+		{"from":"note_fall_time","key":"note_fall_time","type":"float"},
+		{"from":"note_fall_speed_after_judge_multiplier","key":"note_fall_speed_after_judge_multiplier","type":"float"},
+		{"from":"note_fall_easing_before_func","key":"note_fall_easing_before_func","type":"string"},
+		{"from":"note_fall_easing_before_phase","key":"note_fall_easing_before_phase","type":"string"},
+		{"from":"note_fall_easing_after_func","key":"note_fall_easing_after_func","type":"string"},
+		{"from":"note_fall_easing_after_phase","key":"note_fall_easing_after_phase","type":"string"},
 	])
 	GLogger.info("Falling params updated (pending save)" , "SettingList")
 
@@ -535,7 +530,7 @@ func _popup_delay_adjust() -> void:
 	var id := AudioBtDetector.get_active_delay_key()
 	var default_value := 200 if id == "audio_playback_delay_bt" else 0
 	var current := int(_pending_config.get(id,
-		ConfigManager.instance.get_int("Gameplay", id, default_value)))
+		ConfigManager.instance.get_int(id, default_value)))
 	var result := await PopupWindow.instance.show_delay_adjust(current)
 	_pending_config[id] = int(result.get("delay", current))
 	_pending_config["bt_auto_disable_performing_mode"] = int(result.get("bt_auto_off_performing", 1))
@@ -918,10 +913,8 @@ func apply_pending_config_updates(sync_applied_snapshot: bool = true) -> int:
 	for setting_id in _pending_config:
 		if not SettingsMapper.mappings.has(setting_id):
 			continue  # theme_preset 等不在 mappings 中的跳过
-		var mapping = SettingsMapper.mappings[setting_id]
-		var section = mapping.get("section", "")
-		var key = mapping.get("key", "")
-		if section.is_empty() or key.is_empty():
+		var key = String(SettingsMapper.mappings[setting_id].get("key", ""))
+		if key.is_empty():
 			continue
 		var value = _pending_config[setting_id]
 		var old_value = _initial_config.get(setting_id, null)
@@ -930,7 +923,7 @@ func apply_pending_config_updates(sync_applied_snapshot: bool = true) -> int:
 			continue
 		# 用 set_value_and_notify 同时更新 _current_config 并 emit 信号，
 		# 避免直接 emit 导致运行时读到的仍是旧 _current_config
-		cm.set_value_and_notify(section, key, value)
+		cm.set_value_and_notify(key, value)
 		emitted_count += 1
 
 	if sync_applied_snapshot:
@@ -1065,7 +1058,7 @@ func _sort_list_items_by_tree_order(a: ListItemBase, b: ListItemBase) -> bool:
 ## ========== 难度预设锁定 ==========
 
 ## 难度相关配置变更：刷新 5 个受控项的显示值 + 锁定态
-func _on_difficulty_config_changed(key: String, _section: String, _value: Variant) -> void:
+func _on_difficulty_config_changed(key: String, _value: Variant) -> void:
 	if key != DIFFICULTY_CFG_KEY:
 		return
 	_apply_difficulty_lock_state(false)
@@ -1073,7 +1066,7 @@ func _on_difficulty_config_changed(key: String, _section: String, _value: Varian
 ## apply_values_from_config=true: 仅切换锁定态（load_settings 后调用，值已就位）
 ## apply_values_from_config=false: 同时从 ConfigManager 重读 5 项值刷新显示（难度变更后调用）
 func _apply_difficulty_lock_state(apply_values_from_config: bool) -> void:
-	var difficulty_id: int = ConfigManager.instance.get_int(DIFFICULTY_CFG_SECTION, DIFFICULTY_CFG_KEY, 1)
+	var difficulty_id: int = ConfigManager.instance.get_int(DIFFICULTY_CFG_KEY, 1)
 	var locked: bool = difficulty_id != DIFFICULTY_CUSTOM_ID
 	for setting_id in DIFFICULTY_LOCKED_IDS:
 		if not setting_items.has(setting_id):
@@ -1084,7 +1077,7 @@ func _apply_difficulty_lock_state(apply_values_from_config: bool) -> void:
 		if not apply_values_from_config:
 			var mapping = SettingsMapper.mappings.get(setting_id)
 			if mapping:
-				var v: Variant = ConfigManager.instance.get_value(mapping.section, mapping.key, "")
+				var v: Variant = ConfigManager.instance.get_value(mapping.key, "")
 				item.set_value(v)
 				_pending_config[setting_id] = v
 				_initial_config[setting_id] = v

@@ -34,7 +34,6 @@ signal retry_pressed
 
 # 难度预设显示名（下标即 difficulty id：0=Easy,1=Normal,2=Hard,3=Lunatic,4=Custom）
 const DIFFICULTY_NAMES: Array[String] = ["Easy", "Normal", "Hard", "Lunatic", "Custom"]
-const DIFFICULTY_CFG_SECTION: String = "System"
 const DIFFICULTY_CFG_KEY: String = "difficulty"
 
 # 轨道光效及键位显示
@@ -409,30 +408,30 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 		if _oldState == UIStateManager.UIState.SETTINGS_VIEW and current_midi != null:
 			bg_ctrl.apply_background(null, false, current_midi)
 
-## 新增：配置变更回调
-func _on_config_changed(key: String, section: String, value: Variant) -> void:
-	if section == "Appearance" and key == "background_dim_color":
+## 新增：配置变更回调（只按 key 分派）
+func _on_config_changed(key: String, value: Variant) -> void:
+	if key == "background_dim_color":
 		bg_ctrl.apply_dim()
 		return
 
-	if section == "Appearance" and key == "background_image_flash_color":
+	if key == "background_image_flash_color":
 		bg_ctrl.apply_dim()
 		return
 
-	if section == "Appearance" and key in ["note_glow_intensity", "note_glow_size"]:
-		var gi = ConfigManager.instance.get_float("Appearance", "note_glow_intensity", 0.5)
-		var gs = ConfigManager.instance.get_float("Appearance", "note_glow_size", 5.0)
+	if key in ["note_glow_intensity", "note_glow_size"]:
+		var gi = ConfigManager.instance.get_float("note_glow_intensity", 0.5)
+		var gs = ConfigManager.instance.get_float("note_glow_size", 5.0)
 		if flow_area and flow_area.has_method("set_glow_params"):
 			flow_area.set_glow_params(gi, gs)
 		return
 	
-	if section == "Appearance" and key == "block_skin_preset":
+	if key == "block_skin_preset":
 		var skin_name = str(value)
 		if flow_area and flow_area.has_method("load_note_skin"):
 			flow_area.load_note_skin(skin_name)
 		return
 
-	if section == "Appearance" and key in [
+	if key in [
 		"randomize_block_color",
 		"sync_color_across_block_type",
 		"short_block_color",
@@ -444,11 +443,11 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 			flow_area.refresh_note_colors()
 		return
 
-	if section == "General" and key == "display_debug_info":
+	if key == "display_debug_info":
 		hud.set_debug_enabled(int(value) == 1)
 		return
 
-	if section == "System" and key == "auto_mode":
+	if key == "auto_mode":
 		var auto_enabled = int(value) == 1
 		if flow_area:
 			flow_area.auto_mode = auto_enabled
@@ -456,7 +455,7 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 		GLogger.info("PlayView auto mode changed: %s" % ("ON" if auto_enabled else "OFF"), "PlayView")
 		return
 
-	if section == "Performance" and key == "performing_mode":
+	if key == "performing_mode":
 		var new_mode = int(value) == 1
 
 		# 只在值实际改变时处理
@@ -477,7 +476,7 @@ func _on_config_changed(key: String, section: String, value: Variant) -> void:
 				GLogger.info("Performing mode OFF: cleared manual control notes", "PlayView")
 
 func _load_debug_display_setting() -> void:
-	hud.set_debug_enabled(ConfigManager.instance.get_int("General", "display_debug_info", 0) == 1)
+	hud.set_debug_enabled(ConfigManager.instance.get_int("display_debug_info", 0) == 1)
 
 
 func _load_note_skin_setting() -> void:
@@ -495,7 +494,7 @@ func _on_skin_resources_ready() -> void:
 
 func _do_load_note_skin() -> void:
 	# 从配置加载皮肤设置
-	var skin_name = ConfigManager.instance.get_string("Appearance", "block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
+	var skin_name = ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 
 	# 应用皮肤
 	if flow_area and flow_area.has_method("load_note_skin"):
@@ -508,7 +507,7 @@ func _do_load_note_skin() -> void:
 func _regenerate_random_note_colors() -> void:
 	if not flow_area:
 		return
-	var skin_name = ConfigManager.instance.get_string("Appearance", "block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
+	var skin_name = ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	var skin_config = SkinMGR.get_skin_config(skin_name)
 	if skin_config.is_empty():
 		return
@@ -538,11 +537,11 @@ func _regenerate_random_note_colors() -> void:
 func _regenerate_global_random_colors() -> void:
 	if not flow_area:
 		return
-	var random_on := ConfigManager.instance.get_int("Appearance", "randomize_block_color", 0) == 1
+	var random_on := ConfigManager.instance.get_int("randomize_block_color", 0) == 1
 	if not random_on:
 		flow_area.set_random_colors({}, true)
 		return
-	var unified := ConfigManager.instance.get_int("Appearance", "sync_color_across_block_type", 0) == 1
+	var unified := ConfigManager.instance.get_int("sync_color_across_block_type", 0) == 1
 	var palette := NoteColorPalette.generate(unified)
 	flow_area.set_random_colors(palette, true)
 	GLogger.info("Generated global random note colors: %s" % str(palette.keys()), "PlayView")
@@ -669,7 +668,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	_interrupted_pause = false
 
 	# 读取“播放准备动画”设置（0=关闭, 1=开启）
-	var play_ready_animation: bool = ConfigManager.instance.get_int("Performance", "play_ready_animation") == 1
+	var play_ready_animation: bool = ConfigManager.instance.get_int("play_ready_animation") == 1
 	GLogger.info("Play ready animation: %s" % ("ON" if play_ready_animation else "OFF"), "PlayView")
 	# 歌曲信息面板开始显示的时刻（遮罩期起点，用于动态计算剩余等待时长）
 	var panel_start_ms := Time.get_ticks_msec()
@@ -703,7 +702,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	playback_mgr.claim_session(self)
 
 	# 新增：从配置读取演奏模式
-	var performing_mode = ConfigManager.instance.get_int("Performance", "performing_mode")
+	var performing_mode = ConfigManager.instance.get_int("performing_mode")
 	play_mode = (performing_mode == 1)
 	GLogger.info("Performing mode: %s" % ("ON" if play_mode else "OFF"), "PlayView")
 
@@ -727,7 +726,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	if setting_view and setting_view.has_method("get_setting_value"):
 		sync_threshold = setting_view.get_setting_value("audio_sync_threshold")
 	if sync_threshold == null:
-		sync_threshold = ConfigManager.instance.get_int("Audio", "audio_sync_threshold")
+		sync_threshold = ConfigManager.instance.get_int("audio_sync_threshold")
 	playback_mgr.set_sync_threshold(float(sync_threshold))
 	GLogger.info("Audio sync threshold set to %.0f ms" % float(sync_threshold), "PlayView")
 
@@ -961,27 +960,27 @@ func _load_lane_parameters() -> void:
 	var config_mgr = ConfigManager.instance
 	
 	# 加载轨道数量（默认12）
-	lane_count = config_mgr.get_int("Gameplay", "lane_count", 12)
+	lane_count = config_mgr.get_int("lane_count", 12)
 	# 加载左右安全区（默认100）
-	lane_padding = config_mgr.get_int("Performance", "canvas_horizontal_padding", 100)
+	lane_padding = config_mgr.get_int("canvas_horizontal_padding", 100)
 	# 加载判定线高度（默认200）
-	judge_line_offset_y = max(0, config_mgr.get_int("Performance", "judge_line_position", 200))
+	judge_line_offset_y = max(0, config_mgr.get_int("judge_line_position", 200))
 	
 	# 加载键盘模式（0=关闭，1=开启，默认0）
-	keyboard_mode = config_mgr.get_int("Performance", "keyboard_mode", 0) == 1
+	keyboard_mode = config_mgr.get_int("keyboard_mode", 0) == 1
 	
 	# 加载键盘键位字符串（默认 "A,S,D,F,J,K,L,;"）
-	var keyboard_keys_str = config_mgr.get_string("Performance", "keyboard_mode_keys", "A,S,D,F,J,K,L,;")
+	var keyboard_keys_str = config_mgr.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;")
 	key_map = ConfigParser.parse_keyboard_keys(keyboard_keys_str)
 	# 加载键盘键位显示名称（与 key_map 对齐，空字符串=使用按键默认名）
-	var keyboard_names_str = config_mgr.get_string("Performance", "keyboard_mode_display_names", "")
+	var keyboard_names_str = config_mgr.get_string("keyboard_mode_display_names", "")
 	key_display_names = ConfigParser.parse_keyboard_display_names(keyboard_names_str, key_map.size())
 
 	# 加载交替轨道颜色（默认开启；仅键盘模式生效）
-	keyboard_alt_color = config_mgr.get_bool("Performance", "keyboard_alt_color", true)
-	keyboard_alt_color_count = max(1, config_mgr.get_int("Performance", "keyboard_alt_color_count", 2))
+	keyboard_alt_color = config_mgr.get_bool("keyboard_alt_color", true)
+	keyboard_alt_color_count = max(1, config_mgr.get_int("keyboard_alt_color_count", 2))
 	keyboard_alt_colors = _parse_alt_colors(
-		config_mgr.get_string("Performance", "keyboard_alt_colors", "#ff0000,#0000ff")
+		config_mgr.get_string("keyboard_alt_colors", "#ff0000,#0000ff")
 	)
 	# 颜色数组对齐到声明的数量（不足补白，多余截断）
 	while keyboard_alt_colors.size() < keyboard_alt_color_count:
@@ -989,34 +988,32 @@ func _load_lane_parameters() -> void:
 	keyboard_alt_colors.resize(keyboard_alt_color_count)
 
 	# 左右间距（偶数键位时中间额外间距）
-	keyboard_mode_gap = max(0, config_mgr.get_int("Performance", "keyboard_mode_gap", 0))
+	keyboard_mode_gap = max(0, config_mgr.get_int("keyboard_mode_gap", 0))
 	# 轨道分隔线（仅键盘模式生效）
-	keyboard_lane_separator = config_mgr.get_bool("Performance", "keyboard_lane_separator", false)
+	keyboard_lane_separator = config_mgr.get_bool("keyboard_lane_separator", false)
 
 	GLogger.info(
 		"PlayView lane parameters loaded: lane_count=%d, lane_padding=%d, keyboard_mode=%s, key_map_size=%d" % 
 		[lane_count, lane_padding, str(keyboard_mode), key_map.size()],
 		"PlayView"
 	)
-	beam_alpha = config_mgr.get_float("Appearance", "flash_alpha", 0.8)
+	beam_alpha = config_mgr.get_float("flash_alpha", 0.8)
 	if lane_area and lane_area.has_method("set_beam_alpha"):
 		lane_area.set_beam_alpha(beam_alpha)
-	var note_glow_intensity = config_mgr.get_float("Appearance", "note_glow_intensity", 0.5)
-	var note_glow_size = config_mgr.get_float("Appearance", "note_glow_size", 5.0)
+	var note_glow_intensity = config_mgr.get_float("note_glow_intensity", 0.5)
+	var note_glow_size = config_mgr.get_float("note_glow_size", 5.0)
 	if flow_area and flow_area.has_method("set_glow_params"):
 		flow_area.set_glow_params(note_glow_intensity, note_glow_size)
 
 
 ## 处理轨道/键位/判定线相关的配置变更（轨道数量、键位、左右安全区、光柱）
-## 这些键现在分属 Gameplay（lane_count）、Performance（键位/判定线）、Appearance（flash_alpha），
-## 所以入口放行三组，内部再按 key + section 精确匹配。
-func _on_lane_config_changed(key: String, section: String, value: Variant) -> void:
-	if section != "Gameplay" and section != "Performance" and section != "Appearance":
-		return
+## 只按 key 分派：这些键原本跨 Gameplay/Performance/Appearance 三个 section，
+## 现在不需要入口放行也不需要 section 二次校验，ini 分组怎么变都不影响这里。
+func _on_lane_config_changed(key: String, value: Variant) -> void:
 	
 	var should_reinit = false
 
-	if section == "Performance" and key == "judge_line_position":
+	if key == "judge_line_position":
 		var new_offset : int = max(0, int(value))
 		if new_offset != judge_line_offset_y:
 			judge_line_offset_y = new_offset
@@ -1025,7 +1022,7 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 				flow_area._apply_judge_line_position()
 			GLogger.info("PlayView judge_line_offset_y updated: %d" % judge_line_offset_y, "PlayView")
 
-	if section == "Performance" and key == "canvas_horizontal_padding":
+	if key == "canvas_horizontal_padding":
 		var new_lane_padding = int(value)
 		if new_lane_padding != lane_padding:
 			lane_padding = new_lane_padding
@@ -1034,88 +1031,80 @@ func _on_lane_config_changed(key: String, section: String, value: Variant) -> vo
 	
 	match key:
 		"lane_count":
-			if section == "Gameplay":
-				var new_lane_count = int(value)
-				if new_lane_count != lane_count:
-					lane_count = new_lane_count
-					# 仅在非键盘模式时需要重初始化轨道显示
-					if not keyboard_mode:
-						should_reinit = true
-					GLogger.info("PlayView lane_count updated: %d" % lane_count, "PlayView")
-		
-		"keyboard_mode":
-			if section == "Performance":
-				var new_mode = int(value) == 1
-				if new_mode != keyboard_mode:
-					keyboard_mode = new_mode
+			var new_lane_count = int(value)
+			if new_lane_count != lane_count:
+				lane_count = new_lane_count
+				# 仅在非键盘模式时需要重初始化轨道显示
+				if not keyboard_mode:
 					should_reinit = true
-					GLogger.info("PlayView keyboard_mode updated: %s" % str(keyboard_mode), "PlayView")
-		
+				GLogger.info("PlayView lane_count updated: %d" % lane_count, "PlayView")
+	
+		"keyboard_mode":
+			var new_mode = int(value) == 1
+			if new_mode != keyboard_mode:
+				keyboard_mode = new_mode
+				should_reinit = true
+				GLogger.info("PlayView keyboard_mode updated: %s" % str(keyboard_mode), "PlayView")
+	
 		"keyboard_mode_keys":
-			if section == "Performance":
-				var new_keys = ConfigParser.parse_keyboard_keys(str(value))
-				if new_keys.size() != key_map.size() or _are_keys_different(new_keys, key_map):
-					key_map = new_keys
-					# 键位变化时同步重算 display_names（按新 key 数量对齐）
-					key_display_names = ConfigParser.parse_keyboard_display_names(
-						ConfigManager.instance.get_string("Performance", "keyboard_mode_display_names", ""),
-						key_map.size()
-					)
-					# 仅在键盘模式时需要重初始化
-					if keyboard_mode:
-						should_reinit = true
-					GLogger.info("PlayView keyboard_mode_keys updated: %d keys" % key_map.size(), "PlayView")
-
-		"keyboard_mode_display_names":
-			if section == "Performance":
-				key_display_names = ConfigParser.parse_keyboard_display_names(str(value), key_map.size())
-				# 仅在键盘模式时需要重初始化（刷新标签文本）
+			var new_keys = ConfigParser.parse_keyboard_keys(str(value))
+			if new_keys.size() != key_map.size() or _are_keys_different(new_keys, key_map):
+				key_map = new_keys
+				# 键位变化时同步重算 display_names（按新 key 数量对齐）
+				key_display_names = ConfigParser.parse_keyboard_display_names(
+					ConfigManager.instance.get_string("keyboard_mode_display_names", ""),
+					key_map.size()
+				)
+				# 仅在键盘模式时需要重初始化
 				if keyboard_mode:
 					should_reinit = true
-				GLogger.info("PlayView keyboard_mode_display_names updated: %d names" % key_display_names.size(), "PlayView")
+				GLogger.info("PlayView keyboard_mode_keys updated: %d keys" % key_map.size(), "PlayView")
+
+		"keyboard_mode_display_names":
+			key_display_names = ConfigParser.parse_keyboard_display_names(str(value), key_map.size())
+			# 仅在键盘模式时需要重初始化（刷新标签文本）
+			if keyboard_mode:
+				should_reinit = true
+			GLogger.info("PlayView keyboard_mode_display_names updated: %d names" % key_display_names.size(), "PlayView")
 
 		"keyboard_alt_color", "keyboard_alt_color_count", "keyboard_alt_colors":
-			if section == "Performance":
-				var old_alt_color := keyboard_alt_color
-				var old_alt_count := keyboard_alt_color_count
-				var old_alt_colors: Array = keyboard_alt_colors.duplicate()
-				keyboard_alt_color = int(value) == 1 if key == "keyboard_alt_color" else keyboard_alt_color
-				if key == "keyboard_alt_color_count":
-					keyboard_alt_color_count = max(1, int(value))
-				if key == "keyboard_alt_colors":
-					keyboard_alt_colors = _parse_alt_colors(str(value))
-					while keyboard_alt_colors.size() < keyboard_alt_color_count:
-						keyboard_alt_colors.append(Color.WHITE)
-					keyboard_alt_colors.resize(keyboard_alt_color_count)
-				# 仅键盘模式且颜色配置有变化时重初始化（刷新音符/光束颜色）
-				if keyboard_mode and (keyboard_alt_color != old_alt_color or keyboard_alt_color_count != old_alt_count or keyboard_alt_colors != old_alt_colors):
-					should_reinit = true
-				GLogger.info("PlayView keyboard_alt_color updated: enabled=%s count=%d colors=%s" %
-					[str(keyboard_alt_color), keyboard_alt_color_count, str(keyboard_alt_colors)], "PlayView")
+			var old_alt_color := keyboard_alt_color
+			var old_alt_count := keyboard_alt_color_count
+			var old_alt_colors: Array = keyboard_alt_colors.duplicate()
+			keyboard_alt_color = int(value) == 1 if key == "keyboard_alt_color" else keyboard_alt_color
+			if key == "keyboard_alt_color_count":
+				keyboard_alt_color_count = max(1, int(value))
+			if key == "keyboard_alt_colors":
+				keyboard_alt_colors = _parse_alt_colors(str(value))
+				while keyboard_alt_colors.size() < keyboard_alt_color_count:
+					keyboard_alt_colors.append(Color.WHITE)
+				keyboard_alt_colors.resize(keyboard_alt_color_count)
+			# 仅键盘模式且颜色配置有变化时重初始化（刷新音符/光束颜色）
+			if keyboard_mode and (keyboard_alt_color != old_alt_color or keyboard_alt_color_count != old_alt_count or keyboard_alt_colors != old_alt_colors):
+				should_reinit = true
+			GLogger.info("PlayView keyboard_alt_color updated: enabled=%s count=%d colors=%s" %
+				[str(keyboard_alt_color), keyboard_alt_color_count, str(keyboard_alt_colors)], "PlayView")
 
 		"keyboard_mode_gap":
-			if section == "Performance":
-				var new_gap: int = max(0, int(value))
-				if new_gap != keyboard_mode_gap:
-					keyboard_mode_gap = new_gap
-					should_reinit = true
-					GLogger.info("PlayView keyboard_mode_gap updated: %d" % keyboard_mode_gap, "PlayView")
+			var new_gap: int = max(0, int(value))
+			if new_gap != keyboard_mode_gap:
+				keyboard_mode_gap = new_gap
+				should_reinit = true
+				GLogger.info("PlayView keyboard_mode_gap updated: %d" % keyboard_mode_gap, "PlayView")
 
 		"keyboard_lane_separator":
-			if section == "Performance":
-				var new_sep := int(value) == 1
-				if new_sep != keyboard_lane_separator:
-					keyboard_lane_separator = new_sep
-					if keyboard_mode:
-						should_reinit = true
-					GLogger.info("PlayView keyboard_lane_separator updated: %s" % str(keyboard_lane_separator), "PlayView")
+			var new_sep := int(value) == 1
+			if new_sep != keyboard_lane_separator:
+				keyboard_lane_separator = new_sep
+				if keyboard_mode:
+					should_reinit = true
+				GLogger.info("PlayView keyboard_lane_separator updated: %s" % str(keyboard_lane_separator), "PlayView")
 
 		"flash_alpha":
-			if section == "Appearance":
-				beam_alpha = float(value)
-				if lane_area and lane_area.has_method("set_beam_alpha"):
-					lane_area.set_beam_alpha(beam_alpha)
-	
+			beam_alpha = float(value)
+			if lane_area and lane_area.has_method("set_beam_alpha"):
+				lane_area.set_beam_alpha(beam_alpha)
+
 	if should_reinit:
 		# 仅在游戏未开始或者允许的情况下重新初始化轨道
 		if not (playback_mgr and playback_mgr.is_playing):
@@ -1151,13 +1140,13 @@ func _reinit_lane_display() -> void:
 
 ## 从配置加载演奏模式设置
 func _load_play_mode_setting() -> void:
-	var performing_mode = ConfigManager.instance.get_int("Performance", "performing_mode")
+	var performing_mode = ConfigManager.instance.get_int("performing_mode")
 	play_mode = (performing_mode == 1)
 	GLogger.info("PlayView play mode: %s" % ("ON" if play_mode else "OFF"), "PlayView")
 	# 蓝牙输出时自动关闭演奏模式（高延迟下演奏手感不佳）；
 	# 仅当局会话生效（不覆写全局 performing_mode 配置），玩家可在游戏中手动重开
 	if play_mode and AudioBtDetector.is_bluetooth_output() \
-			and ConfigManager.instance.get_int("Audio", "bt_auto_disable_performing_mode") == 1:
+			and ConfigManager.instance.get_int("bt_auto_disable_performing_mode") == 1:
 		play_mode = false
 		GLogger.info("Performing mode auto-disabled: bluetooth audio output detected", "PlayView")
 
@@ -1230,7 +1219,7 @@ func _upload_score_async(midi: MidiData, snapshot: Dictionary) -> void:
 	if ScoreManager.instance:
 		ScoreManager.instance.save_local_score(midi, snapshot)
 	# 手动上传模式：不自动上传（结算页改由玩家手动触发；中途退出不做自动补传）
-	if ConfigManager.instance != null and ConfigManager.instance.get_int("General", "auto_upload_score", 1) != 1:
+	if ConfigManager.instance != null and ConfigManager.instance.get_int("auto_upload_score", 1) != 1:
 		GLogger.info("Score upload skipped: manual mode enabled (midi=%s)" % midi.file_hash, "PlayView")
 		return
 	if NetManager.instance == null or not NetManager.instance.is_online:
@@ -1306,7 +1295,7 @@ func _init_display(show_ready_animation: bool = true):
 	midi_author.set_scroll_text(current_midi.artist_name)
 
 	# 显示当前选中的难度预设
-	var difficulty_id := ConfigManager.instance.get_int(DIFFICULTY_CFG_SECTION, DIFFICULTY_CFG_KEY, 1)
+	var difficulty_id := ConfigManager.instance.get_int(DIFFICULTY_CFG_KEY, 1)
 	if difficulty_id >= 0 and difficulty_id < DIFFICULTY_NAMES.size():
 		difficulty.text = DIFFICULTY_NAMES[difficulty_id]
 

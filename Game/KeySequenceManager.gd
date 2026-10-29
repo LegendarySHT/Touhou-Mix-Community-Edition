@@ -208,91 +208,87 @@ func _validate_min_block_spacing(value: int) -> int:
 
 func _load_config_parameters() -> void:
 	var cfg = ConfigManager.instance
-	lane_count = cfg.get_int("Gameplay", "lane_count", 12)
-	var gen_cfg = "Gameplay"
-	instant_block_threshold = cfg.get_float(gen_cfg, "instant_block_max_time", 0.2)
-	short_block_threshold = cfg.get_float(gen_cfg, "short_block_max_time", 1.0)
-	max_touch_count = cfg.get_int(gen_cfg, "max_simultaneous_blocks", 2)
-	min_tap_interval = cfg.get_float(gen_cfg, "min_tap_interval", 1.0)
-	cooldown_seconds = cfg.get_float(gen_cfg, "min_touch_cooldown_time", 2.0)
-	max_touch_move_velocity = cfg.get_float(gen_cfg, "max_touch_move_speed", 300.0)
-	density_cap_per_sec = cfg.get_int(gen_cfg, "max_block_coalesce_time", 8)
-	min_block_spacing = _validate_min_block_spacing(cfg.get_int("Gameplay", "min_block_spacing", 1))
+	lane_count = cfg.get_int("lane_count", 12)
+	instant_block_threshold = cfg.get_float("instant_block_max_time", 0.2)
+	short_block_threshold = cfg.get_float("short_block_max_time", 1.0)
+	max_touch_count = cfg.get_int("max_simultaneous_blocks", 2)
+	min_tap_interval = cfg.get_float("min_tap_interval", 1.0)
+	cooldown_seconds = cfg.get_float("min_touch_cooldown_time", 2.0)
+	max_touch_move_velocity = cfg.get_float("max_touch_move_speed", 300.0)
+	density_cap_per_sec = cfg.get_int("max_block_coalesce_time", 8)
+	min_block_spacing = _validate_min_block_spacing(cfg.get_int("min_block_spacing", 1))
 	# 长条时长调整：时间上限（秒，<=0 不限制）；长度缩放存的是百分比，内部换算为倍率并钳到
 	# (0, 1]——设置项取值范围为小于等于 100%（100 = 不缩放），手改配置 >100 也不允许拉长
-	long_max_time = max(0.0, cfg.get_float(gen_cfg, "long_block_max_time", 0.0))
-	long_length_scaling = clampf(cfg.get_float(gen_cfg, "long_block_length_scaling", 100.0) / 100.0, 0.01, 1.0)
-	# 连接线三个键属于「游戏」组（生成规则），block_size 属于「演奏」组（读谱几何），故分开取
-	generate_short_connect = cfg.get_bool(gen_cfg, "generate_short_connect", true)
-	generate_instant_connect = cfg.get_bool(gen_cfg, "generate_instant_connect", true)
-	max_instant_connect_seconds = cfg.get_float(gen_cfg, "instant_connect_max_time", 1.0)
-	key_width = cfg.get_float("Performance", "block_size", key_width)
-	var keyboard_mode = cfg.get_int("Performance", "keyboard_mode", 0) == 1
+	long_max_time = max(0.0, cfg.get_float("long_block_max_time", 0.0))
+	long_length_scaling = clampf(cfg.get_float("long_block_length_scaling", 100.0) / 100.0, 0.01, 1.0)
+	generate_short_connect = cfg.get_bool("generate_short_connect", true)
+	generate_instant_connect = cfg.get_bool("generate_instant_connect", true)
+	max_instant_connect_seconds = cfg.get_float("instant_connect_max_time", 1.0)
+	key_width = cfg.get_float("block_size", key_width)
+	var keyboard_mode = cfg.get_int("keyboard_mode", 0) == 1
 	if keyboard_mode:
 		max_touch_move_velocity = 999999.0
 		hand_model_enabled = false
-		var keys = ConfigParser.parse_keyboard_keys(cfg.get_string("Performance", "keyboard_mode_keys", "A,S,D,F,J,K,L,;"))
+		var keys = ConfigParser.parse_keyboard_keys(cfg.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;"))
 		if keys.size() > 0:
 			lane_count = keys.size()
 
 ## 配置变更：清除缓存并要求重新生成
-func _on_config_changed(key: String, section: String, value: Variant) -> void:
+## 只按 key 分派 —— 配置键全局唯一，所以这里不需要（也不该）知道某项在 ini 的哪个 section，
+## 设置页重新分组不会再让这段代码失效。
+func _on_config_changed(key: String, value: Variant) -> void:
 	_cache_key = ""
-	match section:
+	match key:
 		# 生成规则与轨道几何：音符什么时候存在、能同时点多快
-		"Gameplay":
-			match key:
-				"lane_count":
-					lane_count = int(value)
-				"instant_block_max_time":
-					instant_block_threshold = float(value)
-				"short_block_max_time":
-					short_block_threshold = float(value)
-				"max_simultaneous_blocks":
-					max_touch_count = int(value)
-				"min_tap_interval":
-					min_tap_interval = float(value)
-				"min_touch_cooldown_time":
-					cooldown_seconds = float(value)
-				"max_touch_move_speed":
-					if ConfigManager.instance.get_int("Performance", "keyboard_mode", 0) == 0:
-						max_touch_move_velocity = float(value)
-				"max_block_coalesce_time":
-					density_cap_per_sec = int(value)
-				"long_block_max_time":
-					long_max_time = max(0.0, float(value))
-				"long_block_length_scaling":
-					long_length_scaling = clampf(float(value) / 100.0, 0.01, 1.0)
-				"generate_short_connect":
-					generate_short_connect = ConfigManager.parse_bool(value, true)
-				"generate_instant_connect":
-					generate_instant_connect = ConfigManager.parse_bool(value, true)
-				"instant_connect_max_time":
-					max_instant_connect_seconds = float(value)
-				"min_block_spacing":
-					min_block_spacing = _validate_min_block_spacing(int(value))
+		"lane_count":
+			lane_count = int(value)
+		"instant_block_max_time":
+			instant_block_threshold = float(value)
+		"short_block_max_time":
+			short_block_threshold = float(value)
+		"max_simultaneous_blocks":
+			max_touch_count = int(value)
+		"min_tap_interval":
+			min_tap_interval = float(value)
+		"min_touch_cooldown_time":
+			cooldown_seconds = float(value)
+		"max_touch_move_speed":
+			if ConfigManager.instance.get_int("keyboard_mode", 0) == 0:
+				max_touch_move_velocity = float(value)
+		"max_block_coalesce_time":
+			density_cap_per_sec = int(value)
+		"long_block_max_time":
+			long_max_time = max(0.0, float(value))
+		"long_block_length_scaling":
+			long_length_scaling = clampf(float(value) / 100.0, 0.01, 1.0)
+		"generate_short_connect":
+			generate_short_connect = ConfigManager.parse_bool(value, true)
+		"generate_instant_connect":
+			generate_instant_connect = ConfigManager.parse_bool(value, true)
+		"instant_connect_max_time":
+			max_instant_connect_seconds = float(value)
+		"min_block_spacing":
+			min_block_spacing = _validate_min_block_spacing(int(value))
 		# 输入与读谱几何
-		"Performance":
-			match key:
-				"keyboard_mode":
-					var km = int(value) == 1
-					if km:
-						max_touch_move_velocity = 999999.0
-						hand_model_enabled = false
-						var keys = ConfigParser.parse_keyboard_keys(ConfigManager.instance.get_string("Performance", "keyboard_mode_keys", "A,S,D,F,J,K,L,;"))
-						if keys.size() > 0:
-							lane_count = keys.size()
-					else:
-						max_touch_move_velocity = ConfigManager.instance.get_float("Gameplay", "max_touch_move_speed")
-						hand_model_enabled = true
-						lane_count = ConfigManager.instance.get_int("Gameplay", "lane_count", 12)
-				"keyboard_mode_keys":
-					if ConfigManager.instance.get_int("Performance", "keyboard_mode", 0) == 1:
-						var new_keys = ConfigParser.parse_keyboard_keys(str(value))
-						if new_keys.size() > 0:
-							lane_count = new_keys.size()
-				"block_size":
-					key_width = float(value)
+		"keyboard_mode":
+			var km = int(value) == 1
+			if km:
+				max_touch_move_velocity = 999999.0
+				hand_model_enabled = false
+				var keys = ConfigParser.parse_keyboard_keys(ConfigManager.instance.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;"))
+				if keys.size() > 0:
+					lane_count = keys.size()
+			else:
+				max_touch_move_velocity = ConfigManager.instance.get_float("max_touch_move_speed")
+				hand_model_enabled = true
+				lane_count = ConfigManager.instance.get_int("lane_count", 12)
+		"keyboard_mode_keys":
+			if ConfigManager.instance.get_int("keyboard_mode", 0) == 1:
+				var new_keys = ConfigParser.parse_keyboard_keys(str(value))
+				if new_keys.size() > 0:
+					lane_count = new_keys.size()
+		"block_size":
+			key_width = float(value)
 
 ## 清空 C# 输出与缓存（PlayView/离开 MidiList 项时调用，释放常驻）
 func clear_sequences() -> void:

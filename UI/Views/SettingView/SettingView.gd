@@ -177,8 +177,7 @@ func save_config_to_file() -> bool:
 		if not SettingsMapper.mappings.has(setting_id):
 			continue  # theme_preset 等不在 mappings 中的项跳过（不写入 INI）
 		var mapping = SettingsMapper.mappings[setting_id]
-		var section = mapping.section
-		var key = mapping.key
+		var key = String(mapping.key)
 		var value = pending[setting_id]
 
 		var old_value = initial.get(setting_id, null)
@@ -205,14 +204,19 @@ func save_config_to_file() -> bool:
 				value = "GeneralUser-GS"
 				pending[setting_id] = value  # 同步待保存值：通知与写盘须一致
 
-		if not base_config.has(section) or not (base_config[section] is Dictionary):
+		# 落点 section 从 ConfigManager 的 key 索引取（唯一真相），不写死字符串：
+		# ini 分组怎么重排，这里都跟着走。
+		var section := config_manager.get_section_of(key)
+		if section.is_empty():
+			GLogger.warning("Save diff: key 未登记，跳过写入: %s" % key, "SettingView")
+			continue
+		if not (base_config.get(section) is Dictionary):
 			base_config[section] = {}
 		base_config[section][key] = value
 		GLogger.info("Save diff: [%s] %s = %s" % [section, key, str(value)], "SettingView")
 
-	if not base_config.has("Game"):
-		base_config["Game"] = {}
-	base_config["Game"]["config_version"] = ConfigManager.CONFIG_VERSION
+	# 版本号同样按键写入（原先写死 [Game] 段，导致 [System] 里的版本号永远不更新）
+	config_manager.set_value("config_version", ConfigManager.CONFIG_VERSION, "System", base_config)
 
 	# 2. 先统一 emit config_changed（运行时即时生效），再写盘。顺序不可颠倒：
 	#    save_config 会把"字符串化"的新值合并进 ConfigManager._current_config，而 set_value_and_notify

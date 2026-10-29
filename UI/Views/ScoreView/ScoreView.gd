@@ -411,7 +411,7 @@ func request_upload(midi: MidiData, snapshot: Dictionary) -> void:
 func _is_auto_upload_enabled() -> bool:
 	if ConfigManager.instance == null:
 		return true
-	return ConfigManager.instance.get_int("General", "auto_upload_score", 1) == 1
+	return ConfigManager.instance.get_int("auto_upload_score", 1) == 1
 
 ## 点击上传提示（手动上传模式）
 func _on_upload_state_gui_input(event: InputEvent) -> void:

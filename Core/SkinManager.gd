@@ -562,7 +562,7 @@ func clear_skin_cache(skin_name: String = "") -> void:
 static func resolve_note_colors(skin_config: Dictionary, keyboard_mode: bool,
 		skin_random_colors: Dictionary = {}, global_random_colors: Dictionary = {}) -> Dictionary:
 	var custom_color_on: bool = bool(skin_config.get("general", {}).get("custom_color", false))
-	var global_random_on: bool = ConfigManager.instance.get_int("Appearance", "randomize_block_color", 0) == 1
+	var global_random_on: bool = ConfigManager.instance.get_int("randomize_block_color", 0) == 1
 	var out: Dictionary = {}
 	for key in ["short", "instant", "long"]:
 		var color := Color.WHITE
@@ -588,12 +588,12 @@ static func get_global_note_color(key: String) -> Color:
 		default_hex = "#FF6B6B"   # instant=滑块
 	elif key == "long":
 		default_hex = "#45B7D1"   # long=长条
-	var raw: String = ConfigManager.instance.get_string("Appearance", "%s_block_color" % key, default_hex)
+	var raw: String = ConfigManager.instance.get_string("%s_block_color" % key, default_hex)
 	return Color.from_string(raw, Color.WHITE)
 
 ## 获取默认皮肤的贴图
 func get_default_skin_textures() -> Dictionary:
-	var default_name: String = ConfigManager.instance.get_string("Appearance", "block_skin_preset", DEFAULT_SKIN_PRESET)
+	var default_name: String = ConfigManager.instance.get_string("block_skin_preset", DEFAULT_SKIN_PRESET)
 	return get_skin_textures(default_name)
 
 ## 获取皮肤路径

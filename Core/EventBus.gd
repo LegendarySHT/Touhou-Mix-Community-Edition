@@ -25,7 +25,9 @@ var current_search_query: String = ""
 
 ## ========== 设置和配置事件 ==========
 signal settings_changed(setting_name: String, value: Variant)
-signal config_changed(key: String, section: String, value: Variant)
+## 配置项变更。只带 key：配置键全局唯一，section 属于 ini 排版细节，订阅者不该依赖它。
+## key == "*" 表示全量重载（value 为 null），订阅者应重读自己关心的全部键。
+signal config_changed(key: String, value: Variant)
 signal theme_changed(theme_name: String)
 
 ## ========== 文件系统事件 ==========

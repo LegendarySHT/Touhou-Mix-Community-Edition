@@ -1,11 +1,14 @@
 ## 设置项分组静态数据
 ## 从 SettingList.gd 外移，纯数据无逻辑
 ##
-## ⚠ 本表**不声明默认值**。默认值统一由 Resources/Config/config.ini 提供（唯一来源），
-##   键名与 section 的对应关系由 Utilities/SettingsMapper.gd 声明。
-##   新增设置项需要动两个地方：本表加一项（显示名/类型/分组），config.ini 加一行（key + 默认值）；
-##   若需持久化到 ini，还要在 SettingsMapper 加映射。启动时 ConfigManager.validate_defaults()
-##   会校验映射表与 config.ini 是否对齐，缺项直接报错——所以不会出现"改漏"。
+## ⚠ 本表**不声明默认值**，也**不关心 ini 的 section**：
+##   默认值统一由 Resources/Config/config.ini 提供（唯一来源）；
+##   键名与类型由 Utilities/SettingsMapper.gd 声明（也只记 key，不记 section）。
+##   三个地方各管一件事：本表 = 显示名/控件类型/分组，SettingsMapper = key + 类型，
+##   config.ini = key + 默认值。section 只存在于 config.ini 里，纯粹是文件排版，
+##   与这里的分组没有强绑定关系 —— 想把某项挪到另一个 section，只改 ini 就行。
+##   启动时 ConfigManager.validate_defaults() 会校验映射表的每个 key 都在默认配置里、
+##   且 key 全局唯一，缺项直接报错——所以不会出现"改漏"。
 ##
 ## ── 分组原则（新增设置项时按此裁决，按顺序取第一个命中项）──
 ##   1. 改变「哪些音符存在 / 是什么类型 / 打中之后怎么算」	→ 生成设置

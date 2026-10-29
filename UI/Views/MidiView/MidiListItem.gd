@@ -412,14 +412,19 @@ func _apply_display() -> void:
 ## [Gameplay] 段整体都是生成规则（音符什么时候存在、连接怎么合并）→ 全段重算
 ## [Performance] 段多是读谱几何与输入，只有 block_size（尺寸换算）和键位（改 lane_count）影响谱面
 ## [Appearance] 段是纯贴图/发光，一个都不影响（generate_* 与 block_size 已随重组迁出）
-func _on_config_changed(key: String, section: String, _value: Variant) -> void:
-	var should_recompute := false
-	match section:
-		"Gameplay":
-			should_recompute = true
-		"Performance":
-			should_recompute = key in ["block_size", "keyboard_mode", "keyboard_mode_keys"]
-	if not should_recompute:
+## 影响生成结果（音符数量/内容/几何）的配置键。原来是「[Gameplay] 里任何键 + 演奏里三个」，
+## 但 section 已不再是代码可依赖的东西，这里改成显式白名单。
+const NOTE_RECOMPUTE_KEYS: Array[String] = [
+	"lane_count", "min_block_spacing", "perfect_time", "great_time", "good_time", "bad_time",
+	"instant_block_max_time", "short_block_max_time", "long_block_max_time",
+	"long_block_length_scaling", "max_simultaneous_blocks", "min_tap_interval",
+	"min_touch_cooldown_time", "max_touch_move_speed", "max_block_coalesce_time",
+	"generate_short_connect", "generate_instant_connect", "instant_connect_max_time",
+	"block_size", "keyboard_mode", "keyboard_mode_keys",
+]
+
+func _on_config_changed(key: String, _value: Variant) -> void:
+	if not (key in NOTE_RECOMPUTE_KEYS):
 		return
 	for mid_id in _info_cache.keys():
 		_info_cache[mid_id].erase("note_str")

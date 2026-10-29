@@ -70,7 +70,7 @@ func init_beam(lane_count: int, parent_node) -> void:
 	var window            := get_viewport().get_visible_rect().size
 	var beam_h: float     = window.y - play_view.judge_line_offset_y
 	# 轨道光效宽度模式 (0=跟随音符宽度, 1=跟随轨道宽度)
-	var beam_width_mode = ConfigManager.instance.get_int("Appearance", "beam_width_mode", 0)
+	var beam_width_mode = ConfigManager.instance.get_int("beam_width_mode", 0)
 	var safe_width: float = max(1.0, window.x - 2.0 * float(padding))
 	# 中间间距（键盘模式 + 偶数键位）：从可用宽度中扣除，再在中间插入，保证总宽不超屏幕
 	var mid_gap: int = play_view.get_mid_lane_gap()

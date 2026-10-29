@@ -548,7 +548,7 @@ func _on_vocal_downloaded(result: Dictionary) -> void:
 func _vocal_download_enabled() -> bool:
 	if ConfigManager.instance == null:
 		return true
-	return ConfigManager.instance.get_int("General", "download_vocal", 1) == 1
+	return ConfigManager.instance.get_int("download_vocal", 1) == 1
 
 ## 拉取谱面元数据（供三请求并行路径使用）：完成时经 on_done 回调回收结果。
 ## ⚠️ 由 download_chart 以**语句形式** Callable 启动（协程状态禁止赋值给变量，

@@ -194,7 +194,7 @@ func resolve_chara_key(chara_key: String) -> String:
 func get_current_chara_key() -> String:
 	var conf_key: String = ""
 	if ConfigManager.instance != null:
-		conf_key = ConfigManager.instance.get_string("System", "chara_id", "")
+		conf_key = ConfigManager.instance.get_string("chara_id", "")
 	conf_key = conf_key.strip_edges()
 	if not conf_key.is_empty() and has_chara(conf_key):
 		return resolve_chara_key(conf_key)

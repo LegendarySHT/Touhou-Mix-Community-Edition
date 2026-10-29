@@ -325,17 +325,17 @@ func init_flow_area():
 	if EvtBus and not EvtBus.config_changed.is_connected(_on_config_changed):
 		EvtBus.config_changed.connect(_on_config_changed)
 
-	auto_mode = ConfigManager.instance.get_int("System", "auto_mode") == 1
+	auto_mode = ConfigManager.instance.get_int("auto_mode") == 1
 	
 	# 从配置读取判定有效区（时间窗）
-	var judge_window_idx = ConfigManager.instance.get_int("Performance", "judge_window_ms", 0)
+	var judge_window_idx = ConfigManager.instance.get_int("judge_window_ms", 0)
 	judge_window_ms = _JUDGE_WINDOW_OPTIONS[clampi(judge_window_idx, 0, _JUDGE_WINDOW_OPTIONS.size() - 1)]
-	check_slide_when_finger_up = ConfigManager.instance.get_int("Performance", "check_instant_blocks_when_finger_up", 0) == 1
-	only_perfect_slides = ConfigManager.instance.get_int("Performance", "only_perfect_instant_blocks_before_judge", 0) == 1
+	check_slide_when_finger_up = ConfigManager.instance.get_int("check_instant_blocks_when_finger_up", 0) == 1
+	only_perfect_slides = ConfigManager.instance.get_int("only_perfect_instant_blocks_before_judge", 0) == 1
 
 	# 从配置读取比例系数
-	var block_size_ratio = ConfigManager.instance.get_float("Performance", "block_size", 6.5)
-	var block_judge_ratio = ConfigManager.instance.get_float("Performance", "block_judging_width", 1.0)
+	var block_size_ratio = ConfigManager.instance.get_float("block_size", 6.5)
+	var block_judge_ratio = ConfigManager.instance.get_float("block_judging_width", 1.0)
 	# 从配置读取音符绘制顺序（长条置底 / 长条置顶）
 	_apply_note_draw_order()
 	
@@ -388,7 +388,7 @@ func _apply_judge_line_position() -> void:
 	_recompute_fall_constants()
 
 func _apply_judge_line_thickness() -> void:
-	var thickness : int = max(1, ConfigManager.instance.get_int("Performance", "judge_line_thickness", 2))
+	var thickness : int = max(1, ConfigManager.instance.get_int("judge_line_thickness", 2))
 	var base_style: StyleBox = jl.get_theme_stylebox("separator")
 	if base_style is StyleBoxLine:
 		var line_style: StyleBoxLine = (base_style as StyleBoxLine).duplicate() as StyleBoxLine
@@ -398,7 +398,7 @@ func _apply_judge_line_thickness() -> void:
 func _apply_note_fall_config_from_settings() -> void:
 	# 不写内联回退：config.ini 是默认值的权威来源，且 ConfigManager.merge_with_defaults
 	# 保证默认层里有的键在读取时一定存在（默认值写两处正是此前漂移的成因）
-	var note_fall_time = ConfigManager.instance.get_float("Performance", "note_fall_time")
+	var note_fall_time = ConfigManager.instance.get_float("note_fall_time")
 	note_generation_lead_time = max(1.0, note_fall_time * 1000.0)
 	# 把本页实际使用的"生成提前量"推给播放器：开局预卷时长由它推出（+1s 余量），
 	# 保证"音符生成窗口"与"预卷"恒等对齐。此前预卷由 PlayView 按同一配置独立算一遍，
@@ -408,8 +408,8 @@ func _apply_note_fall_config_from_settings() -> void:
 	if _mgr != null:
 		_mgr.set_note_generation_lead_ms(note_generation_lead_time)
 
-	var note_fall_mode = ConfigManager.instance.get_int("Performance", "note_fall_mode")
-	var note_fall_speed_after_judge_multiplier = ConfigManager.instance.get_float("Performance", "note_fall_speed_after_judge_multiplier", -1.0)
+	var note_fall_mode = ConfigManager.instance.get_int("note_fall_mode")
+	var note_fall_speed_after_judge_multiplier = ConfigManager.instance.get_float("note_fall_speed_after_judge_multiplier", -1.0)
 	if note_fall_speed_after_judge_multiplier <= 0.0:
 		# 旧版这里回退读 [Appearance] grace_time（一个从未存在于默认配置的废弃键），
 		# 实际永远拿到 1.0。直接写常量，去掉这条隐形的第二默认值。
@@ -429,10 +429,10 @@ func _apply_note_fall_config_from_settings() -> void:
 			trans_after_line = EasingMapper.string_to_trans(accelerate_config["after_func"])
 			ease_after_line = EasingMapper.string_to_ease(accelerate_config["after_phase"])
 		2:
-			var before_func = ConfigManager.instance.get_string("Performance", "note_fall_easing_before_func", "LINEAR")
-			var before_phase = ConfigManager.instance.get_string("Performance", "note_fall_easing_before_phase", "IN")
-			var after_func = ConfigManager.instance.get_string("Performance", "note_fall_easing_after_func", "LINEAR")
-			var after_phase = ConfigManager.instance.get_string("Performance", "note_fall_easing_after_phase", "IN")
+			var before_func = ConfigManager.instance.get_string("note_fall_easing_before_func", "LINEAR")
+			var before_phase = ConfigManager.instance.get_string("note_fall_easing_before_phase", "IN")
+			var after_func = ConfigManager.instance.get_string("note_fall_easing_after_func", "LINEAR")
+			var after_phase = ConfigManager.instance.get_string("note_fall_easing_after_phase", "IN")
 
 			trans_before_line = EasingMapper.string_to_trans(before_func)
 			ease_before_line = EasingMapper.string_to_ease(before_phase)
@@ -451,72 +451,46 @@ func _apply_note_fall_config_from_settings() -> void:
 	_note_fall_pre_ms = max(1.0, _note_fall_time_seconds * 1000.0)
 	_rebuild_curve_luts()
 
-func _on_config_changed(key: String, section: String, value: Variant) -> void:
-	if section == "System" and key == "auto_mode":
-		auto_mode = int(value) == 1
-		GLogger.info("FlowArea auto_mode updated: %s" % ("ON" if auto_mode else "OFF"), "FlowArea")
-		return
-
-	if section == "Performance":
-		if key == "judge_window_ms":
+func _on_config_changed(key: String, value: Variant) -> void:
+	# 按 key 分派：配置键全局唯一，不依赖 ini 的 section 归属
+	match key:
+		"auto_mode":
+			auto_mode = int(value) == 1
+			GLogger.info("FlowArea auto_mode updated: %s" % ("ON" if auto_mode else "OFF"), "FlowArea")
+		"judge_window_ms":
 			var idx = clampi(int(value), 0, _JUDGE_WINDOW_OPTIONS.size() - 1)
 			judge_window_ms = _JUDGE_WINDOW_OPTIONS[idx]
-			return
-		if key == "judge_line_position":
+		"judge_line_position":
 			_apply_judge_line_position()
-			return
-		if key == "block_judging_width":
+		"block_judging_width", "block_size":
 			# 需要重新计算音符尺寸
 			_recalculate_note_dimensions()
-			return
-		if key == "check_instant_blocks_when_finger_up":
+		"check_instant_blocks_when_finger_up":
 			check_slide_when_finger_up = int(value) == 1
-			return
-		if key == "only_perfect_instant_blocks_before_judge":
+		"only_perfect_instant_blocks_before_judge":
 			only_perfect_slides = int(value) == 1
-			return
-
-	if section == "Performance" and key == "judge_line_thickness":
-		_apply_judge_line_thickness()
-		return
-
-	if section == "Performance" and key == "block_size":
-		# 需要重新计算音符尺寸
-		_recalculate_note_dimensions()
-		return
-
-	if section == "Appearance" and key == "note_draw_order":
-		# 长条绘制层级（置底 / 置顶）热更新
-		_apply_note_draw_order()
-		return
-
-	# 粒子特效配置（Appearance 段 spark_*）：热更新，暂停中调整立即生效
-	if section == "Appearance" and (key.ends_with("_spark_preset") or key.ends_with("_spark_emitter")
-			or key.ends_with("_spark_scaling") or key.ends_with("_spark_alpha")
-			or key.ends_with("_spark_emitter_scaling")):
-		_reload_spark_config()
-		return
-
-	if section != "Gameplay":
-		return
-
-	if key in [
-		"note_fall_time",
-		"note_fall_mode",
-		"note_fall_speed_after_judge_multiplier",
-		"note_fall_easing_before_func",
-		"note_fall_easing_before_phase",
-		"note_fall_easing_after_func",
-		"note_fall_easing_after_phase"
-	]:
-		_apply_note_fall_config_from_settings()
-		_recompute_fall_constants()
-		GLogger.info("Note fall config hot-reloaded: [%s] %s=%s" % [section, key, str(value)], "FlowArea")
+		"judge_line_thickness":
+			_apply_judge_line_thickness()
+		"note_draw_order":
+			# 长条绘制层级（置底 / 置顶）热更新
+			_apply_note_draw_order()
+		"note_fall_time", "note_fall_mode", "note_fall_speed_after_judge_multiplier", \
+		"note_fall_easing_before_func", "note_fall_easing_before_phase", \
+		"note_fall_easing_after_func", "note_fall_easing_after_phase":
+			_apply_note_fall_config_from_settings()
+			_recompute_fall_constants()
+			GLogger.info("Note fall config hot-reloaded: %s=%s" % [key, str(value)], "FlowArea")
+		_:
+			# 粒子特效配置（spark_* 一组键）：热更新，暂停中调整立即生效
+			if key.ends_with("_spark_preset") or key.ends_with("_spark_emitter") \
+					or key.ends_with("_spark_scaling") or key.ends_with("_spark_alpha") \
+					or key.ends_with("_spark_emitter_scaling"):
+				_reload_spark_config()
 
 ## 重新计算音符尺寸（根据比例系数）
 func _recalculate_note_dimensions() -> void:
-	var block_size_ratio = ConfigManager.instance.get_float("Performance", "block_size", 6.5)
-	var block_judge_ratio = ConfigManager.instance.get_float("Performance", "block_judging_width", 1.0)
+	var block_size_ratio = ConfigManager.instance.get_float("block_size", 6.5)
+	var block_judge_ratio = ConfigManager.instance.get_float("block_judging_width", 1.0)
 	var safe_width: float = max(1.0, get_viewport().get_visible_rect().size.x - 2.0 * float(parent_node.lane_padding))
 	
 	note_visual_width = max(10.0, safe_width / block_size_ratio)
@@ -529,7 +503,7 @@ func _recalculate_note_dimensions() -> void:
 func _apply_note_draw_order() -> void:
 	if _note_drawer == null:
 		return
-	var long_on_top = ConfigManager.instance.get_int("Appearance", "note_draw_order", 0) == 1
+	var long_on_top = ConfigManager.instance.get_int("note_draw_order", 0) == 1
 	_note_drawer.set_draw_type_order(long_on_top)
 	GLogger.info("Note draw order applied: long_on_top=%s" % str(long_on_top), "FlowArea")
 
@@ -1442,9 +1416,9 @@ func _trigger_touch_vibration() -> void:
 		return
 	if not (OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")):
 		return
-	if ConfigManager.instance.get_int("Performance", "vibrate_on_touch") != 1:
+	if ConfigManager.instance.get_int("vibrate_on_touch") != 1:
 		return
-	var duration_ms = max(1.0, ConfigManager.instance.get_int("Performance", "vibration_duration"))
+	var duration_ms = max(1.0, ConfigManager.instance.get_int("vibration_duration"))
 	Input.vibrate_handheld(duration_ms, 0.5)
 
 func _generate_particle(type: String, pos: Vector2) -> void:
@@ -1462,13 +1436,13 @@ func _reload_spark_config() -> void:
 	for judge in _JUDGE_TYPES:
 		var jl_str := judge.to_lower()
 		spark_presets[judge] = ParticleMGR.get_particle_pack_by_name(
-			ConfigManager.instance.get_string("Appearance", jl_str + "_spark_preset", ""))
+			ConfigManager.instance.get_string(jl_str + "_spark_preset", ""))
 		spark_emitters[judge] = ParticleMGR.get_particle_pack_by_name(
-			ConfigManager.instance.get_string("Appearance", jl_str + "_spark_emitter", ""))
+			ConfigManager.instance.get_string(jl_str + "_spark_emitter", ""))
 		# 配置存百分比，预换算为倍率/不透明度（0-1），spawn 热路径直接取用免除法
-		spark_scalings[judge] = ConfigManager.instance.get_float("Appearance", jl_str + "_spark_scaling", 100) / 100.0
-		spark_alphas[judge] = ConfigManager.instance.get_float("Appearance", jl_str + "_spark_alpha", 100) / 100.0
-		spark_emitter_scales[judge] = ConfigManager.instance.get_float("Appearance", jl_str + "_spark_emitter_scaling", 150) / 100.0
+		spark_scalings[judge] = ConfigManager.instance.get_float(jl_str + "_spark_scaling", 100) / 100.0
+		spark_alphas[judge] = ConfigManager.instance.get_float(jl_str + "_spark_alpha", 100) / 100.0
+		spark_emitter_scales[judge] = ConfigManager.instance.get_float(jl_str + "_spark_emitter_scaling", 150) / 100.0
 
 ## 核心判定入口（平行数组版）：note_index 为 seq 索引
 func _judge_note(note_index: int, trigger_vibration: bool = false, input_time_ms: float = -1.0,

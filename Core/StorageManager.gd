@@ -392,7 +392,7 @@ func migrate(old_root: String, new_root: String, ui: Dictionary = {}, keep_targe
 		return {"ok": false, "reason": "迁移已完成但无法写入提交日志，请重启游戏"}
 	if not _write_pointer(new_root):
 		return {"ok": false, "reason": "迁移已完成但无法更新引导指针，请重启游戏"}
-	ConfigManager.instance.set_value(CFG_SECTION, CFG_KEY, new_root)
+	ConfigManager.instance.set_value(CFG_KEY, new_root)
 	ConfigManager.instance.save_config(
 		ConfigManager.USER_CONFIG_PATH, ConfigManager.instance.get_current_config())
 

@@ -70,7 +70,7 @@ func _ready() -> void:
 
 ## 从配置加载服务器地址
 func _load_server_url() -> void:
-	var addr = ConfigManager.instance.get_string("General", "server_address", "thmix.org")
+	var addr = ConfigManager.instance.get_string("server_address", "thmix.org")
 	server_url = _normalize_server_url(addr)
 	GLogger.info("Server URL loaded: %s" % server_url, "NetMGR")
 
@@ -113,8 +113,8 @@ func _is_valid_host(host: String) -> bool:
 	return "." in h
 
 ## 配置变更：server_address 修改后立即生效（无需重启）
-func _on_config_changed(key: String, section: String, _value: Variant) -> void:
-	if section == "General" and key == "server_address":
+func _on_config_changed(key: String, _value: Variant) -> void:
+	if key == "server_address":
 		_load_server_url()
 		if _online_mode_enabled:
 			# 地址变化后重建连接（旧连接基于旧地址，需重新握手）

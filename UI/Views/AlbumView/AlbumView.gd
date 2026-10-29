@@ -117,9 +117,15 @@ func _apply_album_search_filter() -> void:
 		ids[id] = true
 	current_albums = current_albums.filter(func(a): return ids.has(String(a.get("id", ""))))
 
+## 会影响专辑列表内容/顺序的配置键（显式白名单：原来的粒度是「[General] 里任何一个键」，
+## 但 section 不再是代码可依赖的东西，所以把真正相关的键列出来）
+const ALBUM_AFFECTING_KEYS: Array[String] = [
+	"album_sort_method", "album_sort_direction", "download_vocal", "custom_storage_path",
+]
+
 ## 配置变更时重新排序（deferred，避免阻塞 save 流程）
-func _on_config_changed(_key: String, section: String, _value: Variant) -> void:
-	if section == "General":
+func _on_config_changed(key: String, _value: Variant) -> void:
+	if key in ALBUM_AFFECTING_KEYS:
 		call_deferred("_load_albums")
 
 

@@ -200,7 +200,7 @@ func _update_bt_status() -> void:
 	if is_bt:
 		_bt_status.text += "｜正在校准蓝牙延迟预设"
 	# 开关初始状态从配置读取（默认开启）
-	var auto_off := ConfigManager.instance.get_int("Audio", "bt_auto_disable_performing_mode") == 1
+	var auto_off := ConfigManager.instance.get_int("bt_auto_disable_performing_mode") == 1
 	_setting_bt_toggle = true
 	_bt_toggle.button_pressed = auto_off
 	_setting_bt_toggle = false
@@ -210,7 +210,7 @@ func _update_bt_status() -> void:
 func _on_bt_auto_off_toggled(pressed: bool) -> void:
 	if _setting_bt_toggle:
 		return
-	ConfigManager.instance.set_value_and_notify("Gameplay", "bt_auto_disable_performing_mode", 1 if pressed else 0)
+	ConfigManager.instance.set_value_and_notify("bt_auto_disable_performing_mode", 1 if pressed else 0)
 
 # 重拍触发：播放重拍音（用户应在此刻点击）
 # 重拍在 AdjustLine 中心(0) 触发，点击时用 AdjustLine 位置算延迟，与动画完全同步

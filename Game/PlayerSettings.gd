@@ -16,7 +16,8 @@
 class_name PlayerSettings
 extends RefCounted
 
-## 标识名（仅可读性用）→ {section, apply, note}
+## 标识名（即配置键）→ {apply, note}
+## 不记 section：配置键全局唯一，按 key 就能定位，分组怎么变与播放器无关。
 ##
 ## apply 取值：
 ##   push_global      → 推全局播放配置（音量/系统时钟/同步阈值）并重载播放器页音量
@@ -29,39 +30,39 @@ extends RefCounted
 ## 不进播放器；`vibrate_on_touch` 是判定反馈）。这不是遗漏，是有意为之。
 const ENTRIES: Dictionary = {
 	"default_midi_volume": {
-		"section": "Audio", "apply": "push_global",
+		"apply": "push_global",
 		"note": "全局默认 MIDI 音量（0-100 或 0-1，C# 侧兼容两种历史存值）",
 	},
 	"default_vocal_volume": {
-		"section": "Audio", "apply": "push_global",
+		"apply": "push_global",
 		"note": "全局默认人声音量（0-100 百分数或 dB，C# 侧兼容）",
 	},
 	"audio_sync_threshold": {
-		"section": "Audio", "apply": "push_global",
+		"apply": "push_global",
 		"note": "人声同步阈值（毫秒）",
 	},
 	"use_system_stopwatch": {
-		"section": "Performance", "apply": "push_global",
+		"apply": "push_global",
 		"note": "sequencer 系统时钟模式：开启后事件派发以系统墙钟为真源",
 	},
 	"audio_playback_delay": {
-		"section": "Audio", "apply": "delay_if_active",
+		"apply": "delay_if_active",
 		"note": "普通输出的校准延迟预设",
 	},
 	"audio_playback_delay_bt": {
-		"section": "Audio", "apply": "delay_if_active",
+		"apply": "delay_if_active",
 		"note": "蓝牙输出的校准延迟预设（改动只在当前是蓝牙输出时生效）",
 	},
 	"max_polyphony": {
-		"section": "Audio", "apply": "polyphony",
+		"apply": "polyphony",
 		"note": "最大复音数（合成器创建期参数，改后需保位置重载音源）",
 	},
 	"soundfont_file": {
-		"section": "Audio", "apply": "soundfont",
+		"apply": "soundfont",
 		"note": "音源文件名",
 	},
 	"note_fall_time": {
-		"section": "Performance", "apply": "preroll",
+		"apply": "preroll",
 		"note": "音符下落时间（秒）——决定音符生成窗口与开局预卷时长",
 	},
 }
@@ -73,11 +74,6 @@ static func affects(key: String) -> bool:
 ## 取条目（不存在返回空字典）
 static func entry(key: String) -> Dictionary:
 	return ENTRIES.get(key, {})
-
-## 该键是否属于某个 section（诊断/校验用）
-static func section_of(key: String) -> String:
-	var e := entry(key)
-	return str(e.get("section", ""))
 
 ## 列出全部受管键（诊断/校验用）
 static func managed_keys() -> Array:

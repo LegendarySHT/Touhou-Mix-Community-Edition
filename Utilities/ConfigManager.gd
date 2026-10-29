@@ -1,19 +1,26 @@
 ## 统一配置管理器（单例）
 ## 集中管理所有INI/JSON配置文件的读取和写入，内部自动维护当前活跃配置
-## 
-## 新API使用方式（推荐）：
-##   ConfigManager.instance.load_and_set_current(ConfigManager.DEFAULT_CONFIG_PATH)
-##   var lane_count = ConfigManager.instance.get_int("Gameplay", "lane_count", 12)
-##   ConfigManager.instance.set_value_and_notify("Gameplay", "lane_count", 16)
 ##
-## 兼容旧API（传入config参数）：
-##   var config = ConfigManager.instance.load_config(ConfigManager.DEFAULT_CONFIG_PATH)
-##   var lane_count = ConfigManager.instance.get_int("Gameplay", "lane_count", 12, config)
+## ============ 按 key 访问（唯一推荐方式）============
+## 配置键在整份 config.ini 中**全局唯一**（validate_defaults 每次启动自检）。
+## 因此读写只需要 key，不需要 section：section 退化为「ini 文件里的排版分组」，
+## 它跟随设置页分类走，重组分类不需要改任何模块代码，也不会因为写错 section 而静默读不到值。
 ##
-## 配置变更通知：
+##   ConfigManager.instance.load_and_set_current()
+##   var lane_count = ConfigManager.instance.get_int("lane_count", 12)
+##   ConfigManager.instance.set_value_and_notify("lane_count", 16)
+##
+## 覆盖外部配置字典时用第三参（读取）：
+##   ConfigManager.instance.get_int("lane_count", 12, some_config)
+##
+## 写入一个**不在默认 config.ini 里**的运行时键时，用 section_hint 指定落点：
+##   ConfigManager.instance.set_value("player_midi_linear", 0.8, "System")
+##
+## ============ 配置变更通知 ============
 ##   EvtBus.config_changed.connect(_on_config_changed)
-##   func _on_config_changed(key: String, section: String, value: Variant):
-##       print("配置已更改: [%s] %s = %s" % [section, key, value])
+##   func _on_config_changed(key: String, value: Variant):
+##       print("配置已更改: %s = %s" % [key, str(value)])
+## 订阅者只该按 key 判断；key == "*" 表示全量重载。
 
 class_name ConfigManager
 extends Node
@@ -54,9 +61,14 @@ static var SOUNDFONT_DIR: String:
 const CONFIG_VERSION = "2.0.0"
 
 ## 当前版本使用的 section 集合。不在这个集合里的 section 视为历史结构，迁移时按键名搬迁。
+## 注意：这份列表只服务于「迁移」与「section 合法性自检」，业务代码不该出现字符串 section。
 const KNOWN_SECTIONS: Array[String] = [
 	"General", "Audio", "Gameplay", "Performance", "Appearance", "System"
 ]
+
+## 写入未登记的运行时键（不在默认 config.ini 里的键）时的兜底落点。
+## 只在调用方没给 section_hint 且该键确实不存在时使用，并会 push_error 提示。
+const FALLBACK_SECTION := "System"
 
 # ============ 内部状态 ============
 
@@ -65,6 +77,11 @@ var configs: Dictionary = {}
 
 ## 当前活跃的配置（合并了用户配置和默认配置）
 var _current_config: Dictionary = {}
+
+## key → section 反查索引。这是「只传 key」这套 API 的地基：
+## 读取时用于定位值，写入时用于决定落到哪个 section。
+## 由 _rebuild_key_index() 在每次配置结构变化后重建，不以独立副本缓存值（避免两份数据不同步）。
+var _key_section: Dictionary = {}
 
 # ============ 核心配置加载方法 ============
 
@@ -163,41 +180,137 @@ func load_and_set_current(_file_path: String = "") -> Dictionary:
 	
 	# 合并配置：用户配置优先，默认配置补充缺失部分
 	_current_config = merge_with_defaults(user_config, default_config)
-	
+	_prune_misplaced_keys()
+	_rebuild_key_index()
+
 	# 调试：打印当前配置的部分内容
 	var section_count = _current_config.size()
 	GLogger.info("Current configuration initialized with %d sections" % section_count, "ConfigManager")
-	
+
 	return _current_config
+
+# ============ key → section 索引 ============
+
+## 重建 key → section 反查索引。
+## key 全局唯一是这套访问方式的前提，出现重复说明配置里有两份同名值：
+## 正常路径上 _prune_misplaced_keys 已经清过一遍，这里再报错就是护栏（说明 prune 被绕过）。
+func _rebuild_key_index() -> void:
+	_key_section.clear()
+	for section in _current_config.keys():
+		var sec_data = _current_config[section]
+		if not (sec_data is Dictionary):
+			continue
+		for key in sec_data.keys():
+			if _key_section.has(key):
+				if _key_section[key] != section:
+					push_error("[Config] key 重复: %s 同时存在于 [%s] 和 [%s]，按 [%s] 定位" % [
+						key, _key_section[key], section, _key_section[key]])
+				continue
+			_key_section[key] = section
+
+## 清除「不在自己家」的重复键。
+## 规则（以默认 config.ini 的归属为唯一权威）：
+##   权威 section 里的值仍是默认值（或缺失）→ 用错位处那份（那是用户真正改过的），搬回权威 section；
+##   权威 section 里已是非默认值            → 保留它，丢弃错位那份。
+## 不在默认配置里的运行时键（如播放器音量）不参与本流程。
+func _prune_misplaced_keys(config: Variant = null) -> int:
+	if config == null:
+		config = _current_config
+	if not (config is Dictionary):
+		return 0
+	var default_config = load_config(DEFAULT_CONFIG_PATH)
+	if default_config.is_empty():
+		return 0
+
+	# key → 权威 section
+	var owner := {}
+	for section in default_config.keys():
+		var sec_data = default_config[section]
+		if sec_data is Dictionary:
+			for key in sec_data.keys():
+				owner[key] = section
+
+	var removed := 0
+	var moved: Array[String] = []
+	for section in config.keys():
+		if section is not String or not (config[section] is Dictionary):
+			continue
+		var stray: Array[String] = []
+		for key in config[section].keys():
+			if owner.has(key) and owner[key] != section:
+				stray.append(key)
+		for key in stray:
+			var home: String = owner[key]
+			var value: Variant = config[section][key]
+			if not (config.get(home, null) is Dictionary):
+				config[home] = {}
+			var home_value: Variant = config[home].get(key, null)
+			var home_default: Variant = default_config[home].get(key, null)
+			if home_value == null or str(home_value) == str(home_default):
+				config[home][key] = value
+				moved.append("%s → [%s]（取错位值）" % [key, home])
+			else:
+				moved.append("%s → 丢弃 [%s] 的重复值" % [key, section])
+			config[section].erase(key)
+			removed += 1
+
+	if removed > 0:
+		GLogger.warning("[Config] 清理了 %d 个错位/重复键（以默认 config.ini 归属为准）：%s" % [
+			removed, ", ".join(moved)], "ConfigManager")
+	return removed
+
+## 查某个 key 在指定配置里的 section。
+## 优先走索引；索引未覆盖（传入了外部配置字典、或是刚写入的运行时键）时退化为线性搜索。
+func _section_of_key(key: String, config: Dictionary) -> String:
+	var section: String = _key_section.get(key, "")
+	if not section.is_empty():
+		var sec_data = config.get(section, null)
+		if sec_data is Dictionary and sec_data.has(key):
+			return section
+	return _find_section_of_key(key, config)
+
+## 决定一次写入该落到哪个 section。
+## 顺序：key 已有归属 → 用它（同一 key 永远只有一处家，不会因为传错 section 再分裂一份）；
+##       key 未登记 → 用 section_hint（运行时键）；
+##       都没有 → 返回空串，由调用方报错兜底。
+func _resolve_write_section(key: String, section_hint: String, config: Dictionary) -> String:
+	var section := _section_of_key(key, config)
+	if not section.is_empty():
+		return section
+	if section_hint.is_empty():
+		return ""
+	_key_section[key] = section_hint
+	return section_hint
 
 # ============ 配置读取方法 ============
 
-## 获取配置值（使用当前活跃配置或指定配置）
-## 简化用法：get_value("Gameplay", "lane_count", 12)
-## 兼容用法：get_value("Gameplay", "lane_count", 12, some_config)
-func get_value(section: String, key: String, default: Variant = "", config: Variant = null) -> Variant:
+## 获取配置值
+## 用法：get_value("lane_count", 12)
+## 指定配置字典：get_value("lane_count", 12, some_config)
+func get_value(key: String, default: Variant = "", config: Variant = null) -> Variant:
 	if config == null or not (config is Dictionary):
 		config = _current_config
 	
-	if config.has(section) and config[section].has(key):
+	var section := _section_of_key(key, config)
+	if not section.is_empty():
 		return config[section][key]
 	
-	GLogger.warning("Config key not found: [%s] %s, using default value: %s" % [section, key, str(default)], "ConfigManager")
+	GLogger.warning("Config key not found: %s, using default value: %s" % [key, str(default)], "ConfigManager")
 	return default
 
 ## 获取整数值
-func get_int(section: String, key: String, default: int = 0, config: Variant = null) -> int:
-	var value = get_value(section, key, str(default), config)
+func get_int(key: String, default: int = 0, config: Variant = null) -> int:
+	var value = get_value(key, str(default), config)
 	return int(value)
 
 ## 获取浮点值
-func get_float(section: String, key: String, default: float = 0.0, config: Variant = null) -> float:
-	var value = get_value(section, key, str(default), config)
+func get_float(key: String, default: float = 0.0, config: Variant = null) -> float:
+	var value = get_value(key, str(default), config)
 	return float(value)
 
 ## 获取布尔值
-func get_bool(section: String, key: String, default: bool = false, config: Variant = null) -> bool:
-	var value = get_value(section, key, str(default), config)
+func get_bool(key: String, default: bool = false, config: Variant = null) -> bool:
+	var value = get_value(key, str(default), config)
 	return parse_bool(value, default)
 
 ## 类型安全的布尔解析：兼容 bool / int / float / 字符串（含 "1"/"true"/"yes"/"on"）
@@ -213,19 +326,28 @@ static func parse_bool(value: Variant, default: bool = false) -> bool:
 		return default
 	return s in ["1", "true", "yes", "on"]
 
-func get_string(section: String, key: String, default: String = "", config: Variant = null) -> String:
-	return str(get_value(section, key, default, config))
+func get_string(key: String, default: String = "", config: Variant = null) -> String:
+	return str(get_value(key, default, config))
+
+## 查询某个 key 当前归属的 section（诊断用；业务逻辑不该依赖它）
+func get_section_of(key: String) -> String:
+	return _section_of_key(key, _current_config)
 
 # ============ 配置写入方法 ============
 
-## 设置配置值并发送变更通知（使用当前活跃配置或指定配置）
-## 简化用法：set_value_and_notify("Gameplay", "lane_count", 12)
-## 兼容用法：set_value_and_notify("Gameplay", "lane_count", 12, some_config)
-func set_value_and_notify(section: String, key: String, value: Variant, config: Variant = null) -> void:
+## 设置配置值并发送变更通知
+## 用法：set_value_and_notify("lane_count", 16)
+## 写入未登记键：set_value_and_notify("player_midi_linear", 0.8, "System")
+func set_value_and_notify(key: String, value: Variant, section_hint: String = "", config: Variant = null) -> void:
 	if config == null:
 		config = _current_config
 	
-	if not config.has(section):
+	var section := _resolve_write_section(key, section_hint, config)
+	if section.is_empty():
+		push_error("[Config] 未登记的配置键: %s（默认 config.ini 里没有它，也没给 section_hint）" % key)
+		section = FALLBACK_SECTION
+	
+	if not (config.get(section, null) is Dictionary):
 		config[section] = {}
 	
 	var old_value = config[section].get(key, null)
@@ -238,16 +360,21 @@ func set_value_and_notify(section: String, key: String, value: Variant, config: 
 	
 	if old_value_str != new_value_str:
 		if EvtBus != null:
-			EvtBus.config_changed.emit(key, section, value)
-		GLogger.info("Config changed: [%s] %s = %s" % [section, key, str(value)], "ConfigManager")
+			EvtBus.config_changed.emit(key, value)
+		GLogger.info("Config changed: %s = %s (in [%s])" % [key, str(value), section], "ConfigManager")
 
 ## 设置单个配置值（不发送通知）
 ## 用于批量修改配置后再统一保存，避免发送过多信号
-func set_value(section: String, key: String, value: Variant, config: Variant = null) -> void:
+func set_value(key: String, value: Variant, section_hint: String = "", config: Variant = null) -> void:
 	if config == null:
 		config = _current_config
 	
-	if not config.has(section):
+	var section := _resolve_write_section(key, section_hint, config)
+	if section.is_empty():
+		push_error("[Config] 未登记的配置键: %s（默认 config.ini 里没有它，也没给 section_hint）" % key)
+		section = FALLBACK_SECTION
+	
+	if not (config.get(section, null) is Dictionary):
 		config[section] = {}
 	config[section][key] = value
 
@@ -278,6 +405,8 @@ func save_config(file_path: String, config: Variant = null) -> bool:
 		# 避免部分写入后默认 section/key 从内存配置中丢失
 		var default_config = load_config(DEFAULT_CONFIG_PATH)
 		_current_config = merge_with_defaults(config, default_config) if not default_config.is_empty() else config
+		_prune_misplaced_keys()
+		_rebuild_key_index()
 	
 	GLogger.info("Config saved to: %s" % file_path, "ConfigManager")
 	return true
@@ -375,10 +504,12 @@ func reload_config() -> bool:
 	
 	# 合并配置：用户配置优先
 	_current_config = merge_with_defaults(user_config, default_config)
+	_prune_misplaced_keys()
+	_rebuild_key_index()
 	
 	# 发送批量变更通知
 	if EvtBus != null:
-		EvtBus.config_changed.emit("*", "all", null)  # 通配符表示全量变更
+		EvtBus.config_changed.emit("*", null)  # 通配符表示全量变更
 	
 	GLogger.info("Configuration reload complete with user priority", "ConfigManager")
 	return true
@@ -395,7 +526,7 @@ func check_and_migrate(config: Variant = null, file_path: String = "") -> Dictio
 	if not (config is Dictionary):
 		return {}
 
-	var version = get_value("System", "config_version", "0.0.0", config)
+	var version = str(get_value("config_version", "0.0.0", config))
 	if version == CONFIG_VERSION:
 		GLogger.debug("Configuration version is current", "ConfigManager")
 		return config
@@ -453,6 +584,8 @@ func check_and_migrate(config: Variant = null, file_path: String = "") -> Dictio
 		GLogger.warning("Failed to save migrated configuration", "ConfigManager")
 
 	_current_config = migrated
+	_prune_misplaced_keys()
+	_rebuild_key_index()
 	return migrated
 
 ## 在配置里查某个 key 现在属于哪个 section。
@@ -465,10 +598,12 @@ func _find_section_of_key(key: String, config: Dictionary) -> String:
 	return ""
 
 ## 启动自检：默认值只在 config.ini 一处维护，本函数就是这条约定的护栏。
-## 检查两件事：
-##   1. SettingsMapper 里声明的每个 section/key 在默认 config.ini 中确实存在；
+## 检查三件事：
+##   1. SettingsMapper 里声明的每个 key 在默认 config.ini 中确实存在；
 ##      缺失意味着该项永远拿不到默认值（UI 空、或代码里的兜底值悄悄生效）。
-##   2. key 在整份默认配置里全局唯一——迁移逻辑（按 key 名搬 section）依赖这一点。
+##   2. key 在整份默认配置里全局唯一——「只传 key 读写」与迁移（按 key 名搬 section）
+##      两条路径都依赖这一点，重复会让一个键同时存在两份值。
+##   3. config.ini 自己的 config_version 与常量一致。
 ## 返回 false 时说明配置有结构性错误，但不会中断启动（仍用现有默认值运行）。
 func validate_defaults() -> bool:
 	var default_config = load_config(DEFAULT_CONFIG_PATH)
@@ -477,19 +612,7 @@ func validate_defaults() -> bool:
 		GLogger.error("validate_defaults: default config unavailable", "ConfigManager")
 		return false
 
-	var missing: Array[String] = []
-	for setting_id in SettingsMapper.mappings.keys():
-		var m: Dictionary = SettingsMapper.mappings[setting_id]
-		var sec: String = m.get("section", "")
-		var key: String = m.get("key", "")
-		if sec.is_empty() or key.is_empty():
-			missing.append("%s -> 映射缺 section/key" % setting_id)
-			continue
-		if not default_config.has(sec) or not (default_config[sec] is Dictionary) \
-				or not default_config[sec].has(key):
-			missing.append("%s -> [%s] %s" % [setting_id, sec, key])
-
-	# key 唯一性
+	# key 唯一性（先建，缺键检查也走它）
 	var seen := {}
 	var dup: Array[String] = []
 	for section in default_config.keys():
@@ -502,6 +625,16 @@ func validate_defaults() -> bool:
 			else:
 				seen[key] = section
 
+	var missing: Array[String] = []
+	for setting_id in SettingsMapper.mappings.keys():
+		var m: Dictionary = SettingsMapper.mappings[setting_id]
+		var key: String = m.get("key", "")
+		if key.is_empty():
+			missing.append("%s -> 映射缺 key" % setting_id)
+			continue
+		if not seen.has(key):
+			missing.append("%s -> %s" % [setting_id, key])
+
 	if missing.is_empty() and dup.is_empty():
 		# 默认文件自己的版本号必须与常量一致：不一致时每个新用户首次启动都会白跑一次迁移
 		var ini_version := str(default_config.get("System", {}).get("config_version", ""))
@@ -509,13 +642,14 @@ func validate_defaults() -> bool:
 			push_error("[Config] config.ini 的 config_version=%s 与 CONFIG_VERSION=%s 不一致" % [ini_version, CONFIG_VERSION])
 			GLogger.error("validate_defaults: version mismatch in default config", "ConfigManager")
 			return false
-		GLogger.info("validate_defaults OK: %d 项映射全部命中默认配置，key 无重复，版本 %s" % [SettingsMapper.mappings.size(), CONFIG_VERSION], "ConfigManager")
+		GLogger.info("validate_defaults OK: %d 项映射全部命中默认配置，%d 个 key 无重复，版本 %s" % [
+			SettingsMapper.mappings.size(), seen.size(), CONFIG_VERSION], "ConfigManager")
 		return true
 
 	for item in missing:
 		push_error("[Config] 默认配置缺少映射项: %s（应补进 config.ini 对应 section）" % item)
 	for item in dup:
-		push_error("[Config] key 重复: %s（迁移按 key 名搬迁，重复会导致串值）" % item)
+		push_error("[Config] key 重复: %s（按 key 读写与迁移都要求全局唯一）" % item)
 	GLogger.error("validate_defaults 失败：缺 %d 项，重复 %d 项" % [missing.size(), dup.size()], "ConfigManager")
 	return false
 

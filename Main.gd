@@ -151,7 +151,7 @@ func _initialize_core_systems() -> void:
 	# 2.6. 刚完成迁移提交时，把 custom_storage_path 幂等补写进 settings.ini
 	# （committed 与配置落盘之间可能崩溃，需保证无日志引导时也能定位新根）
 	if bool(storage_resolve.get("needs_config_commit", false)):
-		config_loader.set_value("General", "custom_storage_path", str(storage_resolve.get("pending_root", "")))
+		config_loader.set_value("custom_storage_path", str(storage_resolve.get("pending_root", "")))
 		config_loader.save_config(ConfigManager.USER_CONFIG_PATH, config_loader.get_current_config())
 		if logger:
 			logger.info("Storage config committed to settings.ini", "Main")
@@ -257,7 +257,7 @@ func _initialize_core_systems() -> void:
 	net_manager.name = "NetManager"
 	add_child(net_manager)
 	# 读取 online_mode 配置并启动连接
-	var online_mode := ConfigManager.instance.get_int("General", "online_mode", 0)
+	var online_mode := ConfigManager.instance.get_int("online_mode", 0)
 	net_manager.set_online_mode(online_mode == 1)
 	if logger:
 		logger.info("NetManager initialized (online_mode=%d)" % online_mode, "Main")
@@ -505,15 +505,15 @@ func _reload_all_settings() -> void:
 
 	# 应用Gameplay设置（包括SoundFont）
 	if PlaybackDisplay.instance:
-		var soundfont_name = config_loader.get_value("Audio", "soundfont_file")
+		var soundfont_name = config_loader.get_value("soundfont_file")
 		var cur_basename = PlaybackDisplay.instance.current_soundfont_path.get_file().get_basename()
 		var new_basename = soundfont_name.replace(".sf2", "").replace("[内置]", "").strip_edges()
 		if new_basename != cur_basename:
 			PlaybackDisplay.instance.set_soundfont(soundfont_name)
 
 	# 应用显示设置
-	var fullscreen = config_loader.get_bool("System", "fullscreen", true)
-	var vsync = config_loader.get_bool("System", "vsync_enabled", true)
+	var fullscreen = config_loader.get_bool("fullscreen", true)
+	var vsync = config_loader.get_bool("vsync_enabled", true)
 
 	if fullscreen:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
@@ -545,44 +545,44 @@ func _apply_single_setting(setting_name: String, value: Variant) -> void:
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if is_vsync else DisplayServer.VSYNC_DISABLED)
 
 ## 配置变更回调（新增）
-func _on_config_changed(key: String, section: String, value: Variant) -> void:
+func _on_config_changed(key: String, value: Variant) -> void:
 	if _is_reloading_settings:
 		return
-	# 通配符 "*" 和 "all" 表示全量配置重新加载
-	if key == "*" or section == "all":
+	# 通配符 "*" 表示全量配置重新加载
+	if key == "*":
 		logger.info("Configuration changed (batch), reloading all settings", "Main")
 		_reload_all_settings()
 		return
 
 	# 处理单个配置项变更
-	logger.debug("Configuration changed: [%s] %s = %s" % [section, key, str(value)], "Main")
+	logger.debug("Configuration changed: %s = %s" % [key, str(value)], "Main")
 
 	# 播放器相关配置：查声明式设置表（Game/PlayerSettings.gd）统一下发，不再逐键 elif。
 	# 新增播放器设置只需在表里加一条 —— 漏加分支导致"改了不生效要重启"的旧坑由此关闭。
-	if _apply_player_setting(key, section, value):
+	if _apply_player_setting(key, value):
 		return
 
-	# 根据 section 和 key 应用相应的配置
-	match section:
-		"General":
-			if key == "online_mode" and net_manager:
+	# 其余按 key 应用。配置键全局唯一，不需要（也不该）拿 section 再筛一遍：
+	# 设置页重组分类不会让这里失效。
+	match key:
+		"online_mode":
+			if net_manager:
 				net_manager.set_online_mode(int(value) == 1)
 
 		# 窗口状态没有设置页入口，存在 [System]
-		"System":
-			if key == "fullscreen":
-				var is_fullscreen = ConfigManager.parse_bool(value)
-				if is_fullscreen:
-					DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
-				else:
-					DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
-			elif key == "vsync_enabled":
-				var is_vsync = ConfigManager.parse_bool(value)
-				DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if is_vsync else DisplayServer.VSYNC_DISABLED)
+		"fullscreen":
+			var is_fullscreen = ConfigManager.parse_bool(value)
+			if is_fullscreen:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+			else:
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		"vsync_enabled":
+			var is_vsync = ConfigManager.parse_bool(value)
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if is_vsync else DisplayServer.VSYNC_DISABLED)
 
 ## 播放器相关配置的统一下发入口。声明在 Game/PlayerSettings.gd，此处只做分发。
-## 返回 true 表示该键由本函数处理（调用方不再往下走 section match）。
-func _apply_player_setting(key: String, _section: String, value: Variant) -> bool:
+## 返回 true 表示该键由本函数处理（调用方不再往下走 key match）。
+func _apply_player_setting(key: String, value: Variant) -> bool:
 	if not PlayerSettings.affects(key):
 		return false
 	var display := PlaybackDisplay.instance

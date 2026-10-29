@@ -553,8 +553,8 @@ func _build_midi_page() -> void:
 			_tab_data_built[Tab.MIDI] = true
 		return
 
-	var method_str := ConfigManager.instance.get_string("General", "album_sort_method", "creation_time")
-	var dir_str := ConfigManager.instance.get_string("General", "album_sort_direction", "asc")
+	var method_str := ConfigManager.instance.get_string("album_sort_method", "creation_time")
+	var dir_str := ConfigManager.instance.get_string("album_sort_direction", "asc")
 	var direction := 0 if dir_str == "asc" else 1
 	_midi_groups = ChartDB.GetSortedAlbumItems(method_str, direction)
 	if _midi_groups.is_empty():

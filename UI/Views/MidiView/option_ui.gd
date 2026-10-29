@@ -20,7 +20,6 @@ const DIFFICULTY_PRESETS: Dictionary = {
 	3: {"max_simultaneous_blocks": 8, "min_tap_interval": 0.0, "min_touch_cooldown_time": 0.0, "max_touch_move_speed": 99999, "max_block_coalesce_time": 0},
 }
 const DIFFICULTY_CUSTOM_ID: int = 4
-const DIFFICULTY_CFG_SECTION: String = "System"
 const DIFFICULTY_CFG_KEY: String = "difficulty"
 
 var _is_syncing_mode_ui: bool = false
@@ -44,7 +43,7 @@ func _ready():
 	_sync_difficulty_from_config()
 
 func _sync_mode_from_config() -> void:
-	var is_auto := ConfigManager.instance.get_int("System", "auto_mode") == 1
+	var is_auto := ConfigManager.instance.get_int("auto_mode") == 1
 	var target_id := MODE_AUTO_ID if is_auto else MODE_NORMAL_ID
 	var target_index := mode_btn.get_item_index(target_id)
 
@@ -63,7 +62,7 @@ func _on_mode_selected(index: int) -> void:
 	var is_auto := selected_id == MODE_AUTO_ID
 	var value := 1 if is_auto else 0
 
-	ConfigManager.instance.set_value_and_notify("System", "auto_mode", value)
+	ConfigManager.instance.set_value_and_notify("auto_mode", value)
 	var save_ok := ConfigManager.instance.save_config(ConfigManager.USER_CONFIG_PATH)
 	if not save_ok:
 		GLogger.warning("Failed to persist Playback.auto_mode to user config", "OptionUI")
@@ -72,7 +71,7 @@ func _on_mode_selected(index: int) -> void:
 
 ## 从配置恢复难度 OptionButton 选中态
 func _sync_difficulty_from_config() -> void:
-	var difficulty_id := ConfigManager.instance.get_int(DIFFICULTY_CFG_SECTION, DIFFICULTY_CFG_KEY, 1)
+	var difficulty_id := ConfigManager.instance.get_int(DIFFICULTY_CFG_KEY, 1)
 	var idx := difficulty_btn.get_item_index(difficulty_id)
 	if idx < 0:
 		idx = 1  # 回退 Normal
@@ -93,8 +92,8 @@ func _on_difficulty_selected(index: int) -> void:
 			var mapping = SettingsMapper.mappings.get(setting_id)
 			if mapping == null:
 				continue
-			ConfigManager.instance.set_value_and_notify(mapping.section, mapping.key, preset[setting_id])
-	ConfigManager.instance.set_value_and_notify(DIFFICULTY_CFG_SECTION, DIFFICULTY_CFG_KEY, difficulty_id)
+			ConfigManager.instance.set_value_and_notify(mapping.key, preset[setting_id])
+	ConfigManager.instance.set_value_and_notify(DIFFICULTY_CFG_KEY, difficulty_id)
 	var save_ok := ConfigManager.instance.save_config(ConfigManager.USER_CONFIG_PATH)
 	if not save_ok:
 		GLogger.warning("Failed to persist difficulty to user config", "OptionUI")

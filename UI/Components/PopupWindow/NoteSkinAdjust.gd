@@ -98,7 +98,7 @@ func _update_color_controls_state() -> void:
 ## 由 PopupWindow.show_note_skin_adjust 调用：刷新选项 + 应用当前皮肤到预览 + 加载工作副本
 func init_adjust() -> void:
 	_refresh_skin_options()
-	_current_skin_name = ConfigManager.instance.get_string("Appearance", "block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
+	_current_skin_name = ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	_apply_skin_to_preview(_current_skin_name)
 	# 加载当前皮肤的配置到工作副本
 	_working_config = SkinMGR.get_skin_config(_current_skin_name).duplicate(true)
@@ -129,9 +129,9 @@ func save_config() -> void:
 	# set_value_and_notify 在值未变化时不发通知——只改了光效/颜色等皮肤配置而没换皮肤时，
 	# block_skin_preset 不变，不会触发重载，导致切换光效要换一次皮肤才生效。
 	# 这里用 set_value 写值 + 强制 emit 一次，保证皮肤配置任何改动关闭弹窗后立即应用到游戏端
-	ConfigManager.instance.set_value("Appearance", "block_skin_preset", _current_skin_name)
+	ConfigManager.instance.set_value("block_skin_preset", _current_skin_name)
 	if EvtBus:
-		EvtBus.config_changed.emit("block_skin_preset", "Appearance", _current_skin_name)
+		EvtBus.config_changed.emit("block_skin_preset", _current_skin_name)
 
 ## 构造一个默认的工作副本配置（皮肤未找到时兜底）
 func _build_default_working_config() -> Dictionary:
@@ -263,9 +263,9 @@ func _apply_preview_from_config() -> void:
 	# 2. 光效：enable_glow=true 时挂 shader 并设颜色；false 时清除 material
 	# 强度/范围取自全局外观设置，与运行时光效同源（PlayView 读同两项，NoteBatchDrawer 同样钳制）
 	var glow_intensity: float = clampf(
-		ConfigManager.instance.get_float("Appearance", "note_glow_intensity", 0.5), 0.0, 2.0)
+		ConfigManager.instance.get_float("note_glow_intensity", 0.5), 0.0, 2.0)
 	var glow_size: float = clampf(
-		ConfigManager.instance.get_float("Appearance", "note_glow_size", 5.0), 1.0, 30.0)
+		ConfigManager.instance.get_float("note_glow_size", 5.0), 1.0, 30.0)
 	_apply_preview_glow(_note_block_node, block_color, enable_glow, glow_intensity, glow_size)
 	_apply_preview_glow(_note_slide_node, slide_color, enable_glow, glow_intensity, glow_size)
 	# 只给 head/tail 挂光效：与运行时 GlowLayer 一致（长条 body 不画光效）
@@ -291,7 +291,7 @@ func _resolve_preview_color(key: String, enable_cb: CheckBox, picker: ColorPicke
 ## 故用与 NoteColorPalette 同风格的确定性代表值：饱和度/亮度取该区间中值、色相两两 >= 30°；
 ## sync_color_across_block_type=1 时三类型同色（与运行时一致）。
 func _preview_global_random_colors() -> Dictionary:
-	var unified := ConfigManager.instance.get_int("Appearance", "sync_color_across_block_type", 0) == 1
+	var unified := ConfigManager.instance.get_int("sync_color_across_block_type", 0) == 1
 	var saturation := 0.9
 	var value := 0.95
 	if unified:
@@ -473,7 +473,7 @@ func _refresh_skin_options() -> void:
 	var skin_list: Array = SkinMGR.get_available_skins()
 	if skin_list.is_empty():
 		skin_list = [SkinManager.DEFAULT_SKIN_PRESET]
-	var current := ConfigManager.instance.get_string("Appearance", "block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
+	var current := ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	_skin_option_btn.clear()
 	for skin in skin_list:
 		_skin_option_btn.add_item(skin)
@@ -506,7 +506,7 @@ func _on_skin_option_selected(_index: int) -> void:
 	_sync_ui_from_config()
 	# 通过 ConfigManager 即时触发 config_changed → PlayView 的 flow_area.load_note_skin()
 	# （相当于把设置保存时进行的皮肤应用提前到这里）
-	ConfigManager.instance.set_value_and_notify("Appearance", "block_skin_preset", skin_name)
+	ConfigManager.instance.set_value_and_notify("block_skin_preset", skin_name)
 	# 重置到下方位置（瞬间）
 	_note_preview_hboxc.offset_transform_position = Vector2(0, 80)
 	# 第二段：从下方上移 + 淡入（并行）

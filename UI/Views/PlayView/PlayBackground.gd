@@ -203,10 +203,10 @@ func _apply_background_dim() -> void:
 	var mat := _ensure_bg_material()
 	if mat == null:
 		return
-	var dim_color_html = ConfigManager.instance.get_string("Appearance", "background_dim_color", "#0000007F")
+	var dim_color_html = ConfigManager.instance.get_string("background_dim_color", "#0000007F")
 	var dim_color := Color(dim_color_html) if dim_color_html.is_valid_html_color() else Color(0, 0, 0, 0.5)
 	mat.set_shader_parameter("dim_color", dim_color)
-	var flash_color_html = ConfigManager.instance.get_string("Appearance", "background_image_flash_color", "#FFFFFF00")
+	var flash_color_html = ConfigManager.instance.get_string("background_image_flash_color", "#FFFFFF00")
 	if flash_color_html.is_valid_html_color():
 		flash_color = Color(flash_color_html)
 	else:
