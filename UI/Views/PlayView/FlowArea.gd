@@ -872,13 +872,10 @@ func _update_long_note_fall(note_index: int, current_time_ms: float, render_time
 		ref_len -= head_half + tail_half
 	_rt_body_ref_len[note_index] = maxf(ref_len, 1.0)
 
-	# 双判定 Miss（从未击打的长条）：头部落出屏幕底计一次头部 Miss（置 F_JUDGED 后不可再击打，
-	# 与点块落出屏幕即 Miss 的行为对齐）；尾部落出屏幕底再计一次尾部 Miss 并移除。
-	# 两次都经 note_judged 计入评分与 combo
-	if not (_rt_flags[note_index] & F_JUDGED) and not (_rt_flags[note_index] & F_HELD) and _rt_held_by[note_index] < 0:
-		if head_center >= _cached_viewport_height:
-			_rt_flags[note_index] |= F_JUDGED
-			note_judged.emit("Miss", "", FlowNote.NoteType.Long, 1.0, 0.0, _rt_long_id[note_index])
+	# 长条双判定（从未击打）：尾部落出屏幕底再计一次尾部 Miss 并移除。
+	# 注意：头部落出屏幕【不】在此判 Miss——长条头部虽已落屏，但尾部尚未到达判定线时，
+	# 音符主体仍在可视区内、整条尚未结束，应当仍可点击重新接住（按住直到尾部）。
+	# 头部 Miss 仅在该长条「始终未被接住、尾部也落出屏幕」时，随下方尾部分支一并计入。
 	if not (_rt_flags[note_index] & F_TAIL_JUDGED) and not (_rt_flags[note_index] & F_HELD) and _rt_held_by[note_index] < 0:
 		if tail_center >= _cached_viewport_height:
 			_judge_long_tail(note_index, "Miss")
