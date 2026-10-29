@@ -6,7 +6,7 @@ extends Control
 ## 「关于」按钮在 ShortCut 中的下标。
 ## 该按钮不对应任何设置分组——按下它时把列表区整体换成 AboutPage，而非滚动到某个分组。
 ## 因此它必须 >= SettingGroupsData 的组数，否则会与真实分组抢下标。
-const ABOUT_BTN_INDEX: int = 7
+const ABOUT_BTN_INDEX: int = 6
 
 ## 进入「关于」前停留的分组按钮下标，从关于页返回时用它还原位置
 var _last_group_btn_idx: int = 0
