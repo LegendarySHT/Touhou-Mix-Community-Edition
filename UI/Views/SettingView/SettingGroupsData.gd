@@ -70,6 +70,7 @@ static func get_setting_groups() -> Array:
 			},
 			{
 				"id": "album_sort_method",
+				"advanced": true,
 				"name_en": "Album Sort Method",
 				"name_zh": "专辑排序方式",
 				"description": "选择专辑列表的默认排序方式",
@@ -83,6 +84,7 @@ static func get_setting_groups() -> Array:
 			},
 			{
 				"id": "album_sort_direction",
+				"advanced": true,
 				"name_en": "Album Sort Direction",
 				"name_zh": "专辑排序方向",
 				"description": "选择专辑列表的正序或倒序排列",
@@ -155,6 +157,7 @@ static func get_setting_groups() -> Array:
 				"description": "输入服务器的地址",
 				"type": "TYPE_LINE_EDIT",
 				"default_value": "thmix.org",
+				"advanced": true,
 			},
 		]
 	},
@@ -419,6 +422,7 @@ static func get_setting_groups() -> Array:
 			},
 			{
 				"id": "max_simultaneous_blocks",
+				"advanced": true,
 				"name_en": "Max Simultaneous Blocks",
 				"name_zh": "最大并排下落音符",
 				"description": "控制同时下落的音符的最大数量",
@@ -427,6 +431,7 @@ static func get_setting_groups() -> Array:
 			},
 			{
 				"id": "min_tap_interval",
+				"advanced": true,
 				"name_en": "Min Tap Interval",
 				"name_zh": "连点最小时间间隔",
 				"description": "使一个点块后跟着的与其间隔时间低于此时间的所有点块变成滑块",
@@ -436,6 +441,7 @@ static func get_setting_groups() -> Array:
 			},
 			{
 				"id": "min_touch_cooldown_time",
+				"advanced": true,
 				"name_en": "Min Touch Cooldown Time",
 				"name_zh": "最小点击冷却时间",
 				"description": "手指从抬起到任意位置按下的最短时间（会限制上下音符之间的横向距离）",
@@ -445,6 +451,7 @@ static func get_setting_groups() -> Array:
 			},
 			{
 				"id": "max_touch_move_speed",
+				"advanced": true,
 				"name_en": "Max Touch Move Speed",
 				"name_zh": "手指最大移动速度",
 				"description": "使各个相邻的音符之间的水平距离在设置的数值所推算出来的距离之间",
@@ -454,6 +461,7 @@ static func get_setting_groups() -> Array:
 			},
 			{
 				"id": "max_block_coalesce_time",
+				"advanced": true,
 				"name_en": "Note Density Cap",
 				"name_zh": "音符生成密度上限",
 				"description": "控制每 1 秒内最多生成的按压时刻组数量（0 = 不限）",
@@ -581,6 +589,7 @@ static func get_setting_groups() -> Array:
 			},
 			{
 				"id": "note_draw_order",
+				"advanced": true,
 				"name_en": "Note Drawing Order",
 				"name_zh": "音符绘制顺序",
 				"description": "选择长条与其他音符重叠时的绘制层级。长条置底：长条被点块和滑块覆盖；长条置顶：长条覆盖在点块和滑块之上。",
@@ -593,6 +602,7 @@ static func get_setting_groups() -> Array:
 			},
 			{
 				"id": "custom_block_skin_texture_filter_mode",
+				"advanced": true,
 				"name_en": "Custom Block Skin Texture Filter Mode",
 				"name_zh": "皮肤纹理过滤模式",
 				"description": "更改对音符皮肤的渲染方式",

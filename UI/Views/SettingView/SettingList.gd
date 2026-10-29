@@ -76,6 +76,9 @@ func _ready() -> void:
 func load_settings(setting: Dictionary = {}):
 	# 清空现有项目
 	clear_items()
+	# clear_items 只做 queue_free（帧末才真正释放），若在同一帧内重建，
+	# 旧节点仍留在容器里会和新建项重叠，故这里立刻把它们摘出容器
+	_purge_container_children()
 	setting_items.clear()
 	separators.clear()
 
@@ -85,6 +88,7 @@ func load_settings(setting: Dictionary = {}):
 
 	# 遍历所有分组
 	var group_idx := 0
+	var show_advanced := _is_advanced_visible()
 	for group in setting_groups:
 		# 添加分隔符
 		_add_separator()
@@ -93,6 +97,10 @@ func load_settings(setting: Dictionary = {}):
 		for setting_data in group.settings:
 			# 跳过未实装的设置项（不创建 UI，实装后改 not_implemented=false 即可恢复）
 			if setting_data.get("not_implemented", false):
+				continue
+			# 「显示高级设置项」关闭时，高级项压根不建节点，等用户开启后再懒创建
+			# （见 _apply_advanced_visibility）。目的是缩短首次进入设置页的构建耗时
+			if setting_data.get("advanced", false) and not show_advanced:
 				continue
 			var init_value = _pending_config.get(setting_data.id, setting_data.default_value)
 			add_setting_item(setting_data, init_value, group_idx)
@@ -115,6 +123,17 @@ func _add_separator():
 		separator = separator_scene.instantiate()
 		container.add_child(separator)
 		separators.append(separator)
+
+## 立刻把容器内的所有子节点摘出（remove_child 会同步触发 _exit_tree）并排队释放。
+## SettingItem 的值控件是它在容器里的兄弟节点，由 _exit_tree 一并 queue_free；
+## 即使它已被标记删除，这里再摘一次也是幂等的。
+func _purge_container_children() -> void:
+	if container == null:
+		return
+	for child in container.get_children():
+		container.remove_child(child)
+		child.queue_free()
+	list_items.clear()
 
 func _get_current_para_sepa_idx():
 	# 每个分组的分界线是 separators[2*idx]（_add_separator 给每个分组添加两个 separator）
@@ -960,15 +979,24 @@ func reset_to_defaults():
 
 ## ========== 可见性控制 ==========
 
-## 根据 show_advanced_settings 的值显示/隐藏所有标记为 advanced 的设置项
+## 根据 show_advanced_settings 的值显示/隐藏所有标记为 advanced 的设置项。
+## 关闭时这些项在 load_settings 阶段不会被创建，首次开启时才在此处懒创建并插回声明位置，
+## 避免首次进入设置页就为用不到的项付出实例化开销。
 ## 高级设置项与 SettingItem（Key VBoxContainer）和其 value_node 是 grid 容器中的兄弟节点，需同时切换
 func _apply_advanced_visibility() -> void:
-	var show_advanced := int(_pending_config.get("show_advanced_settings", "0")) == 1
-	for group in setting_groups:
+	var show_advanced := _is_advanced_visible()
+	var created := false
+	for gi in range(setting_groups.size()):
+		var group: Dictionary = setting_groups[gi]
 		for setting_data in group.settings:
 			if not setting_data.get("advanced", false):
 				continue
 			var setting_id: String = setting_data.id
+
+			if show_advanced and not setting_items.has(setting_id):
+				_add_advanced_item(setting_data, gi)
+				created = true
+
 			if not setting_items.has(setting_id):
 				continue
 			var setting_item: SettingItem = setting_items[setting_id]
@@ -977,6 +1005,55 @@ func _apply_advanced_visibility() -> void:
 			setting_item.visible = show_advanced
 			if setting_item.value_node:
 				setting_item.value_node.visible = show_advanced
+
+	if created:
+		# 新建项里有 5 个受难度预设控制的下落参数，补一次锁定态
+		_apply_difficulty_lock_state(true)
+		# 容器里做过 move_child，list_items 的相对顺序需同步，
+		# 否则基类的按索引访问与 position.y 二分查找会与视觉顺序不一致
+		list_items.sort_custom(_sort_list_items_by_tree_order)
+
+## 「显示高级设置项」当前是否开启（待保存配置里可能是 int 也可能是字符串）
+func _is_advanced_visible() -> bool:
+	return int(_pending_config.get("show_advanced_settings", "0")) == 1
+
+## 懒创建一个高级设置项，并把 SettingItem 与它的值控件一起移回声明位置。
+## add_setting_item 一律追加到容器末尾，不移动的话新项会全堆到列表最后。
+func _add_advanced_item(setting_data: Dictionary, group_idx: int) -> void:
+	var setting_id: String = setting_data.id
+	var init_value = _pending_config.get(setting_id, setting_data.default_value)
+	add_setting_item(setting_data, init_value, group_idx)
+
+	var setting_item: SettingItem = setting_items.get(setting_id)
+	if setting_item == null:
+		return
+	var target := _calc_declared_index(setting_id, group_idx)
+	container.move_child(setting_item, target)
+	if setting_item.value_node:
+		# SettingItem 与 value_node 在容器里紧邻，值控件放在其后
+		container.move_child(setting_item.value_node, target + 1)
+
+## 计算设置项应处的声明位置：跟在同组内它前面最近的已建项之后（跳过该项的 Key + 值控件两个节点）。
+## 若前面没有已建项，则放到本组分隔符区之后（每组前置两个分隔符）。
+func _calc_declared_index(setting_id: String, group_idx: int) -> int:
+	var declared: Array = setting_groups[group_idx].settings
+	var pos := -1
+	for i in range(declared.size()):
+		if declared[i].id == setting_id:
+			pos = i
+			break
+	for i in range(pos - 1, -1, -1):
+		if setting_items.has(declared[i].id):
+			var prev: SettingItem = setting_items[declared[i].id]
+			if prev and is_instance_valid(prev):
+				return prev.get_index() + 2
+	var sep_idx := group_idx * 2 + 1
+	if sep_idx < separators.size() and is_instance_valid(separators[sep_idx]):
+		return separators[sep_idx].get_index() + 1
+	return container.get_child_count()
+
+func _sort_list_items_by_tree_order(a: ListItemBase, b: ListItemBase) -> bool:
+	return a.get_index() < b.get_index()
 
 ## ========== 难度预设锁定 ==========
 
