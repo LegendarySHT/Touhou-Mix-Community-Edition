@@ -274,12 +274,20 @@ func set_enabled(enabled: bool) -> void:
 		ValueType.TYPE_COLOR:
 			var color_btn: ColorPickerButton = value_node.get_node("ColorPickerButton")
 			if color_btn:
+				color_btn.modulate.a = 1.0 if enabled else 0.45
 				color_btn.disabled = not enabled
+			# HexColor 是 ColorPickerButton 的兄弟节点，只禁按钮的话输入框还能打字
+			var hex_edit: LineEdit = value_node.get_node_or_null("HexColor")
+			if hex_edit:
+				hex_edit.editable = enabled
+				hex_edit.focus_mode = Control.FOCUS_ALL if enabled else Control.FOCUS_NONE
 
 		ValueType.TYPE_LINE_EDIT:
 			var line_edit: LineEdit = value_node.get_node("LineEdit")
 			if line_edit:
 				line_edit.editable = enabled
+				# LineEdit 在 editable=false 时仍可被 Tab/方向键聚焦，一并关掉才真的"跳过"
+				line_edit.focus_mode = Control.FOCUS_ALL if enabled else Control.FOCUS_NONE
 
 		ValueType.TYPE_BUTTON:
 			var btn: Button = value_node

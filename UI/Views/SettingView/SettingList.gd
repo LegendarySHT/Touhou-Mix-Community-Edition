@@ -19,6 +19,16 @@ const DIFFICULTY_CUSTOM_ID: int = 4
 const DIFFICULTY_CFG_SECTION: String = "System"
 const DIFFICULTY_CFG_KEY: String = "difficulty"
 
+# 音符颜色的互斥关系：随机音符颜色开启时，统一颜色才有意义、三个单色设置被随机值覆盖；
+# 关闭随机时反过来。两者只能改一边，否则用户会以为改了单色却被随机值顶掉。
+const NOTE_COLOR_RANDOM_ID: String = "randomize_block_color"
+const NOTE_COLOR_SYNC_ID: String = "sync_color_across_block_type"
+const NOTE_COLOR_SINGLE_IDS: Array[String] = [
+	"instant_block_color",
+	"short_block_color",
+	"long_block_color",
+]
+
 # 进入 SettingView 时的配置快照（setting_id → 原始值，类型已转换好）
 var _initial_config: Dictionary = {}
 # 当前待保存的配置（setting_id → 已转换好类型的最终值）
@@ -111,6 +121,9 @@ func load_settings(setting: Dictionary = {}):
 
 	# 应用难度预设锁定（值已由 load_settings 从文件读入，仅切换锁定态）
 	_apply_difficulty_lock_state(true)
+
+	# 应用音符颜色的互斥锁定（随机 → 统一 / 单色 二选一）
+	_apply_note_color_dependency_state()
 
 var separators = []
 @onready var separator_scene = load(item_separator)
@@ -314,6 +327,10 @@ func _on_setting_value_changed(id: String, value: Variant):
 
 	_pending_config[id] = converted_value
 	GLogger.info("Pending config: %s = %s" % [id, str(converted_value)], "SettingList")
+
+	# 随机音符颜色开关翻转后，立刻刷新另一侧的可用状态
+	if id == NOTE_COLOR_RANDOM_ID:
+		_apply_note_color_dependency_state()
 
 	# 即时型设置（数据里 apply_mode == "immediate"）：切换即生效，不等待退出
 	var data: Dictionary = _find_setting_data(id)
@@ -1072,6 +1089,29 @@ func _apply_difficulty_lock_state(apply_values_from_config: bool) -> void:
 				_pending_config[setting_id] = v
 				_initial_config[setting_id] = v
 		item.set_enabled(not locked)
+
+## ========== 设置项互斥锁定 ==========
+
+## 刷新「随机音符颜色」与「统一音符颜色 / 三个单色设置」的可用状态。
+##   随机 OFF → 单色可改；统一颜色无意义（禁用）
+##   随机 ON  → 单色被每次游戏的随机值覆盖（禁用）；统一颜色可改
+## 判据取 UI 控件当前值而非 _pending_config：切换的瞬间 option 已选中新项，
+## 这样用户一点就能看到另一边灰掉，不必等保存。
+func _apply_note_color_dependency_state() -> void:
+	var random_item: SettingItem = setting_items.get(NOTE_COLOR_RANDOM_ID)
+	if random_item == null:
+		return
+	# TYPE_OPTION 的 get_value() 返回选中索引，与本项 0=关 / 1=开 的语义一致
+	var random_on: bool = int(random_item.get_value()) == 1
+
+	var sync_item: SettingItem = setting_items.get(NOTE_COLOR_SYNC_ID)
+	if sync_item != null:
+		sync_item.set_enabled(random_on)
+
+	for setting_id in NOTE_COLOR_SINGLE_IDS:
+		var item: SettingItem = setting_items.get(setting_id)
+		if item != null:
+			item.set_enabled(not random_on)
 
 ## ========== 主题化 ==========
 
