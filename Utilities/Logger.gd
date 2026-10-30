@@ -1,5 +1,13 @@
 ## 日志系统
 ## 用于统一的日志记录和调试输出
+##
+## 线程模型（生产者 / 消费者）：
+##   任意线程调用 info/debug/... → 格式化 + 入队 + sem.post（微秒级）
+##   专职 writer 线程 → 排空队列 → print + store_line + flush（所有 IO 都在这里）
+## 为什么：Android 上一次真实磁盘写（store_line + flush）实测 ~6ms；`print` 走 logcat
+## 也是一次同步写。放主线程就是每几百毫秒一记 6ms 尖峰，对 16.6ms 帧预算直接掉帧。
+## 注意：不能用信号/call_deferred 代替本线程 —— 信号默认同步直连，CONNECT_DEFERRED 与
+## call_deferred 都靠 SceneTree::process 冲刷，而主循环正是后台被冻结的那一个。
 class_name GameLogger
 extends Node
 
@@ -23,19 +31,36 @@ var log_to_console: bool = true
 ## 日志文件路径（会在 _ready 中初始化）
 var log_file_path: String = ""
 
-## 日志文件句柄（复用，避免每次写入都重新打开文件）
+## 日志文件句柄。只允许两种持有者：writer 线程本身，或「writer 已停止」时的调用线程。
 var _log_file: FileAccess = null
 
-## 日志前缀表（Array 下标 = LogLevel 数值；刻意不用 Dictionary——worker 线程持锁拼行时
-## 要避开 Dictionary/StringName 查找，这是本类可被任意线程安全调用的前提之一）
+## 合并窗口：writer 被唤醒后先等这么久，把同一波日志攒成一次落盘，
+## 否则一行一次 flush（高日志量时反而比原来更糟）。ERROR 级跳过本窗口。
+const _COALESCE_MS := 30
+## 合并窗口的切片粒度：停止线程时最坏只等这么久
+const _COALESCE_SLICE_MS := 5
+
+## 待写行（_mutex 保护）
+var _pending: Array[String] = []
+## 有待写 ERROR，writer 跳过合并窗口立即落盘
+var _urgent := false
+
+var _writer: Thread = null
+var _writer_running := false
+var _stop_writer := false
+var _wake := Semaphore.new()
+
+## 日志前缀表（Array 下标 = LogLevel 数值；刻意不用 Dictionary——该表会在任意线程的
+## _log 里查，避开 Dictionary/StringName 查找是本类可被任意线程调用的前提之一）
 var _level_prefixes := ["[DEBUG]", "[INFO]", "[WARN]", "[ERROR]"]
 
-## 串行化所有日志输出（控制台 + 文件）
+## 串行化队列状态与文件句柄归属
 var _mutex := Mutex.new()
 
 func _ready() -> void:
 	add_to_group("singleton")
 	_init_log_path()
+	_start_writer_thread()
 
 ## 初始化日志文件路径（含日期）并确保目录存在
 func _init_log_path() -> void:
@@ -49,11 +74,13 @@ func _init_log_path() -> void:
 ## 自定义存储根生效后刷新日志路径（Logs/ 随存储根迁移）
 ## 关闭旧句柄，重新解析到当前存储根下的 Logs/ 目录并重建文件
 func refresh_log_path() -> void:
+	_stop_writer_thread()
 	_mutex.lock()
-	_close_log_file_locked()
+	_close_file()
 	log_file_path = ""
 	_init_log_path()
 	_mutex.unlock()
+	_start_writer_thread()
 
 ## 确保日志目录存在
 func _ensure_log_directory() -> void:
@@ -98,65 +125,163 @@ func warning(message: String, context: String = "") -> void:
 func error(message: String, context: String = "") -> void:
 	_log(LogLevel.ERROR, message, context)
 
-## 内部日志实现（任意线程可调用）
+## 内部日志实现（任意线程可调用；落到这里只做格式化 + 入队）
 func _log(level: LogLevel, message: String, context: String = "") -> void:
 	# 检查日志级别（锁外读取，int 赋值原子，无需保护）
 	if level < current_level:
 		return
+	if not log_to_console and not log_to_file:
+		return
 
-	# 任意线程直接输出，由 _mutex 串行化
-	_mutex.lock()
-	_emit_log(level, message, context)
-	_mutex.unlock()
-
-## 实际输出日志（任意线程可调用；调用方必须已持有 _mutex）
-func _emit_log(level: LogLevel, message: String, context: String) -> void:
-	# 构建日志消息
 	var timestamp = Time.get_datetime_string_from_system()
 	var full_message = "%s %s [%s] %s" % [timestamp, _level_prefixes[level], context, message]
 
-	# 控制台输出
+	_mutex.lock()
+	if _writer_running:
+		_pending.append(full_message)
+		if level >= LogLevel.ERROR:
+			_urgent = true
+		_mutex.unlock()
+		_wake.post()
+	else:
+		# writer 未启动（_ready 之前 / 已停止）：退化为主线程直写，保证日志不丢
+		_emit_sync(full_message)
+		_mutex.unlock()
+
+## 同步输出一行（调用方必须已持有 _mutex；仅 writer 停止时走这里）
+func _emit_sync(full_message: String) -> void:
 	if log_to_console:
 		print(full_message)
-
-	# 文件输出
 	if log_to_file:
-		_write_to_file(full_message)
-
-## 写入到日志文件
-func _write_to_file(message: String) -> void:
-	if log_file_path.is_empty():
-		return
-	if _log_file == null:
-		_log_file = FileAccess.open(log_file_path, FileAccess.READ_WRITE)
-		if _log_file == null:
-			# 文件不存在时尝试创建
-			_log_file = FileAccess.open(log_file_path, FileAccess.WRITE)
-		if _log_file == null:
-			push_error("Failed to open or create log file: %s" % log_file_path)
+		if not _ensure_file_open():
 			return
-		if _log_file.get_length() > 0:
-			_log_file.seek_end()
-	_log_file.store_line(message)
-	# 立即 flush：FileAccess 的 store_line 是带缓冲的，不 flush 时进程在后台被 LMK
-	# 杀掉会整缓冲丢失（实验项目 bg_append.log 因此产出 0 行）
-	_log_file.flush()
+		_log_file.store_line(full_message)
+		_log_file.flush()
 
-## 刷新并释放文件句柄（退出/读文件前调用；持锁执行）
-func _flush_log_file() -> void:
+# ===== writer 线程 =====
+
+func _start_writer_thread() -> void:
+	if _writer_running:
+		return
+	_stop_writer = false
+	_writer = Thread.new()
+	# 先置位再 start：否则 start 到置位之间的日志会走同步直写，与刚起来的 writer 抢句柄
 	_mutex.lock()
-	_close_log_file_locked()
+	_writer_running = true
+	_mutex.unlock()
+	if _writer.start(_writer_loop) != OK:
+		push_error("Failed to start log writer thread; falling back to synchronous writes")
+		_writer = null
+		_mutex.lock()
+		_writer_running = false
+		_write_batch(_pending)
+		_pending.clear()
+		_urgent = false
+		_mutex.unlock()
+
+## 停止 writer：排空队列、flush、关句柄。退出/重开日志/切后台兜底用
+func _stop_writer_thread() -> void:
+	if _writer_running:
+		_stop_writer = true
+		_wake.post()
+		if _writer != null:
+			# 别在等 join 时持锁：writer 收尾要拿 _mutex
+			_writer.wait_to_finish()
+			_writer = null
+		_mutex.lock()
+		_writer_running = false
+		# join 期间生产者仍可能入队（那时 _writer_running 还是 true），这里补写
+		if not _pending.is_empty():
+			_write_batch(_pending)
+			_pending.clear()
+		_urgent = false
+		_mutex.unlock()
+	_mutex.lock()
+	_close_file()
 	_mutex.unlock()
 
-## 关闭句柄（调用方必须已持有 _mutex；flush 后置 null，FileAccess 引用归零时自动 close）。
-## GDScript 的 Mutex 非递归，已持锁的路径必须走本函数而非 _flush_log_file，否则死锁。
-func _close_log_file_locked() -> void:
+func _writer_loop() -> void:
+	while true:
+		_wake.wait()
+		if _stop_writer:
+			_drain()
+			break
+		# 合并窗口：把同一波日志攒进同一次落盘。ERROR 来了就别等
+		if not _urgent:
+			var waited := 0
+			while waited < _COALESCE_MS and not _stop_writer and not _urgent:
+				OS.delay_msec(_COALESCE_SLICE_MS)
+				waited += _COALESCE_SLICE_MS
+		_drain()
+
+## 排空队列并一次性落盘（仅 writer 线程调用）
+func _drain() -> void:
+	_mutex.lock()
+	if _pending.is_empty():
+		_urgent = false
+		_mutex.unlock()
+		return
+	var batch := _pending.duplicate()
+	_pending.clear()
+	_urgent = false
+	_mutex.unlock()
+	_write_batch(batch)
+
+## 输出一批行：先控制台，再一次性 store_line + flush（仅 writer 线程 / 已停 writer 的调用线程）
+func _write_batch(batch: Array) -> void:
+	if log_to_console:
+		for line in batch:
+			print(line)
+	if log_to_file:
+		if not _ensure_file_open():
+			return
+		for line in batch:
+			_log_file.store_line(line)
+		# 整批一次 flush：一次真实磁盘写 ~6ms，攒批才划算
+		_log_file.flush()
+
+## 打开日志文件并定位到末尾（仅单线程持有句柄时调用）
+func _ensure_file_open() -> bool:
+	if _log_file != null:
+		return true
+	if log_file_path.is_empty():
+		return false
+	_log_file = FileAccess.open(log_file_path, FileAccess.READ_WRITE)
+	if _log_file == null:
+		# 文件不存在时尝试创建
+		_log_file = FileAccess.open(log_file_path, FileAccess.WRITE)
+	if _log_file == null:
+		push_error("Failed to open or create log file: %s" % log_file_path)
+		return false
+	if _log_file.get_length() > 0:
+		_log_file.seek_end()
+	return true
+
+## 关闭句柄（flush 后置 null，FileAccess 引用归零时自动 close）
+func _close_file() -> void:
 	if _log_file:
 		_log_file.flush()
 		_log_file = null
 
+## 把队列吃干净并释放句柄（切后台/失焦/退出时调用）
+## Android 进后台后所有线程都会被 freezer 冻住，留着待写队列等于丢日志。
+func _flush_log_file() -> void:
+	if _writer_running:
+		_stop_writer_thread()
+		_start_writer_thread()
+		return
+	_mutex.lock()
+	_close_file()
+	_mutex.unlock()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED \
+			or what == NOTIFICATION_WM_CLOSE_REQUEST \
+			or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		_flush_log_file()
+
 func _exit_tree() -> void:
-	_flush_log_file()
+	_stop_writer_thread()
 
 ## 设置日志级别
 func set_log_level(level: LogLevel) -> void:
@@ -164,23 +289,26 @@ func set_log_level(level: LogLevel) -> void:
 
 ## 清空日志文件
 func clear_log_file() -> void:
+	_stop_writer_thread()
 	_mutex.lock()
-	_close_log_file_locked()
+	_close_file()
 	var file = FileAccess.open(log_file_path, FileAccess.WRITE)
 	if file:
 		file.truncate_64(0)
 		file.close()
 	_mutex.unlock()
+	_start_writer_thread()
 
 ## 获取日志文件内容
 func get_log_contents() -> String:
+	_stop_writer_thread()
 	_mutex.lock()
-	_close_log_file_locked()
+	_close_file()
+	var content := ""
 	var file = FileAccess.open(log_file_path, FileAccess.READ)
-	if file == null:
-		_mutex.unlock()
-		return ""
-	var content := file.get_as_text()
-	file.close()
+	if file != null:
+		content = file.get_as_text()
+		file.close()
 	_mutex.unlock()
+	_start_writer_thread()
 	return content
