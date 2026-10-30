@@ -298,21 +298,21 @@ corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_selected"]
-content_margin_left = 20.0
-content_margin_top = 36.0
-content_margin_right = 20.0
-content_margin_bottom = 36.0
-bg_color = Color(0.0627, 0.0784, 0.1137, 1)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_unselected"]
 content_margin_left = 20.0
 content_margin_top = 36.0
 content_margin_right = 20.0
 content_margin_bottom = 36.0
 bg_color = Color(0, 0, 0, 0)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_selected"]
+content_margin_left = 20.0
+content_margin_top = 36.0
+content_margin_right = 20.0
+content_margin_bottom = 36.0
+bg_color = Color(0.0627, 0.0784, 0.1137, 1)
 corner_radius_top_left = 6
 corner_radius_top_right = 6
 
@@ -427,6 +427,7 @@ TabContainer/constants/outline_size = 0
 TabContainer/constants/side_margin = 0
 TabContainer/font_sizes/font_size = 42
 TabContainer/styles/panel = SubResource("StyleBoxFlat_tab_panel")
+TabContainer/styles/tab_hovered = SubResource("StyleBoxFlat_tab_unselected")
 TabContainer/styles/tab_selected = SubResource("StyleBoxFlat_tab_selected")
 TabContainer/styles/tab_unselected = SubResource("StyleBoxFlat_tab_unselected")
 Tree/icons/checked = SubResource("DPITexture_w3rk5")
@@ -1556,8 +1557,7 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 20.0
-offset_right = 830.0
-offset_bottom = 600.0
+offset_right = -20.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_3y6u5")
@@ -1565,8 +1565,8 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_3y6u5")
 [node name="TabC" parent="PopupWindow" unique_id=1542807723 instance=ExtResource("28_hri7i")]
 offset_left = 20.0
 offset_top = 0.0
-offset_right = 830.0
-offset_bottom = 600.0
+offset_right = -20.0
+offset_bottom = 0.0
 offset_transform_enabled = true
 
 [connection signal="text_submitted" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SearchBox/TextEdit" to="skew/C/ShortCutMenu" method="_on_search_query"]
