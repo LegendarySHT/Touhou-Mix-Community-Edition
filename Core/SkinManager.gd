@@ -532,6 +532,15 @@ func get_skin_textures(skin_name: String) -> Dictionary:
 
 	return result
 
+## 查询指定皮肤某个逻辑贴图的实际文件路径（不加载纹理，供异步预览等使用）
+func get_skin_texture_path(skin_name: String, texture_key: String) -> String:
+	var skin_data: SkinMetadata = skins_index.get(skin_name, null)
+	if skin_data == null and skin_name.ends_with(" [内置]"):
+		skin_data = skins_index.get(skin_name.substr(0, skin_name.length() - 8), null)
+	if skin_data == null or skin_data.path.is_empty():
+		return ""
+	return _resolve_skin_texture_path(skin_data.path, texture_key)
+
 ## 按候选基础名/扩展名解析某个逻辑贴图在皮肤目录下的实际文件路径
 ## res:// 与 user:// 使用各自的存在性判断；全部候选缺失时返回空串（由调用方跳过该贴图）
 func _resolve_skin_texture_path(skin_path: String, texture_key: String) -> String:

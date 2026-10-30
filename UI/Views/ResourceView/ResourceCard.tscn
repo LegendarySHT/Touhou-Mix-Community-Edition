@@ -1,0 +1,243 @@
+[gd_scene format=3 uid="uid://ctvojrt4ergbw"]
+
+[ext_resource type="Script" uid="uid://bc2tvdaveqxcg" path="res://UI/Views/ResourceView/ResourceCard.gd" id="1_card"]
+[ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="2_scroll"]
+[ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="3_round"]
+[ext_resource type="Script" path="res://UI/Views/ResourceView/ResourceSkinPreview.gd" id="4_preview"]
+
+[sub_resource type="StyleBoxFlat" id="SB_normal"]
+bg_color = Color(0.102, 0.1255, 0.1765, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.24, 0.32, 0.85)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(0, 0, 0, 0.25)
+shadow_size = 6
+
+[sub_resource type="StyleBoxFlat" id="SB_pressed"]
+bg_color = Color(0.078, 0.098, 0.14, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.7, 1, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="SB_hover"]
+bg_color = Color(0.133, 0.164, 0.227, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.36, 0.55, 1, 0.85)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(0.16, 0.28, 0.6, 0.3)
+shadow_size = 10
+
+[sub_resource type="StyleBoxFlat" id="SB_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 0.9)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="SB_selected"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 0.95)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+
+[sub_resource type="StyleBoxFlat" id="SB_cover"]
+bg_color = Color(0.062, 0.078, 0.114, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.2, 0.27, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_badge"]
+content_margin_left = 10.0
+content_margin_top = 3.0
+content_margin_right = 10.0
+content_margin_bottom = 3.0
+bg_color = Color(0.16, 0.24, 0.5, 0.9)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="ResourceCard" type="Button" unique_id=980416716]
+custom_minimum_size = Vector2(600, 150)
+offset_right = 600.0
+offset_bottom = 150.0
+mouse_filter = 1
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("SB_normal")
+theme_override_styles/pressed = SubResource("SB_pressed")
+theme_override_styles/hover = SubResource("SB_hover")
+theme_override_styles/focus = SubResource("SB_focus")
+script = ExtResource("1_card")
+
+[node name="SelectedBorder" type="Panel" parent="." unique_id=1396353131]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_selected")
+
+[node name="Margin" type="MarginContainer" parent="." unique_id=1559115967]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="HBox" type="HBoxContainer" parent="Margin" unique_id=1759079422]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="CoverWrap" type="Panel" parent="Margin/HBox" unique_id=1966632862]
+custom_minimum_size = Vector2(126, 126)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_cover")
+
+[node name="Cover" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=244121348]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+script = ExtResource("3_round")
+corner_radius = 12.0
+
+[node name="Placeholder" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=17705918]
+modulate = Color(1, 1, 1, 0.45)
+custom_minimum_size = Vector2(58, 58)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -29.0
+offset_top = -29.0
+offset_right = 29.0
+offset_bottom = 29.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="NotePreview" type="Control" parent="Margin/HBox/CoverWrap"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("4_preview")
+
+[node name="Info" type="VBoxContainer" parent="Margin/HBox" unique_id=110192363]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 3
+
+[node name="Title" type="Label" parent="Margin/HBox/Info" unique_id=1195004096]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 26
+text = "资源名称"
+clip_text = true
+script = ExtResource("2_scroll")
+end_padding = 0.0
+
+[node name="Sub" type="Label" parent="Margin/HBox/Info" unique_id=552491381]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 19
+text = "副标题"
+clip_text = true
+script = ExtResource("2_scroll")
+theme_color_key = "text_secondary"
+end_padding = 0.0
+
+[node name="Meta" type="Label" parent="Margin/HBox/Info" unique_id=1066406590]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "元信息"
+clip_text = true
+script = ExtResource("2_scroll")
+theme_color_key = "text_secondary"
+end_padding = 0.0
+
+[node name="Right" type="VBoxContainer" parent="Margin/HBox" unique_id=2023653273]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="Badge" type="Label" parent="Margin/HBox/Right" unique_id=587554651]
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("SB_badge")
+text = "有人声"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SelectedMark" type="TextureRect" parent="Margin/HBox/Right" unique_id=1410729079]
+visible = false
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5

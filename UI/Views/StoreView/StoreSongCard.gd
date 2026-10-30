@@ -10,6 +10,8 @@
 class_name StoreSongCard
 extends Button
 
+static var _shared_style_revision := -1
+
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 
 ## 请求查看详情：item = 规范化条目字典，source_rect = 卡片当前全局矩形（供弹窗做展开动画）
@@ -272,26 +274,28 @@ func apply_theme() -> void:
 	var muted_text := ThemeMGR.get_color("text_secondary") if is_light \
 		else ThemeMGR.get_color("text_dim")
 
-	for spec in [
-		["normal", surface_high, border, 0.94],
-		["hover", surface_hover, primary, 0.98],
-		["pressed", surface_low, primary_light, 1.0],
-	]:
-		var sb := get_theme_stylebox(spec[0]) as StyleBoxFlat
-		if sb:
-			sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], spec[3])
-			sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.85)
-	var focus_sb := get_theme_stylebox("focus") as StyleBoxFlat
-	if focus_sb:
-		var focus_color := ThemeMGR.get_color("primary_dark") if is_light else primary_light
-		focus_sb.border_color = ThemeMGR._tint_keep_alpha(focus_color, 0.9)
-		focus_sb.shadow_color = Color(primary.r, primary.g, primary.b, 0.35)
+	if _shared_style_revision != ThemeMGR.theme_revision:
+		_shared_style_revision = ThemeMGR.theme_revision
+		for spec in [
+			["normal", surface_high, border, 0.94],
+			["hover", surface_hover, primary, 0.98],
+			["pressed", surface_low, primary_light, 1.0],
+		]:
+			var sb := get_theme_stylebox(spec[0]) as StyleBoxFlat
+			if sb:
+				sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], spec[3])
+				sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.85)
+		var focus_sb := get_theme_stylebox("focus") as StyleBoxFlat
+		if focus_sb:
+			var focus_color := ThemeMGR.get_color("primary_dark") if is_light else primary_light
+			focus_sb.border_color = ThemeMGR._tint_keep_alpha(focus_color, 0.9)
+			focus_sb.shadow_color = Color(primary.r, primary.g, primary.b, 0.35)
 
-	var cover_sb := _cover_wrap.get_theme_stylebox("panel") as StyleBoxFlat
-	if cover_sb:
-		# 浅色模式封面框比卡片略深一档：白底上白色音符/长条的预览才看得见
-		cover_sb.bg_color = ThemeMGR.get_color("surface_high") if is_light else surface_low
-		cover_sb.border_color = border
+		var cover_sb := _cover_wrap.get_theme_stylebox("panel") as StyleBoxFlat
+		if cover_sb:
+			# 浅色模式封面框比卡片略深一档：白底上白色音符/长条的预览才看得见
+			cover_sb.bg_color = ThemeMGR.get_color("surface_high") if is_light else surface_low
+			cover_sb.border_color = border
 
 	for label in [_stat_downloads_count, _stat_plays_count, _stat_likes_count]:
 		label.add_theme_color_override("font_color", muted_text)

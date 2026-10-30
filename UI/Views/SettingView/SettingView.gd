@@ -557,33 +557,31 @@ func get_setting_value(setting_id: String) -> Variant:
 	return null
 
 @onready var setting_page = $HBoxC
-@onready var delete_page = $DelView
+@onready var resource_page = $ResourceView
 @onready var ani: AnimationManager = AniMGR
 func switch_page(direction: int = 0):
 	var op: bool = true
 	if direction == -1:
 		op = false
-		delete_page.visible = true
-		TextScrollMGR.resume_page(delete_page)
+		resource_page.visible = true
+		TextScrollMGR.resume_page(resource_page)
+		# 提前触发构建：页面在左滑入时就已经有内容，不会滑到一半才开始加载卡片
+		resource_page.on_entered()
 	else:
 		setting_page.visible = true
 		TextScrollMGR.resume_page(setting_page)
 
 	var wid = setting_page.size.x + 600
 	ani.animate_position(setting_page, Vector2(wid * 1 if not op else 0, 0), 0.5, "SV_PAGE_SW_1")
-	await ani.animate_position(delete_page, Vector2(-wid * 1 if op else 0, 0), 0.5, "SV_PAGE_SW_2").finished
+	await ani.animate_position(resource_page, Vector2(-wid * 1 if op else 0, 0), 0.5, "SV_PAGE_SW_2").finished
 
 	setting_page.visible = op
-	delete_page.visible = not op
+	resource_page.visible = not op
 	if op:
-		TextScrollMGR.suspend_page(delete_page)
+		TextScrollMGR.suspend_page(resource_page)
+		resource_page.on_exited_to_setting_list()
 	else:
 		TextScrollMGR.suspend_page(setting_page)
-	# DelView 生命周期钩子：进入时触发懒加载构建，返回设置主页时保留节点
-	if op:
-		delete_page.on_exited_to_setting_list()
-	else:
-		delete_page.on_entered()
 
 func has_pending_changes() -> bool:
 	return setting_list and setting_list.has_pending_changes()
@@ -591,14 +589,14 @@ func has_pending_changes() -> bool:
 func switch_page_instant() -> void:
 	setting_page.visible = true
 	TextScrollMGR.resume_page(setting_page)
-	delete_page.visible = false
-	TextScrollMGR.suspend_page(delete_page)
-	delete_page.on_exited_to_setting_list()
+	resource_page.visible = false
+	TextScrollMGR.suspend_page(resource_page)
+	resource_page.on_exited_to_setting_list()
 
-## 返回处理：DelView 子页面可见时先切回设置主页（Esc / Android 返回键调用）
+## 返回处理：ResourceView 子页面可见时先切回设置主页（Esc / Android 返回键调用）
 ## 返回 true 表示已消费返回事件，上层不应再执行 go_back
 func handle_back_request() -> bool:
-	if delete_page and delete_page.visible and not setting_page.visible:
+	if resource_page and resource_page.visible and not setting_page.visible:
 		EvtBus.page_right.emit()
 		return true
 	# 关于页可见时，返回键先回设置列表（还原进入前的分组），而不是直接退出设置

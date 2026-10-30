@@ -3,38 +3,24 @@
 class_name ImageUtil
 extends RefCounted
 
-## 按文件内容加载图片：先按扩展名快速加载，失败时按文件头回退重试常见格式
-## 解决扩展名与实际格式不符（如 PNG 内容被命名成 .jpg）导致解码失败的问题
-## 线程安全（Image.load_from_file / load_*_from_buffer 均为纯解码操作）
+## 按文件内容加载图片：优先读文件头选择解码器，扩展名只作辅助。
+## 避免“PNG 内容命名为 .jpg”时 Image.load_from_file 先按扩展名解码并输出引擎错误。
+## 线程安全（load_*_from_buffer 均为纯解码操作）
 static func load_image_file(path: String) -> Image:
-	if path.is_empty():
-		return null
-	# SVG 不是位图：按扩展名直接栅格化，不依赖 Image.load_from_file 的格式分发
-	if path.get_extension().to_lower() == "svg":
-		return _load_svg_file(path)
-	var img := Image.load_from_file(path)
-	if img and img.get_width() > 0 and img.get_height() > 0:
-		return img
-	# 扩展名未命中正确解码器时，读取字节按内容重试
-	if not FileAccess.file_exists(path):
+	if path.is_empty() or not FileAccess.file_exists(path):
 		return null
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		return null
 	var bytes := f.get_buffer(f.get_length())
 	f.close()
-	return decode_image_buffer(bytes)
-
-## 读取 SVG 文本并栅格化为位图（用户皮肤等外部素材的矢量贴图入口）
-static func _load_svg_file(path: String) -> Image:
-	if not FileAccess.file_exists(path):
+	if bytes.is_empty():
 		return null
-	var f := FileAccess.open(path, FileAccess.READ)
-	if f == null:
-		return null
-	var bytes := f.get_buffer(f.get_length())
-	f.close()
-	return decode_image_buffer(bytes)
+	var image := decode_image_buffer(bytes)
+	if image != null:
+		return image
+	# 极少数签名不在支持列表里的格式（如 BMP/TGA）再交给 Godot 兜底
+	return Image.load_from_file(path)
 
 ## 按文件签名选择唯一解码器；用错误解码器探测会触发 Godot 引擎错误日志
 ## 线程安全（纯解码操作）

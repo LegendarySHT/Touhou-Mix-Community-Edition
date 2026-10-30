@@ -113,6 +113,57 @@ func apply_theme() -> void:
 	if _confirm_btn:
 		ThemeMGR._style_button_set_bg_color(_confirm_btn, ThemeMGR.get_color("primary"))
 		_confirm_btn.add_theme_color_override("font_color", text_primary)
+	_style_default_option_button()
+
+## 默认弹窗里的选项按钮/下拉菜单：tscn 内写死了深色 hover/pressed，
+## 浅色模式下会变成一块很黑/纯黑；这里按主题重刷按钮态与菜单底色。
+func _style_default_option_button() -> void:
+	if _option_btn == null:
+		return
+	var text_primary := ThemeMGR.get_color("text_primary")
+	var surface_low := ThemeMGR.get_color("surface_low")
+	var surface_hover := ThemeMGR.get_color("surface_hover")
+	var primary := ThemeMGR.get_color("primary")
+	var border := ThemeMGR.get_color("border")
+	var is_light := ThemeMGR.get_appearance() == "light"
+	var pressed_text := Color.WHITE
+
+	for spec in [
+		["normal", surface_low, border],
+		["hover", surface_hover, primary],
+		["pressed", primary, primary],
+	]:
+		if not ThemeMGR.has_local_stylebox(_option_btn, spec[0]):
+			continue
+		var sb := _option_btn.get_theme_stylebox(spec[0]) as StyleBoxFlat
+		if sb:
+			sb.draw_center = true
+			sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], sb.bg_color.a if sb.bg_color.a > 0.0 else 0.95)
+			sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.85)
+	_option_btn.add_theme_color_override("font_color", text_primary)
+	_option_btn.add_theme_color_override("font_hover_color", text_primary)
+	_option_btn.add_theme_color_override("font_pressed_color", pressed_text)
+	_option_btn.add_theme_color_override("font_hover_pressed_color", pressed_text)
+	_option_btn.add_theme_color_override("font_focus_color", text_primary)
+	_option_btn.add_theme_color_override("icon_normal_color", text_primary if is_light else text_primary)
+	_option_btn.add_theme_color_override("icon_hover_color", primary)
+	_option_btn.add_theme_color_override("icon_pressed_color", pressed_text)
+
+	var menu := _option_btn.get_popup()
+	if menu:
+		var panel := StyleBoxFlat.new()
+		panel.bg_color = ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("surface_high"), 0.98)
+		panel.border_color = border
+		panel.set_border_width_all(1)
+		panel.set_corner_radius_all(10)
+		menu.add_theme_stylebox_override("panel", panel)
+		var hover := StyleBoxFlat.new()
+		hover.bg_color = ThemeMGR._tint_keep_alpha(primary, 0.18 if is_light else 0.28)
+		hover.set_corner_radius_all(6)
+		menu.add_theme_stylebox_override("hover", hover)
+		menu.add_theme_color_override("font_color", text_primary)
+		menu.add_theme_color_override("font_hover_color", text_primary)
+
 
 func _exit_tree() -> void:
 	if ThemeMGR:

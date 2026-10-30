@@ -118,7 +118,7 @@ func _handle_back_request() -> void:
 				return
 		state_manager.go_back()
 
-	# 设置页内部子页面（DelView）→ 先切回设置主页，而非直接退出设置
+	# 设置页内部子页面（ResourceView / About）→ 先切回设置主页，而非直接退出设置
 	elif state_manager.current_state == UIStateManager.UIState.SETTINGS_VIEW:
 		var setting_view = state_manager.get_loaded_view(UIStateManager.UIState.SETTINGS_VIEW)
 		if setting_view and setting_view.has_method("handle_back_request"):

@@ -160,15 +160,15 @@ func _grab_list_selected(list_path: String) -> void:
 	selected_node.button.grab_focus()
 	GLogger.debug("[FocusMGR] 焦点转发 → %s 选中项 #%d" % [list_path, nd.selected_item], "FocusMGR")
 
-## SETTINGS_VIEW：DelView 子页可见时聚焦首个标签按钮，否则聚焦左侧当前选中的快捷按钮
+## SETTINGS_VIEW：资源管理子页可见时聚焦首个标签按钮，否则聚焦左侧当前选中的快捷按钮
 func _redirect_settings_focus() -> void:
 	var sv = get_node_or_null(PathRegistry.SETTING_VIEW)
 	if sv == null:
 		return
-	var del = sv.get_node_or_null("DelView")
-	if del and del.visible:
-		if del.has_method("focus_first_tab"):
-			del.focus_first_tab()
+	var resource_view = sv.get_node_or_null("ResourceView")
+	if resource_view and resource_view.visible:
+		if resource_view.has_method("focus_first_tab"):
+			resource_view.focus_first_tab()
 		return
 	if sv.short_cut_btn:
 		# 聚焦当前按下的快捷按钮（对应设置项所在区域），而非容器本身

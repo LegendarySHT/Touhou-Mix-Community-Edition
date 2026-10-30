@@ -3,6 +3,8 @@
 class_name StoreDownloadRow
 extends Button
 
+static var _shared_style_revision := -1
+
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 
 signal detail_requested(item: Dictionary, source_rect: Rect2)
@@ -108,20 +110,22 @@ func apply_theme() -> void:
 	var border := ThemeMGR.get_color("border_soft")
 	var primary := ThemeMGR.get_color("primary")
 
-	for spec in [
-		["normal", surface, border, 0.42],
-		["hover", surface_hover, primary, 0.7],
-		["pressed", surface_low, primary, 0.9],
-	]:
-		var sb := get_theme_stylebox(spec[0]) as StyleBoxFlat
-		if sb:
-			sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], spec[3])
-			sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.55)
-	var focus_sb := get_theme_stylebox("focus") as StyleBoxFlat
-	if focus_sb:
-		var focus_color := ThemeMGR.get_color("primary_dark") \
-			if ThemeMGR.get_appearance() == "light" else ThemeMGR.get_color("primary_light")
-		focus_sb.border_color = ThemeMGR._tint_keep_alpha(focus_color, 0.9)
+	if _shared_style_revision != ThemeMGR.theme_revision:
+		_shared_style_revision = ThemeMGR.theme_revision
+		for spec in [
+			["normal", surface, border, 0.42],
+			["hover", surface_hover, primary, 0.7],
+			["pressed", surface_low, primary, 0.9],
+		]:
+			var sb := get_theme_stylebox(spec[0]) as StyleBoxFlat
+			if sb:
+				sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], spec[3])
+				sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.55)
+		var focus_sb := get_theme_stylebox("focus") as StyleBoxFlat
+		if focus_sb:
+			var focus_color := ThemeMGR.get_color("primary_dark") \
+				if ThemeMGR.get_appearance() == "light" else ThemeMGR.get_color("primary_light")
+			focus_sb.border_color = ThemeMGR._tint_keep_alpha(focus_color, 0.9)
 
 	_apply()
 

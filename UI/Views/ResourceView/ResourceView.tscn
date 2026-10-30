@@ -1,0 +1,735 @@
+[gd_scene format=3 uid="uid://b5wmiaj6qs14m"]
+
+[ext_resource type="Script" uid="uid://dbpfsdvc011ox" path="res://UI/Views/ResourceView/ResourceView.gd" id="1_rv"]
+
+[sub_resource type="StyleBoxFlat" id="SB_bg"]
+bg_color = Color(0.043, 0.055, 0.08, 0.97)
+
+[sub_resource type="StyleBoxFlat" id="SB_topbar"]
+bg_color = Color(0.055, 0.071, 0.102, 0.97)
+border_width_bottom = 2
+border_color = Color(0.32, 0.48, 0.9, 0.4)
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_search"]
+content_margin_left = 22.0
+content_margin_top = 8.0
+content_margin_right = 70.0
+content_margin_bottom = 8.0
+bg_color = Color(0.078, 0.098, 0.14, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.22, 0.3, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_search_focus"]
+content_margin_left = 22.0
+content_margin_top = 8.0
+content_margin_right = 70.0
+content_margin_bottom = 8.0
+bg_color = Color(0.09, 0.115, 0.165, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4, 0.58, 1, 0.9)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_normal"]
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
+bg_color = Color(0, 0, 0, 0)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_pressed"]
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
+bg_color = Color(0.16, 0.24, 0.5, 0.55)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_hover"]
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
+bg_color = Color(0.13, 0.165, 0.23, 0.8)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_underline"]
+bg_color = Color(0.58, 0.72, 1, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxEmpty" id="SB_list_empty"]
+
+[sub_resource type="StyleBoxFlat" id="SB_pending"]
+content_margin_left = 20.0
+content_margin_top = 22.0
+content_margin_right = 20.0
+content_margin_bottom = 25.0
+bg_color = Color(0.075, 0.094, 0.136, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.32, 0.48, 0.9, 0.45)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0, 0, 0, 0.4)
+shadow_size = 16
+
+[sub_resource type="StyleBoxFlat" id="SB_btn_normal"]
+content_margin_left = 14.0
+content_margin_top = 6.0
+content_margin_right = 14.0
+content_margin_bottom = 6.0
+bg_color = Color(0.09, 0.113, 0.16, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.22, 0.3, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_btn_pressed"]
+content_margin_left = 14.0
+content_margin_top = 6.0
+content_margin_right = 14.0
+content_margin_bottom = 6.0
+bg_color = Color(0.2, 0.32, 0.7, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.7, 1, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_btn_hover"]
+content_margin_left = 14.0
+content_margin_top = 6.0
+content_margin_right = 14.0
+content_margin_bottom = 6.0
+bg_color = Color(0.15, 0.2, 0.28, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_btn_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[node name="ResourceView" type="Control" unique_id=1640547884]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_rv")
+
+[node name="Background" type="Panel" parent="." unique_id=155280771]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_bg")
+
+[node name="TopBar" type="Panel" parent="." unique_id=1643836484]
+custom_minimum_size = Vector2(0, 118)
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 118.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("SB_topbar")
+
+[node name="HeaderMargin" type="MarginContainer" parent="TopBar" unique_id=340030881]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 40
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 40
+theme_override_constants/margin_bottom = 12
+
+[node name="Row" type="HBoxContainer" parent="TopBar/HeaderMargin" unique_id=1430675885]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 22
+
+[node name="Toolbar" type="HBoxContainer" parent="TopBar/HeaderMargin/Row" unique_id=1663146635]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 16
+
+[node name="SearchEdit" type="LineEdit" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=1584912614]
+custom_minimum_size = Vector2(260, 76)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 25
+theme_override_styles/normal = SubResource("SB_search")
+theme_override_styles/focus = SubResource("SB_search_focus")
+placeholder_text = "搜索歌曲 / 作者 / 专辑"
+
+[node name="SearchIcon" type="TextureRect" parent="TopBar/HeaderMargin/Row/Toolbar/SearchEdit" unique_id=244108115]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -54.0
+offset_top = 21.0
+offset_right = -18.0
+offset_bottom = -21.0
+grow_horizontal = 0
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="CountLabel" type="Label" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=2016685244]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "0 首"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="TabBar" type="HBoxContainer" parent="TopBar/HeaderMargin/Row" unique_id=166038746]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="TabSong" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=2146251849]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("SB_tab_normal")
+theme_override_styles/pressed = SubResource("SB_tab_pressed")
+theme_override_styles/hover = SubResource("SB_tab_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
+theme_override_styles/focus = SubResource("SB_tab_focus")
+toggle_mode = true
+button_pressed = true
+text = "歌曲"
+
+[node name="TabSkin" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1318609674]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("SB_tab_normal")
+theme_override_styles/pressed = SubResource("SB_tab_pressed")
+theme_override_styles/hover = SubResource("SB_tab_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
+theme_override_styles/focus = SubResource("SB_tab_focus")
+toggle_mode = true
+text = "皮肤"
+
+[node name="TabEffect" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=19408384]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("SB_tab_normal")
+theme_override_styles/pressed = SubResource("SB_tab_pressed")
+theme_override_styles/hover = SubResource("SB_tab_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
+theme_override_styles/focus = SubResource("SB_tab_focus")
+toggle_mode = true
+text = "特效"
+
+[node name="TabSoundfont" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=301803233]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("SB_tab_normal")
+theme_override_styles/pressed = SubResource("SB_tab_pressed")
+theme_override_styles/hover = SubResource("SB_tab_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
+theme_override_styles/focus = SubResource("SB_tab_focus")
+toggle_mode = true
+text = "音源"
+
+[node name="TabBackground" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=195846473]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("SB_tab_normal")
+theme_override_styles/pressed = SubResource("SB_tab_pressed")
+theme_override_styles/hover = SubResource("SB_tab_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
+theme_override_styles/focus = SubResource("SB_tab_focus")
+toggle_mode = true
+text = "背景"
+
+[node name="TabUnderline" type="Panel" parent="TopBar" unique_id=416198582]
+layout_mode = 0
+offset_top = 114.0
+offset_right = 160.0
+offset_bottom = 118.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_underline")
+
+[node name="Pages" type="Control" parent="." unique_id=185268250]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 118.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="SongsPage" type="Control" parent="Pages" unique_id=1484209302]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="List" type="ScrollContainer" parent="Pages/SongsPage" unique_id=1861431328]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 36.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = -190.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ListContent" type="Control" parent="Pages/SongsPage/List" unique_id=994280109]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Empty" type="Label" parent="Pages/SongsPage" unique_id=270067810]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 250.0
+offset_top = 100.0
+offset_bottom = -190.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "正在加载…"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SkinsPage" type="Control" parent="Pages" unique_id=97868925]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="List" type="ScrollContainer" parent="Pages/SkinsPage" unique_id=1028743251]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ListContent" type="Control" parent="Pages/SkinsPage/List" unique_id=481324942]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Empty" type="Label" parent="Pages/SkinsPage" unique_id=467974543]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 250.0
+offset_top = 100.0
+offset_bottom = -60.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "没有皮肤"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="EffectsPage" type="Control" parent="Pages" unique_id=1150521760]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="List" type="ScrollContainer" parent="Pages/EffectsPage" unique_id=1406050895]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ListContent" type="Control" parent="Pages/EffectsPage/List" unique_id=1879402258]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Empty" type="Label" parent="Pages/EffectsPage" unique_id=784655272]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 250.0
+offset_top = 100.0
+offset_bottom = -60.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "没有特效"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SoundfontsPage" type="Control" parent="Pages" unique_id=977409030]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="List" type="ScrollContainer" parent="Pages/SoundfontsPage" unique_id=546997873]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ListContent" type="Control" parent="Pages/SoundfontsPage/List" unique_id=320675779]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Empty" type="Label" parent="Pages/SoundfontsPage" unique_id=267249749]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 250.0
+offset_top = 100.0
+offset_bottom = -60.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "没有音源"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BackgroundsPage" type="Control" parent="Pages" unique_id=1157181630]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="List" type="ScrollContainer" parent="Pages/BackgroundsPage" unique_id=122239224]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ListContent" type="Control" parent="Pages/BackgroundsPage/List" unique_id=2110800972]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Empty" type="Label" parent="Pages/BackgroundsPage" unique_id=2023600641]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 250.0
+offset_top = 100.0
+offset_bottom = -60.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "没有背景图"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PendingBar" type="PanelContainer" parent="." unique_id=2005426629]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = -170.0
+offset_right = -40.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_styles/panel = SubResource("SB_pending")
+
+[node name="VBox" type="VBoxContainer" parent="PendingBar" unique_id=1815856423]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="Head" type="HBoxContainer" parent="PendingBar/VBox" unique_id=1297564776]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="PendingTitle" type="Label" parent="PendingBar/VBox/Head" unique_id=119035879]
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "待操作列表"
+
+[node name="PendingCount" type="Label" parent="PendingBar/VBox/Head" unique_id=1358209129]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "0 首"
+
+[node name="Spacer" type="Control" parent="PendingBar/VBox/Head" unique_id=205828363]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="SelectAllBtn" type="Button" parent="PendingBar/VBox/Head" unique_id=1304486890]
+custom_minimum_size = Vector2(110, 40)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 19
+theme_override_styles/normal = SubResource("SB_btn_normal")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
+theme_override_styles/hover = SubResource("SB_btn_hover")
+theme_override_styles/focus = SubResource("SB_btn_focus")
+text = "全选"
+
+[node name="ExpandBtn" type="Button" parent="PendingBar/VBox/Head" unique_id=757407267]
+custom_minimum_size = Vector2(110, 40)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 19
+theme_override_styles/normal = SubResource("SB_btn_normal")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
+theme_override_styles/hover = SubResource("SB_btn_hover")
+theme_override_styles/focus = SubResource("SB_btn_focus")
+text = "展开"
+
+[node name="PendingScroll" type="ScrollContainer" parent="PendingBar/VBox" unique_id=1399726686]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("SB_list_empty")
+horizontal_scroll_mode = 0
+
+[node name="PendingList" type="Control" parent="PendingBar/VBox/PendingScroll" unique_id=532055259]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Actions" type="HBoxContainer" parent="PendingBar/VBox" unique_id=1294660907]
+custom_minimum_size = Vector2(0, 54)
+layout_mode = 2
+size_flags_vertical = 8
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="DeleteVocalBtn" type="Button" parent="PendingBar/VBox/Actions" unique_id=1728154826]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 21
+theme_override_styles/normal = SubResource("SB_btn_normal")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
+theme_override_styles/hover = SubResource("SB_btn_hover")
+theme_override_styles/focus = SubResource("SB_btn_focus")
+text = "删除人声"
+
+[node name="DeleteSongBtn" type="Button" parent="PendingBar/VBox/Actions" unique_id=784537265]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 21
+theme_override_styles/normal = SubResource("SB_btn_normal")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
+theme_override_styles/hover = SubResource("SB_btn_hover")
+theme_override_styles/focus = SubResource("SB_btn_focus")
+text = "删除歌曲"
+
+[node name="ResetBtn" type="Button" parent="PendingBar/VBox/Actions" unique_id=1593740382]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 21
+theme_override_styles/normal = SubResource("SB_btn_normal")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
+theme_override_styles/hover = SubResource("SB_btn_hover")
+theme_override_styles/focus = SubResource("SB_btn_focus")
+text = "重置歌曲"
+
+[node name="FavBtn" type="Button" parent="PendingBar/VBox/Actions" unique_id=365407809]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 21
+theme_override_styles/normal = SubResource("SB_btn_normal")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
+theme_override_styles/hover = SubResource("SB_btn_hover")
+theme_override_styles/focus = SubResource("SB_btn_focus")
+text = "加入收藏夹"
+
+[node name="ClearBtn" type="Button" parent="PendingBar/VBox/Actions" unique_id=1929352891]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 21
+theme_override_styles/normal = SubResource("SB_btn_normal")
+theme_override_styles/pressed = SubResource("SB_btn_pressed")
+theme_override_styles/hover = SubResource("SB_btn_hover")
+theme_override_styles/focus = SubResource("SB_btn_focus")
+text = "清空列表"
+
+[node name="PendingEmpty" type="Label" parent="PendingBar" unique_id=434566769]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "还没有待操作的歌曲，点击上方卡片加入"
+horizontal_alignment = 1
+vertical_alignment = 1

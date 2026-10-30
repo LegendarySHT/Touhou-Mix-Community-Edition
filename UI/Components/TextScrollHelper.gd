@@ -87,8 +87,9 @@ func _ready() -> void:
 	if not _resized_callable.is_valid():
 		_resized_callable = _on_resized
 		resized.connect(_resized_callable)
-	# 注册为主题应用者：外观/主题色切换时重新解析文字色（否则自绘文字会停留在旧颜色）
-	if ThemeMGR:
+	# 注册为主题应用者：外观/主题色切换时重新解析文字色（否则自绘文字会停留在旧颜色）。
+	# 场景显式锁色的标签不会随主题变化，注册了也只是空跑，跳过以减少主题切换的广播量。
+	if ThemeMGR and not _locked_color:
 		ThemeMGR.register_theme_applier(self)
 	call_deferred("_measure_and_scroll")
 

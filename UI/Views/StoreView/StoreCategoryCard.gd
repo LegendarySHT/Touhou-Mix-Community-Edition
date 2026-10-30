@@ -5,6 +5,8 @@
 class_name StoreCategoryCard
 extends Button
 
+static var _shared_style_revision := -1
+
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 
 signal detail_requested(item: Dictionary, source_rect: Rect2)
@@ -226,25 +228,27 @@ func apply_theme() -> void:
 	var primary_dark := ThemeMGR.get_color("primary_dark")
 	var is_light := ThemeMGR.get_appearance() == "light"
 
-	for spec in [
-		["normal", surface_high, border, 0.94],
-		["hover", surface_hover, primary, 0.98],
-		["pressed", surface_low, primary_light, 1.0],
-	]:
-		var sb := get_theme_stylebox(spec[0]) as StyleBoxFlat
-		if sb:
-			sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], spec[3])
-			sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.85)
-	var focus_sb := get_theme_stylebox("focus") as StyleBoxFlat
-	if focus_sb:
-		var focus_color := primary_dark if is_light else primary_light
-		focus_sb.border_color = ThemeMGR._tint_keep_alpha(focus_color, 0.9)
-		focus_sb.shadow_color = Color(primary.r, primary.g, primary.b, 0.35)
+	if _shared_style_revision != ThemeMGR.theme_revision:
+		_shared_style_revision = ThemeMGR.theme_revision
+		for spec in [
+			["normal", surface_high, border, 0.94],
+			["hover", surface_hover, primary, 0.98],
+			["pressed", surface_low, primary_light, 1.0],
+		]:
+			var sb := get_theme_stylebox(spec[0]) as StyleBoxFlat
+			if sb:
+				sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], spec[3])
+				sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.85)
+		var focus_sb := get_theme_stylebox("focus") as StyleBoxFlat
+		if focus_sb:
+			var focus_color := primary_dark if is_light else primary_light
+			focus_sb.border_color = ThemeMGR._tint_keep_alpha(focus_color, 0.9)
+			focus_sb.shadow_color = Color(primary.r, primary.g, primary.b, 0.35)
 
-	var cover_sb := _cover_wrap.get_theme_stylebox("panel") as StyleBoxFlat
-	if cover_sb:
-		cover_sb.bg_color = ThemeMGR.get_color("surface_high") if is_light else surface_low
-		cover_sb.border_color = border
+		var cover_sb := _cover_wrap.get_theme_stylebox("panel") as StyleBoxFlat
+		if cover_sb:
+			cover_sb.bg_color = ThemeMGR.get_color("surface_high") if is_light else surface_low
+			cover_sb.border_color = border
 
 	_type_label.add_theme_color_override("font_color", primary_dark if is_light else primary_light)
 	_desc.add_theme_color_override("font_color",

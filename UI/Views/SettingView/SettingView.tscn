@@ -2,9 +2,8 @@
 
 [ext_resource type="Script" uid="uid://bhrv8p4ecl6nw" path="res://UI/Views/SettingView/SettingView.gd" id="1_4walt"]
 [ext_resource type="Script" uid="uid://cgxt234w25s7r" path="res://UI/Views/SettingView/SettingList.gd" id="2_3x48f"]
-[ext_resource type="Script" uid="uid://dt5lx4f8bkgl0" path="res://UI/Views/SettingView/DelView.gd" id="3_delview"]
 [ext_resource type="Texture2D" uid="uid://co5g8aknrygoc" path="res://Resources/icon/android/adaptive_foreground.svg" id="3_s6epo"]
-[ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="4_fcfq2"]
+[ext_resource type="PackedScene" path="res://UI/Views/ResourceView/ResourceView.tscn" id="5_resourceview"]
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_tf36t"]
 
@@ -16,24 +15,6 @@ expand_margin_left = 100.0
 bg_color = Color(1, 1, 1, 1)
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_2rkhg"]
-
-[sub_resource type="ButtonGroup" id="ButtonGroup_delview"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_07r5k"]
-content_margin_left = 40.0
-content_margin_top = 10.0
-content_margin_right = 40.0
-content_margin_bottom = 10.0
-bg_color = Color(0.0627, 0.0784, 0.1137, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1216, 0.149, 0.2039, 1)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_xcqgn"]
-atlas = ExtResource("4_fcfq2")
-region = Rect2(320, 240, 80, 80)
 
 [node name="SettingView" type="Control" unique_id=151413608]
 layout_mode = 3
@@ -325,7 +306,7 @@ fit_content = true
 scroll_active = false
 autowrap_mode = 3
 
-[node name="DelView" type="HBoxContainer" parent="." unique_id=2038911108]
+[node name="ResourceView" parent="." instance=ExtResource("5_resourceview")]
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -335,194 +316,3 @@ offset_left = -1920.0
 offset_right = -1920.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("3_delview")
-
-[node name="SideBar" type="VBoxContainer" parent="DelView" unique_id=-1190680135]
-custom_minimum_size = Vector2(260, 0)
-layout_mode = 2
-offset_transform_enabled = true
-offset_transform_position = Vector2(6, 0)
-offset_transform_visual_only = false
-
-[node name="TabBtn0" type="Button" parent="DelView/SideBar" unique_id=1370265103]
-custom_minimum_size = Vector2(260, 80)
-layout_mode = 2
-focus_next = NodePath("../../Content/PC/TopBar/SearchBox")
-toggle_mode = true
-button_group = SubResource("ButtonGroup_delview")
-text = "MIDI 管理"
-
-[node name="TabBtn1" type="Button" parent="DelView/SideBar" unique_id=1954873307]
-custom_minimum_size = Vector2(260, 80)
-layout_mode = 2
-focus_next = NodePath("../../Content/PC/TopBar/SearchBox")
-toggle_mode = true
-button_group = SubResource("ButtonGroup_delview")
-text = "音频管理"
-
-[node name="TabBtn2" type="Button" parent="DelView/SideBar" unique_id=1090196020]
-custom_minimum_size = Vector2(260, 80)
-layout_mode = 2
-focus_next = NodePath("../../Content/PC/TopBar/SearchBox")
-toggle_mode = true
-button_group = SubResource("ButtonGroup_delview")
-text = "SF2 管理"
-
-[node name="TabBtn3" type="Button" parent="DelView/SideBar" unique_id=1968696469]
-custom_minimum_size = Vector2(260, 80)
-layout_mode = 2
-focus_next = NodePath("../../Content/PC/TopBar/SearchBox")
-toggle_mode = true
-button_group = SubResource("ButtonGroup_delview")
-text = "皮肤管理"
-
-[node name="TabBtn4" type="Button" parent="DelView/SideBar" unique_id=683723141]
-custom_minimum_size = Vector2(260, 80)
-layout_mode = 2
-focus_next = NodePath("../../Content/PC/TopBar/SearchBox")
-toggle_mode = true
-button_group = SubResource("ButtonGroup_delview")
-text = "背景管理"
-
-[node name="SideSpacer" type="Control" parent="DelView/SideBar" unique_id=1702271966]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="Content" type="VBoxContainer" parent="DelView" unique_id=2031588691]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-size_flags_stretch_ratio = 5.0
-theme_override_constants/separation = -1
-
-[node name="PC" type="Panel" parent="DelView/Content" unique_id=1487945404]
-custom_minimum_size = Vector2(0, 120)
-layout_mode = 2
-size_flags_vertical = 3
-theme_override_styles/panel = SubResource("StyleBoxFlat_07r5k")
-
-[node name="TopBar" type="HBoxContainer" parent="DelView/Content/PC" unique_id=654010268]
-layout_mode = 1
-anchors_preset = -1
-anchor_right = 1.0
-offset_left = 20.0
-offset_top = 20.0
-offset_right = -20.0
-offset_bottom = 100.0
-grow_horizontal = 2
-size_flags_vertical = 0
-theme_override_constants/separation = 10
-alignment = 1
-
-[node name="TabTitle" type="Label" parent="DelView/Content/PC/TopBar" unique_id=1969153276]
-custom_minimum_size = Vector2(350, 100)
-layout_mode = 2
-theme_override_font_sizes/font_size = 48
-vertical_alignment = 1
-
-[node name="ItemSum" type="Control" parent="DelView/Content/PC/TopBar" unique_id=74935736]
-clip_contents = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="Text" type="Label" parent="DelView/Content/PC/TopBar/ItemSum" unique_id=698575925]
-custom_minimum_size = Vector2(0, 100)
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-vertical_alignment = 2
-
-[node name="SearchBox" type="LineEdit" parent="DelView/Content/PC/TopBar" unique_id=454943439]
-custom_minimum_size = Vector2(500, 80)
-layout_mode = 2
-size_flags_vertical = 4
-focus_next = NodePath("../../../BottomBarPC/BottomBar/SelectToggle")
-
-[node name="SearchIcon" type="TextureRect" parent="DelView/Content/PC/TopBar/SearchBox" unique_id=195135877]
-custom_minimum_size = Vector2(60, 60)
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_right = -10.0
-grow_horizontal = 0
-grow_vertical = 2
-mouse_filter = 2
-texture = SubResource("AtlasTexture_xcqgn")
-expand_mode = 1
-stretch_mode = 5
-
-[node name="PageContainer" type="Control" parent="DelView/Content/PC" unique_id=1328938414]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 20.0
-offset_top = 140.0
-offset_right = -20.0
-grow_horizontal = 2
-grow_vertical = 2
-
-[node name="PageScroll" type="ScrollContainer" parent="DelView/Content/PC/PageContainer" unique_id=632662446]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-horizontal_scroll_mode = 0
-
-[node name="PageList" type="Control" parent="DelView/Content/PC/PageContainer/PageScroll" unique_id=512843258]
-layout_mode = 2
-size_flags_horizontal = 3
-mouse_filter = 1
-
-[node name="BottomBarPC" type="PanelContainer" parent="DelView/Content" unique_id=2038911109]
-custom_minimum_size = Vector2(0, 100)
-layout_mode = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_07r5k")
-
-[node name="BottomBar" type="HBoxContainer" parent="DelView/Content/BottomBarPC" unique_id=2038911110]
-layout_mode = 2
-theme_override_constants/separation = 10
-alignment = 1
-
-[node name="SelectToggle" type="Button" parent="DelView/Content/BottomBarPC/BottomBar" unique_id=2038911111]
-custom_minimum_size = Vector2(200, 60)
-layout_mode = 2
-size_flags_vertical = 4
-focus_previous = NodePath("../../../PC/TopBar/SearchBox")
-theme_override_font_sizes/font_size = 24
-toggle_mode = true
-text = "全选"
-
-[node name="CollapseToggle" type="Button" parent="DelView/Content/BottomBarPC/BottomBar" unique_id=2038911112]
-custom_minimum_size = Vector2(200, 60)
-layout_mode = 2
-size_flags_vertical = 4
-focus_previous = NodePath("../../../PC/TopBar/SearchBox")
-theme_override_font_sizes/font_size = 24
-toggle_mode = true
-text = "收起全部"
-
-[node name="BottomSpacer" type="Control" parent="DelView/Content/BottomBarPC/BottomBar" unique_id=2038911113]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="DeleteBtn" type="Button" parent="DelView/Content/BottomBarPC/BottomBar" unique_id=2038911114]
-custom_minimum_size = Vector2(200, 60)
-layout_mode = 2
-size_flags_vertical = 4
-focus_previous = NodePath("../../../PC/TopBar/SearchBox")
-theme_override_font_sizes/font_size = 24
-text = "删除选中项"
-
-[node name="Spacer" type="Control" parent="DelView" unique_id=1505839759]
-custom_maximum_size = Vector2(250, -1)
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_stretch_ratio = 0.1

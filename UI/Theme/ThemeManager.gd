@@ -766,6 +766,10 @@ func _style_midi_individual_nodes(info_ui: Node) -> void:
 ## TextScrollHelper，Array.has() 的线性查找会让注册退化成O(N²)
 var _theme_appliers: Dictionary[int, Node] = {}
 
+## 主题色版本号：卡片等共享场景样式只需在版本变化时改一次 StyleBox，
+## 避免同场景的所有实例重复改同一份共享子资源，触发成百上千次重绘。
+var theme_revision: int = 0
+
 ## 注册主题应用者（视图/组件 _ready 时调用，并自调一次 apply_theme() 完成首次着色）
 func register_theme_applier(node: Node) -> void:
 	if node:
@@ -789,6 +793,7 @@ func refresh_theme_only() -> void:
 	var main := get_node_or_null(PathRegistry.MAIN)
 	if not main:
 		return
+	theme_revision += 1
 
 	# 第一阶段：全局 Theme 资源（触发大面积重绘，单独一帧）
 	# 注意：切换主题色不再清空背景缓存，背景与主题色独立（避免 Image.load_from_file 同步阻塞）
@@ -807,10 +812,19 @@ func refresh_theme_only() -> void:
 	# 懒加载视图实例化后自动注册，不再有"启动阶段查找节点落空"的问题。
 	# apply_theme() 可能触发节点释放进而 unregister，故先收集再统一 erase（不在迭代中改字典）
 	var stale: Array[int] = []
-	for id in _theme_appliers:
+	# 先取 key 快照：apply_theme 期间可能有节点注销/新注册，不能边遍历边改字典。
+	var ids: Array = _theme_appliers.keys()
+	var applied := 0
+	for id in ids:
+		if not _theme_appliers.has(id):
+			continue
 		var applier: Node = _theme_appliers[id]
 		if is_instance_valid(applier) and applier.has_method("apply_theme"):
 			applier.apply_theme()
+			applied += 1
+			# 分帧广播：即使个别视图较重，也不会一次性冻结整个切换过程
+			if applied % 12 == 0:
+				await get_tree().process_frame
 		else:
 			stale.append(id)
 	for id in stale:

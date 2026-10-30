@@ -60,6 +60,27 @@ func clear_index() -> void:
 	_emitter_texture_cache.clear()
 	_layer_template_cache.clear()
 
+
+
+## 删除用户粒子包（内置包不可删）。返回目录是否成功删除。
+## 索引/缓存即使目录删除失败也一并清理，避免列表残留已坏条目（与 SkinManager.remove_skin 语义一致）。
+func remove_particle_pack(pack_key: String) -> bool:
+	var data: Dictionary = particles_index.get(pack_key, {})
+	if data.is_empty():
+		return false
+	if bool(data.get("is_builtin", false)):
+		return false
+	var path := str(data.get("path", ""))
+	var deleted := true
+	if not path.is_empty() and DirAccess.dir_exists_absolute(path):
+		deleted = FileSystemManager.instance.delete_directory_recursive(path)
+	particles_index.erase(pack_key)
+	_base_texture_cache.erase(pack_key)
+	_emitter_texture_cache.erase(pack_key)
+	_layer_template_cache.erase(ROLE_BASE + "|" + pack_key)
+	_layer_template_cache.erase(ROLE_EMITTER + "|" + pack_key)
+	return deleted
+
 ## ========== 扫描 ==========
 
 ## 扫描粒子包目录（worker 线程执行）
