@@ -121,9 +121,16 @@ func _sync_from_auth() -> void:
 	if AuthManager.instance != null and AuthManager.instance.is_logged_in:
 		var username := str(AuthManager.instance.current_user.get("username", ""))
 		_player_data.name = username
-		# 先用 username 显示，异步拉取资料后再用 display_name 覆盖
-		if _player_data.display_name.is_empty():
-			_player_data.display_name = username
+		# 先用上次已知的资料（本地缓存）占位：昵称/简介/头像 URL 立刻有值，
+		# 头像可直接命中 WebCache 上屏；网络返回后再覆盖，避免每次都先闪一遍默认头像
+		var cached := _load_cached_profile(username)
+		if _player_data.display_name.is_empty() or _player_data.display_name == _player_data.name:
+			var cached_name := str(cached.get("displayName", ""))
+			_player_data.display_name = cached_name if not cached_name.is_empty() else username
+		if _player_data.bio.is_empty():
+			_player_data.bio = str(cached.get("bio", ""))
+		if _player_data.avatar_url.is_empty():
+			_player_data.avatar_url = str(cached.get("avatarUrl", ""))
 		populate_profile()
 		populate_mini_info()
 		profile_page.update_display(_player_data)
@@ -176,8 +183,48 @@ func _fetch_profile_and_stats_async() -> void:
 		populate_profile()
 		populate_mini_info()
 		profile_page.update_display(_player_data)
+		_save_cached_profile()
 	# 拉取统计
 	_fetch_stats_async()
+
+# ========== 资料本地缓存（启动时先显示上次的昵称/简介/头像） ==========
+
+## 读取指定账号上次的资料；无缓存返回空字典
+func _load_cached_profile(username: String) -> Dictionary:
+	if username.is_empty():
+		return {}
+	var all := ConfigManager.instance.load_json_file(PathHelper.get_profile_cache_file())
+	var users: Variant = all.get("users", {})
+	if not users is Dictionary:
+		return {}
+	var entry: Variant = (users as Dictionary).get(username, {})
+	return entry if entry is Dictionary else {}
+
+## 写回当前账号的资料快照（服务端资料拉取成功后调用）
+## 按 username 分别存，切换账号不会互相覆盖
+func _save_cached_profile() -> void:
+	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+		return
+	var username := str(AuthManager.instance.current_user.get("username", ""))
+	if username.is_empty():
+		return
+	var path := PathHelper.get_profile_cache_file()
+	var all := ConfigManager.instance.load_json_file(path)
+	var users: Variant = all.get("users", {})
+	var cache_users: Dictionary = users if users is Dictionary else {}
+	cache_users[username] = {
+		"displayName": _player_data.display_name,
+		"bio": _player_data.bio,
+		"avatarUrl": _player_data.avatar_url,
+	}
+	if not PathHelper.ensure_dir_exists(PathHelper.get_boot_dir()):
+		return
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		GLogger.warning("Profile cache write failed: %s" % path, "PlayerInfo")
+		return
+	f.store_string(JSON.stringify({"users": cache_users}, "\t"))
+	f.close()
 
 ## 异步拉取用户统计并刷新显示
 func _fetch_stats_async() -> void:

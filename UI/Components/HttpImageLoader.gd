@@ -55,6 +55,29 @@ static func load(url: String, target: Node, on_loaded: Callable) -> void:
 		return
 	_start_request(url)
 
+## 只读本地缓存：内存命中直接回调，磁盘命中走后台解码，都没有回调 null。
+## 全程不发网络请求 —— 供「先用缓存占位、稍后联网刷新」的启动路径使用（如启动时的头像），
+## 否则要先等一次网络往返拿到 URL，屏幕上会先闪一遍默认头像。
+static func load_cached(url: String, target: Node, on_loaded: Callable) -> void:
+	if url.is_empty() or not on_loaded.is_valid():
+		return
+	var cached := get_cached(url)
+	if cached:
+		on_loaded.call(cached)
+		return
+	if not has_cache_file(url):
+		on_loaded.call(null)
+		return
+	CoverLoader.request_load(url, _data_file(url), func(_path: String, tex: Texture2D, _version: int) -> void:
+		if not is_instance_valid(target):
+			return
+		if tex:
+			_remember(url, tex)
+		else:
+			_drop_cache(url)  # 缓存损坏：丢弃，后续联网请求会重新下载
+		on_loaded.call(tex)
+	)
+
 static func _start_request(url: String) -> void:
 	var holder := _get_holder()
 	if holder == null:

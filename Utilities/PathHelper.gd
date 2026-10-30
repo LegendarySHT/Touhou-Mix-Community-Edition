@@ -177,6 +177,11 @@ static func get_auth_file() -> String:
 static func get_device_id_file() -> String:
 	return get_boot_dir() + "device_id.txt"
 
+## 上次已知的用户资料缓存（固定引导目录，账号级数据，永不随存储根迁移）
+## 只用于启动时先显示上次的昵称/简介/头像，联网拉到新资料后覆盖
+static func get_profile_cache_file() -> String:
+	return get_boot_dir() + "profile_cache.json"
+
 ## 固定文件惰性兼容迁移：确保 file_name（auth.json / device_id.txt）位于引导目录。
 ## 历史版本曾随存储根存放，读取时若引导目录不存在而旧位置（存储根）存在，则一次性复制过来。
 ## 返回实际文件路径（恒为引导目录下）。

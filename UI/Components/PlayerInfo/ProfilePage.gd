@@ -315,24 +315,37 @@ func update_display(data: Dictionary) -> void:
 	_load_avatar_async(str(avatar_url))
 
 ## 异步加载头像（从服务端 URL），同时更新 Profile 页和 Edit 页预览
-## 走 HttpImageLoader：同 URL 复用内存/本地磁盘缓存，避免每次进页面重复下载
+## 两步：先读本地磁盘缓存立即上屏（重启后不必先闪默认头像，断网也能显示），
+## 再走 HttpImageLoader 联网刷新（同 URL 复用内存/本地缓存，内容寻址 URL 零请求）
 func _load_avatar_async(avatar_url: String) -> void:
 	if avatar_url.is_empty():
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if NetManager.instance == null:
 		return
 	_avatar_load_token += 1
 	var my_token := _avatar_load_token
 	var full_url := "%s%s" % [NetManager.instance.server_url, avatar_url]
+	HttpImageLoader.load_cached(full_url, self, func(tex: Texture2D) -> void:
+		if my_token != _avatar_load_token or tex == null:
+			return
+		_apply_avatar(tex, full_url, false)
+	)
+	if not NetManager.instance.is_online:
+		return
 	HttpImageLoader.load(full_url, self, func(tex: Texture2D) -> void:
 		# token 失效说明已有更新的头像请求，丢弃本次结果
 		if my_token != _avatar_load_token or tex == null:
 			return
-		profile_avatar_rect.texture = tex
-		avatar_border.set_display_texture(tex)
-		avatar_loaded.emit(tex)
-		GLogger.info("Avatar loaded: %s" % full_url, "ProfilePage")
+		_apply_avatar(tex, full_url, true)
 	)
+
+## 头像上屏：Profile 页大图 + Edit 页预览 + 通知 PlayerInfoContent 同步其他头像位
+func _apply_avatar(tex: Texture2D, url: String, from_network: bool) -> void:
+	profile_avatar_rect.texture = tex
+	avatar_border.set_display_texture(tex)
+	avatar_loaded.emit(tex)
+	if from_network:
+		GLogger.info("Avatar loaded: %s" % url, "ProfilePage")
 
 # ========== Edit 页面：资料修改 ==========
 
