@@ -235,32 +235,35 @@ func _initialize_core_systems() -> void:
 	add_child(score_calculator)
 	if logger:
 		logger.info("ScoreCalculator initialized", "Main")
-	
-	# 10. 音频管理器已删除。
-	# 原 MidiPlaybackManager 时代的 AudioManager 只是"人声门面 → MeltySynth"的纯转发壳，
-	# 重构后人声统一走 C# 播放器（autoload MeltySynth / 门面 PlaybackDisplay），
-	# 该壳既无调用者、Main 里创建后也从未使用（连 add_child 的实例都没人引用），故移除。
-	# 注意：Android 系统侧的 AudioManager 与本次删除无关（AudioBtDetector 经
-	# JavaClassWrapper 查询它做蓝牙判定）。
-	
-	# 11. MIDI 播放器已改为 autoload（MeltySynth 传输权威 / PlaybackDisplay 显示层）
 
 	# 让出帧：MeltySynth 后端初始化（场景加载 + C# _Ready）较重，
 	# 让引擎先渲染一帧再继续 UI 初始化，避免单帧卡顿
 	await get_tree().process_frame
 
+	# 先给主框架组件上色（LT_Btn/RB_Btn 强调色、ShortCutMenu/PlayerInfo 面板等）
+	if ThemeMGR:
+		ThemeMGR.register_theme_applier(self)
+		apply_theme()
+
 	# 主界面首帧已渲染：触发左上/右下导航按钮的入场滑入，衔接启动画面
-	# （出场离屏位置在 Main.tscn 中由 offset_transform_position 预设）
+	# （出场离屏位置在 Main.tscn 中由 offset_transform_position 预设；上色已完成，滑入即终态色）
 	_play_corner_buttons_entrance()
 
-	# 12. 初始化键序列管理器
+	# 等入场动画播完再跑后续同步初始化。入场动画是主线程 Tween，必须每帧推进；
+	# 若紧接着执行 6 个 Manager 实例化 + _init_ui（含直接改写 LT_Btn/RB_Btn 样式色的
+	# apply_theme），手机端这段同步阻塞会把 Tween 卡在入场一半，阻塞结束才“跳”到终点
+	# —— 桌面端主线程快、不易复现，手机上明显。
+	# 用定时 await 而非 tween.finished：即使动画被外部 kill，协程也不会永久挂起。
+	await get_tree().create_timer(AnimationManager.DURATION_SLOW).timeout
+
+	# 10. 初始化键序列管理器
 	key_sequence_manager = KeySequenceManager.new()
 	key_sequence_manager.name = "KeySequenceManager"
 	add_child(key_sequence_manager)
 	if logger:
 		logger.info("KeySequenceManager initialized", "Main")
 
-	# 12.5. 初始化网络与认证管理器（必须在 ConfigManager 之后，UI 之前）
+	# 10.5. 初始化网络与认证管理器（必须在 ConfigManager 之后，UI 之前）
 	net_manager = NetManager.new()
 	net_manager.name = "NetManager"
 	add_child(net_manager)
@@ -276,14 +279,14 @@ func _initialize_core_systems() -> void:
 	if logger:
 		logger.info("AuthManager initialized", "Main")
 
-	# 12.6. 初始化成绩管理器（必须在 NetManager 和 AuthManager 之后）
+	# 10.6. 初始化成绩管理器（必须在 NetManager 和 AuthManager 之后）
 	score_manager = ScoreManager.new()
 	score_manager.name = "ScoreManager"
 	add_child(score_manager)
 	if logger:
 		logger.info("ScoreManager initialized", "Main")
 
-	# 12.7. 初始化社区管理器（依赖网络、认证、成绩管理器与已打开的 ChartDB）
+	# 10.7. 初始化社区管理器（依赖网络、认证、成绩管理器与已打开的 ChartDB）
 	community_manager = CommunityManager.new()
 	community_manager.name = "CommunityManager"
 	add_child(community_manager)
@@ -324,15 +327,15 @@ func _initialize_core_systems() -> void:
 
 func _init_ui() -> void:
 	# 6 个视图（MidiView/StoreView/TrackView/SettingView/ScoreView/PlayView）改为懒加载，
+	# 启动阶段不再实例化。
 
-	# 应用主题（Theme 资源 + 主界面组件；背景不在此刷新，由各视图/refresh_backgrounds 处理）
-	# Main 注册为主题应用者，首次自调 apply_theme，再由 refresh_theme_only 广播给所有已注册视图/组件
+	# 主框架主题（含 LT_Btn/RB_Btn 等）已在入场动画前应用（见上方
+	# register_theme_applier + apply_theme），此处仅向已注册的视图/组件再广播一次
+	# （启动阶段视图尚未注册，这里属预防性调用，避免后续懒加载视图漏掉首轮主题）。
 	if ThemeMGR:
-		ThemeMGR.register_theme_applier(self)
-		apply_theme()
 		ThemeMGR.refresh_theme_only()
 
-## 应用主题色到主框架组件（由 ThemeManager 广播调用 + _init_ui 首次自调）
+## 应用主题色到主框架组件（由 ThemeManager 广播调用；首轮在入场动画前于 _initialize_core_systems 中自调）
 func apply_theme() -> void:
 	var primary := ThemeMGR.get_color("primary")
 	var surface := ThemeMGR.get_color("surface")

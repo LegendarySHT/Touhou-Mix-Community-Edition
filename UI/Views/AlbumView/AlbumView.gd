@@ -150,7 +150,7 @@ func _refresh_display_async(my_generation: int) -> void:
 
 	var had_items: bool = not list_items.is_empty()
 
-	# ===== Phase A：同步建足节点（滚动条立即稳定） =====
+	# ===== Phase A：建足节点（滚动条立即稳定） =====
 	# 同步项数：多余的从尾部清理（释放封面使在途回调失效）
 	var target_count: int = current_albums.size()
 	var existing_count: int = list_items.size()
@@ -176,7 +176,10 @@ func _refresh_display_async(my_generation: int) -> void:
 	_album_build_bg = ButtonGroup.new()
 	existing_count = list_items.size()
 
+	# 新建节点分帧
+	const BUILD_BATCH_SIZE := 24
 	var counter := 0
+	var built := 0
 	for album in current_albums:
 		var item
 		if counter < existing_count:
@@ -187,6 +190,11 @@ func _refresh_display_async(my_generation: int) -> void:
 			item = create_and_add_item(String(album.get("id", "")), "album")
 			if not had_items and counter == 0:
 				_on_album_first_step()
+			built += 1
+			if built % BUILD_BATCH_SIZE == 0:
+				await get_tree().process_frame
+				if my_generation != _load_generation:
+					return
 		item.bind_with_dict(self, album, counter, _album_build_bg)
 		counter += 1
 

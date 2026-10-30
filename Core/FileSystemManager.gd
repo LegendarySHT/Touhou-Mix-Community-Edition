@@ -1009,21 +1009,45 @@ func _start_charts_cache_validation(all_chart_folders: Array, cached_charts: Dic
 		if not cached_charts.has(f):
 			new_folders.append(f)
 
-	var validate_tasks := _start_cache_validation_tasks(pending_folders, cached_charts)
+	# 分片分批提交：2000+ 谱面 ≈ 37 个分片，一次性全提交会占满 WorkerThreadPool，
+	# 主线程与渲染抢不到核，单帧被拉到数百毫秒（视图切换动画会明显卡一下）。
+	# 限制在途分片数，让后台校验始终给主线程留核。
+	var chunks: Array = []
+	for i in range(0, pending_folders.size(), CHART_SCAN_CHUNK_SIZE):
+		chunks.append(pending_folders.slice(i, i + CHART_SCAN_CHUNK_SIZE))
+
 	var total_units: int = pending_folders.size() + new_folders.size()
 	_task_progress_begin(total_units)
 	# 新增文件夹无需校验，但会紧接着被扫描，先按"已确认"计入进度更贴近真实体感
 	var confirmed: int = new_folders.size()
 	_task_progress_set(confirmed)
-	while not _all_chart_tasks_completed(validate_tasks):
-		var checked: int = confirmed
-		for t in validate_tasks:
+
+	var validate_tasks: Array = []
+	var inflight: Array = []
+	var next_chunk: int = 0
+	var checked: int = 0
+	while next_chunk < chunks.size() or not inflight.is_empty():
+		while next_chunk < chunks.size() and inflight.size() < _validate_max_concurrency():
+			var chunk: Array = chunks[next_chunk]
+			next_chunk += 1
+			var rw: Dictionary = {}
+			var tid := WorkerThreadPool.add_task(
+				func(): _validate_charts_chunk_worker(chunk, cached_charts, rw),
+				false, "ValidateChartsChunk"
+			)
+			var t := {"id": tid, "result": rw, "count": chunk.size()}
+			inflight.append(t)
+			validate_tasks.append(t)
+		var still: Array = []
+		for t in inflight:
 			if WorkerThreadPool.is_task_completed(t.id):
+				WorkerThreadPool.wait_for_task_completion(t.id)  # 已完成，仅 join
 				checked += int(t.get("count", 0))
-		_task_progress_set(checked)
+			else:
+				still.append(t)
+		inflight = still
+		_task_progress_set(confirmed + checked)
 		await get_tree().process_frame
-	for t in validate_tasks:
-		WorkerThreadPool.wait_for_task_completion(t.id)
 	_task_progress_end()
 
 	var changed_folders: Array = []
@@ -1036,21 +1060,10 @@ func _start_charts_cache_validation(all_chart_folders: Array, cached_charts: Dic
 		"new_folders": new_folders,
 	}, cached_charts)
 
-## 启动缓存校验的分片 worker：每片只校验自己那部分缓存条目（存在性 + 文件夹/json/mid mTime）
-## 返回 [{id, result, count}, ...]，主线程按已完成片的 count 累计进度
-func _start_cache_validation_tasks(pending_folders: Array, cached_charts: Dictionary) -> Array:
-	var tasks: Array = []
-	if pending_folders.is_empty():
-		return tasks
-	for i in range(0, pending_folders.size(), CHART_SCAN_CHUNK_SIZE):
-		var chunk: Array = pending_folders.slice(i, i + CHART_SCAN_CHUNK_SIZE)
-		var rw: Dictionary = {}
-		var tid := WorkerThreadPool.add_task(
-			func(): _validate_charts_chunk_worker(chunk, cached_charts, rw),
-			false, "ValidateChartsChunk"
-		)
-		tasks.append({"id": tid, "result": rw, "count": chunk.size()})
-	return tasks
+## 启动缓存校验分片的在途并发上限：只占 1/4 的核，余下留给主线程/渲染
+## （Android 8 核 → 2；纯粹 stat 组成，少并发只拉长后台耗时，不影响 UI 响应）
+func _validate_max_concurrency() -> int:
+	return clampi(OS.get_processor_count() / 4, 1, 3)
 
 ## 在 worker 线程中校验一组缓存条目（纯文件 stat，无引擎 API 调用）
 ## 结果：{changed_folders} —— mTime 变化或 json/mid 缺失、需重扫的文件夹
@@ -1060,13 +1073,19 @@ func _validate_charts_chunk_worker(folder_names: Array, cached_charts: Dictionar
 		var meta: Dictionary = cached_charts[folder_name]
 		var chart_path := CHARTS_DIR.path_join(folder_name)
 		var chart_id: String = folder_name.split("_")[0]
+		# 只用 get_modified_time（不存在返回 0），不再先 file_exists 再 stat：
+		# 每谱面 stat 从 7 次降到 3 次，Android 上 IO 争用是启动卡顿的主要来源之一
 		var json_path := chart_path.path_join("info.json")
-		if not FileAccess.file_exists(json_path):
+		var json_mtime := FileAccess.get_modified_time(json_path)
+		if json_mtime == 0:
 			json_path = chart_path.path_join(chart_id + ".json")
+			json_mtime = FileAccess.get_modified_time(json_path)
 		var mid_path := chart_path.path_join("song.mid")
-		if not FileAccess.file_exists(mid_path):
+		var mid_mtime := FileAccess.get_modified_time(mid_path)
+		if mid_mtime == 0:
 			mid_path = chart_path.path_join(chart_id + ".mid")
-		if not FileAccess.file_exists(json_path) or not FileAccess.file_exists(mid_path):
+			mid_mtime = FileAccess.get_modified_time(mid_path)
+		if json_mtime == 0 or mid_mtime == 0:
 			changed.append(folder_name)
 			continue
 		# 两级 mTime：文件夹 mTime 变 → 必有增删改名；未变仍可能就地改内容 → 再比 json/mid
@@ -1075,8 +1094,8 @@ func _validate_charts_chunk_worker(folder_names: Array, cached_charts: Dictionar
 		if cached_folder_mtime != 0 and cur_folder_mtime != cached_folder_mtime:
 			changed.append(folder_name)
 			continue
-		if FileAccess.get_modified_time(json_path) != int(meta.get("_json_mtime", 0)) \
-				or FileAccess.get_modified_time(mid_path) != int(meta.get("_mid_mtime", 0)):
+		if json_mtime != int(meta.get("_json_mtime", 0)) \
+				or mid_mtime != int(meta.get("_mid_mtime", 0)):
 			changed.append(folder_name)
 	result_wrapper["changed_folders"] = changed
 
