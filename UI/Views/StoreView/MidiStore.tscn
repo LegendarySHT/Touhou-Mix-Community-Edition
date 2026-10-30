@@ -1,130 +1,309 @@
 [gd_scene format=3 uid="uid://dvvggbuqsfxbw"]
 
-[ext_resource type="Script" uid="uid://dbgwcersgki3c" path="res://UI/Views/StoreView/StoreView.gd" id="1_77ghf"]
-[ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="4_t7rtt"]
-[ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="5_7hdap"]
+[ext_resource type="Script" uid="uid://dbgwcersgki3c" path="res://UI/Views/StoreView/StoreView.gd" id="1_store"]
+[ext_resource type="PackedScene" path="res://UI/Views/StoreView/StoreDetailPanel.tscn" id="2_detail"]
+[ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="3_set1"]
+[ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="4_set2"]
+[ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="5_set3"]
+[ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="6_round"]
+[ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="7_scroll"]
 
-[sub_resource type="Gradient" id="Gradient_t7rtt"]
+[sub_resource type="Gradient" id="Grad_bg"]
 interpolation_mode = 2
-colors = PackedColorArray(0.043137256, 0.05882353, 0.10980392, 1, 0.08627451, 0.11764706, 0.2, 1)
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(0.027, 0.039, 0.063, 1, 0.043, 0.063, 0.11, 1, 0.055, 0.09, 0.18, 1)
 
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_ay6ya"]
-gradient = SubResource("Gradient_t7rtt")
-fill_from = Vector2(0, 1)
+[sub_resource type="GradientTexture2D" id="Tex_bg"]
+gradient = SubResource("Grad_bg")
+fill_to = Vector2(1, 1)
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_t7rtt"]
-content_margin_left = 50.0
-content_margin_top = 180.0
-content_margin_right = 50.0
-content_margin_bottom = 400.0
+[sub_resource type="StyleBoxFlat" id="SB_topbar"]
+bg_color = Color(0.055, 0.071, 0.102, 0.97)
+border_width_bottom = 2
+border_color = Color(0.32, 0.48, 0.9, 0.4)
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 12
 
-[sub_resource type="Gradient" id="Gradient_2hjjb"]
-colors = PackedColorArray(0.35686275, 0.54901963, 1, 1, 0.18431373, 0.33333334, 0.78431374, 1)
+[sub_resource type="StyleBoxFlat" id="SB_search"]
+content_margin_left = 22.0
+content_margin_top = 8.0
+content_margin_right = 70.0
+content_margin_bottom = 8.0
+bg_color = Color(0.078, 0.098, 0.14, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.22, 0.3, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
 
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_aexbj"]
-gradient = SubResource("Gradient_2hjjb")
+[sub_resource type="StyleBoxFlat" id="SB_search_focus"]
+content_margin_left = 22.0
+content_margin_top = 8.0
+content_margin_right = 70.0
+content_margin_bottom = 8.0
+bg_color = Color(0.09, 0.115, 0.165, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4, 0.58, 1, 0.9)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
 
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_77ghf"]
-texture = SubResource("GradientTexture2D_aexbj")
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_7hdap"]
-atlas = ExtResource("5_7hdap")
-region = Rect2(240, 320, 80, 80)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_bbxvy"]
-atlas = ExtResource("5_7hdap")
-region = Rect2(0, 320, 80, 80)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_77y4q"]
-atlas = ExtResource("5_7hdap")
-region = Rect2(80, 320, 80, 80)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_ay6ya"]
-atlas = ExtResource("5_7hdap")
-region = Rect2(160, 320, 80, 80)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_hhcpw"]
-atlas = ExtResource("4_t7rtt")
+[sub_resource type="AtlasTexture" id="Atlas_search"]
+atlas = ExtResource("3_set1")
 region = Rect2(320, 240, 80, 80)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_5tuhn"]
-atlas = ExtResource("5_7hdap")
+[sub_resource type="StyleBoxFlat" id="SB_tool_normal"]
+content_margin_left = 18.0
+content_margin_top = 6.0
+content_margin_right = 18.0
+content_margin_bottom = 6.0
+bg_color = Color(0.09, 0.113, 0.16, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.22, 0.3, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_tool_pressed"]
+content_margin_left = 18.0
+content_margin_top = 6.0
+content_margin_right = 18.0
+content_margin_bottom = 6.0
+bg_color = Color(0.2, 0.32, 0.7, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.7, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_tool_hover"]
+content_margin_left = 18.0
+content_margin_top = 6.0
+content_margin_right = 18.0
+content_margin_bottom = 6.0
+bg_color = Color(0.14, 0.18, 0.25, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 0.85)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_tool_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 0.9)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+
+[sub_resource type="AtlasTexture" id="Atlas_data_download"]
+atlas = ExtResource("4_set2")
+region = Rect2(0, 320, 80, 80)
+
+[sub_resource type="AtlasTexture" id="Atlas_desc"]
+atlas = ExtResource("4_set2")
 region = Rect2(80, 240, 80, 80)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_t7rtt"]
-atlas = ExtResource("5_7hdap")
-region = Rect2(0, 240, 80, 80)
+[sub_resource type="AtlasTexture" id="Atlas_cloud"]
+atlas = ExtResource("4_set2")
+region = Rect2(160, 0, 80, 80)
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_aexbj"]
-bg_color = Color(0.0941, 0.1176, 0.1686, 1)
-skew = Vector2(0.3, 0)
+[sub_resource type="AtlasTexture" id="Atlas_mic"]
+atlas = ExtResource("3_set1")
+region = Rect2(80, 160, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_normal"]
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
+bg_color = Color(0, 0, 0, 0)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_pressed"]
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
+bg_color = Color(0.16, 0.24, 0.5, 0.55)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_hover"]
+content_margin_left = 20.0
+content_margin_top = 8.0
+content_margin_right = 20.0
+content_margin_bottom = 8.0
+bg_color = Color(0.13, 0.165, 0.23, 0.8)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_tab_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="ButtonGroup" id="BG_tabs"]
+
+[sub_resource type="AtlasTexture" id="Atlas_tab_song"]
+atlas = ExtResource("5_set3")
+region = Rect2(160, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="Atlas_tab_skin"]
+atlas = ExtResource("5_set3")
+region = Rect2(0, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="Atlas_tab_effect"]
+atlas = ExtResource("5_set3")
+region = Rect2(320, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="Atlas_tab_sf"]
+atlas = ExtResource("5_set3")
+region = Rect2(0, 160, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="SB_underline"]
+bg_color = Color(0.58, 0.72, 1, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxEmpty" id="SB_list_empty"]
+
+[sub_resource type="StyleBoxFlat" id="SB_hero"]
+bg_color = Color(0.09, 0.115, 0.165, 0.96)
 border_width_left = 1
 border_width_top = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3)
-shadow_size = 6
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.45, 0.8, 0.5)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 14
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jtu5m"]
-bg_color = Color(0.1843, 0.3333, 0.7843, 1)
-skew = Vector2(0.3, 0)
+[sub_resource type="StyleBoxFlat" id="SB_hero_cover"]
+bg_color = Color(0.062, 0.078, 0.114, 1)
 border_width_left = 1
 border_width_top = 1
-border_color = Color(0.4, 0.58, 1, 0.8)
-expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3)
-shadow_size = 6
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.2, 0.27, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hfgmo"]
-bg_color = Color(0.1333, 0.1647, 0.2314, 1)
-skew = Vector2(0.3, 0)
+[sub_resource type="StyleBoxFlat" id="SB_progress_bg"]
+bg_color = Color(0.055, 0.07, 0.1, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="SB_progress_fill"]
+bg_color = Color(0.36, 0.55, 1, 1)
+corner_radius_top_left = 7
+corner_radius_top_right = 7
+corner_radius_bottom_right = 7
+corner_radius_bottom_left = 7
+
+[sub_resource type="StyleBoxFlat" id="SB_pager_btn"]
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+bg_color = Color(0.09, 0.113, 0.16, 0.95)
 border_width_left = 1
 border_width_top = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3)
-shadow_size = 6
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.18, 0.22, 0.3, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_77ghf"]
-bg_color = Color(0.2784, 0.4431, 0.8627, 1)
-border_width_top = 1
-border_color = Color(0.52, 0.66, 1, 1)
-expand_margin_left = 13.0
-expand_margin_right = 13.0
-shadow_color = Color(0, 0, 0, 0.3)
-shadow_size = 6
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xj26e"]
-bg_color = Color(0.0941, 0.1176, 0.1686, 1)
-skew = Vector2(-0.3, 0)
+[sub_resource type="StyleBoxFlat" id="SB_pager_hover"]
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+bg_color = Color(0.15, 0.2, 0.28, 1)
+border_width_left = 1
 border_width_top = 1
 border_width_right = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3)
-shadow_size = 6
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_o4ele"]
-bg_color = Color(0.1843, 0.3333, 0.7843, 1)
-skew = Vector2(-0.3, 0)
-border_width_top = 1
-border_width_right = 1
-border_color = Color(0.4, 0.58, 1, 0.8)
-expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3)
-shadow_size = 6
+[sub_resource type="AtlasTexture" id="Atlas_prev"]
+atlas = ExtResource("5_set3")
+region = Rect2(0, 80, 80, 80)
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_15yne"]
-bg_color = Color(0.1333, 0.1647, 0.2314, 1)
-skew = Vector2(-0.3, 0)
-border_width_top = 1
-border_width_right = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-expand_margin_top = 1.0
-shadow_color = Color(0, 0, 0, 0.3)
-shadow_size = 6
+[sub_resource type="StyleBoxFlat" id="SB_pager_info"]
+content_margin_left = 22.0
+content_margin_top = 6.0
+content_margin_right = 22.0
+content_margin_bottom = 6.0
+bg_color = Color(0.075, 0.094, 0.136, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
 
-[node name="Store" type="Control" unique_id=1657778665]
+[sub_resource type="AtlasTexture" id="Atlas_next"]
+atlas = ExtResource("5_set3")
+region = Rect2(80, 80, 80, 80)
+
+[node name="Store" type="Control" unique_id=1469865060]
 z_index = 10
 layout_mode = 3
 anchors_preset = 15
@@ -132,9 +311,9 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-size_flags_horizontal = 4
+script = ExtResource("1_store")
 
-[node name="Background" type="TextureRect" parent="." unique_id=1241267256]
+[node name="Background" type="TextureRect" parent="." unique_id=2116602166]
 custom_minimum_size = Vector2(1921, 1080)
 layout_mode = 1
 anchors_preset = 15
@@ -142,167 +321,659 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = SubResource("GradientTexture2D_ay6ya")
-
-[node name="StoreMidiList" type="ScrollContainer" parent="." unique_id=259951663]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = 1.0
-offset_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxEmpty_t7rtt")
-follow_focus = true
-horizontal_scroll_mode = 0
-vertical_scroll_mode = 3
-script = ExtResource("1_77ghf")
-container_path = NodePath("HFlowBox")
-list_item_class = "res://UI/Views/StoreView/storeMidiNode.tscn"
-
-[node name="HFlowBox" type="HFlowContainer" parent="StoreMidiList" unique_id=1401520399]
-custom_minimum_size = Vector2(1790, 0)
-layout_mode = 2
-size_flags_horizontal = 3
 mouse_filter = 2
-theme_override_constants/h_separation = 65
-theme_override_constants/v_separation = 40
-alignment = 1
+texture = SubResource("Tex_bg")
+expand_mode = 1
+stretch_mode = 6
 
-[node name="TopBar" type="Panel" parent="." unique_id=508610703]
-custom_minimum_size = Vector2(0, 100)
+[node name="TopBar" type="Panel" parent="." unique_id=686402809]
+custom_minimum_size = Vector2(0, 118)
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
-offset_bottom = 108.0
+offset_bottom = 118.0
 grow_horizontal = 2
-theme_override_styles/panel = SubResource("StyleBoxTexture_77ghf")
+theme_override_styles/panel = SubResource("SB_topbar")
 
-[node name="C" type="HBoxContainer" parent="TopBar" unique_id=431206611]
+[node name="HeaderMargin" type="MarginContainer" parent="TopBar" unique_id=1188136361]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 30
+mouse_filter = 2
+theme_override_constants/margin_left = 36
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 36
+theme_override_constants/margin_bottom = 12
 
-[node name="FilterBtn" type="OptionButton" parent="TopBar/C" unique_id=685507467]
+[node name="Row" type="HBoxContainer" parent="TopBar/HeaderMargin" unique_id=1063502605]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 22
+
+[node name="Toolbar" type="HBoxContainer" parent="TopBar/HeaderMargin/Row" unique_id=2066017376]
 layout_mode = 2
 size_flags_horizontal = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(25, 0)
-theme_override_constants/h_separation = 30
-theme_override_font_sizes/font_size = 36
-flat = true
-selected = 0
-item_count = 4
-popup/item_0/text = "上传时间"
-popup/item_0/icon = SubResource("AtlasTexture_7hdap")
-popup/item_0/id = 0
-popup/item_1/text = "下载数"
-popup/item_1/icon = SubResource("AtlasTexture_bbxvy")
-popup/item_1/id = 1
-popup/item_2/text = "游玩数"
-popup/item_2/icon = SubResource("AtlasTexture_77y4q")
-popup/item_2/id = 2
-popup/item_3/text = "点赞数"
-popup/item_3/icon = SubResource("AtlasTexture_ay6ya")
-popup/item_3/id = 3
+mouse_filter = 2
+theme_override_constants/separation = 12
 
-[node name="Search" type="MarginContainer" parent="TopBar/C" unique_id=802377483]
-custom_minimum_size = Vector2(800, 0)
-layout_mode = 2
-theme_override_constants/margin_left = 60
-theme_override_constants/margin_top = 20
-theme_override_constants/margin_right = 60
-
-[node name="Base" type="Polygon2D" parent="TopBar/C/Search" unique_id=1074993710]
-position = Vector2(-578, 22)
-offset = Vector2(0, -30)
-polygon = PackedVector2Array(515, 0, 555, 150, 1350, 150, 1390, 0)
-vertex_colors = PackedColorArray(0.3922, 0.5686, 1, 1, 0.3569, 0.549, 1, 1, 0.2118, 0.3608, 0.8, 1, 0.2784, 0.4431, 0.8627, 1)
-
-[node name="HBoxC" type="HBoxContainer" parent="TopBar/C/Search" unique_id=249968099]
+[node name="SearchEdit" type="LineEdit" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=1192628260]
+custom_minimum_size = Vector2(260, 76)
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 2.0
-theme_override_constants/separation = 30
-alignment = 1
+size_flags_stretch_ratio = 3.0
+theme_override_font_sizes/font_size = 25
+theme_override_styles/normal = SubResource("SB_search")
+theme_override_styles/focus = SubResource("SB_search_focus")
+placeholder_text = "搜索谱面 / 作者 / 专辑"
 
-[node name="LineEdit" type="LineEdit" parent="TopBar/C/Search/HBoxC" unique_id=1750621200]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_stretch_ratio = 8.0
-
-[node name="Btn" type="TextureButton" parent="TopBar/C/Search/HBoxC" unique_id=957020667]
-custom_minimum_size = Vector2(80, 80)
-layout_mode = 2
-size_flags_horizontal = 3
-texture_normal = SubResource("AtlasTexture_hhcpw")
-ignore_texture_size = true
+[node name="SearchIcon" type="TextureRect" parent="TopBar/HeaderMargin/Row/Toolbar/SearchEdit" unique_id=985218826]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -54.0
+offset_top = 21.0
+offset_right = -18.0
+offset_bottom = -21.0
+grow_horizontal = 0
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("Atlas_search")
+expand_mode = 1
 stretch_mode = 5
 
-[node name="HBoxC" type="HBoxContainer" parent="TopBar/C" unique_id=1608466823]
+[node name="FilterDataBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=423131846]
+custom_minimum_size = Vector2(76, 76)
+layout_mode = 2
+tooltip_text = "排序字段：下载数"
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 36
+theme_override_styles/normal = SubResource("SB_tool_normal")
+theme_override_styles/pressed = SubResource("SB_tool_pressed")
+theme_override_styles/hover = SubResource("SB_tool_hover")
+theme_override_styles/focus = SubResource("SB_tool_focus")
+icon = SubResource("Atlas_data_download")
+icon_alignment = 1
+
+[node name="SortOrderBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=799784552]
+custom_minimum_size = Vector2(76, 76)
+layout_mode = 2
+tooltip_text = "切换升序 / 降序"
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 36
+theme_override_styles/normal = SubResource("SB_tool_normal")
+theme_override_styles/pressed = SubResource("SB_tool_pressed")
+theme_override_styles/hover = SubResource("SB_tool_hover")
+theme_override_styles/focus = SubResource("SB_tool_focus")
+icon = SubResource("Atlas_desc")
+icon_alignment = 1
+
+[node name="BatchDownloadBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=1330030490]
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+tooltip_text = "下载当前页所有未下载的谱面"
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 34
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("SB_tool_normal")
+theme_override_styles/pressed = SubResource("SB_tool_pressed")
+theme_override_styles/hover = SubResource("SB_tool_hover")
+theme_override_styles/focus = SubResource("SB_tool_focus")
+text = "批量下载"
+icon = SubResource("Atlas_cloud")
+
+[node name="VocalBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=825044778]
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+tooltip_text = "开启后，下载谱面时一并下载人声"
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 34
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("SB_tool_normal")
+theme_override_styles/pressed = SubResource("SB_tool_pressed")
+theme_override_styles/hover = SubResource("SB_tool_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tool_pressed")
+theme_override_styles/focus = SubResource("SB_tool_focus")
+toggle_mode = true
+text = "下载人声"
+icon = SubResource("Atlas_mic")
+
+[node name="TabBar" type="HBoxContainer" parent="TopBar/HeaderMargin/Row" unique_id=1456142379]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="TabSong" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=689949741]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 27
+theme_override_styles/normal = SubResource("SB_tab_normal")
+theme_override_styles/pressed = SubResource("SB_tab_pressed")
+theme_override_styles/hover = SubResource("SB_tab_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
+theme_override_styles/focus = SubResource("SB_tab_focus")
+toggle_mode = true
+button_pressed = true
+button_group = SubResource("BG_tabs")
+text = "歌曲"
+icon = SubResource("Atlas_tab_song")
+
+[node name="TabSkin" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=746944903]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 27
+theme_override_styles/normal = SubResource("SB_tab_normal")
+theme_override_styles/pressed = SubResource("SB_tab_pressed")
+theme_override_styles/hover = SubResource("SB_tab_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
+theme_override_styles/focus = SubResource("SB_tab_focus")
+toggle_mode = true
+button_group = SubResource("BG_tabs")
+text = "皮肤"
+icon = SubResource("Atlas_tab_skin")
+
+[node name="TabEffect" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=618875605]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 27
+theme_override_styles/normal = SubResource("SB_tab_normal")
+theme_override_styles/pressed = SubResource("SB_tab_pressed")
+theme_override_styles/hover = SubResource("SB_tab_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
+theme_override_styles/focus = SubResource("SB_tab_focus")
+toggle_mode = true
+button_group = SubResource("BG_tabs")
+text = "特效"
+icon = SubResource("Atlas_tab_effect")
+
+[node name="TabSoundfont" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1466761850]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 27
+theme_override_styles/normal = SubResource("SB_tab_normal")
+theme_override_styles/pressed = SubResource("SB_tab_pressed")
+theme_override_styles/hover = SubResource("SB_tab_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
+theme_override_styles/focus = SubResource("SB_tab_focus")
+toggle_mode = true
+button_group = SubResource("BG_tabs")
+text = "音源"
+icon = SubResource("Atlas_tab_sf")
+
+[node name="TabDownload" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1840244665]
+custom_minimum_size = Vector2(0, 78)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 27
+theme_override_styles/normal = SubResource("SB_tab_normal")
+theme_override_styles/pressed = SubResource("SB_tab_pressed")
+theme_override_styles/hover = SubResource("SB_tab_hover")
+theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
+theme_override_styles/focus = SubResource("SB_tab_focus")
+toggle_mode = true
+button_group = SubResource("BG_tabs")
+text = "下载管理"
+icon = SubResource("Atlas_cloud")
+
+[node name="TabUnderline" type="Panel" parent="TopBar" unique_id=2043727194]
+layout_mode = 0
+offset_top = 114.0
+offset_right = 180.0
+offset_bottom = 118.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_underline")
+
+[node name="Pages" type="Control" parent="." unique_id=1071051225]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 118.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="SongsPage" type="Control" parent="Pages" unique_id=461393091]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="List" type="ScrollContainer" parent="Pages/SongsPage" unique_id=1576611662]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 36.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = -96.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ListContent" type="Control" parent="Pages/SongsPage/List" unique_id=2105553316]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
 
-[node name="OrderBtn" type="TextureButton" parent="TopBar/C/HBoxC" unique_id=93771349]
-self_modulate = Color(1, 1, 1, 0.768627)
-custom_minimum_size = Vector2(80, 80)
+[node name="Empty" type="Label" parent="Pages/SongsPage" unique_id=848771213]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 120.0
+offset_bottom = -80.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 34
+text = "正在加载…"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SkinsPage" type="Control" parent="Pages" unique_id=248845126]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="List" type="ScrollContainer" parent="Pages/SkinsPage" unique_id=324994638]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 36.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ListContent" type="Control" parent="Pages/SkinsPage/List" unique_id=1524149009]
 layout_mode = 2
-toggle_mode = true
-texture_normal = SubResource("AtlasTexture_5tuhn")
-texture_pressed = SubResource("AtlasTexture_t7rtt")
-ignore_texture_size = true
-stretch_mode = 3
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
 
-[node name="Bottom" type="HBoxContainer" parent="." unique_id=518013240]
+[node name="Empty" type="Label" parent="Pages/SkinsPage" unique_id=2059499396]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 120.0
+offset_bottom = -80.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 34
+text = "没有找到皮肤"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="EffectsPage" type="Control" parent="Pages" unique_id=2071108405]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="List" type="ScrollContainer" parent="Pages/EffectsPage" unique_id=1088512918]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 36.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ListContent" type="Control" parent="Pages/EffectsPage/List" unique_id=279928611]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Empty" type="Label" parent="Pages/EffectsPage" unique_id=778589629]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 120.0
+offset_bottom = -80.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 34
+text = "没有找到特效"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SoundfontsPage" type="Control" parent="Pages" unique_id=1474860878]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="List" type="ScrollContainer" parent="Pages/SoundfontsPage" unique_id=1550550384]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 36.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ListContent" type="Control" parent="Pages/SoundfontsPage/List" unique_id=1051727023]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Empty" type="Label" parent="Pages/SoundfontsPage" unique_id=1206908615]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 120.0
+offset_bottom = -80.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 34
+text = "没有找到音源"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DownloadsPage" type="Control" parent="Pages" unique_id=926959622]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="Hero" type="Panel" parent="Pages/DownloadsPage" unique_id=2078691219]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 36.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = 222.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_hero")
+
+[node name="HeroMargin" type="MarginContainer" parent="Pages/DownloadsPage/Hero" unique_id=1355749005]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 20
+
+[node name="HeroEmpty" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin" unique_id=14532917]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "暂无正在下载的任务"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HeroBody" type="HBoxContainer" parent="Pages/DownloadsPage/Hero/HeroMargin" unique_id=22146838]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 20
+
+[node name="CoverWrap" type="Panel" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody" unique_id=1087600478]
+custom_minimum_size = Vector2(162, 162)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_hero_cover")
+
+[node name="Cover" type="TextureRect" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/CoverWrap" unique_id=859794609]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+script = ExtResource("6_round")
+corner_radius = 12.0
+
+[node name="Placeholder" type="TextureRect" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/CoverWrap" unique_id=701149981]
+modulate = Color(1, 1, 1, 0.4)
+custom_minimum_size = Vector2(70, 70)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -35.0
+offset_top = -35.0
+offset_right = 35.0
+offset_bottom = 35.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("Atlas_cloud")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Info" type="VBoxContainer" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody" unique_id=915531185]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info" unique_id=1553902158]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 30
+text = "谱面标题"
+clip_text = true
+script = ExtResource("7_scroll")
+end_padding = 0.0
+
+[node name="Stage" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info" unique_id=1089921538]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 21
+text = "正在下载 MIDI"
+
+[node name="Progress" type="ProgressBar" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info" unique_id=1142858393]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("SB_progress_bg")
+theme_override_styles/fill = SubResource("SB_progress_fill")
+show_percentage = false
+
+[node name="Meta" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info" unique_id=1169156944]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 19
+text = "作者 · 文件 6.2 MB"
+script = ExtResource("7_scroll")
+theme_color_key = "text_secondary"
+end_padding = 0.0
+
+[node name="Right" type="VBoxContainer" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody" unique_id=1179139092]
+custom_minimum_size = Vector2(190, 0)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Percent" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Right" unique_id=1977867687]
+layout_mode = 2
+theme_override_font_sizes/font_size = 38
+text = "0%"
+horizontal_alignment = 2
+
+[node name="Detail" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Right" unique_id=735257953]
+layout_mode = 2
+theme_override_font_sizes/font_size = 19
+text = "123 MB / 456 MB"
+horizontal_alignment = 2
+clip_text = true
+
+[node name="RecentTitle" type="Label" parent="Pages/DownloadsPage" unique_id=287180004]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 40.0
+offset_top = 240.0
+offset_right = -40.0
+offset_bottom = 272.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 24
+text = "下载记录"
+
+[node name="List" type="ScrollContainer" parent="Pages/DownloadsPage" unique_id=240579188]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 36.0
+offset_top = 284.0
+offset_right = -36.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ListContent" type="Control" parent="Pages/DownloadsPage/List" unique_id=1806885259]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Empty" type="Label" parent="Pages/DownloadsPage" unique_id=696217958]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 300.0
+offset_bottom = -60.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "还没有下载记录"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Bottom" type="HBoxContainer" parent="." unique_id=1491092639]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -190.0
-offset_top = -80.0
-offset_right = 190.0
+offset_left = -230.0
+offset_top = -92.0
+offset_right = 230.0
+offset_bottom = -24.0
 grow_horizontal = 2
 grow_vertical = 0
-theme_override_constants/separation = 0
+mouse_filter = 2
+theme_override_constants/separation = 14
 alignment = 1
 
-[node name="Previ" type="Button" parent="Bottom" unique_id=1181404421]
+[node name="Previ" type="Button" parent="Bottom" unique_id=849843252]
+custom_minimum_size = Vector2(76, 64)
 layout_mode = 2
-size_flags_horizontal = 3
-focus_mode = 0
-theme_override_font_sizes/font_size = 48
-theme_override_styles/normal = SubResource("StyleBoxFlat_aexbj")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_jtu5m")
-theme_override_styles/hover = SubResource("StyleBoxFlat_hfgmo")
-text = "⇦"
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 30
+theme_override_styles/normal = SubResource("SB_pager_btn")
+theme_override_styles/pressed = SubResource("SB_pager_hover")
+theme_override_styles/hover = SubResource("SB_pager_hover")
+icon = SubResource("Atlas_prev")
 icon_alignment = 1
 
-[node name="Indicate" type="Label" parent="Bottom" unique_id=861064550]
-z_index = 1
+[node name="Indicate" type="Label" parent="Bottom" unique_id=281129194]
+custom_minimum_size = Vector2(200, 64)
 layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 1
-size_flags_stretch_ratio = 2.0
-theme_override_font_sizes/font_size = 48
-theme_override_styles/normal = SubResource("StyleBoxFlat_77ghf")
-text = "999/999"
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("SB_pager_info")
+text = "—"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Next" type="Button" parent="Bottom" unique_id=1288374129]
+[node name="Next" type="Button" parent="Bottom" unique_id=1239685035]
+custom_minimum_size = Vector2(76, 64)
 layout_mode = 2
-size_flags_horizontal = 3
-focus_mode = 0
-theme_override_font_sizes/font_size = 48
-theme_override_styles/normal = SubResource("StyleBoxFlat_xj26e")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_o4ele")
-theme_override_styles/hover = SubResource("StyleBoxFlat_15yne")
-text = "⇨"
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 30
+theme_override_styles/normal = SubResource("SB_pager_btn")
+theme_override_styles/pressed = SubResource("SB_pager_hover")
+theme_override_styles/hover = SubResource("SB_pager_hover")
+icon = SubResource("Atlas_next")
+icon_alignment = 1
+
+[node name="DetailLayer" parent="." unique_id=1158746815 instance=ExtResource("2_detail")]
+layout_mode = 1

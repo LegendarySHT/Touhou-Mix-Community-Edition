@@ -21,6 +21,9 @@ extends Label
 
 ## 自绘文字颜色（默认取 theme 的 font_color，可被场景 theme override 覆盖）
 @export var text_color: Color = Color(1, 1, 1, 1)
+## 可选：从 ThemeManager 语义色令牌取色（如 text_secondary / text_dim）。
+## 留空则沿用 font_color；设置后主题切换会自动跟随，不必逐节点覆写 font_color
+@export var theme_color_key: String = ""
 ## 场景是否显式指定了 font_color（压在图片/封面上的固定色）：锁定后主题切换不刷新
 var _locked_color: bool = false
 ## 锁定时捕获一次的显式色（后续透明 override 会覆盖原 override，故需缓存）
@@ -105,7 +108,10 @@ func _refresh_text_color() -> void:
 		text_color = _locked_text_color
 	else:
 		remove_theme_color_override("font_color")
-		text_color = get_theme_color("font_color")
+		if not theme_color_key.is_empty() and ThemeMGR:
+			text_color = ThemeMGR.get_color(theme_color_key, get_theme_color("font_color"))
+		else:
+			text_color = get_theme_color("font_color")
 	add_theme_color_override("font_color", Color(0, 0, 0, 0))
 	end_bulk_theme_override()
 	queue_redraw()

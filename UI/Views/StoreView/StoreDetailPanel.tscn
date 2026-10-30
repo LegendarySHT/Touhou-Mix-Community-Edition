@@ -1,0 +1,518 @@
+[gd_scene format=3 uid="uid://drhaatgwaxfor"]
+
+[ext_resource type="Script" uid="uid://dghy6airawe5y" path="res://UI/Views/StoreView/StoreDetailPanel.gd" id="1_detail"]
+[ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="2_round"]
+[ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="3_set1"]
+[ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="4_set2"]
+[ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="5_set3"]
+[ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="6_scroll"]
+
+[sub_resource type="StyleBoxFlat" id="SB_detail"]
+bg_color = Color(0.086, 0.106, 0.152, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.45, 0.8, 0.5)
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+shadow_color = Color(0, 0, 0, 0.55)
+shadow_size = 28
+
+[sub_resource type="StyleBoxFlat" id="SB_accent"]
+bg_color = Color(0.58, 0.72, 1, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="SB_close_normal"]
+bg_color = Color(0.13, 0.16, 0.22, 0)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.24, 0.32, 0.8)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="StyleBoxFlat" id="SB_close_hover"]
+bg_color = Color(0.133, 0.164, 0.227, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.6, 0.4, 0.45, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+
+[sub_resource type="AtlasTexture" id="Atlas_close"]
+atlas = ExtResource("4_set2")
+region = Rect2(80, 80, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="SB_cover"]
+bg_color = Color(0.062, 0.078, 0.114, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.2, 0.27, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[sub_resource type="AtlasTexture" id="Atlas_song"]
+atlas = ExtResource("5_set3")
+region = Rect2(160, 0, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="SB_rank"]
+bg_color = Color(0.075, 0.094, 0.136, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.2, 0.27, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_flat"]
+bg_color = Color(0, 0, 0, 0)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="SB_flat_pressed"]
+bg_color = Color(0.2, 0.26, 0.36, 0.9)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="SB_flat_hover"]
+bg_color = Color(0.16, 0.2, 0.28, 0.7)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="AtlasTexture" id="Atlas_up"]
+atlas = ExtResource("4_set2")
+region = Rect2(0, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="Atlas_down"]
+atlas = ExtResource("4_set2")
+region = Rect2(80, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="Atlas_downloads"]
+atlas = ExtResource("4_set2")
+region = Rect2(0, 320, 80, 80)
+
+[sub_resource type="AtlasTexture" id="Atlas_plays"]
+atlas = ExtResource("4_set2")
+region = Rect2(80, 320, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_normal"]
+content_margin_left = 20.0
+bg_color = Color(0.2, 0.33, 0.78, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 0.9)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_pressed"]
+content_margin_left = 20.0
+bg_color = Color(0.14, 0.24, 0.6, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_hover"]
+content_margin_left = 20.0
+bg_color = Color(0.28, 0.44, 0.86, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.52, 0.66, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_disabled"]
+content_margin_left = 20.0
+bg_color = Color(0.15, 0.19, 0.26, 0.8)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.22, 0.27, 0.35, 0.8)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_focus"]
+content_margin_left = 20.0
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+
+[sub_resource type="AtlasTexture" id="Atlas_download"]
+atlas = ExtResource("3_set1")
+region = Rect2(240, 320, 80, 80)
+
+[node name="DetailLayer" type="Control" unique_id=1131119634]
+visible = false
+z_index = 20
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_detail")
+
+[node name="Dim" type="ColorRect" parent="." unique_id=1565245405]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0)
+
+[node name="Panel" type="Control" parent="." unique_id=694960571]
+clip_contents = true
+anchors_preset = 0
+offset_right = 1280.0
+offset_bottom = 760.0
+
+[node name="BG" type="Panel" parent="Panel" unique_id=1590967364]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_detail")
+
+[node name="Accent" type="Panel" parent="Panel" unique_id=1688023469]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 30.0
+offset_top = 18.0
+offset_right = -30.0
+offset_bottom = 21.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_accent")
+
+[node name="Margin" type="MarginContainer" parent="Panel" unique_id=295986665]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 32
+theme_override_constants/margin_top = 26
+theme_override_constants/margin_right = 32
+theme_override_constants/margin_bottom = 26
+
+[node name="VBox" type="VBoxContainer" parent="Panel/Margin" unique_id=595159318]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 16
+
+[node name="Header" type="HBoxContainer" parent="Panel/Margin/VBox" unique_id=1218772801]
+custom_minimum_size = Vector2(0, 62)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="Panel/Margin/VBox/Header" unique_id=994730390]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 38
+text = "谱面标题"
+clip_text = true
+script = ExtResource("6_scroll")
+end_padding = 0.0
+
+[node name="Kind" type="Label" parent="Panel/Margin/VBox/Header" unique_id=1208175417]
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "谱面"
+horizontal_alignment = 2
+
+[node name="CloseBtn" type="Button" parent="Panel/Margin/VBox/Header" unique_id=368286247]
+custom_minimum_size = Vector2(58, 58)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 30
+theme_override_styles/normal = SubResource("SB_close_normal")
+theme_override_styles/pressed = SubResource("SB_close_hover")
+theme_override_styles/hover = SubResource("SB_close_hover")
+icon = SubResource("Atlas_close")
+icon_alignment = 1
+expand_icon = true
+
+[node name="Body" type="HBoxContainer" parent="Panel/Margin/VBox" unique_id=731701955]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 26
+
+[node name="LeftCol" type="VBoxContainer" parent="Panel/Margin/VBox/Body" unique_id=78636420]
+custom_minimum_size = Vector2(390, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 14
+
+[node name="CoverWrap" type="Panel" parent="Panel/Margin/VBox/Body/LeftCol" unique_id=313787893]
+custom_minimum_size = Vector2(390, 390)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_cover")
+
+[node name="Cover" type="TextureRect" parent="Panel/Margin/VBox/Body/LeftCol/CoverWrap" unique_id=1490627391]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+script = ExtResource("2_round")
+corner_radius = 18.0
+
+[node name="Placeholder" type="TextureRect" parent="Panel/Margin/VBox/Body/LeftCol/CoverWrap" unique_id=1502065850]
+modulate = Color(1, 1, 1, 0.4)
+custom_minimum_size = Vector2(108, 108)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -54.0
+offset_top = -54.0
+offset_right = 54.0
+offset_bottom = 54.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("Atlas_song")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="RankBox" type="PanelContainer" parent="Panel/Margin/VBox/Body/LeftCol" unique_id=1270843060]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_rank")
+
+[node name="RankMargin" type="MarginContainer" parent="Panel/Margin/VBox/Body/LeftCol/RankBox" unique_id=378554386]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 12
+
+[node name="RankCol" type="VBoxContainer" parent="Panel/Margin/VBox/Body/LeftCol/RankBox/RankMargin" unique_id=1688223513]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="RankTitle" type="Label" parent="Panel/Margin/VBox/Body/LeftCol/RankBox/RankMargin/RankCol" unique_id=313546632]
+layout_mode = 2
+theme_override_font_sizes/font_size = 23
+text = "排行榜"
+
+[node name="RankList" type="VBoxContainer" parent="Panel/Margin/VBox/Body/LeftCol/RankBox/RankMargin/RankCol" unique_id=350727658]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="RightCol" type="VBoxContainer" parent="Panel/Margin/VBox/Body" unique_id=151502558]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Sub" type="Label" parent="Panel/Margin/VBox/Body/RightCol" unique_id=541876194]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
+text = "作者 · 专辑 · 曲名"
+clip_text = true
+script = ExtResource("6_scroll")
+theme_color_key = "text_secondary"
+end_padding = 0.0
+
+[node name="Desc" type="RichTextLabel" parent="Panel/Margin/VBox/Body/RightCol" unique_id=1246707755]
+custom_minimum_size = Vector2(0, 250)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 1
+theme_override_font_sizes/normal_font_size = 22
+bbcode_enabled = true
+text = "简介占位文本"
+
+[node name="Divider" type="ColorRect" parent="Panel/Margin/VBox/Body/RightCol" unique_id=1162896455]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.2, 0.24, 0.32, 0.8)
+
+[node name="Stats" type="HBoxContainer" parent="Panel/Margin/VBox/Body/RightCol" unique_id=1319639590]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 16
+
+[node name="LikeBtn" type="Button" parent="Panel/Margin/VBox/Body/RightCol/Stats" unique_id=795017511]
+layout_mode = 2
+theme_override_constants/icon_max_width = 26
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("SB_flat")
+theme_override_styles/pressed = SubResource("SB_flat_pressed")
+theme_override_styles/hover = SubResource("SB_flat_hover")
+theme_override_styles/focus = SubResource("SB_flat_hover")
+text = "  0"
+icon = SubResource("Atlas_up")
+
+[node name="DislikeBtn" type="Button" parent="Panel/Margin/VBox/Body/RightCol/Stats" unique_id=103213101]
+layout_mode = 2
+theme_override_constants/icon_max_width = 26
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("SB_flat")
+theme_override_styles/pressed = SubResource("SB_flat_pressed")
+theme_override_styles/hover = SubResource("SB_flat_hover")
+theme_override_styles/focus = SubResource("SB_flat_hover")
+text = "  0"
+icon = SubResource("Atlas_down")
+
+[node name="Downloads" type="HBoxContainer" parent="Panel/Margin/VBox/Body/RightCol/Stats" unique_id=148849777]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Icon" type="TextureRect" parent="Panel/Margin/VBox/Body/RightCol/Stats/Downloads" unique_id=1977699793]
+modulate = Color(0.7, 0.76, 0.86, 1)
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = SubResource("Atlas_downloads")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Count" type="Label" parent="Panel/Margin/VBox/Body/RightCol/Stats/Downloads" unique_id=946289561]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "0"
+
+[node name="Plays" type="HBoxContainer" parent="Panel/Margin/VBox/Body/RightCol/Stats" unique_id=1462144508]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Icon" type="TextureRect" parent="Panel/Margin/VBox/Body/RightCol/Stats/Plays" unique_id=1805027525]
+modulate = Color(0.7, 0.76, 0.86, 1)
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = SubResource("Atlas_plays")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Count" type="Label" parent="Panel/Margin/VBox/Body/RightCol/Stats/Plays" unique_id=1898725087]
+layout_mode = 2
+theme_override_font_sizes/font_size = 21
+text = "0"
+
+[node name="Spacer" type="Control" parent="Panel/Margin/VBox/Body/RightCol/Stats" unique_id=1625105974]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="Date" type="Label" parent="Panel/Margin/VBox/Body/RightCol/Stats" unique_id=1188870493]
+layout_mode = 2
+theme_override_font_sizes/font_size = 19
+text = "上传于 2026-10-30"
+vertical_alignment = 1
+
+[node name="Actions" type="HBoxContainer" parent="Panel/Margin/VBox/Body/RightCol" unique_id=171653584]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 16
+
+[node name="SizeLabel" type="Label" parent="Panel/Margin/VBox/Body/RightCol/Actions" unique_id=1699689793]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+text = "文件 6.2 MB · 含人声"
+vertical_alignment = 1
+clip_text = true
+
+[node name="DownloadBtn" type="Button" parent="Panel/Margin/VBox/Body/RightCol/Actions" unique_id=1017878009]
+custom_minimum_size = Vector2(250, 64)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 34
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("SB_dl_normal")
+theme_override_styles/pressed = SubResource("SB_dl_pressed")
+theme_override_styles/hover = SubResource("SB_dl_hover")
+theme_override_styles/disabled = SubResource("SB_dl_disabled")
+theme_override_styles/focus = SubResource("SB_dl_focus")
+text = "下载谱面"
+icon = SubResource("Atlas_download")

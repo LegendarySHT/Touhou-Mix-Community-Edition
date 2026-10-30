@@ -182,16 +182,9 @@ func _redirect_settings_focus() -> void:
 		else:
 			sv.short_cut_btn.grab_focus()
 
-## STORE_VIEW：聚焦商店列表第一项（防御性检查，列表可能已清空）
+## STORE_VIEW：交给商店视图自己决定落点（标签页 / 当前列表第一张可见卡片）。
+## 虚拟化列表的节点会被池回收，不能再按「容器第一项」取节点。
 func _grab_store_first() -> void:
-	var store_list = get_node_or_null(PathRegistry.STORE_MIDI_LIST)
-	if store_list == null or store_list.get_child_count() == 0:
-		return
-	var container_node = store_list.get_child(0)
-	if container_node == null or container_node.get_child_count() == 0:
-		return
-	var first_item = container_node.get_child(0)
-	if first_item and "button" in first_item:
-		var first_btn: Button = first_item.button
-		if is_instance_valid(first_btn):
-			first_btn.grab_focus()
+	var store = get_node_or_null(PathRegistry.STORE_VIEW)
+	if store and store.has_method("focus_first"):
+		store.call("focus_first")

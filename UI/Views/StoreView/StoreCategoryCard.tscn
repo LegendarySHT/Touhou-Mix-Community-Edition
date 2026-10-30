@@ -1,0 +1,297 @@
+[gd_scene format=3 uid="uid://tpj0rigo6312"]
+
+[ext_resource type="Script" uid="uid://c8dts4pdjfcfe" path="res://UI/Views/StoreView/StoreCategoryCard.gd" id="1_card"]
+[ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="3_round"]
+[ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="4_scroll"]
+[ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="5_set2"]
+
+[sub_resource type="StyleBoxFlat" id="SB_normal"]
+bg_color = Color(0.102, 0.1255, 0.1765, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.24, 0.32, 0.85)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0, 0, 0, 0.28)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="SB_pressed"]
+bg_color = Color(0.078, 0.098, 0.14, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.7, 1, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[sub_resource type="StyleBoxFlat" id="SB_hover"]
+bg_color = Color(0.133, 0.164, 0.227, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.36, 0.55, 1, 0.85)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0.16, 0.28, 0.6, 0.35)
+shadow_size = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 0.9)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[sub_resource type="StyleBoxFlat" id="SB_cover"]
+bg_color = Color(0.062, 0.078, 0.114, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.2, 0.27, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="AtlasTexture" id="Atlas_dl"]
+atlas = ExtResource("5_set2")
+region = Rect2(0, 320, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="SB_chip"]
+bg_color = Color(0.16, 0.24, 0.5, 0.85)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_normal"]
+bg_color = Color(0.2, 0.33, 0.78, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 0.9)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_pressed"]
+bg_color = Color(0.14, 0.24, 0.6, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_hover"]
+bg_color = Color(0.28, 0.44, 0.86, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.52, 0.66, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+shadow_color = Color(0.36, 0.55, 1, 0.4)
+shadow_size = 8
+
+[node name="StoreCategoryCard" type="Button" unique_id=1521925188]
+custom_minimum_size = Vector2(600, 250)
+offset_right = 600.0
+offset_bottom = 250.0
+mouse_filter = 1
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("SB_normal")
+theme_override_styles/pressed = SubResource("SB_pressed")
+theme_override_styles/hover = SubResource("SB_hover")
+theme_override_styles/focus = SubResource("SB_focus")
+script = ExtResource("1_card")
+
+[node name="Margin" type="MarginContainer" parent="." unique_id=739713561]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="HBox" type="HBoxContainer" parent="Margin" unique_id=725269291]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="CoverWrap" type="Panel" parent="Margin/HBox" unique_id=1224588562]
+custom_minimum_size = Vector2(196, 196)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_cover")
+
+[node name="Cover" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=479140664]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+script = ExtResource("3_round")
+
+[node name="Placeholder" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=268170219]
+modulate = Color(1, 1, 1, 0.55)
+custom_minimum_size = Vector2(84, 84)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -42.0
+offset_top = -42.0
+offset_right = 42.0
+offset_bottom = 42.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("Atlas_dl")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="KindChip" type="Label" parent="Margin/HBox/CoverWrap" unique_id=652761060]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 104.0
+offset_bottom = 38.0
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("SB_chip")
+text = "皮肤"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Info" type="VBoxContainer" parent="Margin/HBox" unique_id=1350821341]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 5
+
+[node name="Type" type="Label" parent="Margin/HBox/Info" unique_id=977056720]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 19
+text = "音符皮肤"
+
+[node name="Title" type="Label" parent="Margin/HBox/Info" unique_id=628430569]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 29
+text = "资源名称"
+clip_text = true
+script = ExtResource("4_scroll")
+end_padding = 0.0
+
+[node name="Desc" type="Label" parent="Margin/HBox/Info" unique_id=1689798085]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 19
+text = "资源简介占位文本，用于说明这个资源包的内容。"
+autowrap_mode = 3
+clip_text = true
+max_lines_visible = 2
+
+[node name="Spacer" type="Control" parent="Margin/HBox/Info" unique_id=1991955546]
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Meta" type="Label" parent="Margin/HBox/Info" unique_id=1672274624]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 19
+text = "内置资源 · 1.2 MB"
+clip_text = true
+script = ExtResource("4_scroll")
+theme_color_key = "text_secondary"
+end_padding = 0.0
+
+[node name="RightCol" type="VBoxContainer" parent="Margin/HBox" unique_id=1377217748]
+custom_minimum_size = Vector2(92, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="DownloadBtn" type="Button" parent="Margin/HBox/RightCol" unique_id=793160590]
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 44
+theme_override_styles/normal = SubResource("SB_dl_normal")
+theme_override_styles/pressed = SubResource("SB_dl_pressed")
+theme_override_styles/hover = SubResource("SB_dl_hover")
+theme_override_styles/focus = SubResource("SB_dl_focus")
+icon = SubResource("Atlas_dl")
+icon_alignment = 1
+expand_icon = true
+
+[node name="StateLabel" type="Label" parent="Margin/HBox/RightCol" unique_id=1028344926]
+custom_minimum_size = Vector2(92, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 19
+text = "已安装"
+horizontal_alignment = 1
+clip_text = true

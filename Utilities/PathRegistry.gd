@@ -45,7 +45,7 @@ const RANDOM_SELECT_BTN := "/root/Main/skew/C/RandomSelectBtn"
 ## 懒加载视图（实例化后存在，读取前请用 get_node_or_null）
 const STORE_VIEW := "/root/Main/Store"
 const CHARA_VIEW := "/root/Main/CharaView"
-const STORE_MIDI_LIST := "/root/Main/Store/StoreMidiList"
+const STORE_MIDI_LIST := "/root/Main/Store/Pages/SongsPage/List/ListContent"
 const MIDI_VIEW := "/root/Main/skew/C/MidiView"
 const MIDI_LIST := "/root/Main/skew/C/MidiView/LeftArea/InfoWindow/HBoxC/MidiList"
 const MIDI_VIEW_INDICATOR := "/root/Main/skew/C/MidiView/LeftArea/InfoWindow/HBoxC/Right/Center/Indicator"

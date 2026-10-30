@@ -110,6 +110,14 @@ func _handle_back_request() -> void:
 		if play_view:
 			play_view.show_or_hide_menu()
 
+	# 商店页：详情弹窗打开时先关弹窗，不再直接退出商店
+	elif state_manager.current_state == UIStateManager.UIState.STORE_VIEW:
+		var store_view = state_manager.get_loaded_view(UIStateManager.UIState.STORE_VIEW)
+		if store_view and store_view.has_method("handle_back_request"):
+			if store_view.handle_back_request():
+				return
+		state_manager.go_back()
+
 	# 设置页内部子页面（DelView）→ 先切回设置主页，而非直接退出设置
 	elif state_manager.current_state == UIStateManager.UIState.SETTINGS_VIEW:
 		var setting_view = state_manager.get_loaded_view(UIStateManager.UIState.SETTINGS_VIEW)

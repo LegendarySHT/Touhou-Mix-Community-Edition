@@ -1,0 +1,368 @@
+[gd_scene format=3 uid="uid://dsf7ypupnvv34"]
+
+[ext_resource type="Script" uid="uid://o50tntbc8kjf" path="res://UI/Views/StoreView/StoreSongCard.gd" id="1_card"]
+[ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="2_scroll"]
+[ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="3_round"]
+[ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="4_set3"]
+[ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="5_set2"]
+
+[sub_resource type="StyleBoxFlat" id="SB_normal"]
+bg_color = Color(0.102, 0.1255, 0.1765, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.2, 0.24, 0.32, 0.85)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0, 0, 0, 0.28)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="SB_pressed"]
+bg_color = Color(0.078, 0.098, 0.14, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.7, 1, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[sub_resource type="StyleBoxFlat" id="SB_hover"]
+bg_color = Color(0.133, 0.164, 0.227, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.36, 0.55, 1, 0.85)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0.16, 0.28, 0.6, 0.35)
+shadow_size = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 0.9)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[sub_resource type="StyleBoxFlat" id="SB_cover"]
+bg_color = Color(0.062, 0.078, 0.114, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.2, 0.27, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="AtlasTexture" id="Atlas_note"]
+atlas = ExtResource("4_set3")
+region = Rect2(160, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="Atlas_downloads"]
+atlas = ExtResource("5_set2")
+region = Rect2(0, 320, 80, 80)
+
+[sub_resource type="AtlasTexture" id="Atlas_plays"]
+atlas = ExtResource("5_set2")
+region = Rect2(80, 320, 80, 80)
+
+[sub_resource type="AtlasTexture" id="Atlas_likes"]
+atlas = ExtResource("5_set2")
+region = Rect2(160, 320, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_normal"]
+bg_color = Color(0.2, 0.33, 0.78, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 0.9)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_pressed"]
+bg_color = Color(0.14, 0.24, 0.6, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.4, 0.58, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_hover"]
+bg_color = Color(0.28, 0.44, 0.86, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.52, 0.66, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="SB_dl_focus"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.58, 0.72, 1, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+shadow_color = Color(0.36, 0.55, 1, 0.4)
+shadow_size = 8
+
+[node name="StoreSongCard" type="Button" unique_id=2140883703]
+custom_minimum_size = Vector2(600, 250)
+offset_right = 600.0
+offset_bottom = 250.0
+mouse_filter = 1
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("SB_normal")
+theme_override_styles/pressed = SubResource("SB_pressed")
+theme_override_styles/hover = SubResource("SB_hover")
+theme_override_styles/focus = SubResource("SB_focus")
+script = ExtResource("1_card")
+
+[node name="Margin" type="MarginContainer" parent="." unique_id=1404842908]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="HBox" type="HBoxContainer" parent="Margin" unique_id=2027326736]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="CoverWrap" type="Panel" parent="Margin/HBox" unique_id=952050055]
+custom_minimum_size = Vector2(218, 218)
+layout_mode = 2
+size_flags_horizontal = 0
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("SB_cover")
+
+[node name="Cover" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=1045383062]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+script = ExtResource("3_round")
+corner_radius = 14.0
+
+[node name="Placeholder" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=381031407]
+modulate = Color(1, 1, 1, 0.4)
+custom_minimum_size = Vector2(86, 86)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -43.0
+offset_top = -43.0
+offset_right = 43.0
+offset_bottom = 43.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("Atlas_note")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Duration" type="Label" parent="Margin/HBox/CoverWrap" unique_id=246903659]
+visible = false
+layout_mode = 0
+offset_left = 12.0
+offset_top = 186.0
+offset_right = 206.0
+offset_bottom = 212.0
+theme_override_colors/font_color = Color(1, 1, 1, 0.92)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.75)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 20
+text = "有人声 3:05"
+horizontal_alignment = 2
+
+[node name="Info" type="VBoxContainer" parent="Margin/HBox" unique_id=1237516854]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 3
+
+[node name="Title" type="Label" parent="Margin/HBox/Info" unique_id=710123146]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 34
+text = "Midi Name"
+clip_text = true
+script = ExtResource("2_scroll")
+end_padding = 0.0
+
+[node name="Author" type="Label" parent="Margin/HBox/Info" unique_id=1593620122]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 23
+text = "Midi Author"
+clip_text = true
+script = ExtResource("2_scroll")
+theme_color_key = "text_secondary"
+end_padding = 0.0
+
+[node name="SongLine" type="Label" parent="Margin/HBox/Info" unique_id=1966012806]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 21
+text = "曲名 · 专辑"
+clip_text = true
+script = ExtResource("2_scroll")
+theme_color_key = "text_secondary"
+end_padding = 0.0
+
+[node name="Spacer" type="Control" parent="Margin/HBox/Info" unique_id=603282438]
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Stats" type="HBoxContainer" parent="Margin/HBox/Info" unique_id=1303345984]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 16
+
+[node name="Downloads" type="HBoxContainer" parent="Margin/HBox/Info/Stats" unique_id=1253298490]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Icon" type="TextureRect" parent="Margin/HBox/Info/Stats/Downloads" unique_id=731037946]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = SubResource("Atlas_downloads")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Count" type="Label" parent="Margin/HBox/Info/Stats/Downloads" unique_id=570498012]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "0"
+
+[node name="Plays" type="HBoxContainer" parent="Margin/HBox/Info/Stats" unique_id=909176750]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Icon" type="TextureRect" parent="Margin/HBox/Info/Stats/Plays" unique_id=1190285574]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = SubResource("Atlas_plays")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Count" type="Label" parent="Margin/HBox/Info/Stats/Plays" unique_id=1273419331]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "0"
+
+[node name="Likes" type="HBoxContainer" parent="Margin/HBox/Info/Stats" unique_id=41642359]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 4
+
+[node name="Icon" type="TextureRect" parent="Margin/HBox/Info/Stats/Likes" unique_id=268074058]
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = SubResource("Atlas_likes")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Count" type="Label" parent="Margin/HBox/Info/Stats/Likes" unique_id=1032969063]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "0"
+
+[node name="Uploader" type="Label" parent="Margin/HBox/Info" unique_id=157239218]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 20
+text = "由 xxxx 上传"
+clip_text = true
+script = ExtResource("2_scroll")
+theme_color_key = "text_secondary"
+end_padding = 0.0
+
+[node name="RightCol" type="VBoxContainer" parent="Margin/HBox" unique_id=113777054]
+custom_minimum_size = Vector2(106, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="DownloadBtn" type="Button" parent="Margin/HBox/RightCol" unique_id=176756795]
+custom_minimum_size = Vector2(94, 94)
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_default_cursor_shape = 2
+theme_override_constants/icon_max_width = 52
+theme_override_styles/normal = SubResource("SB_dl_normal")
+theme_override_styles/pressed = SubResource("SB_dl_pressed")
+theme_override_styles/hover = SubResource("SB_dl_hover")
+theme_override_styles/focus = SubResource("SB_dl_focus")
+icon = SubResource("Atlas_downloads")
+icon_alignment = 1
+expand_icon = true
+
+[node name="StateLabel" type="Label" parent="Margin/HBox/RightCol" unique_id=2108821367]
+custom_minimum_size = Vector2(106, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+text = "下载"
+horizontal_alignment = 1
+clip_text = true
