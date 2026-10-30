@@ -19,7 +19,7 @@ config/version="1.0.0.645"
 run/main_scene="uid://jvmwtrulpf5g"
 config/quit_on_go_back=false
 config/features=PackedStringArray("4.7", "C#", "Mobile")
-boot_splash/bg_color=Color(0.14117648, 0.14117648, 0.14117648, 0)
+boot_splash/bg_color=Color(0.0627451, 0.08627451, 0.15294118, 1)
 boot_splash/show_image=false
 config/icon="uid://von2js75nk2a"
 

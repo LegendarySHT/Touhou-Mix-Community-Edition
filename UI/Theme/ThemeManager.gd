@@ -15,13 +15,8 @@ extends Node
 
 func _ready() -> void:
 	add_to_group("singletons")
-	# 【为什么这里能安全读取】USER_THEME_PATH 依赖 PathHelper.get_files_dir()，而存储根在
-	# Main._ready 步骤 1.5 才由 StorageManager 注入 —— autoload 的 _ready 早于它。
-	# 为此 PathHelper.get_storage_root() 会**惰性**从引导指针（storage_pointer.ini）
-	# 解析一次 override，故此处已能拿到真实存储根（Android 自定义存储位置亦然）。
-	# 否则读到的是默认引导目录下的另一个 theme.ini：用户切浅色写进自定义根、
-	# 启动却读那份旧文件 → 外观模式永远回默认深色（桌面端两路径相同，只在 Android 复现）。
 	load_theme()
+	_apply_boot_background_color()
 	_save_timer = Timer.new()
 	_save_timer.one_shot = true
 	_save_timer.wait_time = SAVE_DEBOUNCE_SECONDS
@@ -266,6 +261,35 @@ func load_theme(file_path: String = "") -> bool:
 	if EvtBus:
 		EvtBus.theme_changed.emit(_theme_name)
 	return true
+
+## 把启动图（boot image）底色刷成主界面背景色。
+## 引擎在 autoload 实例化之前就画好了默认启动图（灰色），而启动图会在主场景首帧渲染后才淡出，
+## 所以 autoload 阶段仍可重设它——但必须在首帧之前调用才有意义（主场景 _ready 跑完即出首帧）。
+func _apply_boot_background_color() -> void:
+	if OS.has_feature("editor"):
+		return  # 编辑器内无启动图，跳过
+
+	# 取主界面背景的代表色：main 背景默认是 gradient（theme.ini: bg_main_type），
+	# 所以必须处理渐变分支——之前只认 solid 导致永远走写死的深蓝兜底。
+	var bg := get_view_background("main")
+	var base := Color("#0A0D15")
+	var bg_type: String = bg.get("type", "gradient")
+	if bg_type == "solid":
+		var c: String = bg.get("solid_color", "#0A0D14")
+		if c.is_valid_html_color():
+			base = Color(c)
+	else:
+		var top: String = bg.get("gradient_top", "#0B0F1C")
+		var bottom: String = bg.get("gradient_bottom", "#161E33")
+		if top.is_valid_html_color() and bottom.is_valid_html_color():
+			base = (Color(top) + Color(bottom)) * 0.5
+
+	# 走与主界面背景同一套浅染逻辑（_lightify_bg），保证深浅色模式下启动窗都跟主界面一致
+	var boot_color := _lightify_bg(base)
+
+	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	img.set_pixel(0, 0, Color(0, 0, 0, 0))  # 透明：只保留底色，不画 logo
+	RenderingServer.set_boot_image_with_stretch(img, boot_color, RenderingServer.SPLASH_STRETCH_MODE_DISABLED, true)
 
 func save_theme(file_path: String = "") -> bool:
 	var user_path := file_path if not file_path.is_empty() else USER_THEME_PATH

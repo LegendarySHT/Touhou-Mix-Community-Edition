@@ -249,6 +249,10 @@ func _initialize_core_systems() -> void:
 	# 让引擎先渲染一帧再继续 UI 初始化，避免单帧卡顿
 	await get_tree().process_frame
 
+	# 主界面首帧已渲染：触发左上/右下导航按钮的入场滑入，衔接启动画面
+	# （出场离屏位置在 Main.tscn 中由 offset_transform_position 预设）
+	_play_corner_buttons_entrance()
+
 	# 12. 初始化键序列管理器
 	key_sequence_manager = KeySequenceManager.new()
 	key_sequence_manager.name = "KeySequenceManager"
@@ -355,6 +359,19 @@ func apply_theme() -> void:
 			if sb is StyleBoxFlat:
 				sb.bg_color = surface
 				sb.border_color = Color(primary.r, primary.g, primary.b, 0.7)
+
+## 左上(LT_Btn)/右下(RB_Btn)导航按钮入场动画
+func _play_corner_buttons_entrance() -> void:
+	var lt := get_node_or_null("LT_Btn") as Control
+	var rb := get_node_or_null("RB_Btn") as Control
+	if lt == null or rb == null:
+		return
+	# 离屏起点需与 Main.tscn 中设置的 offset_transform_position 保持一致
+	var lt_from := Vector2(-600, -1600)
+	var rb_from := Vector2(800, 2000)
+	if animation_manager != null:
+		animation_manager.animate_fade_slide_in(lt, lt_from, AnimationManager.DURATION_SLOW)
+		animation_manager.animate_fade_slide_in(rb, rb_from, AnimationManager.DURATION_SLOW)
 
 ## 连接核心系统信号
 func _connect_signals() -> void:
