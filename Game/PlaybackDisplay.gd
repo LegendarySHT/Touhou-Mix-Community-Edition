@@ -569,6 +569,10 @@ func clear_manual_control_notes() -> void:
 var audio_delay_ms: float = 0.0
 var _bt_state_initialized: bool = false
 var _delay_using_bt: bool = false
+## 切换提示冷却（毫秒）：设备过渡期（A2DP 建链、SCO 切换、端点重连）检测结果会反复横跳，
+## 不加冷却会连弹数条互相矛盾的提示
+const SWITCH_NOTIFY_COOLDOWN_MS := 2000.0
+var _last_switch_notify_ms: float = -1000000.0
 
 ## 刷新输出类型与对应延迟预设。触发：启动、焦点回归、校准窗、播放中兜底轮询。
 ## 结果下发 C#（MeltySynth.get_visual_position_ms() 用它扣减）。
@@ -588,6 +592,9 @@ func refresh_audio_delay() -> void:
 		#（旧写法先 recreate 再 play_transport，位置会丢 —— 这是"换输出后从头播"的来源）。
 		MeltySynth.evaluate_audio_device_health("endpoint_change", false, true)
 	_apply_delay_preset()
+	# 首次检测只是"启动时就确定了终态"，不是切换，不提示
+	if output_changed and not first_check:
+		_notify_output_switched(is_bt)
 
 ## 延迟预设被改动时调用（设置页保存 audio_playback_delay[_bt] 之后）。
 ## 与 refresh_audio_delay 的区别：不做蓝牙重新检测、不重建音频桥，只把"当前激活预设"的
@@ -610,6 +617,20 @@ func _apply_delay_preset() -> void:
 		_last_delay_log_key = key
 		_last_delay_log_ms = audio_delay_ms
 		GLogger.info("Audio delay preset [%s] = %.0f ms" % [key, audio_delay_ms], "PlaybackDisplay")
+
+## 输出设备切换提示：顶部横幅，5 秒自动收起，不需要点击动作
+func _notify_output_switched(is_bt: bool) -> void:
+	var now := float(Time.get_ticks_msec())
+	if now - _last_switch_notify_ms < SWITCH_NOTIFY_COOLDOWN_MS:
+		return
+	_last_switch_notify_ms = now
+	var dev := AudioBtDetector.get_output_name().strip_edges()
+	if dev.is_empty():
+		# Android 未取端点名，按输出类型给个通称
+		dev = "蓝牙设备" if is_bt else "有线/扬声器"
+	var text := "已切换到 %s，音频延迟切换为 %dms" % [dev, int(round(audio_delay_ms))]
+	GLogger.info(text, "PlaybackDisplay")
+	EvtBus.notify(text)
 
 # ===================== 传输门面（转发 C# MeltySynth，保持旧调用点） =====================
 

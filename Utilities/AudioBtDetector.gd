@@ -7,6 +7,7 @@
 ##   AudioBtDetector.is_bluetooth_output()          # 当前输出是否蓝牙（缓存 5s）
 ##   AudioBtDetector.is_bluetooth_output(true)      # 强制重新检测
 ##   AudioBtDetector.get_active_delay_key()          # 当前应使用的延迟预设配置 key
+##   AudioBtDetector.get_output_name()               # 当前输出端点名称（Android 未取，返回空串）
 ##   AudioBtDetector.get_status_text()               # UI 状态文案（延迟校准窗口顶部）
 extends Node
 
@@ -33,6 +34,11 @@ func is_bluetooth_output(force_refresh: bool = false) -> bool:
 ## 当前应使用的延迟预设配置 key（[Gameplay] 段）
 func get_active_delay_key() -> String:
 	return "audio_playback_delay_bt" if is_bluetooth_output() else "audio_playback_delay"
+
+## 当前输出端点名称（Windows 为 COM 读到的端点友好名；Android 未取，返回空串）
+func get_output_name(force_refresh: bool = false) -> String:
+	_ensure_detection(force_refresh)
+	return _cached_name
 
 ## 状态文案（用于延迟校准窗口顶部的检测提示，调用方自行加前缀）
 func get_status_text() -> String:

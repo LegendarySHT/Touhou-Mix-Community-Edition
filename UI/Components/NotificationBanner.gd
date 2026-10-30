@@ -38,6 +38,8 @@ var _queue: Array[Dictionary] = []
 ## 入场 → 停留 → 出场整条补间（悬停暂停用）
 var _tween: Tween = null
 var _playing := false
+## 当前这条是否带点击回调：不带则不给手型光标与 hover 高亮，避免暗示可点
+var _clickable := false
 
 func _ready() -> void:
 	_default_icon = btn.icon
@@ -100,6 +102,10 @@ func _play_item(item: Dictionary) -> void:
 	btn.text = str(item["text"])
 	var icon: Texture2D = item["icon"]
 	btn.icon = icon if icon != null else _default_icon
+	var cb: Variant = item["on_click"]
+	_clickable = cb is Callable and cb.is_valid()
+	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if _clickable else Control.CURSOR_ARROW
+	_apply_btn_states()
 	visible = true
 	_apply_text_layout(str(item["text"]))
 
@@ -167,11 +173,12 @@ func _apply_text_layout(text: String) -> void:
 		btn.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
 		reset_size()
 
-## flat 按钮在 hover/pressed 仍会画主题方角样式，统一换成贴合胶囊的圆角高亮
+## flat 按钮在 hover/pressed 仍会画主题方角样式，统一换成贴合胶囊的圆角高亮。
+## 无回调的通知不给高亮：整条只是展示，点它也只是提前收起
 func _apply_btn_states() -> void:
 	var tint := ThemeMGR.get_color("text_primary")
 	for state in ["normal", "pressed", "hover", "hover_pressed", "disabled", "focus"]:
-		if BTN_STATE_ALPHA.has(state):
+		if _clickable and BTN_STATE_ALPHA.has(state):
 			var flat := StyleBoxFlat.new()
 			flat.set_corner_radius_all(BTN_CORNER_RADIUS)
 			flat.bg_color = Color(tint.r, tint.g, tint.b, BTN_STATE_ALPHA[state])
