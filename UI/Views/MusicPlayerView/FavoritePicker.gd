@@ -31,6 +31,7 @@ func _ready() -> void:
 	EvtBus.favorites_updated.connect(_rebuild)
 	EvtBus.favorite_list_created.connect(_rebuild)
 	EvtBus.favorite_list_deleted.connect(_rebuild)
+	EvtBus.favorite_list_renamed.connect(_rebuild)
 	visible = false
 	TextScrollMGR.suspend_page(self)
 

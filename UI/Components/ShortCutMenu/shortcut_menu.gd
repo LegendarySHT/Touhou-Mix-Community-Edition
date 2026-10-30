@@ -232,8 +232,6 @@ func _refresh_favor_list(_arg1 = null, _arg2 = null, _arg3 = null) -> void:
 		favor_list_container.add_child(item)
 		item.setup(fav, FavorListItem.Mode.BROWSE)
 		item.favor_item_clicked.connect(_on_favor_item_clicked)
-		item.favor_item_renamed.connect(_on_favor_item_renamed)
-		item.favor_item_deleted.connect(_on_favor_item_deleted)
 		if fav.id == focused_id:
 			target_item = item
 	# 重建后恢复焦点到原项
@@ -293,15 +291,4 @@ func _on_favor_item_clicked(fav_id: String) -> void:
 		ui.change_state(ui.UIState.SORTED_VIEW)
 	favor_list_button.button_pressed = false
 
-## 重命名收藏夹
-func _on_favor_item_renamed(fav_id: String, new_name: String) -> void:
-	FavoriteManager.instance.rename_favorite(fav_id, new_name)
-
-
-## 删除收藏夹（带确认弹窗）
-func _on_favor_item_deleted(fav_id: String) -> void:
-	var fav := FavoriteManager.instance.get_favorite(fav_id)
-	var fav_name := fav.name if fav else ""
-	var popup := PopupWindow.instance
-	if await popup.show_message("确定要删除收藏夹 \"%s\" 吗？" % fav_name, true):
-		FavoriteManager.instance.delete_favorite(fav_id)
+## 重命名/删除由 FavorListItem 组件自行落盘，宿主不再转发（三个复用点抄同一段就会漏）

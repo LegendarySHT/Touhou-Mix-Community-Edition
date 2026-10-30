@@ -95,6 +95,11 @@ func _ready() -> void:
 	# 而列表内容仍是那个歌单的 —— 看起来就是"默认显示了别的歌单"。故跟着一起重建
 	EvtBus.favorites_loaded.connect(_rebuild_fav_select)
 	EvtBus.favorites_updated.connect(_rebuild_fav_select)
+	# 增删改只发各自的 *_created/_deleted/_renamed（不发 favorites_updated），
+	# 不连的话下拉里会一直挂着旧名/已删除的歌单
+	EvtBus.favorite_list_created.connect(_rebuild_fav_select)
+	EvtBus.favorite_list_deleted.connect(_rebuild_fav_select)
+	EvtBus.favorite_list_renamed.connect(_rebuild_fav_select)
 	if not visible:
 		TextScrollMGR.suspend_page(self)
 
@@ -381,13 +386,17 @@ func _rebuild_fav_select() -> void:
 			_fav_select_btn.add_item(f.name)
 			_fav_select_btn.set_item_metadata(_fav_select_btn.item_count - 1, f.id)
 	# 恢复当前选择
-	if MidiCore.GetSourceFavId().is_empty():
+	var src := String(MidiCore.GetSourceFavId())
+	if src.is_empty():
 		_fav_select_btn.select(0)
-	else:
-		for i in _fav_select_btn.item_count:
-			if str(_fav_select_btn.get_item_metadata(i)) == MidiCore.GetSourceFavId():
-				_fav_select_btn.select(i)
-				break
+		return
+	for i in _fav_select_btn.item_count:
+		if str(_fav_select_btn.get_item_metadata(i)) == src:
+			_fav_select_btn.select(i)
+			return
+	# 源歌单已被删除：下拉会停在「未选择歌单」，同步解除关联，避免显示与状态不一致
+	MidiCore.SetSourceFavId("")
+	_fav_select_btn.select(0)
 
 ## 收藏夹 → 规范键数组（收藏夹按 chart_id/chart_key 存储，与列表 key 同源）
 func _keys_of_favorite(fav_id: String) -> Array:

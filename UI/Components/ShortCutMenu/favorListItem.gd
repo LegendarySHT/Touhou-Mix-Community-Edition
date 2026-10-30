@@ -13,9 +13,9 @@ enum Mode { BROWSE, MANAGE }
 signal favor_item_clicked(fav_id: String)
 ## 当前 MIDI 收藏状态切换（MANAGE 模式）
 signal favor_midi_toggled(fav_id: String)
-## 请求重命名收藏夹
+## 收藏夹已重命名（组件已自行落盘，此信号仅作通知）
 signal favor_item_renamed(fav_id: String, new_name: String)
-## 请求删除收藏夹
+## 收藏夹已删除（组件已自行落盘，此信号仅作通知）
 signal favor_item_deleted(fav_id: String)
 
 var mode: Mode = Mode.BROWSE
@@ -193,6 +193,12 @@ func _confirm_rename() -> void:
 	name_edit.visible = false
 	name_label.visible = true
 	if not new_name.is_empty() and new_name != _name_full_text:
+		# 组件自行落盘：改名在每一个复用点的行为都一致，交给宿主转发就会漏连
+		# （FavoritePicker 漏过一次，表现为「能进编辑框但改不动」）
+		_name_full_text = new_name
+		name_label.set_scroll_text(new_name)
+		if FavoriteManager.instance != null:
+			FavoriteManager.instance.rename_favorite(favorite_id, new_name)
 		favor_item_renamed.emit(favorite_id, new_name)
 	else:
 		# 恢复显示并重启滚动（标签实际文本存于 TextScrollHelper，引擎 text 恒为空，取绑定时的值）
@@ -202,7 +208,20 @@ func _confirm_rename() -> void:
 
 # ========== 删除交互 ==========
 
+## 删除是破坏性操作，走确认弹窗；确认与落盘同样由组件负责，理由同 _confirm_rename
 func _on_delete_pressed() -> void:
+	var mgr := FavoriteManager.instance
+	var popup := PopupWindow.instance
+	if popup != null:
+		var fav := mgr.get_favorite(favorite_id) if mgr != null else null
+		var fav_name := fav.name if fav else ""
+		if not await popup.show_message("确定要删除收藏夹 \"%s\" 吗？" % fav_name, true):
+			return
+		# 确认期间列表可能已被重建（收藏夹变化会触发宿主刷新），自身已出树就别再删
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+	if mgr != null:
+		mgr.delete_favorite(favorite_id)
 	favor_item_deleted.emit(favorite_id)
 
 
