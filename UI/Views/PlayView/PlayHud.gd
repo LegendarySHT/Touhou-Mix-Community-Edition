@@ -38,8 +38,14 @@ const color_map = {
 	"Miss": Color("#DC3450")
 }
 
-## 分数增量消化（_process 逐帧取 sqrt 收敛到 0）
-var score_wait_to_add: int = 0
+## 分数显示目标（ScoreCalculator 真源，逐判定实时更新）
+var _score_target: int = 0
+## 分数显示起点（每次刷新目标时记录，用于 1s 缓动）
+var _score_start: int = 0
+## 缓动计时（秒），到达 SCORE_DRAIN_SEC 即贴合真分
+var _score_anim_t: float = 0.0
+## 分数缓动窗口：停止新增后约 1s 内加完，动画持续 ~1s
+const SCORE_DRAIN_SEC := 1.0
 ## 分数显示 int 累加（避免每帧 parse Label 文本）
 var _score_display: int = 0
 
@@ -51,7 +57,8 @@ var debug_info_elapsed: float = 0.0
 # ---- 帧内判定 UI 合并刷新 ----
 # 三押/多指同帧多次判定时，Label.set_text / add_theme_color_override / tween 创建 / 全屏闪光
 # 都是引擎 C++ 原生开销（GDScript profiler 不统计），同帧 ×N 会叠加成帧时间尖峰。
-# 策略：计分数据（record_judgment / score_wait_to_add）逐判定实时累加，展示部分攒到帧末
+# 策略：计分真源（ScoreCalculator.record_judgment）逐判定实时累加 total_score，
+# 展示层每次判定把显示目标钉到真分并以 1s 窗口缓动贴合（见 _score_set_target / _process）
 # call_deferred 合并刷一次 —— 同帧 3 次判定只更新 1 次 UI。
 var _judge_ui_dirty: bool = false
 var _judge_ui_result: String = ""
@@ -77,12 +84,18 @@ func _process(delta: float) -> void:
 	if not visible:
 		return
 
-	# 分数增量逐帧消化
-	if score_wait_to_add > 0:
-		var amount = int(sqrt(score_wait_to_add))
-		_score_display += amount
+	# 分数缓动：以 1s 窗口缓动到真分（ScoreCalculator.total_score）
+	# 每次判定刷新目标并重置窗口；停止新增后约 1s 内贴合，动画持续 ~1s
+	if _score_display != _score_target:
+		_score_anim_t = min(_score_anim_t + delta, SCORE_DRAIN_SEC)
+		var p = _score_anim_t / SCORE_DRAIN_SEC
+		var e = 1.0 - pow(1.0 - p, 3.0)  # ease-out cubic
+		var v = int(round(lerp(float(_score_start), float(_score_target), e)))
+		if p >= 1.0 or v >= _score_target:
+			_score_display = _score_target
+		else:
+			_score_display = v
 		score.text = str(_score_display)
-		score_wait_to_add -= amount
 
 	# 调试悬浮刷新
 	if show_debug_info and debug_info_label and debug_info_label.visible:
@@ -99,7 +112,9 @@ func init_display() -> void:
 	_score_display = 0
 	score.text = "0"
 	combo.text = "0"
-	score_wait_to_add = 0
+	_score_target = 0
+	_score_start = 0
+	_score_anim_t = 0.0
 	score_add.text = "+0"
 
 	pp_text.text = "0.00pp"
@@ -117,7 +132,7 @@ func init_display() -> void:
 
 ## 判定回调（PlayView 算好 snap 后传入；含 LONG hold tick 轻量路径）
 func on_note_judged(result: String, offset: String, snap: Dictionary, is_hold_tick: bool = false) -> void:
-	_score_add_accumulate(int(snap["last_score_add"]))
+	_score_set_target(int(snap["total_score"]))
 	_queue_judge_ui(result, offset, color_map.get(result, Color.WHITE), snap, is_hold_tick)
 
 
@@ -150,10 +165,15 @@ func set_debug_enabled(debug_visible: bool) -> void:
 
 # ========== 判定 UI 合并刷新 ==========
 
-func _score_add_accumulate(amount: int) -> void:
-	if amount == 0:
+## 刷新分数显示目标为真分（ScoreCalculator 已逐判定实时累加 total_score）
+## 重置 1s 缓动窗口：每次判定都从当前显示值重新缓动到新目标，
+## 连续判定时显示紧跟真分（约 0.3s 滞后），停止新增后约 1s 贴合。
+func _score_set_target(target: int) -> void:
+	if target == _score_target:
 		return
-	score_wait_to_add += amount
+	_score_start = _score_display
+	_score_target = target
+	_score_anim_t = 0.0
 
 ## 存展示快照并排定帧末刷新；同帧后续判定只覆盖快照，不重复排队。
 ## 用 call_deferred 而非 _process 做帧末 flush：PlayView._process 先于子节点 FlowArea._process
@@ -186,7 +206,7 @@ func _apply_judge_ui() -> void:
 	# combo显示
 	combo.text = str(snap["combo"])
 
-	# 增加分数（增量已逐判定累加到 score_wait_to_add，这里只刷展示）
+	# 分数总量已由 _score_set_target 缓动贴合真分；此处只刷 "+N" 增量提示
 	var score_add_amount := int(snap["last_score_add"])
 	if score_add_amount != 0:
 		score_add.text = "+%d" % score_add_amount
