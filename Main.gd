@@ -9,18 +9,35 @@ var event_bus: EventBus
 var state_manager: UIStateManager
 var animation_manager: AnimationManager
 var sorting_engine: SortingEngine
-var score_calculator: ScoreCalculator
-var key_sequence_manager: KeySequenceManager
 var config_loader: ConfigManager
 var logger: GameLogger
 var filesystem_manager: FileSystemManager
 var storage_manager: StorageManager
 var net_manager: NetManager
-var auth_manager: AuthManager
-var score_manager: ScoreManager
-var community_manager: CommunityManager
 var memory_gc: MemoryGC
 var _is_reloading_settings: bool = false
+
+# --- 管理器引导（依赖顺序敏感，不要随意调换）---
+# 入场前：轻量、无相互依赖（FavoriteManager 仅需 DataMGR 已就绪）
+func _bootstrap_pre_managers() -> void:
+	var specs := [
+		[FavoriteManager, "FavoriteManager"],
+		[ScoreCalculator, "ScoreCalculator"],
+	]
+	_bootstrap_managers(specs)
+
+# 入场后：NetManager 必须先于 AuthManager / CommunityManager；
+# CommunityManager 需 Net/Auth/Score + 已打开的 ChartDB；MemoryGC 依赖最广，置于末位
+func _bootstrap_post_managers() -> void:
+	var specs := [
+		[KeySequenceManager, "KeySequenceManager"],
+		[NetManager, "NetManager"],
+		[AuthManager, "AuthManager"],
+		[ScoreManager, "ScoreManager"],
+		[CommunityManager, "CommunityManager"],
+		[MemoryGC, "MemoryGC"],
+	]
+	_bootstrap_managers(specs)
 
 # UI组件路径
 @export var midi_view_path: String
@@ -222,19 +239,8 @@ func _initialize_core_systems() -> void:
 	if data_manager and logger:
 		logger.info("DataManager initialized", "Main")
 
-	# 8.5 初始化收藏夹管理器（需在 DataManager 之后，因为它依赖 data_loaded_complete 验证 midi 引用）
-	var favorite_manager := FavoriteManager.new()
-	favorite_manager.name = "FavoriteManager"
-	add_child(favorite_manager)
-	if logger:
-		logger.info("FavoriteManager initialized", "Main")
-
-	# 9.5 初始化分数计算器
-	score_calculator = ScoreCalculator.new()
-	score_calculator.name = "ScoreCalculator"
-	add_child(score_calculator)
-	if logger:
-		logger.info("ScoreCalculator initialized", "Main")
+	# 8.5 / 9.5 收藏夹 & 分数计算器（入场前，轻量；顺序见 _bootstrap_pre_managers）
+	_bootstrap_pre_managers()
 
 	# 让出帧：MeltySynth 后端初始化（场景加载 + C# _Ready）较重，
 	# 让引擎先渲染一帧再继续 UI 初始化，避免单帧卡顿
@@ -256,51 +262,9 @@ func _initialize_core_systems() -> void:
 	# 用定时 await 而非 tween.finished：即使动画被外部 kill，协程也不会永久挂起。
 	await get_tree().create_timer(AnimationManager.DURATION_SLOW).timeout
 
-	# 10. 初始化键序列管理器
-	key_sequence_manager = KeySequenceManager.new()
-	key_sequence_manager.name = "KeySequenceManager"
-	add_child(key_sequence_manager)
-	if logger:
-		logger.info("KeySequenceManager initialized", "Main")
-
-	# 10.5. 初始化网络与认证管理器（必须在 ConfigManager 之后，UI 之前）
-	net_manager = NetManager.new()
-	net_manager.name = "NetManager"
-	add_child(net_manager)
-	# 读取 online_mode 配置并启动连接
-	var online_mode := ConfigManager.instance.get_int("online_mode", 0)
-	net_manager.set_online_mode(online_mode == 1)
-	if logger:
-		logger.info("NetManager initialized (online_mode=%d)" % online_mode, "Main")
-
-	auth_manager = AuthManager.new()
-	auth_manager.name = "AuthManager"
-	add_child(auth_manager)
-	if logger:
-		logger.info("AuthManager initialized", "Main")
-
-	# 10.6. 初始化成绩管理器（必须在 NetManager 和 AuthManager 之后）
-	score_manager = ScoreManager.new()
-	score_manager.name = "ScoreManager"
-	add_child(score_manager)
-	if logger:
-		logger.info("ScoreManager initialized", "Main")
-
-	# 10.7. 初始化社区管理器（依赖网络、认证、成绩管理器与已打开的 ChartDB）
-	community_manager = CommunityManager.new()
-	community_manager.name = "CommunityManager"
-	add_child(community_manager)
-	if logger:
-		logger.info("CommunityManager initialized", "Main")
-
-	# 12.8. 后台内存回收管理器（Android 专用）：接收 AndroidBridge 的 trim_memory，
-	# 在后台主动释放纹理/缓存/非当前页内容。依赖 FileSystemManager/SkinMGR/ParticleMGR/
-	# CharaMGR/DataMGR/UiStatMGR，故放在这些之后创建（非 autoload，避免初始化顺序不确定）。
-	memory_gc = MemoryGC.new()
-	memory_gc.name = "MemoryGC"
-	add_child(memory_gc)
-	if logger:
-		logger.info("MemoryGC initialized", "Main")
+	# 10 / 10.5 / 10.6 / 10.7 / 12.8 各管理器（依赖顺序见 _bootstrap_post_managers：
+	# NetManager 必须先于 AuthManager / CommunityManager，MemoryGC 依赖最广置于末位）
+	_bootstrap_post_managers()
 
 	# 13. 初始化并加载UI（确保各管理器已就绪）
 	_init_ui()
@@ -324,6 +288,27 @@ func _initialize_core_systems() -> void:
 	_load_midi_data()
 	
 	GLogger.info("Core Systems Initialized", "Main")
+
+# 按清单实例化并把管理器挂入场景树（add_child 触发 _ready，使其 static instance 就绪）。
+# 仅保留 Main 内部仍直接引用的句柄（net_manager / memory_gc）；其余模块一律走各自 .instance。
+func _bootstrap_managers(specs: Array) -> void:
+	for spec in specs:
+		var mgr_type = spec[0]
+		var mgr_name: String = spec[1]
+		var mgr = mgr_type.new()
+		mgr.name = mgr_name
+		add_child(mgr)
+		if logger:
+			logger.info("%s initialized" % mgr_name, "Main")
+		# NetManager 创建后立即按配置启动连接（必须早于 Auth/Community 的 _ready 访问）
+		if mgr is NetManager:
+			net_manager = mgr
+			var online_mode := ConfigManager.instance.get_int("online_mode", 0)
+			net_manager.set_online_mode(online_mode == 1)
+			if logger:
+				logger.info("NetManager online_mode=%d" % online_mode, "Main")
+		elif mgr is MemoryGC:
+			memory_gc = mgr
 
 func _init_ui() -> void:
 	# 6 个视图（MidiView/StoreView/TrackView/SettingView/ScoreView/PlayView）改为懒加载，
