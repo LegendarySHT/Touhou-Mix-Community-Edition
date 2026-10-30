@@ -226,17 +226,37 @@ func build_seq_data() -> void:
 	_rt_claimed.resize(cnt)
 	_rt_held_by.resize(cnt)
 	var lc = parent_node.get_lane_count()
-	for i in cnt:
-		var lane: int = ksm.seq_lane(i)
-		if lane < 0:
-			lane = ksm.seq_pitch(i) % lc
-		_st_lane[i] = lane
-		_st_start[i] = ksm.seq_start_ms(i)
-		_st_dur[i] = ksm.seq_dur_ms(i)
-		_st_type[i] = _seq_type_to_int(ksm.seq_type(i))
-		_rt_claimed[i] = -1
-		_rt_held_by[i] = -1
-		_rt_long_id[i] = -1
+
+	var snap: Dictionary = ksm.seq_snapshot()
+	if snap.is_empty():
+		for i in cnt:
+			var lane: int = ksm.seq_lane(i)
+			if lane < 0:
+				lane = ksm.seq_pitch(i) % lc
+			_st_lane[i] = lane
+			_st_start[i] = ksm.seq_start_ms(i)
+			_st_dur[i] = ksm.seq_dur_ms(i)
+			_st_type[i] = _seq_type_to_int(ksm.seq_type(i))
+			_rt_claimed[i] = -1
+			_rt_held_by[i] = -1
+			_rt_long_id[i] = -1
+	else:
+		var starts: PackedFloat32Array = snap["start"]
+		var durs: PackedFloat32Array = snap["dur"]
+		var lanes: PackedInt32Array = snap["lane"]
+		var pitches: PackedInt32Array = snap["pitch"]
+		var types: PackedInt32Array = snap["type"]
+		for i in cnt:
+			var lane: int = lanes[i]
+			if lane < 0:
+				lane = pitches[i] % lc
+			_st_lane[i] = lane
+			_st_start[i] = starts[i]
+			_st_dur[i] = durs[i]
+			_st_type[i] = _seq_type_to_int(types[i])
+			_rt_claimed[i] = -1
+			_rt_held_by[i] = -1
+			_rt_long_id[i] = -1
 	note_idx = 0
 
 ## C# BlockType → FlowNote.NoteType（三种枚举已统一同名同值，仅做防御性映射）
@@ -932,17 +952,24 @@ func _add_to_draw_order(note_index: int) -> void:
 		pos -= 1
 	order.insert(pos, note_index)
 
-## 全量预热：把本局判定特效引用的粒子包精灵图在开局前加载（ParticleMGR 模板/纹理缓存），
-## 首次判定 spawn 粒子时的同步 load() + GPU 上传前移到面板遮罩期。
-## spark_presets/spark_emitters 已由 init_flow_area → _reload_spark_config 解析，本方法直接取用。
-func prewarm_spark_packs() -> void:
+## 开局前预热本局判定特效引用的粒子包（填 ParticleMGR 的模板/纹理缓存），
+## 避免首次判定 spawn 粒子时同步读盘解码。spark_presets/spark_emitters 已由
+## init_flow_area → _reload_spark_config 解析，这里直接取用。
+func prewarm_spark_packs_async() -> void:
+	var packs: Array = []
 	for judge in _JUDGE_TYPES:
 		var preset: String = spark_presets.get(judge, "")
 		var emitter: String = spark_emitters.get(judge, "")
 		if not preset.is_empty():
-			ParticleMGR.get_layer_template(preset, ParticleMGR.ROLE_BASE)
+			packs.append([preset, ParticleMGR.ROLE_BASE])
 		if not emitter.is_empty():
-			ParticleMGR.get_layer_template(emitter, ParticleMGR.ROLE_EMITTER)
+			packs.append([emitter, ParticleMGR.ROLE_EMITTER])
+	for i in packs.size():
+		if not is_inside_tree():
+			return
+		ParticleMGR.get_layer_template(packs[i][0], packs[i][1])
+		if i < packs.size() - 1:
+			await get_tree().process_frame
 
 ## 换色：从旧颜色桶移除并加入新颜色桶（refresh_note_colors 用）
 func _move_note_to_bucket(note_index: int, new_color: Color) -> void:
@@ -1005,6 +1032,16 @@ func _sweep_removed_from_buckets() -> void:
 				if _rt_flags[idx] & F_REMOVED == 0:
 					alive_order.append(idx)
 			_draw_order[type_key] = alive_order
+	# 轨道索引同步剔除：此前只有 spawn 时加入、从不移除，已判/漏掉的音符永久留在索引里，
+	for lane in _notes_by_lane.keys():
+		var lane_notes: Array = _notes_by_lane[lane]
+		if lane_notes.is_empty():
+			continue
+		var lane_alive: Array = []
+		for idx in lane_notes:
+			if _rt_flags[idx] & F_REMOVED == 0:
+				lane_alive.append(idx)
+		_notes_by_lane[lane] = lane_alive
 	_needs_bucket_sweep = false
 
 # ========== 轨道索引维护（用于加速音符判定） ==========
@@ -1014,22 +1051,11 @@ func _add_note_to_lane_index(note_index: int) -> void:
 		_notes_by_lane[lane] = []
 	_notes_by_lane[lane].append(note_index)
 
-func _remove_note_from_lane_index(note_index: int) -> void:
-	var lane: int = _st_lane[note_index]
-	if _notes_by_lane.has(lane):
-		_notes_by_lane[lane].erase(note_index)
+# 移除统一走 _sweep_removed_from_buckets（帧末按 F_REMOVED 重建），
+# 不在判定热路径里 erase：那会在遍历 _notes_by_lane 的过程中改数组。
 
 func _clear_lane_index() -> void:
 	_notes_by_lane.clear()
-
-## 获取触摸位置附近的轨道音符索引列表（当前轨道 ± 相邻轨道）
-func _get_notes_near_lane(lane: int) -> Array:
-	var result: Array = []
-	for offset in [-1, 0, 1]:
-		var check_lane = lane + offset
-		if _notes_by_lane.has(check_lane):
-			result.append_array(_notes_by_lane[check_lane])
-	return result
 
 ## 根据触摸X坐标估算轨道索引
 func _estimate_lane_from_x(x: float) -> int:
@@ -1136,11 +1162,15 @@ func _handle_press(touch_id: int, pos: Vector2, input_time_ms: float = -1.0) -> 
 	_gestures[touch_id] = g
 
 	var estimated_lane := _estimate_lane_from_x(pos.x)
-	var candidate_notes: Array = _get_notes_near_lane(estimated_lane)
-	candidate_notes = candidate_notes.filter(func(i):
-		return not (_rt_flags[i] & F_JUDGED) and not (_rt_flags[i] & F_REMOVED) \
-			and not (_rt_flags[i] & F_HELD) and _rt_claimed[i] < 0
-	)
+	# 单趟收集：不用 filter(闭包)，闭包调用在 GDScript 里是逐元素函数调用，成本远高于内联判断
+	var candidate_notes: Array = []
+	for offset in [-1, 0, 1]:
+		var check_lane: int = estimated_lane + offset
+		var lane_notes: Array = _notes_by_lane.get(check_lane, [])
+		for i in lane_notes:
+			var f: int = _rt_flags[i]
+			if (f & (F_JUDGED | F_REMOVED | F_HELD)) == 0 and _rt_claimed[i] < 0:
+				candidate_notes.append(i)
 	if candidate_notes.is_empty():
 		return
 
@@ -1411,15 +1441,99 @@ func judge_note_at_lane(lane_l: int, lane_r: int, input_time_ms: float = -1.0) -
 			_judge_note(best_note, true, input_time_ms)
 	return best_note
 
+# 判定震动：Android 的 vibrator.vibrate 是同步 binder 调用（本机实测 ~5ms/次），
+# 一波和弦按下 3~4 根手指就在同一帧叠出十几毫秒，顶爆一帧。
+# 两条对策：
+#   ① 投递全部交给工作线程（见 _vib_worker）—— 渲染线程只付 mutex+semaphore；
+#   ② 插件优先（Java 侧 runOnUiThread），插件缺失时兜底 Input.vibrate_handheld。
+# 合并窗口只用于"同一帧多指只震一次"（两帧 = 30ms），不做手感层面的话题。
+const _VIBRATE_COALESCE_MS := 30
+var _android_bridge: Object = null
+var _android_bridge_resolved := false
+var _last_vibrate_ms: int = -1000000
+## 震动投递线程：渲染线程只入队，Java 插件调用与兜底 vibrate_handheld 都在这里跑
+var _vib_thread: Thread = null
+var _vib_sem := Semaphore.new()
+var _vib_mutex := Mutex.new()
+var _vib_pending: Array[int] = []
+var _vib_stop := false
+## 队列上限：工作线程追不上时宁可丢一次震动，也不要堆积延迟反馈
+const _VIB_QUEUE_MAX := 2
+
 func _trigger_touch_vibration() -> void:
-	if not Input.has_method("vibrate_handheld"):
-		return
-	if not (OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")):
-		return
 	if ConfigManager.instance.get_int("vibrate_on_touch") != 1:
 		return
-	var duration_ms = max(1.0, ConfigManager.instance.get_int("vibration_duration"))
-	Input.vibrate_handheld(duration_ms, 0.5)
+	var now := Time.get_ticks_msec()
+	if now - _last_vibrate_ms < _VIBRATE_COALESCE_MS:
+		return
+	_last_vibrate_ms = now
+	var duration_ms: int = max(1, ConfigManager.instance.get_int("vibration_duration"))
+
+	_get_android_bridge()
+	if _android_bridge == null:
+		if not (OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")):
+			return
+		if not Input.has_method("vibrate_handheld"):
+			return
+	_ensure_vib_thread()
+	_vib_mutex.lock()
+	if _vib_pending.size() < _VIB_QUEUE_MAX:
+		_vib_pending.append(duration_ms)
+	_vib_mutex.unlock()
+	_vib_sem.post()
+
+## 插件由引擎在启动早期注册：拿到之前每次重试，拿到之后缓存
+func _get_android_bridge() -> Object:
+	if _android_bridge_resolved:
+		return _android_bridge
+	if not Engine.has_singleton("AndroidBridge"):
+		return null
+	_android_bridge = Engine.get_singleton("AndroidBridge")
+	_android_bridge_resolved = true
+	return _android_bridge
+
+func _ensure_vib_thread() -> void:
+	if _vib_thread != null:
+		return
+	_vib_stop = false
+	_vib_thread = Thread.new()
+	if _vib_thread.start(_vib_worker) != OK:
+		push_error("[FlowArea] vibration worker thread failed to start; falling back to sync vibrate")
+		_vib_thread = null
+
+## 工作线程：只做震动投递，不碰任何 SceneTree 状态。
+## 【为什么插件调用也搬到这里】Java 插件对象的方法调用走 JNI 反射分发，实测单次 1~2ms
+## （对象本身的 has_method 更是 2~4ms）。判定帧里付这 1~2ms 不值得，
+## 这里让渲染线程只付"mutex + semaphore"（微秒级）。Godot 的 Java 封装层在非主线程调用时
+## 会自动 AttachCurrentThread，方法内部又只是 runOnUiThread 投递，跨线程安全。
+func _vib_worker() -> void:
+	while true:
+		_vib_sem.wait()
+		_vib_mutex.lock()
+		if _vib_stop:
+			_vib_mutex.unlock()
+			return
+		var duration_ms := 0
+		if not _vib_pending.is_empty():
+			duration_ms = _vib_pending.pop_front()
+		_vib_mutex.unlock()
+		if duration_ms <= 0:
+			continue
+		if _android_bridge != null:
+			_android_bridge.vibrate_async(duration_ms, 0.5)
+		else:
+			Input.vibrate_handheld(duration_ms, 0.5)
+
+func _stop_vib_thread() -> void:
+	if _vib_thread == null:
+		return
+	_vib_mutex.lock()
+	_vib_stop = true
+	_vib_pending.clear()
+	_vib_mutex.unlock()
+	_vib_sem.post()
+	_vib_thread.wait_to_finish()
+	_vib_thread = null
 
 func _generate_particle(type: String, pos: Vector2) -> void:
 	# 取基础/散射粒子包键（_reload_spark_config 已按名字解析好，空=该层关闭，此处防御性校验）
@@ -1523,6 +1637,9 @@ func _notification(what: int) -> void:
 		_cached_viewport_height = size.y
 		if _note_drawer:
 			_note_drawer.set_viewport_height(_cached_viewport_height)
+
+func _exit_tree() -> void:
+	_stop_vib_thread()
 
 ## 【方案C】同步当前播放时间（毫秒）
 ## 由 PlayView._process() 每帧调用。time_ms = 音频钟（判定用）；render_time_ms = 渲染钟（平滑视觉，可选）

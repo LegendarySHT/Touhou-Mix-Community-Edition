@@ -203,11 +203,11 @@ const _VISUAL_ANCHOR_RATE := 0.02
 const _VISUAL_ANCHOR_MAX_MS := 0.5
 # 需要硬锚定（开始播放/暂停恢复时对齐音频钟，避免大跳）
 var _visual_time_needs_anchor: bool = true
-# 起播对齐保持（毫秒，>0 生效）：起播后音频钟会被钉在 0（设备启动 + 设备/环形缓冲延迟补偿
-# + 视觉校准延迟），这段时间内音频位置根本不推进。若让视觉钟按墙钟自由推进，渲染钟就会领先
-# 音频钟一个"设备启动延迟"，音符生成点偏低（出现在屏幕中间）并被软锚缓慢拉回。
-# 故在音频钟真正开始推进前持续硬锚，最长保持 _VISUAL_STARTUP_HOLD_MS 后交回软锚。
-const _VISUAL_STARTUP_HOLD_MS := 800.0
+# 起播对齐保持（毫秒，>0 生效）：音频钟被钉在 0（设备延迟补偿）期间让视觉钟跟着停，
+# 避免渲染钟抢跑到音频前面（表现为音符生成点偏低、到线了却没声音）。
+# 提前起播把这段推迟到预卷剩余段里消化掉，正常路径交接时音频钟已经 ≈0，一帧内即解除；
+# 这里的剩余额度只是"延迟估小"时的兜底。
+const _HANDOFF_HOLD_MS := 100.0
 var _visual_startup_hold_ms: float = 0.0
 # 方向 3（输入及时性）：演奏视图内关闭 Input 事件累积，触摸事件立即派发，
 # 可减少 Godot 输入按帧合并带来的 0~16.7ms 延迟；退出播放视图时恢复原值。
@@ -229,9 +229,11 @@ func _process(delta: float) -> void:
 			if _pre_roll_remaining_ms > 0.0:
 				_pre_roll_remaining_ms -= delta * 1000.0
 				if _pre_roll_remaining_ms <= 0.0:
-					_begin_actual_playback()
+					_handoff_to_audio_clock()
 					current_time = playback_mgr.get_position_ms()
 				else:
+					# 起播时机由播放器判定（提前量 = 输出延迟 + 视觉校准延迟），见 begin_preroll
+					playback_mgr.tick_preroll(_pre_roll_remaining_ms)
 					current_time = -_pre_roll_remaining_ms
 			else:
 				# 如果正在播放MIDI，使用MIDI播放管理器的时间（判定时钟）
@@ -384,20 +386,13 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 	# 离开播放视图时统一清理所有资源（无论从哪条路径退出都走这里）
 	if _oldState == UIStateManager.UIState.PLAY_VIEW and state != UIStateManager.UIState.PLAY_VIEW:
 		if playback_mgr:
+			# 预卷中途退出（还没归零）：把播放器里的起播调度一起作废，
+			# 否则下次进入别的视图时播放器仍持有上一次的预卷状态
+			playback_mgr.cancel_preroll()
 			playback_mgr.stop()
 			playback_mgr.clear_manual_control_notes()
 		flow_area.clear_flow_area()
-		# 释放本局判定特效的粒子精灵图缓存。
-		#
-		# 为什么必须在这里放：prewarm_spark_packs() 会在开局前把本局用到的粒子包整张精灵表
-		# load() 进 ParticleManager 的纹理缓存，而资源监视器实测三张 2048×2560/2048×2048 的
-		# 帧序列表合计约 56 MiB（Diamond-Rainbow 20 + Diamond-Orange 20 + BoxBurst 16）。
-		# 这些是 VRAM 压缩后的解码占用，格式上已无优化空间，唯一能省的就是"不再用时放掉"。
-		# 此前只有 MemoryGC 在后台上限时才清 —— 打完一局回到菜单，那 56 MiB 会一直挂着。
-		#
-		# 去 SCORE_VIEW 也放：重试时预卷前的准备动画期（最长 3s）会重新预热，
-		# 不影响对局；而结算页停留时间往往比这长得多。代价是重试多约 0.2s 的加载，
-		# 收益是结算页省下 56 MiB。
+		# 释放本局判定特效的粒子精灵图缓存
 		if ParticleMGR != null:
 			ParticleMGR.clear_texture_cache()
 		# 游戏序列数据由 C# KeySequenceCore 持有（跨视图复用），离开时本地无需持有引用
@@ -565,10 +560,10 @@ var is_pause: bool = false:
 			if is_pause:
 				playback_mgr.pause()
 			elif _pre_roll_remaining_ms > 0.0:
-				# 预卷倒计时中：设备与 sequencer 刻意停着，起播由 _begin_actual_playback
-				# 在倒计时到期时显式负责。此时调 C# resume() 会把 sequencer 拉起来从 0
-				# 起播，预卷作废 —— 旧机制靠 C# resume() 的负 offset 守卫防这个，预卷归
-				# UI 侧倒计时后，门控随之移到本处（C# 已无负时间轴可作判据）。
+				# 预卷倒计时中：起播由播放器的 begin/tick/end_preroll 三件套负责。
+				# 此时调 C# resume() 会把 sequencer 拉起来从 0 起播，预卷作废 ——
+				# 旧机制靠 C# resume() 的负 offset 守卫防这个，预卷归 UI 侧倒计时后，
+				# 门控随之移到本处（C# 已无负时间轴可作判据）。
 				pass
 			else:
 				playback_mgr.resume()
@@ -774,10 +769,16 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	# resume() 触发 start_vocal_playback 的同步加载/解码卡顿
 	# 同时预热演奏模式手动音符触发路径（首次点击的一次性 JIT/通道分配成本移到开局前）
 	playback_mgr.warmup_manual_path()
-	# 【预热】粒子精灵图：首次判定 spawn 粒子时的同步 load() + GPU 上传前移到面板遮罩期
-	var _prewarm_t0 := Time.get_ticks_usec()
-	flow_area.prewarm_spark_packs()
-	GLogger.info("Prewarm done: sparks in %.2fms" % [(Time.get_ticks_usec() - _prewarm_t0) / 1000.0], "PlayView")
+	# 输出设备开流是 ~30ms 的阻塞 native 调用。
+	playback_mgr.prewarm_audio_device()
+	await get_tree().process_frame
+	if not _is_current_game_gen(my_gen, "audio prewarm"):
+		return
+	# 判定粒子精灵图：首次 spawn 时的同步读盘解码（实测整批 108.92ms）前移到预卷之前。
+	# 分包跨帧做，单帧成本降到 ~13ms。此处主线程可阻塞（面板遮罩期）。
+	await flow_area.prewarm_spark_packs_async()
+	if not _is_current_game_gen(my_gen, "spark prewarm"):
+		return
 	playback_mgr.prepare_vocal_playback()
 
 	if play_ready_animation:
@@ -821,8 +822,8 @@ func _load_and_convert_midi_notes(midi_data: MidiData) -> void:
 		return
 
 	# 打歌一局换曲：统一入口一步完成"载入 + 应用谱面配置 + 装配单曲槽会话（不循环）"。
-	# PERFORMANCE 模式只装配不起播（DeferToCaller）：起播时机由预卷倒计时决定
-	# （到期 _begin_actual_playback 显式调 play()），不由本入口决定。
+	# PERFORMANCE 模式只装配不起播（DeferToCaller）：起播时机由预卷决定
+	# （PlaybackDisplay.begin_preroll / tick_preroll），不由本入口决定。
 	# TrackView 中保存的运行时配置（音量/静音/独奏/启用通道门控/人声偏移）由入口内部
 	# C# apply_chart_audio_config 统一应用（含启用通道门控，与熄屏后台换曲同一份），
 	# 此处不再重复下发。
@@ -935,23 +936,23 @@ func _begin_pre_roll(stage: String) -> void:
 	# 视觉钟硬锚定：预卷从负时间起，起播时对齐音频钟
 	_visual_time_needs_anchor = true
 	_visual_startup_hold_ms = 0.0
+	# 起播时机与提前量都交给播放器（begin_preroll / tick_preroll / end_preroll）：
+	# 它知道自己的输出延迟和视觉校准延迟，上层不需要也不该自己算。
+	playback_mgr.begin_preroll(_pre_roll_remaining_ms)
+	# 预卷被配置扣成 0（准备动画关闭 + 下落时间为 0）时立刻交接：
+	# 否则 _process 永远走不到起播那一步，声音根本不会开始。
+	if _pre_roll_remaining_ms <= 0.0:
+		_handoff_to_audio_clock()
+		return
 	GLogger.info("Pre-roll countdown started: %.0fms (%s)" % [_pre_roll_remaining_ms, stage], "PlayView")
 
-## 预卷倒计时到期：显式起播（sequencer 从 0 开始 + 拉设备）。
-## 设备起播有启动延迟，起播后第一次读位置前必须硬锚定视觉钟，否则 current_time
-## 从预卷末值跳到真实位置的差值会直接暴露给判定/渲染。
-func _begin_actual_playback() -> void:
+## 预卷归零：把时钟所有权交给音频钟。
+## 正常情况下播放器已提前起播，"听到的位置"此刻正好到 0；它的返回值告诉我们
+## 位置是否真的越过了 0 —— 没越过说明提前量估小，留一小段兜底硬锚避免渲染钟抢跑。
+func _handoff_to_audio_clock() -> void:
 	_pre_roll_remaining_ms = 0.0
 	_visual_time_needs_anchor = true
-	# 起播对齐：设备启动 + 延迟补偿期间音频钟停在 0，这段时间让视觉钟跟着停，
-	# 等音频钟越过 0 再交给软锚（见 _process 中的 _visual_startup_hold_ms）。
-	_visual_startup_hold_ms = _VISUAL_STARTUP_HOLD_MS
-	# 预卷期间（设备停着）native producer 已把 vocal ring 填满：起播首帧偏移门控
-	# 一放行，人声就从 ring 头部满音量瞬入 —— 人声文件开头非静音的曲目，
-	# 听感就是起播时"呲的一声"（播放器页同位置起播没这现象：那条路径 ring
-	# 未预填，人声随解码平滑进入）。起播前清掉预填，让两条路径同一起点。
-	playback_mgr.reset_vocal_prefill()
-	playback_mgr.play()
+	_visual_startup_hold_ms = 0.0 if playback_mgr.end_preroll() else _HANDOFF_HOLD_MS
 	GLogger.info("Pre-roll finished, playback started", "PlayView")
 
 ## 全量生成完成后的收尾（应用手动分类 + 结算总音符数），仅在 _prepare_game 内调用一次

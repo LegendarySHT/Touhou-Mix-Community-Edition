@@ -930,6 +930,17 @@ public partial class KeySequenceCore : RefCounted
     public float SeqDurMs(int i) => _seqDur[i];
     public int SeqType(int i) => _seqType[i];
     public int SeqLane(int i) => _seqLane[i];
+
+    /// <summary>
+    /// 批量快照（SOA 整条数组）
+    /// 返回顺序与 seq 索引严格一致，调用方按同一 index 对齐。
+    /// </summary>
+    public float[] SnapshotStartMs() => _seqStart.ToArray();
+    public float[] SnapshotDurMs() => _seqDur.ToArray();
+    public int[] SnapshotLane() => _seqLane.ToArray();
+    public int[] SnapshotPitch() => _seqPitch.ToArray();
+    public int[] SnapshotType() => _seqType.ToArray();
+
     public int BgNoteCount => _bgNoteIdx.Count;
     public int BgNoteAt(int j) => _bgNoteIdx[j];
     public int ManualCount => _manualIdx.Count;

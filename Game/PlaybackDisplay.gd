@@ -1113,6 +1113,35 @@ func prepare_vocal_playback() -> void:
 func reset_vocal_prefill() -> void:
 	if MeltySynth != null: MeltySynth.reset_vocal_prefill()
 
+## 预启输出设备：把开流的 ~30ms 阻塞 native 调用挪到音符下落期间，起播那一帧就只剩置位标志。
+## 幂等。见 C# prewarm_audio_device 注释。
+func prewarm_audio_device() -> void:
+	if MeltySynth != null and MeltySynth.has_method("prewarm_audio_device"):
+		MeltySynth.prewarm_audio_device()
+
+# ========== 开局预卷：时钟接力 ==========
+## 任何"先倒计时、再进正片"的模式都走这三件套，别自己算起播时刻
+## 详见 C# MeltySynthPlayer.Preroll.cs。
+func begin_preroll(remaining_ms: float) -> float:
+	if MeltySynth != null:
+		return float(MeltySynth.begin_preroll(remaining_ms))
+	return 0.0
+
+func tick_preroll(remaining_ms: float) -> void:
+	if MeltySynth != null:
+		MeltySynth.tick_preroll(remaining_ms)
+
+## 倒计时归零：返回 true = 位置已越过 0，视觉钟可直接交回软锚；
+## false = 仍被钳在 0，上层需保留一小段硬锚（提前量估小）。
+func end_preroll() -> bool:
+	if MeltySynth != null:
+		return bool(MeltySynth.end_preroll())
+	return true
+
+func cancel_preroll() -> void:
+	if MeltySynth != null:
+		MeltySynth.cancel_preroll()
+
 # ---- 页面生命周期（旧 SystemMediaSession 语义：注册=通知可见，注销=退出播放并撤下通知）----
 ## 注册播放页面：立刻推一次媒体状态，让通知/锁屏卡片马上出现
 ## （否则要等 TickTransport 的下一个 0.5s 节拍）

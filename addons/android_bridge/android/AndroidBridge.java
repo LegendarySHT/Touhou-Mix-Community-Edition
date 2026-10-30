@@ -15,6 +15,9 @@ import android.media.session.PlaybackState;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -41,6 +44,8 @@ import java.util.Set;
  *      并接收系统媒体键；配套 MediaSessionService 前台服务保后台播放。
  *   2) 音频输出设备变化监听：蓝牙/有线插拔时发出 audio_output_changed，
  *      上层据此立刻重算音频延迟预设（息屏时没有焦点事件，事件驱动才不会漏）。
+ *   3) 判定反馈震动：把 vibrator.vibrate 投递到 UI 线程，替代 Input.vibrate_handheld
+ *      在渲染线程上的同步 binder 调用（见 vibrate_async 注释）。
  *
  * 契约（消费方为 C# 播放器 CSharp/MeltySynthPlayer.Transport.cs，它已接管全部播放真值；
  * GDScript 侧 Game/PlaybackDisplay.gd 只转发信号）：
@@ -237,6 +242,73 @@ public class AndroidBridge extends GodotPlugin {
 		} catch (Exception e) {
 			Log.w(TAG, "registerAudioDeviceCallback failed: " + e.getMessage());
 		}
+	}
+
+	// ===== 判定反馈震动（异步）=====
+	@Nullable
+	private Vibrator vibrator = null;
+	private boolean vibratorResolved = false;
+	private boolean vibratorUsable = false;
+	private boolean vibratorAmplitudeControl = false;
+
+	private void ensureVibrator() {
+		if (vibratorResolved) {
+			return;
+		}
+		vibratorResolved = true;
+		Context context = getContext();
+		if (context == null) {
+			return;
+		}
+		try {
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+				VibratorManager manager =
+						(VibratorManager) context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+				if (manager != null) {
+					vibrator = manager.getDefaultVibrator();
+				}
+			} else {
+				vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+			}
+			vibratorUsable = vibrator != null && vibrator.hasVibrator();
+			vibratorAmplitudeControl = vibratorUsable && vibrator.hasAmplitudeControl();
+			Log.i(TAG, "vibrator resolved: usable=" + vibratorUsable
+					+ " amplitudeControl=" + vibratorAmplitudeControl);
+		} catch (Exception e) {
+			vibratorUsable = false;
+			Log.w(TAG, "vibrator resolve failed: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * 非阻塞震动：立刻返回，实际调用在 UI 线程执行。
+	 *
+	 * @param durationMs 时长（毫秒），小于 1 按 1 处理
+	 * @param amplitude  振幅 0.0~1.0（设备无振幅控制时忽略）
+	 */
+	@UsedByGodot
+	public void vibrate_async(int durationMs, float amplitude) {
+		final int ms = Math.max(1, durationMs);
+		final float amp = Math.max(0.0f, Math.min(1.0f, amplitude));
+		runOnUiThread(() -> {
+			ensureVibrator();
+			if (!vibratorUsable) {
+				return;
+			}
+			try {
+				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+					int level = vibratorAmplitudeControl
+							? Math.max(1, Math.round(amp * 255.0f))
+							: VibrationEffect.DEFAULT_AMPLITUDE;
+					vibrator.vibrate(VibrationEffect.createOneShot(ms, level));
+				} else {
+					vibrator.vibrate(ms);
+				}
+			} catch (Exception e) {
+				// 振动器被系统禁用/占用时不应打断判定流程
+				Log.w(TAG, "vibrate failed: " + e.getMessage());
+			}
+		});
 	}
 
 	// ===== 音频焦点（Audio Focus）=====

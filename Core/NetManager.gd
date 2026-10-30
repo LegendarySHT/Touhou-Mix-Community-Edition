@@ -55,6 +55,11 @@ var _periodic_retry_timer: Timer = null
 var _latency_timer: Timer = null
 # 标记是否正在执行连接尝试，防止重入
 var _connecting: bool = false
+## 挂起来源集合：非空即挂起。仅停定时探测（健康检查/延迟测量），不拦截 _request，
+## 成绩上传等业务请求仍需照常发出。
+var _suspend_reasons: Dictionary = {}
+## 上次广播的在线布尔值（online_status_changed 只在此值翻转时发射）
+var _last_emitted_online: bool = false
 
 func _ready() -> void:
 	if instance == null:
@@ -139,8 +144,44 @@ func set_online_mode(enabled: bool) -> void:
 		_latency_ms = -1
 		_set_connect_state(ConnectState.OFFLINE_MODE)
 
+## 挂起/恢复定时网络探测（可嵌套：各调用方登记自己的 reason，全部撤销才真正恢复）
+## 用于打歌、播放器等对帧预算敏感的界面：健康检查成功会广播 online_status_changed，
+## 触发资料/头像重新拉取并在主线程解码图片，造成掉帧。
+## 注意：只停定时器，不拦截 _request —— 成绩上传等业务请求照常发出。
+func set_activity_suspended(suspended: bool, reason: String = "default") -> void:
+	if suspended:
+		if _suspend_reasons.has(reason):
+			return
+		_suspend_reasons[reason] = true
+		if _suspend_reasons.size() == 1:
+			_stop_all_timers()
+			GLogger.info("Network probing suspended (%s)" % reason, "NetMGR")
+	else:
+		if not _suspend_reasons.has(reason):
+			return
+		_suspend_reasons.erase(reason)
+		if _suspend_reasons.is_empty():
+			GLogger.info("Network probing resumed (%s)" % reason, "NetMGR")
+			_resume_activity()
+
+## 是否处于挂起状态
+func is_activity_suspended() -> bool:
+	return not _suspend_reasons.is_empty()
+
+## 恢复时按当前状态重启对应定时器：已在线只需继续测延迟，未在线重新走快速尝试。
+## 挂起期间 is_online / connect_state 保持不变，UI 不会闪烁。
+func _resume_activity() -> void:
+	if not _online_mode_enabled:
+		return
+	if is_online:
+		_start_latency_timer()
+	else:
+		_start_quick_retry()
+
 ## 启动快速重试：启动时连续尝试 3 次（每次间隔 1 秒）
 func _start_quick_retry() -> void:
+	if is_activity_suspended():
+		return
 	_stop_all_timers()
 	_quick_retry_count = 0
 	_set_connect_state(ConnectState.CONNECTING)
@@ -151,11 +192,11 @@ func _start_quick_retry() -> void:
 
 
 func _on_quick_retry_timeout() -> void:
-	if _connecting:
+	if _connecting or is_activity_suspended():
 		return
 	_quick_retry_count += 1
 	var ok := await _do_connect_attempt()
-	if not _online_mode_enabled:
+	if not _online_mode_enabled or is_activity_suspended():
 		return
 	if ok:
 		_stop_all_timers()
@@ -177,6 +218,8 @@ func _on_quick_retry_timeout() -> void:
 
 ## 启动定期重试：每隔 30 秒重试一次
 func _start_periodic_retry() -> void:
+	if is_activity_suspended():
+		return
 	if _periodic_retry_timer:
 		return
 	_periodic_retry_timer = _create_timer(PERIODIC_RETRY_INTERVAL, false)
@@ -185,11 +228,11 @@ func _start_periodic_retry() -> void:
 
 
 func _on_periodic_retry_timeout() -> void:
-	if _connecting:
+	if _connecting or is_activity_suspended():
 		return
 	_set_connect_state(ConnectState.CONNECTING)
 	var ok := await _do_connect_attempt()
-	if not _online_mode_enabled:
+	if not _online_mode_enabled or is_activity_suspended():
 		return
 	if ok:
 		# 连接成功，停止定期重试，启动延迟测量
@@ -205,6 +248,8 @@ func _on_periodic_retry_timeout() -> void:
 
 ## 启动延迟测量定时器：在线时每 10 秒测量一次延迟
 func _start_latency_timer() -> void:
+	if is_activity_suspended():
+		return
 	if _latency_timer:
 		return
 	_latency_timer = _create_timer(LATENCY_UPDATE_INTERVAL, false)
@@ -213,10 +258,10 @@ func _start_latency_timer() -> void:
 
 
 func _on_latency_timer_timeout() -> void:
-	if _connecting:
+	if _connecting or is_activity_suspended():
 		return
 	var ok := await _do_connect_attempt()
-	if not _online_mode_enabled:
+	if not _online_mode_enabled or is_activity_suspended():
 		return
 	if ok:
 		# 仅更新延迟数值，状态保持 ONLINE
@@ -233,6 +278,8 @@ func _on_latency_timer_timeout() -> void:
 ## 执行一次连接尝试并测量延迟（私有）
 ## 返回 true 表示连接成功
 func _do_connect_attempt() -> bool:
+	if is_activity_suspended():
+		return is_online
 	_connecting = true
 	var start := Time.get_ticks_msec()
 	var result = await check_health()
@@ -251,10 +298,18 @@ func _do_connect_attempt() -> bool:
 ## 统一设置连接状态并发射信号
 func _set_connect_state(state: ConnectState) -> void:
 	connect_state = state
-	# online_status_changed: 简单在线状态信号
-	EvtBus.online_status_changed.emit(is_online, "")
+	_emit_online_status()
 	# online_state_changed: 含连接状态枚举和延迟，供 LeftTopBtn 使用
 	EvtBus.online_state_changed.emit(connect_state, _latency_ms)
+
+## 广播在线状态，仅在布尔值真正翻转时发射。
+## 原来每次 CONNECTING→ONLINE 都发一次，订阅方（PlayerInfoContent）会重新拉资料并重下、
+## 重解码头像；服务器不稳定时每 10~30 秒来一轮，正好砸在打歌帧上。
+func _emit_online_status() -> void:
+	if is_online == _last_emitted_online:
+		return
+	_last_emitted_online = is_online
+	EvtBus.online_status_changed.emit(is_online, "")
 
 
 ## 停止并销毁所有 Timer
@@ -369,8 +424,8 @@ func test_connection() -> bool:
 				_set_connect_state(ConnectState.FAILED)
 				_start_periodic_retry()
 	else:
-		# 在线模式关闭时，仅发射兼容信号
-		EvtBus.online_status_changed.emit(is_online, "")
+		# 在线模式关闭时，仅发射兼容信号（同样只在翻转时发）
+		_emit_online_status()
 	return is_online
 
 func _exit_tree() -> void:

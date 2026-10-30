@@ -487,6 +487,18 @@ func _on_state_changed(old_state: int, new_state: int) -> void:
 	var old_name = state_manager.get_state_name(old_state)
 	var new_name = state_manager.get_state_name(new_state)
 	logger.debug("UI State changed: %s -> %s" % [old_name, new_name], "Main")
+	_update_net_probing_for_state(new_state)
+
+## 对帧预算敏感的界面挂起网络定时探测。
+## 健康检查/延迟测量本身开销很小，但连接成功会广播 online_status_changed，
+## 触发资料与头像重新拉取，图片解码落在渲染线程上，会让正在打歌的这一帧掉帧。
+## 业务请求（成绩上传、评论等）不受影响。
+func _update_net_probing_for_state(state: int) -> void:
+	if net_manager == null:
+		return
+	var sensitive := state == UIStateManager.UIState.PLAY_VIEW \
+		or state == UIStateManager.UIState.MUSIC_PLAYER_VIEW
+	net_manager.set_activity_suspended(sensitive, "playback_view")
 
 ## 设置变化回调
 func _on_settings_changed(setting_name: String, value: Variant) -> void:

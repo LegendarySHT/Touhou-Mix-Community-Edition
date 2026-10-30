@@ -991,41 +991,11 @@ public partial class MeltySynthPlayer : Node
 		// 正常播放时静默，仅在检出停摆时打印。
 		_tickAudioWatchdog();
 
-		// [诊断] 曲尾回绕观测：进入末尾 1.5s 后每帧打印一次位置与 loop 状态，
-		// 用于区分"回绕成功"与"卡在末尾不再推进"。只在接近曲尾时输出。
-		_tickLoopTailDiag();
-
 		// [诊断] 人声欠载/追平观测：计数变化时打一条，观察漂移是否被即时修正。
 		_tickVocalDriftDiag();
 
 		// 直接在回调中合成，主循环只需要确保播放已启动
 		RequestAudioOutputPlay();
-	}
-
-	// [诊断] 曲尾回绕观测
-	private int _loopTailDiagFrames = 0;
-
-	private void _tickLoopTailDiag()
-	{
-		if (_midiFile == null || !_sequencerStarted)
-		{
-			_loopTailDiagFrames = 0;
-			return;
-		}
-		double durMs = _midiFile.Length.TotalMilliseconds;
-		double posMs = _sequencer.RenderedPosition.TotalMilliseconds;
-		if (durMs - posMs > 1500.0)
-		{
-			_loopTailDiagFrames = 0;
-			return;
-		}
-		// 每 30 帧（约 0.5s）打一条，避免刷屏
-		if (++_loopTailDiagFrames % 30 != 1)
-		{
-			return;
-		}
-		ThreadSafeLog.Print($"[MeltySynthPlayer][DIAG] TAIL pos={posMs:F0}/{durMs:F0}ms " +
-			$"endOfSeq={_sequencer.EndOfSequence} paused={_sequencer.IsPaused} playing={playing}");
 	}
 
 	// [诊断] 人声欠载/追平观测
@@ -1107,6 +1077,24 @@ public partial class MeltySynthPlayer : Node
 			// 宁可留着引用让进程回收，也不要制造 NRE。
 			ThreadSafeLog.PrintErr("[MeltySynthPlayer] _ExitTree: background thread still alive, keeping object refs");
 		}
+	}
+
+	/// <summary>
+	/// 预启输出设备：只把声卡拉起来（AAudio/后端开流 + 首个回调），不动 sequencer、不置 playing。
+	///
+	/// 幂等：设备已在跑直接返回。
+	/// </summary>
+	public void prewarm_audio_device()
+	{
+		if (_audioOutput == null)
+		{
+			EnsureAudioInitialized();
+		}
+		if (_audioOutput == null || _audioOutput.IsPlaying)
+		{
+			return;
+		}
+		_audioOutput.Play();
 	}
 
 	/// <summary>开始播放。返回 true 表示已真正启动，false 表示音源未就绪、已推迟到加载完成后续播。</summary>
@@ -2246,6 +2234,21 @@ public partial class MeltySynthPlayer : Node
 		_judgeAnchorMs = positionMs;
 		_judgeAnchorTicks = Stopwatch.GetTimestamp();
 		_judgeAnchorValid = true;
+	}
+
+	/// <summary>
+	/// 当前输出链路的可听延迟（毫秒）= 设备延迟 + ring 缓冲延迟。设备未起时返回 0。
+	///
+	/// 只在预卷调度内部使用（见 MeltySynthPlayer.Preroll.cs）：它和视觉校准延迟一起
+	/// 决定"起播后位置被钳在 0 多久"，上层不需要自己读这个值。
+	/// </summary>
+	public double get_output_latency_ms()
+	{
+		if (_audioOutput == null || !_audioOutput.IsPlaying)
+		{
+			return 0.0;
+		}
+		return _audioOutput.GetLatencyMs();
 	}
 
 	public double get_position_ms()

@@ -187,6 +187,22 @@ func seq_dur_ms(i: int) -> float: return _core.SeqDurMs(i)
 func seq_type(i: int) -> int: return _core.SeqType(i)
 func seq_lane(i: int) -> int: return _core.SeqLane(i)
 
+## 批量快照（SOA 整条数组）：FlowArea.build_seq_data 用。
+## 逐 index 访问器每次跨 C#/GDScript 边界约 17us，506 音符 × 5 次 ≈ 35ms 整帧冻结；
+## 整条数组一次 marshal 后由 GDScript 纯内存循环填平行数组。
+## 返回空字典 = 核心不可用（调用方回退逐 index）。
+func seq_snapshot() -> Dictionary:
+	var core = _get_core()
+	if core == null or core.GameSeqCount <= 0:
+		return {}
+	return {
+		"start": core.SnapshotStartMs(),
+		"dur": core.SnapshotDurMs(),
+		"lane": core.SnapshotLane(),
+		"pitch": core.SnapshotPitch(),
+		"type": core.SnapshotType(),
+	}
+
 ## 输入（enabled 子集）音符访问器
 func input_pitch_at(i: int) -> int: return _core.InputPitchAt(i)
 func input_velocity_at(i: int) -> int: return _core.InputVelocityAt(i)
