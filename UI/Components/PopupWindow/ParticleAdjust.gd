@@ -4,8 +4,8 @@ class_name ParticleAdjust
 
 @onready var _particle_preview: Panel = $ParticlePreview
 @onready var _title_label: Label = $VBoxC/Title
-@onready var _basic_particle_btn: OptionButton = $VBoxC/Options/BasicParticle
-@onready var _emitter_btn: OptionButton = $VBoxC/Options/ParticleEmitter
+@onready var _basic_particle_btn: TouchScrollOptionButton = $VBoxC/Options/BasicParticle
+@onready var _emitter_btn: TouchScrollOptionButton = $VBoxC/Options/ParticleEmitter
 @onready var _total_scale_edit: LineEdit = $VBoxC/Options/TotalScale/LineEdit
 @onready var _total_alpha_edit: LineEdit = $VBoxC/Options/TotalAlpha/LineEdit
 @onready var _emitter_scale_edit: LineEdit = $VBoxC/Options/EmitterScale/LineEdit
@@ -42,8 +42,9 @@ const _VALUE_DEBOUNCE_SEC := 0.4
 var _judge_type: String = "Perfect"
 
 func _ready() -> void:
-	_basic_particle_btn.item_selected.connect(_on_preset_changed)
-	_emitter_btn.item_selected.connect(_on_preset_changed)
+	# item_confirmed：拖拽滚动时不会误触发（item_selected 在拖拽时仍会发出）
+	_basic_particle_btn.item_confirmed.connect(_on_preset_changed)
+	_emitter_btn.item_confirmed.connect(_on_preset_changed)
 	_total_scale_edit.text_changed.connect(_on_value_changed)
 	_total_alpha_edit.text_changed.connect(_on_value_changed)
 	_emitter_scale_edit.text_changed.connect(_on_value_changed)

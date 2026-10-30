@@ -4,7 +4,7 @@ class_name ImageAdjust
 
 @onready var _image_texture_rect: TextureRect = $ImagePreview/TextureRect
 @onready var _img_type_btn: OptionButton = $VBoxC/ImgType
-@onready var _img_name_btn: OptionButton = $VBoxC/OtherOptions/ImgName
+@onready var _img_name_btn: TouchScrollOptionButton = $VBoxC/OtherOptions/ImgName
 @onready var _img_fill_mode_btn: OptionButton = $VBoxC/OtherOptions/ImgFillMode
 @onready var _start_color_btn: ColorPickerButton = $VBoxC/OtherOptions/StartColor/ColorPickerButton
 @onready var _start_color_edit: LineEdit = $VBoxC/OtherOptions/StartColor/HexColor
@@ -358,6 +358,18 @@ func _init_image_controls_from_theme(view_name: String) -> void:
 		"gradient": type_idx = IMG_TYPE_GRADIENT
 		"solid": type_idx = IMG_TYPE_SOLID
 		"cover": type_idx = IMG_TYPE_COVER
+
+	# 回填期间屏蔽信号：给 ColorPickerButton.color / LineEdit.text 赋值会各自触发
+	# color_changed / text_changed，下面 8 处赋值会让 _update_image_preview 连跑 8 次
+	# （每次都重建渐变纹理与模糊 shader）。屏蔽后末尾统一刷一次。
+	var touched: Array[Control] = [
+		_img_type_btn, _img_name_btn, _img_fill_mode_btn,
+		_solid_color_btn, _start_color_btn, _end_color_btn,
+		_from_x_edit, _from_y_edit, _to_x_edit, _to_y_edit, _cover_blur_edit,
+	]
+	for c in touched:
+		c.set_block_signals(true)
+
 	_img_type_btn.selected = type_idx
 
 	# 设置图片文件下拉：尝试选中 image_path
@@ -390,3 +402,7 @@ func _init_image_controls_from_theme(view_name: String) -> void:
 
 	# 设置封面模糊强度
 	_cover_blur_edit.text = str(cover_blur)
+
+	for c in touched:
+		c.set_block_signals(false)
+	# 预览刷新交给调用方 init_adjust 末尾统一做（它在"封面"回退之后，时机更准）

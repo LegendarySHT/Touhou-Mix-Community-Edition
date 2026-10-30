@@ -12,12 +12,12 @@ const NOTE_GLOW_SHADER: Shader = preload("res://UI/Components/PopupWindow/NoteGl
 @onready var _long_drawer: NoteBatchDrawer = $NotePreview/HBoxC/long/NoteDrawer
 @onready var _long_glow_tail: Control = $NotePreview/HBoxC/long/GlowTail
 @onready var _long_glow_head: Control = $NotePreview/HBoxC/long/GlowHead
-@onready var _skin_option_btn: OptionButton = $VBoxC/OptionButton
+@onready var _skin_option_btn: TouchScrollOptionButton = $VBoxC/OptionButton
 
 # 新增设置项控件
-@onready var _l_conn_mode_btn: OptionButton = $VBoxC/OtherOptions/LConnMode
-@onready var _l_repeat_mode_btn: OptionButton = $VBoxC/OtherOptions/LRepeatMode
-@onready var _l_stretch_mode_btn: OptionButton = $VBoxC/OtherOptions/LStretchMode
+@onready var _l_conn_mode_btn: TouchScrollOptionButton = $VBoxC/OtherOptions/LConnMode
+@onready var _l_repeat_mode_btn: TouchScrollOptionButton = $VBoxC/OtherOptions/LRepeatMode
+@onready var _l_stretch_mode_btn: TouchScrollOptionButton = $VBoxC/OtherOptions/LStretchMode
 @onready var _enable_glow_cb: CheckBox = $VBoxC/OtherOptions/EnableLightEffect
 @onready var _custom_color_cb: CheckBox = $VBoxC/OtherOptions/CustomColor
 @onready var _block_color_cb: CheckBox = $VBoxC/OtherOptions/BlockColor/CheckBox
@@ -49,11 +49,14 @@ var _current_skin_name: String = ""
 var _long_preview_color: Color = Color.WHITE
 
 func _ready() -> void:
-	_skin_option_btn.item_selected.connect(_on_skin_option_selected)
+	# 连 item_confirmed 而非 item_selected：拖动选项列表滚动时 TouchScrollOptionButton 会
+	# 回退选中并丢弃本次选中，但 item_selected 已经发出去了，会造成"没切换却重播一遍
+	# 皮肤切换动画"并重复下发 block_skin_preset
+	_skin_option_btn.item_confirmed.connect(_on_skin_option_selected)
 	# 新增控件信号 — 任意变化都触发：读 UI → 更新工作副本 → 刷新预览
-	_l_conn_mode_btn.item_selected.connect(_on_setting_changed)
-	_l_repeat_mode_btn.item_selected.connect(_on_setting_changed)
-	_l_stretch_mode_btn.item_selected.connect(_on_setting_changed)
+	_l_conn_mode_btn.item_confirmed.connect(_on_setting_changed)
+	_l_repeat_mode_btn.item_confirmed.connect(_on_setting_changed)
+	_l_stretch_mode_btn.item_confirmed.connect(_on_setting_changed)
 	# 预览长条容器尺寸/可见性变化：按新尺寸重算身体区域与头尾矩形后重绘
 	_note_long_node.resized.connect(_refresh_long_preview)
 	_note_long_node.visibility_changed.connect(_refresh_long_preview)

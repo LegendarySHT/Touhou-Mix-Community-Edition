@@ -1912,7 +1912,7 @@ text = "保留目标已有版本（合并补缺）"
 [connection signal="pressed" from="DelayAdjust/Button" to="DelayAdjust" method="_on_delay_btn_pressed"]
 [connection signal="toggled" from="DelayAdjust/BtToggle" to="DelayAdjust" method="_on_bt_auto_off_toggled"]
 [connection signal="item_selected" from="ImageAdjust/VBoxC/ImgType" to="ImageAdjust" method="_on_img_type_selected"]
-[connection signal="item_selected" from="ImageAdjust/VBoxC/OtherOptions/ImgName" to="ImageAdjust" method="_on_img_name_selected"]
+[connection signal="item_confirmed" from="ImageAdjust/VBoxC/OtherOptions/ImgName" to="ImageAdjust" method="_on_img_name_selected"]
 [connection signal="item_selected" from="ImageAdjust/VBoxC/OtherOptions/ImgFillMode" to="ImageAdjust" method="_on_img_fill_mode_selected"]
 [connection signal="text_changed" from="ImageAdjust/VBoxC/OtherOptions/FromX/LineEdit" to="ImageAdjust" method="_on_gradient_coords_changed"]
 [connection signal="text_changed" from="ImageAdjust/VBoxC/OtherOptions/FromY/LineEdit" to="ImageAdjust" method="_on_gradient_coords_changed"]

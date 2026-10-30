@@ -37,6 +37,10 @@ const _SPEED_MULT_MAX: float = 5.0
 
 ## 由 PopupWindow.show_falling_adjust 调用：初始化控件值并启动预览
 func init_adjust() -> void:
+	# 回填期间关掉变更回调：_is_initialized 只在回填结束才置 true。
+	# 否则第二次及以后打开弹窗时，下面给 LineEdit/OptionButton 赋初值会各自触发
+	# item_selected / text_changed → _on_setting_changed 反复重启预览循环。
+	_is_initialized = false
 	# 从配置读取初始值
 	var fall_mode := ConfigManager.instance.get_int("note_fall_mode")
 	var fall_time := ConfigManager.instance.get_float("note_fall_time")
