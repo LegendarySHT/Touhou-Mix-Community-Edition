@@ -355,10 +355,6 @@ func apply_theme() -> void:
 			if sb is StyleBoxFlat:
 				sb.bg_color = surface
 				sb.border_color = Color(primary.r, primary.g, primary.b, 0.7)
-	# LogIn 在 Node2D(Skew) 下，不继承 Main 的 theme，手动复制
-	var login := get_node_or_null("PlayerInfo/InfoPanelBtn/TabC/C/Skew/LogIn") as Control
-	if login:
-		login.theme = self.theme
 
 ## 连接核心系统信号
 func _connect_signals() -> void:

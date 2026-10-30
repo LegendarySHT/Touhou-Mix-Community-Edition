@@ -8,12 +8,19 @@
 
 config_version=5
 
+[accessibility]
+
+general/accessibility_support=2
+
 [application]
 
 config/name="Touhou Mix Community Edition"
+config/version="1.0.0.645"
 run/main_scene="uid://jvmwtrulpf5g"
 config/quit_on_go_back=false
 config/features=PackedStringArray("4.7", "C#", "Mobile")
+boot_splash/bg_color=Color(0.14117648, 0.14117648, 0.14117648, 0)
+boot_splash/show_image=false
 config/icon="uid://von2js75nk2a"
 
 [autoload]
@@ -58,6 +65,7 @@ enabled=PackedStringArray("res://addons/miniaudio/plugin.cfg", "res://addons/and
 
 [gui]
 
+theme/custom="uid://jprhv0ga3lck"
 theme/custom_font="uid://drybvx6hogl55"
 
 [input_devices]

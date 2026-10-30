@@ -43,6 +43,9 @@ const DEFAULT_PRESET := "blue"
 # 共享按钮 Theme 资源（几何参数收在 .tres，颜色由本管理器按主题统一刷新）
 const SHARED_LIST_BTN_THEME_PATH := "res://UI/Theme/BtnTheme/ListBtn-ColorBorder.tres"
 const SHARED_R12_BTN_THEME_PATH := "res://UI/Theme/BtnTheme/R12NoBorder.tres"
+# 主题目主题资源（从 Main.tscn 抽出，gui/theme/custom 指向它）。运行时换肤直接改此资源，
+# 因它是项目默认主题、覆盖全部 Control（含 skew 下 Node2D 子树），无需手动把 Main.theme 往下推。
+const MAIN_THEME_PATH := "res://UI/Theme/MainTheme.tres"
 
 static var USER_THEME_PATH: String:
 	get: return PathHelper.get_files_dir() + "theme.ini"
@@ -58,6 +61,8 @@ var _presets: Dictionary = {}
 var _common: Dictionary = {}
 # 外观模式：dark（深色，默认）/ light（浅色）。独立于预设（强调色），可任意组合。
 var _appearance: String = "dark"
+# 主题目 Theme 资源缓存（首次刷新时 load，之后复用同一实例，改色即全局生效）
+var _main_theme: Theme = null
 var _theme_name: String = "default"
 var _loaded: bool = false
 
@@ -763,12 +768,14 @@ func refresh_theme_only() -> void:
 
 	# 第一阶段：全局 Theme 资源（触发大面积重绘，单独一帧）
 	# 注意：切换主题色不再清空背景缓存，背景与主题色独立（避免 Image.load_from_file 同步阻塞）
-	_refresh_theme_colors(main.theme)
+	# 主题已抽成独立 .tres（gui/theme/custom 指向它），作为项目默认主题覆盖全部 Control，
+	# 不再需要把 Main 的 theme 手动下推（含 skew 下 Node2D 子树）—— 那些节点自动继承项目默认主题。
+	if _main_theme == null:
+		_main_theme = load(MAIN_THEME_PATH) as Theme
+	if _main_theme:
+		_refresh_theme_colors(_main_theme)
 	# 共享按钮 Theme（几何 .tres，颜色随主题）—— 资源单例，改一次即同步所有引用场景
 	_refresh_shared_btn_themes()
-	var skew_part: Control = main.get_node_or_null("skew/C")
-	if skew_part and skew_part.theme != main.theme:
-		skew_part.theme = main.theme  # 让子节点继承更新后的 Theme （因为skew会导致子节点不继承theme）
 	await get_tree().process_frame
 
 	# 第二阶段：广播通知所有已注册应用者各自更新内部样式
