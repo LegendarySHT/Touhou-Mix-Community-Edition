@@ -180,11 +180,11 @@ button_group = SubResource("ButtonGroup_shxvi")
 text = "登录"
 
 [node name="SignUpTab" type="Button" parent="C/Skew/LogIn/ModeToggle" unique_id=828383406]
-custom_minimum_size = Vector2(160, 80)
+custom_minimum_size = Vector2(220, 80)
 layout_mode = 2
 toggle_mode = true
 button_group = SubResource("ButtonGroup_shxvi")
-text = "注册"
+text = "跳转到网页注册"
 
 [node name="Account" type="Label" parent="C/Skew/LogIn" unique_id=327849834]
 layout_mode = 2
@@ -235,7 +235,9 @@ text = "登录"
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
 theme_override_font_sizes/font_size = 32
+text = ""
 horizontal_alignment = 1
+autowrap_mode = 3
 
 [node name="ProfileView" type="VBoxContainer" parent="." unique_id=65430877]
 visible = false

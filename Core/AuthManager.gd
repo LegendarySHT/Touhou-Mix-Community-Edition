@@ -132,8 +132,13 @@ func ensure_valid_token() -> bool:
 	# access token 过期或即将过期，尝试 refresh
 	return await _try_refresh()
 
-## 注册
-## 返回 { "ok": bool, "error": String }
+## 注册（已下线：服务端强制人机验证，客户端调不通）
+## 返回 { "ok": bool, "status": int, "error": String, "code": String, "message": String }
+##
+## 服务端的 /api/auth/register 现在无条件要求 Cloudflare Turnstile token，
+## 而 HTTPRequest 没有浏览器环境、解不出验证码，所以这里正常情况会拿到 428。
+## 保留方法是为了给调用方一个明确语义（code == "register_requires_web"），
+## UI 据此引导玩家去网页注册，而不是显示"HTTP 428"这种无从下手的提示。
 func register(username: String, password: String) -> Dictionary:
 	var result = await NetManager.instance._request(
 		"POST",
@@ -141,11 +146,41 @@ func register(username: String, password: String) -> Dictionary:
 		{ "username": username, "password": password }
 	)
 	if not result.ok:
-		return { "ok": false, "error": result.error }
-	return { "ok": true, "error": "" }
+		var rejected := _describe_failure(result)
+		GLogger.info("Register rejected: status=%s code=%s" % [rejected.status, rejected.code], "AuthMGR")
+		return rejected
+	return { "ok": true, "status": 200, "error": "", "code": "", "message": "" }
+
+## 把一次失败响应归一成 { ok=false, status, code, message }。
+## code 是给 UI 分支用的稳定标识，message 是服务端给的中文提示（可能为空）。
+func _describe_failure(result: Dictionary) -> Dictionary:
+	var status := int(result.get("status", 0))
+	var code := ""
+	match status:
+		401:
+			code = "invalid_credentials"
+		428:
+			# 连续失败后服务端要求人机验证：客户端永远过不了，只能去网页
+			code = "login_requires_web"
+		429:
+			code = "too_many_attempts"
+		409:
+			code = "username_taken"
+	var message := ""
+	var data = result.get("data")
+	if data is Dictionary:
+		message = str(data.get("error", ""))
+	return {
+		"ok": false,
+		"status": status,
+		"error": str(result.get("error", "")),
+		"code": code,
+		"message": message
+	}
 
 ## 登录
 ## 成功后自动保存 token
+## 返回 { "ok": bool, "status": int, "error": String, "code": String, "message": String }
 func login(username: String, password: String) -> Dictionary:
 	var result = await NetManager.instance._request(
 		"POST",
@@ -153,10 +188,11 @@ func login(username: String, password: String) -> Dictionary:
 		{ "username": username, "password": password }
 	)
 	if not result.ok:
-		return { "ok": false, "error": result.error }
+		var rejected := _describe_failure(result)
+		return rejected
 	var data = result.data
 	if data == null or not data is Dictionary:
-		return { "ok": false, "error": "invalid_response" }
+		return { "ok": false, "status": 200, "error": "invalid_response", "code": "invalid_response", "message": "" }
 	var session = {
 		"username": data.get("username", username),
 		"access_token": data.get("accessToken", ""),
@@ -167,7 +203,7 @@ func login(username: String, password: String) -> Dictionary:
 	}
 	_save_session(session)
 	GLogger.info("Login successful: %s" % username, "AuthMGR")
-	return { "ok": true, "error": "" }
+	return { "ok": true, "status": 200, "error": "", "code": "", "message": "" }
 
 ## 登出
 func logout() -> void:

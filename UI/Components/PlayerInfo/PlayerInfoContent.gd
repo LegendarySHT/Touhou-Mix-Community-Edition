@@ -11,8 +11,7 @@ signal expand_toggled()
 ## 统计数据刷新完成（pp/等级/进度条等），通知外部视图（如 ScoreView）同步更新
 signal stats_refreshed()
 
-enum LoginMode { LOGIN, REGISTER }
-
+# 玩家数据（登录后从 AuthManager.current_user + 服务端 profile/stats 填充）
 # 玩家数据（登录后从 AuthManager.current_user + 服务端 profile/stats 填充）
 var _player_data := {
 	"name": "Anonymous Player",
@@ -71,12 +70,11 @@ func get_player_data() -> Dictionary:
 # ProfilePage（详情页，tab 3）
 @onready var profile_page: ProfilePage = $ProfilePage
 
-var _login_mode: LoginMode = LoginMode.LOGIN
 ## 提交进行中（防止重复点击）
 var _submitting: bool = false
 
 func _ready() -> void:
-	_set_login_mode(LoginMode.LOGIN)
+	_set_login_mode()
 	# 监听认证状态变化，自动同步显示
 	if not EvtBus.auth_changed.is_connected(_on_auth_changed):
 		EvtBus.auth_changed.connect(_on_auth_changed)
@@ -291,63 +289,65 @@ func apply_profile_visibility(full: bool) -> void:
 	current_tab = 3 if full else 2
 	expand_btn.text = "收起详情" if full else "展开详情"
 
-# ========== 登录/注册表单 ==========
+# ========== 登录表单 ==========
+# 注册已下线到网页（2026-10-30）：服务端的注册接口强制 Cloudflare Turnstile 人机验证，
+# 而 Godot 的 HTTPRequest 没有浏览器环境，解不出验证码——这是刻意的，不是缺陷。
+# 客户端因此只负责"把人送到网页"和"登录"，不再收集注册信息。
+
+## 站点地址与注册页。服务端有 /register 路由，会直接展开注册弹窗。
+const WEBSITE_URL := "https://thmixce.org"
+const REGISTER_URL := WEBSITE_URL + "/register"
+## ErrorMsg 兼作提示条：错误为红（场景里定义），提示为蓝。
+const HINT_COLOR := Color(0.45, 0.75, 1.0, 1.0)
 
 func _on_login_tab_pressed() -> void:
-	_set_login_mode(LoginMode.LOGIN)
+	_set_login_mode()
 
+## 「去网页注册」：打开系统浏览器，并保留当前登录表单（不切换模式）。
 func _on_signup_tab_pressed() -> void:
-	_set_login_mode(LoginMode.REGISTER)
+	_set_login_mode()
+	var err := OS.shell_open(REGISTER_URL)
+	if err != OK:
+		GLogger.warning("打开注册页失败(%d): %s" % [err, REGISTER_URL], "PlayerInfo")
+		_show_hint("无法打开浏览器，请手动访问 %s" % REGISTER_URL, true)
+		return
+	_show_hint("已在浏览器打开注册页，注册完成后回到这里登录即可", false)
 
-func _set_login_mode(mode: LoginMode) -> void:
-	_login_mode = mode
-	var is_register := mode == LoginMode.REGISTER
-	login_tab.button_pressed = not is_register
-	signup_tab.button_pressed = is_register
-	confirm_pwd_label.visible = is_register
-	confirm_pwd_edit.visible = is_register
-	submit_btn.text = "注册" if is_register else "登录"
-	error_msg.text = ""
+func _set_login_mode() -> void:
+	login_tab.button_pressed = true
+	signup_tab.button_pressed = false
+	# 注册模式下才需要的「确认密码」保留在场景里但恒不显示（隐藏节点仍在，不影响布局）
+	confirm_pwd_label.visible = false
+	confirm_pwd_edit.visible = false
+	submit_btn.text = "登录"
+	_show_hint("", false)
+
+## 统一写 ErrorMsg：红色表示失败，蓝色表示提示。两处都不是"错误"的场景别再各写一套。
+func _show_hint(text: String, is_error: bool) -> void:
+	error_msg.text = text
+	error_msg.add_theme_color_override("font_color", HINT_COLOR if not is_error else Color(1, 0.3, 0.3, 1.0))
 
 func _on_submit_btn_pressed() -> void:
 	if _submitting:
 		return
 	if AuthManager.instance == null:
-		error_msg.text = "认证服务未就绪"
+		_show_hint("认证服务未就绪", true)
 		return
 	if NetManager.instance == null or not NetManager.instance.is_online:
-		error_msg.text = "未连接服务器"
+		_show_hint("未连接服务器", true)
 		return
 	var account := account_edit.text.strip_edges()
 	var pwd := pwd_edit.text
 	if account.is_empty() or pwd.is_empty():
-		error_msg.text = "帐号和密码不能为空"
+		_show_hint("帐号和密码不能为空", true)
 		return
-	if _login_mode == LoginMode.REGISTER:
-		var confirm_pwd := confirm_pwd_edit.text
-		if confirm_pwd != pwd:
-			error_msg.text = "两次密码不一致"
-			return
 
 	_submitting = true
 	submit_btn.disabled = true
-	error_msg.text = "处理中..."
+	_show_hint("处理中...", false)
 
-	var ok := false
-	var err_msg := ""
-	if _login_mode == LoginMode.REGISTER:
-		var result: Dictionary = await AuthManager.instance.register(account, pwd)
-		ok = result.ok
-		err_msg = str(result.get("error", ""))
-		if ok:
-			# 注册成功后自动登录
-			var login_result: Dictionary = await AuthManager.instance.login(account, pwd)
-			ok = login_result.ok
-			err_msg = str(login_result.get("error", ""))
-	else:
-		var result: Dictionary = await AuthManager.instance.login(account, pwd)
-		ok = result.ok
-		err_msg = str(result.get("error", ""))
+	var result: Dictionary = await AuthManager.instance.login(account, pwd)
+	var ok: bool = result.ok
 
 	_submitting = false
 	submit_btn.disabled = false
@@ -356,7 +356,17 @@ func _on_submit_btn_pressed() -> void:
 		_clear_login_form()
 		login_submitted.emit()
 	else:
-		error_msg.text = _format_error(err_msg)
+		var code := str(result.get("code", ""))
+		var message := str(result.get("message", ""))
+		if code == "login_requires_web":
+			# 连续失败被人机验证挡住：客户端过不了验证码，只能引导去网页登录一次。
+			# 网页登录成功后该账号的失败计数清零，回来即可正常登录。
+			_show_hint("此账号需要安全验证，请用浏览器打开 %s 登录一次后再回来" % WEBSITE_URL, true)
+		elif not message.is_empty():
+			# 服务端的中文提示比"HTTP 401"有用得多
+			_show_hint(message, true)
+		else:
+			_show_hint(_format_error(str(result.get("error", ""))), true)
 
 ## 登出按钮
 func _on_logout_btn_pressed() -> void:
