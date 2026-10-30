@@ -71,6 +71,11 @@ signal online_request_finished(endpoint: String, success: bool)
 signal online_state_changed(state: int, latency_ms: int)
 ## 成绩上传成功（携带 midi_hash），用于触发个人信息统计刷新
 signal score_uploaded(midi_hash: String)
+
+## ========== 通知事件 ==========
+## 顶部横幅通知请求（由 Main/NotiBanner 订阅）：外部模块不用知道节点路径
+## 用便利函数 EvtBus.notify(text, on_click) 发出，on_click 在点击横幅时执行
+signal notify_requested(text: String, on_click: Callable)
 @warning_ignore_restore("unused_signal")
 
 func _ready() -> void:
@@ -83,3 +88,7 @@ func emit_song_selected(song_id: String) -> void:
 ## 便利函数：发出MIDI选择事件
 func emit_midi_selected(midi_id: String, midi_data: MidiData) -> void:
 	midi_selected.emit(midi_id, midi_data)
+
+## 便利函数：弹一条顶部横幅通知（5 秒后自动收起，显示中再来消息会排队）
+func notify(text: String, on_click: Callable = Callable()) -> void:
+	notify_requested.emit(text, on_click)

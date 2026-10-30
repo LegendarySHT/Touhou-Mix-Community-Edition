@@ -30,6 +30,8 @@ const TASK_PROGRESS := "/root/Main/TaskProgress"
 ## 通用加载/导入提示（根节点下，ProgressBar 为 ProcessTip 子节点）
 const PROCESS_TIP := "/root/Main/ProcessTip"
 const PROCESS_PROGRESS := "/root/Main/ProcessTip/ProcessProgress"
+## 顶部横幅通知
+const NOTI_BANNER := "/root/Main/NotiBanner"
 
 ## 常驻列表（skew/C 下）
 const ALBUM_LIST := "/root/Main/skew/C/AlbumList"

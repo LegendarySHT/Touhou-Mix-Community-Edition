@@ -12,6 +12,7 @@
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="13_bg4s2"]
 [ext_resource type="PackedScene" uid="uid://cmg2kkhga3yj5" path="res://UI/Views/AlbumView/albumNode.tscn" id="17_5mvff"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="17_xrxkg"]
+[ext_resource type="Script" uid="uid://dbp1i13pg0fxj" path="res://UI/Components/NotificationBanner.gd" id="19_devvj"]
 [ext_resource type="PackedScene" uid="uid://xgcfhg1x2v6p" path="res://UI/Components/ShortCutMenu/favorListItem.tscn" id="20_devvj"]
 [ext_resource type="Script" uid="uid://b5d8tybu8al2f" path="res://UI/Components/PlayerInfo/SkewButton.gd" id="22_5mvff"]
 [ext_resource type="Script" uid="uid://dly3k36hy880k" path="res://UI/Components/PopupWindow/PopupWindow.gd" id="23_bg4s2"]
@@ -298,20 +299,20 @@ corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_selected"]
-bg_color = Color(0.0627, 0.0784, 0.1137, 1)
 content_margin_left = 20.0
 content_margin_top = 36.0
 content_margin_right = 20.0
 content_margin_bottom = 36.0
+bg_color = Color(0.0627, 0.0784, 0.1137, 1)
 corner_radius_top_left = 6
 corner_radius_top_right = 6
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tab_unselected"]
-bg_color = Color(0, 0, 0, 0)
 content_margin_left = 20.0
 content_margin_top = 36.0
 content_margin_right = 20.0
 content_margin_bottom = 36.0
+bg_color = Color(0, 0, 0, 0)
 corner_radius_top_left = 6
 corner_radius_top_right = 6
 
@@ -756,6 +757,22 @@ region = Rect2(160, 160, 80, 80)
 atlas = ExtResource("17_xrxkg")
 region = Rect2(0, 320, 80, 80)
 margin = Rect2(1, 0, 0, 0)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ck4ec"]
+content_margin_left = 15.0
+content_margin_top = 5.0
+content_margin_right = 15.0
+content_margin_bottom = 5.0
+bg_color = Color(0.15686275, 0.15686275, 0.15686275, 1)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
+corner_detail = 5
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_devvj"]
+atlas = ExtResource("17_xrxkg")
+region = Rect2(80, 0, 80, 80)
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_6vipk"]
 content_margin_left = 20.0
@@ -1498,6 +1515,33 @@ offset_top = 33.5
 offset_bottom = 73.5
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="NotiBanner" type="PanelContainer" parent="." unique_id=629386278]
+visible = false
+z_index = 30
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -1.0
+offset_top = 5.0
+offset_right = 1.0
+offset_bottom = 2.0
+grow_horizontal = 2
+offset_transform_enabled = true
+offset_transform_visual_only = false
+theme_override_styles/panel = SubResource("StyleBoxFlat_ck4ec")
+script = ExtResource("19_devvj")
+
+[node name="btn" type="Button" parent="NotiBanner" unique_id=551650052]
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_constants/h_separation = 20
+theme_override_font_sizes/font_size = 24
+icon = SubResource("AtlasTexture_devvj")
+flat = true
 
 [node name="PopupWindow" type="PopupPanel" parent="." unique_id=1234285949]
 gui_embed_subwindows = true
