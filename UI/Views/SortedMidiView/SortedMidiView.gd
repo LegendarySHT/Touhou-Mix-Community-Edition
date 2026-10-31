@@ -107,7 +107,10 @@ func _load_sorted_midis(refectch: bool = true) -> void:
 		current_items = se.get_items()
 		_favorites_mode = false
 
-	no_items_node.visible = current_items.size() == 0
+	# 空提示只在「排序页」显示：曲库（MusicPlayerView）筛选同样走 SortEngine，
+	# 排序结果可能在离开排序页后才回来，不能把全局 NoItems 盖到当前页面上。
+	no_items_node.visible = current_items.size() == 0 \
+		and sm.current_state == UIStateManager.UIState.SORTED_VIEW
 	_ensure_pool_ready()
 
 	# 内容层高度 = 完整内容高度（模块写进 custom_minimum_size.y），滚动范围由此而来
