@@ -381,14 +381,23 @@ func _sync_imported_charts_to_db(imported_folders: Array) -> void:
 	GLogger.info("导入完成，已将 %d 个新谱面同步到 DB 缓存（无需等后台校验）" % new_data.size(), "FileSystemMGR")
 
 ## 运行期导入完成后刷新索引与数据层
-## 先把新谱面写进 DB 缓存，再走常规重扫：快速路径可直接从缓存恢复新谱面，
-## 其它资源（皮肤/特效/音源/背景）由重扫重建索引；最后通知 DataManager 重建水合缓存。
-func refresh_after_import(imported_chart_folders: Array) -> void:
+## 纯单文件谱面/人声导入走 refresh_chart_folders 增量刷新，避免全量扫描；
+## 含皮肤/特效/音源/背景等非谱面资源时才走 rescan_resources 全量重建。
+## 最后通知 DataManager 重建水合缓存。
+func refresh_after_import(imported_chart_folders: Array, imported_assets: bool = true) -> void:
 	await await_busy_done()
 	var charts_changed := not imported_chart_folders.is_empty()
-	if charts_changed and ChartDB != null and ChartDB.IsOpen():
-		await _sync_imported_charts_to_db(imported_chart_folders)
-	await rescan_resources()
+	if charts_changed:
+		if imported_assets:
+			# 有皮肤/特效/音源/背景等非谱面资源，仍需全量重建这些索引
+			if ChartDB != null and ChartDB.IsOpen():
+				await _sync_imported_charts_to_db(imported_chart_folders)
+			await rescan_resources()
+		else:
+			# 纯单文件谱面/人声导入：只增量刷新涉及的谱面，不做全量扫描
+			await refresh_chart_folders(imported_chart_folders)
+	elif imported_assets:
+		await rescan_resources()
 	if charts_changed and DataMGR != null:
 		DataMGR.reload_after_import()
 
@@ -1464,65 +1473,130 @@ func _build_charts_index_from_data(all_charts_data: Dictionary, chart_tasks: Arr
 	# 构建 charts_index + 反向索引 + audio_files_index
 	# 统一从 metadata dict 收集 audio_entries（缓存和 worker 结果处理方式一致）
 	for folder_name in all_charts_data.keys():
-		var meta_dict: Dictionary = all_charts_data[folder_name]
-		# 跳过无效 metadata（_load_chart_metadata 出错时返回 {"_warnings": [...]}）
-		if not meta_dict.has("id"):
-			continue
-
-		# v3：统一补全扁平化字段（缓存恢复投影已带；扫描结果需从 data 提取一次，避免物化整块 JSON）
-		if not meta_dict.has("midi_id") and meta_dict.has("data"):
-			var jd: Variant = meta_dict.get("data", {})
-			if jd is Dictionary:
-				meta_dict["midi_id"] = jd.get("_id", "")
-				meta_dict["file_hash"] = jd.get("file_hash", "")
-				meta_dict["hash"] = jd.get("hash", "")
-		charts_index[folder_name] = ChartMetadata.from_dict(meta_dict)
-
-		# 构建反向索引（扁平化字段，不再读 data 大块）
-		var chart_meta: ChartMetadata = charts_index[folder_name]
-		var meta_id: String = chart_meta.id
-		if not meta_id.is_empty():
-			_chart_id_to_folder[meta_id] = folder_name
-		var fh: String = chart_meta.file_hash
-		if not fh.is_empty():
-			_hash_to_folder[fh] = folder_name
-		var ah: String = chart_meta.hash
-		if not ah.is_empty() and ah != fh:
-			_hash_to_folder[ah] = folder_name
-
-		# 收集 audio 条目（统一从 metadata dict 提取，不再依赖 worker 的单独 audio 数组）
-		# 同步产出人声速查索引（标准 vocal.<ext> 优先，回退该谱面首个音频）与 DB 落库条目
-		var entries = meta_dict.get("audio_entries", [])
-		var fallback_vocal := ""
-		for e in entries:
-			audio_files_index.append(e)
-			var e_path := str(e.get("path", ""))
-			var e_name := str(e.get("file_name", ""))
-			var is_vocal := e_name.to_lower().begins_with("vocal.")
-			_audio_file_entries.append({
-				"path": e_path,
-				"folder_name": folder_name,
-				"chart_id": str(e.get("chart_id", "")),
-				"file_name": e_name,
-				"format": str(e.get("format", "")),
-				"song_name": str(e.get("song_name", "")),
-				"size": 0,
-				"mtime": 0,
-				"is_vocal": is_vocal,
-			})
-			if is_vocal:
-				if not vocal_files_index.has(folder_name):
-					vocal_files_index[folder_name] = e_path
-			elif fallback_vocal.is_empty():
-				fallback_vocal = e_path
-		if not vocal_files_index.has(folder_name) and not fallback_vocal.is_empty():
-			vocal_files_index[folder_name] = fallback_vocal
+		_index_chart_metadata(folder_name, all_charts_data[folder_name])
 
 	# 打印 worker 收集的 warnings（主线程安全调用 GLogger）
 	for t in chart_tasks:
 		var rw: Dictionary = t.result
 		for w in rw.get("warnings", []):
 			GLogger.warning(w, "FileSystemMGR")
+
+## 把单个谱面的扫描 metadata 合并进 charts_index / 反向索引 / 音频索引
+## 调用方负责在合并前清理该文件夹的旧条目（全量重建时由调用方清空三个索引）
+func _index_chart_metadata(folder_name: String, meta_dict: Dictionary) -> void:
+	# 跳过无效 metadata（_load_chart_metadata 出错时返回 {"_warnings": [...]}）
+	if not meta_dict.has("id"):
+		return
+
+	# v3：统一补全扁平化字段（缓存恢复投影已带；扫描结果需从 data 提取一次，避免物化整块 JSON）
+	if not meta_dict.has("midi_id") and meta_dict.has("data"):
+		var jd: Variant = meta_dict.get("data", {})
+		if jd is Dictionary:
+			meta_dict["midi_id"] = jd.get("_id", "")
+			meta_dict["file_hash"] = jd.get("file_hash", "")
+			meta_dict["hash"] = jd.get("hash", "")
+	charts_index[folder_name] = ChartMetadata.from_dict(meta_dict)
+
+	# 构建反向索引（扁平化字段，不再读 data 大块）
+	var chart_meta: ChartMetadata = charts_index[folder_name]
+	var meta_id: String = chart_meta.id
+	if not meta_id.is_empty():
+		_chart_id_to_folder[meta_id] = folder_name
+	var fh: String = chart_meta.file_hash
+	if not fh.is_empty():
+		_hash_to_folder[fh] = folder_name
+	var ah: String = chart_meta.hash
+	if not ah.is_empty() and ah != fh:
+		_hash_to_folder[ah] = folder_name
+
+	# 收集 audio 条目（统一从 metadata dict 提取，不再依赖 worker 的单独 audio 数组）
+	# 同步产出人声速查索引（标准 vocal.<ext> 优先，回退该谱面首个音频）与 DB 落库条目
+	var entries = meta_dict.get("audio_entries", [])
+	var fallback_vocal := ""
+	for e in entries:
+		audio_files_index.append(e)
+		var e_path := str(e.get("path", ""))
+		var e_name := str(e.get("file_name", ""))
+		var is_vocal := e_name.to_lower().begins_with("vocal.")
+		_audio_file_entries.append({
+			"path": e_path,
+			"folder_name": folder_name,
+			"chart_id": str(e.get("chart_id", "")),
+			"file_name": e_name,
+			"format": str(e.get("format", "")),
+			"song_name": str(e.get("song_name", "")),
+			"size": 0,
+			"mtime": 0,
+			"is_vocal": is_vocal,
+		})
+		if is_vocal:
+			if not vocal_files_index.has(folder_name):
+				vocal_files_index[folder_name] = e_path
+		elif fallback_vocal.is_empty():
+			fallback_vocal = e_path
+	if not vocal_files_index.has(folder_name) and not fallback_vocal.is_empty():
+		vocal_files_index[folder_name] = fallback_vocal
+
+## 从内存索引移除单个谱面（增量重扫前调用）
+func _remove_chart_index(folder_name: String) -> void:
+	if charts_index.has(folder_name):
+		var meta: ChartMetadata = charts_index[folder_name]
+		if not meta.id.is_empty() and str(_chart_id_to_folder.get(meta.id, "")) == folder_name:
+			_chart_id_to_folder.erase(meta.id)
+		if not meta.file_hash.is_empty() and str(_hash_to_folder.get(meta.file_hash, "")) == folder_name:
+			_hash_to_folder.erase(meta.file_hash)
+		if not meta.hash.is_empty() and str(_hash_to_folder.get(meta.hash, "")) == folder_name:
+			_hash_to_folder.erase(meta.hash)
+		charts_index.erase(folder_name)
+	vocal_files_index.erase(folder_name)
+
+	var chart_id := folder_name.split("_")[0]
+	for i in range(audio_files_index.size() - 1, -1, -1):
+		if str(audio_files_index[i].get("chart_id", "")) == chart_id:
+			audio_files_index.remove_at(i)
+	for i in range(_audio_file_entries.size() - 1, -1, -1):
+		if str(_audio_file_entries[i].get("folder_name", "")) == folder_name:
+			_audio_file_entries.remove_at(i)
+
+## 只重扫指定谱面文件夹，并增量更新内存索引 + DB 缓存 + 音频速查
+## 单文件 MIDI / 人声导入用：避免触发 _scan_all_resources 的全资源重建
+func refresh_chart_folders(folders: Array) -> void:
+	var names: Array[String] = []
+	for f in folders:
+		var name := str(f)
+		if name.is_empty():
+			continue
+		if DirAccess.dir_exists_absolute(CHARTS_DIR.path_join(name)):
+			names.append(name)
+	if names.is_empty():
+		return
+
+	await await_busy_done()
+	var tasks := _start_charts_scan_tasks(names)
+	while not _all_chart_tasks_completed(tasks):
+		await get_tree().process_frame
+	for t in tasks:
+		WorkerThreadPool.wait_for_task_completion(t.id)
+
+	var data: Dictionary = {}
+	for t in tasks:
+		var rw: Dictionary = t.result
+		var charts_data: Dictionary = rw.get("charts", {})
+		for folder_name in charts_data.keys():
+			data[folder_name] = charts_data[folder_name]
+		for w in rw.get("warnings", []):
+			GLogger.warning(w, "FileSystemMGR")
+	if data.is_empty():
+		return
+
+	for folder_name in data.keys():
+		_remove_chart_index(folder_name)
+	for folder_name in data.keys():
+		_index_chart_metadata(folder_name, data[folder_name])
+	_save_charts_cache(data)
+	_update_audio_files_cache(data.keys())
+	_refresh_vocal_paths(data.keys())
+	GLogger.info("Incremental chart refresh: %d folder(s)" % data.size(), "FileSystemMGR")
 
 ## 加载谱面元数据（从谱面文件夹）
 ## 文件夹命名格式：{hash}_{song_name}_{difficulty}/

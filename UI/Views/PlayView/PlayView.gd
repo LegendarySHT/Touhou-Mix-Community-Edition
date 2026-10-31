@@ -146,6 +146,7 @@ func _ready() -> void:
 		get_window().focus_exited.connect(_on_window_focus_exited)
 
 	EvtBus.start_game_with.connect(_prepare_game)
+	EvtBus.import_started.connect(_on_import_started)
 	UiStatMGR.state_changed.connect(_on_state_changed)
 	_on_state_changed(UiStatMGR.UIState.NONE, UiStatMGR.current_state)
 
@@ -1263,6 +1264,14 @@ func _upload_score_async(midi: MidiData, snapshot: Dictionary) -> void:
 		GLogger.info("Score upload skipped: chart not found on server (midi=%s)" % midi.file_hash, "PlayView")
 	else:
 		GLogger.warning("Score upload failed: %s (status=%s)" % [result.get("error", "unknown"), str(result.get("status", 0))], "PlayView")
+
+## 外部文件导入开始：打歌中收到导入请求时正常退出打歌页。
+## 走与中途退出相同的 _on_quit_pressed 流程（W 成绩、播放停止、资源清理都由既有逻辑处理）。
+func _on_import_started() -> void:
+	if UiStatMGR.current_state != UIStateManager.UIState.PLAY_VIEW:
+		return
+	GLogger.info("收到外部导入请求，退出打歌页", "PlayView")
+	_on_quit_pressed()
 
 ## 退出游戏（中途退出）
 func _on_quit_pressed() -> void:

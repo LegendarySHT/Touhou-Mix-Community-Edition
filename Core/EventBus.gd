@@ -78,6 +78,10 @@ signal score_uploaded(midi_hash: String)
 signal notify_requested(text: String, on_click: Callable)
 @warning_ignore_restore("unused_signal")
 
+## 外部文件导入开始（拖入窗口 / 打开方式）。
+## PlayView 订阅：打歌中收到导入请求时走正常退出流程，避免导入后仍停在打歌页。
+signal import_started
+
 func _ready() -> void:
 	add_to_group("singleton")
 
@@ -88,6 +92,10 @@ func emit_song_selected(song_id: String) -> void:
 ## 便利函数：发出MIDI选择事件
 func emit_midi_selected(midi_id: String, midi_data: MidiData) -> void:
 	midi_selected.emit(midi_id, midi_data)
+
+## 便利函数：广播“外部文件导入开始”
+func emit_import_started() -> void:
+	import_started.emit()
 
 ## 便利函数：弹一条顶部横幅通知（5 秒后自动收起，显示中再来消息会排队）
 func notify(text: String, on_click: Callable = Callable()) -> void:

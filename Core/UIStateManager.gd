@@ -115,28 +115,80 @@ func _restore_saved_navigation_impl() -> void:
 		NavigationState.clear()
 		_enter_initial_view(UIState.ALBUM_VIEW)
 		return
-	# 进入 SongView（复刻 AlbumView.on_item_button_confirmed 次序：先 emit 再 change_state，
-	# 使 SongView._load_songs_just_called 的跳重逻辑生效）
+
+	var song_id := NavigationState.get_song_id()
+	if not song_id.is_empty() and not ChartDB.SongExists(song_id):
+		# 歌曲已删：清空完整记录，只恢复到专辑层级（与旧行为一致）
+		NavigationState.clear()
+		navigate_to_album_song(album_id, "", "", false)
+		return
+
+	var midi_id := NavigationState.get_midi_id() if not song_id.is_empty() else ""
+	navigate_to_album_song(album_id, song_id, midi_id)
+
+## 公共导航：从任意页面进入指定专辑/歌曲
+## song_id 为空时只到 SongView；非空时进入 MidiView 并由 NavigationState 的 midi_id 预选。
+## 返回链固定为 MIDI_VIEW → SONG_VIEW → ALBUM_VIEW（或 SONG_VIEW → ALBUM_VIEW）。
+## 启动导航恢复与外部导入跳转共用，避免两处各写一套历史栈处理。
+## save_navigation=false 时不写 NavigationState（启动恢复失败回退时用）。
+func navigate_to_album_song(album_id: String, song_id: String = "", midi_id: String = "",
+		save_navigation: bool = true) -> void:
+	if not _data_ready:
+		return
+	if ChartDB == null or not ChartDB.IsOpen():
+		return
+	if album_id.is_empty() or ChartDB.GetAlbum(album_id).is_empty():
+		return
+	if not song_id.is_empty() and not ChartDB.SongExists(song_id):
+		song_id = ""
+		midi_id = ""
+	if save_navigation:
+		NavigationState.save(album_id, song_id, midi_id)
+
+	# 已在 MidiView：只切到目标歌曲并重置返回链，不再走页面转场
+	if current_state == UIState.MIDI_VIEW and not song_id.is_empty():
+		state_history.clear()
+		state_history.append(UIState.ALBUM_VIEW)
+		state_history.append(UIState.SONG_VIEW)
+		previous_state = UIState.SONG_VIEW
+		EvtBus.album_selected.emit(album_id)
+		EvtBus.emit_song_selected(song_id)
+		return
+
+	# 已在 SongView：目标只到歌曲则刷新列表；有 midi 则直接进 MidiView
+	if current_state == UIState.SONG_VIEW:
+		state_history.clear()
+		state_history.append(UIState.ALBUM_VIEW)
+		EvtBus.album_selected.emit(album_id)
+		if song_id.is_empty():
+			previous_state = UIState.ALBUM_VIEW
+			return
+		change_state(UIState.MIDI_VIEW, true)
+		EvtBus.emit_song_selected(song_id)
+		return
+
+	# 其它页面（设置/商店/音轨/打歌等）：直达目标页，手动构造返回链，避免多级转场叠加
+	if current_state != UIState.ALBUM_VIEW and current_state != UIState.NONE:
+		state_history.clear()
+		state_history.append(UIState.ALBUM_VIEW)
+		EvtBus.album_selected.emit(album_id)
+		if song_id.is_empty():
+			change_state(UIState.SONG_VIEW, false)
+			return
+		state_history.append(UIState.SONG_VIEW)
+		change_state(UIState.MIDI_VIEW, false)
+		EvtBus.emit_song_selected(song_id)
+		return
+
+	# 启动/专辑页：复刻启动导航恢复的标准链
 	# 历史栈基座 = ALBUM_VIEW：启动态为 NONE，不能作为返回目标。若直接 change_state(SONG_VIEW, true)
 	# 会把 NONE 压栈，导致从恢复的 MidiView 按返回键链式退回时最终落到 NONE（非真实视图）。
-	# 这里手动把 ALBUM_VIEW 压入栈底，再以 stash=false 进入 SongView，返回键链条即为
-	# MIDI_VIEW → SONG_VIEW → ALBUM_VIEW。
 	state_history.clear()
 	state_history.append(UIState.ALBUM_VIEW)
 	EvtBus.album_selected.emit(album_id)
 	change_state(UIState.SONG_VIEW, false)
-
-	var song_id := NavigationState.get_song_id()
 	if song_id.is_empty():
-		return  # 仅专辑：停在 SongView
-
-	# 校验歌曲仍存在
-	if not ChartDB.SongExists(song_id):
-		NavigationState.clear()
 		return
-
-	# 进入 MidiView（复刻 SongView.on_item_button_confirmed 次序：先 change_state 再 emit）
-	# midi 预选由 MidiView._on_song_selected 通过 NavigationState 的 midi_id 完成
 	change_state(UIState.MIDI_VIEW, true)
 	EvtBus.emit_song_selected(song_id)
 

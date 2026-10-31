@@ -145,6 +145,9 @@ func _process_files(files: Array, startup: bool) -> Dictionary:
 		return {"ok": false, "restart_required": false}
 	_busy = true
 	_startup_import_active = startup
+	# 打歌页等监听方收到后先正常退出（PlayView 会走中途退出流程）
+	if EvtBus != null:
+		EvtBus.emit_import_started()
 	var acc := {
 		"ok": true,
 		"changed": false,
@@ -154,6 +157,8 @@ func _process_files(files: Array, startup: bool) -> Dictionary:
 		"skins_imported": false,
 		"particles_imported": false,
 		"backgrounds_imported": false,
+		"nav_target": {},
+		"nav_folder": "",
 	}
 	for raw in files:
 		var path := str(raw)
@@ -175,12 +180,30 @@ func _process_files(files: Array, startup: bool) -> Dictionary:
 		if bool(result.get("backgrounds_imported", false)):
 			acc["backgrounds_imported"] = true
 			acc["changed"] = true
+		var nav: Variant = result.get("nav_target", {})
+		if nav is Dictionary and not nav.is_empty():
+			acc["nav_target"] = nav
+			var nav_folder := str(result.get("nav_folder", ""))
+			if nav_folder.is_empty():
+				var folders: Array = result.get("chart_folders", [])
+				if not folders.is_empty():
+					nav_folder = str(folders[0])
+			acc["nav_folder"] = nav_folder
 		if bool(result.get("restart_required", false)):
 			acc["restart_required"] = true
 			break
 	# 整批导入 + 资源刷新都完成后再解锁，避免刷新期间又启动一批导入
 	if not startup and bool(acc.get("changed", false)) and not bool(acc.get("restart_required", false)):
 		await _refresh_resources(acc)
+	elif startup and not bool(acc.get("restart_required", false)) \
+			and bool(acc.get("changed", false)) and not str(acc.get("nav_folder", "")).is_empty():
+		# 冷启动单文件导入：先把目标谱面增量写进 DB/索引，保证随后的导航恢复时专辑/歌曲已存在
+		# （启动扫描仍在之后执行，这里只补导入项，不代替启动扫描；ZIP 导入的谱面交给启动扫描）
+		var fsm := FileSystemManager.instance
+		if fsm != null:
+			await fsm.refresh_chart_folders([str(acc.get("nav_folder", ""))])
+	if not bool(acc.get("restart_required", false)):
+		await _apply_nav_target(acc.get("nav_target", {}), startup)
 	_busy = false
 	_startup_import_active = false
 	if not _queue.is_empty():
@@ -219,7 +242,13 @@ func _import_midi_file(path: String) -> Dictionary:
 	var existing := _find_chart_folder_by_hash(hash)
 	if not existing.is_empty():
 		_notify("导入失败：谱面已存在（%s）" % path.get_file())
-		return {"ok": false}
+		# 已存在也算“目标明确”：失败提示照常弹，但仍跳到已有谱面的 MidiView
+		return {
+			"ok": false,
+			"chart_folders": [existing],
+			"nav_target": _read_chart_nav(existing, hash),
+			"nav_folder": existing,
+		}
 
 	var folder := _create_chart_folder_from_file(path, hash, path.get_file().get_basename())
 	if folder.is_empty():
@@ -227,7 +256,11 @@ func _import_midi_file(path: String) -> Dictionary:
 		return {"ok": false}
 
 	_notify("已导入歌曲：%s" % path.get_file().get_basename())
-	return {"ok": true, "chart_folders": [folder]}
+	return {
+		"ok": true,
+		"chart_folders": [folder],
+		"nav_target": _local_chart_nav(hash),
+	}
 
 ## SF2：复制到音源目录；同名且内容一致视为已存在，内容不同则覆盖
 func _import_soundfont_file(path: String) -> Dictionary:
@@ -261,13 +294,90 @@ func _import_audio_file(path: String) -> Dictionary:
 	if FileAccess.file_exists(dest):
 		if _files_equal(path, dest):
 			_notify("导入失败：人声音频已存在（%s）" % path.get_file())
-			return {"ok": false}
+			return {
+				"ok": false,
+				"chart_folders": [folder],
+				"nav_target": _read_chart_nav(folder, hash),
+				"nav_folder": folder,
+			}
 
 	if DirAccess.copy_absolute(path, dest) != OK:
 		_notify("导入失败：无法写入人声音频（%s）" % path.get_file())
 		return {"ok": false}
 	_notify("已导入人声音频：%s" % path.get_file())
-	return {"ok": true, "chart_folders": [folder]}
+	return {
+		"ok": true,
+		"chart_folders": [folder],
+		"nav_target": _read_chart_nav(folder, hash),
+	}
+
+## 导入完成后的跳转目标：单文件 MIDI / 人声导入后进入对应歌曲的 MidiView
+## 启动期先写入 NavigationState，由启动导航恢复统一跳转；运行期直接导航。
+func _apply_nav_target(nav: Variant, startup: bool) -> void:
+	if not (nav is Dictionary) or (nav as Dictionary).is_empty():
+		return
+	var d: Dictionary = nav
+	var album_id := str(d.get("album_id", ""))
+	var song_id := str(d.get("song_id", ""))
+	var midi_id := str(d.get("midi_id", ""))
+	if album_id.is_empty() or song_id.is_empty():
+		return
+	if startup:
+		NavigationState.save(album_id, song_id, midi_id)
+		return
+	if DataMGR != null and DataMGR.is_loading:
+		await DataMGR.data_loaded
+	for _i in range(10):
+		if UiStatMGR != null and UiStatMGR._data_ready:
+			break
+		await get_tree().process_frame
+	if UiStatMGR != null:
+		UiStatMGR.navigate_to_album_song(album_id, song_id, midi_id)
+
+## 新导入的本地 MIDI：info.json 固定使用 album_local / song_{hash} / hash
+func _local_chart_nav(hash: String) -> Dictionary:
+	return {
+		"album_id": "album_local",
+		"song_id": "song_" + hash,
+		"midi_id": hash,
+	}
+
+## 从已有谱面（人声导入目标）解析导航信息；info.json 缺失时回退 DB 投影
+func _read_chart_nav(folder: String, fallback_hash: String) -> Dictionary:
+	var album_id := ""
+	var song_id := ""
+	var midi_id := fallback_hash
+	var info_path := FileSystemManager.CHARTS_DIR.path_join(folder).path_join("info.json")
+	var f := FileAccess.open(info_path, FileAccess.READ)
+	if f != null:
+		var parsed = JSON.parse_string(f.get_as_text())
+		f.close()
+		if parsed is Dictionary:
+			var data: Dictionary = parsed
+			var song = data.get("song")
+			if song is Dictionary:
+				song_id = str((song as Dictionary).get("_id", ""))
+			var album = data.get("album")
+			if album is Dictionary:
+				album_id = str((album as Dictionary).get("_id", ""))
+			var h := str(data.get("hash", ""))
+			if h.is_empty():
+				h = str(data.get("_id", ""))
+			if not h.is_empty():
+				midi_id = h
+	if (album_id.is_empty() or song_id.is_empty()) and ChartDB != null and ChartDB.IsOpen():
+		var jd: Dictionary = ChartDB.GetChartJson(folder)
+		if not jd.is_empty():
+			if album_id.is_empty():
+				album_id = str(jd.get("album_id", ""))
+			if song_id.is_empty():
+				song_id = str(jd.get("song_id", ""))
+			var id := str(jd.get("_id", ""))
+			if not id.is_empty():
+				midi_id = id
+	if album_id.is_empty() or song_id.is_empty():
+		return {}
+	return {"album_id": album_id, "song_id": song_id, "midi_id": midi_id}
 
 # ============================================================
 # ZIP 导入
@@ -843,7 +953,11 @@ func _refresh_resources(acc: Dictionary) -> void:
 	if bar:
 		bar.value = 0
 
-	await fsm.refresh_after_import(chart_folders)
+	var imported_assets: bool = not acc.get("soundfonts", []).is_empty() \
+		or bool(acc.get("skins_imported", false)) \
+		or bool(acc.get("particles_imported", false)) \
+		or bool(acc.get("backgrounds_imported", false))
+	await fsm.refresh_after_import(chart_folders, imported_assets)
 
 	# 贴图缓存与索引是两套数据，重扫后仍需按资源类别清理
 	if bool(acc.get("skins_imported", false)):
@@ -982,8 +1096,8 @@ func _write_chart_info(info_path: String, hash: String, name: String) -> bool:
 		"artistUrl": "",
 		"coverHash": "",
 		"uploadedDate": now,
-		"approvedDate": now,
-		"status": "APPROVED",
+		"approvedDate": "",
+		"status": "PENDING",
 		"downloadCount": 0,
 		"trialCount": 0,
 		"upCount": 0,
