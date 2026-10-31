@@ -6,7 +6,7 @@
 ##     —— 永不迁移，否则启动时无法定位数据根
 ##   - 可移动存储根（PathHelper.get_storage_root() / get_files_dir()）：
 ##     全部用户数据 —— Charts / Soundfont / Skins / BackgroundImage / Particles /
-##     Charas / Logs / Settings / THMIX_Import + settings.ini / favorites.json /
+##     Charas / Logs / Settings + settings.ini / favorites.json /
 ##     theme.ini / charts.ldb / charts-log.ldb —— 玩家可自定义
 ##   - 固定引导目录文件（PathHelper.get_auth_file() / get_device_id_file()）：
 ##     auth.json（登录态）/ device_id.txt（设备标识）—— 设备/账号级数据，不随存储根迁移
@@ -44,7 +44,7 @@ const POINTER_FILE := "storage_pointer.ini"
 ## 注意：ChartDB 的 zstd 词典缓存 dicts/ 属可自动重建的缓存，不随根迁移
 const MIGRATABLE_DIRS: Array[String] = [
 	"Charts", "Soundfont", "Skins", "BackgroundImage", "Particles", "Charas",
-	"Logs", "Settings", "THMIX_Import",
+	"Logs", "Settings",
 ]
 ## 随存储根迁移的顶层文件（用户数据 / 数据库）
 ## 注意：auth.json / device_id.txt 为设备/账号级固定文件（存引导目录），永不随根迁移

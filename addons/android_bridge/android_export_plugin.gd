@@ -97,7 +97,14 @@ func _write_manifest(path: String, names: PackedStringArray) -> void:
 	file.store_string("\n".join(names))
 	file.close()
 
-## 插件注册 meta-data + 前台服务声明（application 元素内）
+## 「打开方式」：允许系统把任意文件以 VIEW intent 交给本应用。
+## 必须挂在**导出的 activity-alias** 上：Godot 的 .GodotApp 是 exported=false，
+## 直接给 activity 注入 filter 会让「打开方式」里出现一个无法启动的重复入口。
+## 这里单独声明 ImportLauncher 别名，targetActivity 指向 .GodotApp。
+const IMPORT_ALIAS_NAME := "com.godot.game.ImportLauncher"
+const GODOT_ACTIVITY_NAME := "com.godot.game.GodotApp"
+
+## 插件注册 meta-data + 前台服务声明 + 文件「打开方式」别名（application 元素内）
 func _get_android_manifest_application_element_contents(
 		_platform: EditorExportPlatform, _debug: bool) -> String:
 	return """
@@ -107,9 +114,27 @@ func _get_android_manifest_application_element_contents(
 		<service
 				android:name="com.godot.game.MediaSessionService"
 				android:exported="false"
-				android:foregroundServiceType="mediaPlayback" />""" % [
+				android:foregroundServiceType="mediaPlayback" />
+		<activity-alias
+				android:name="%s"
+				android:targetActivity="%s"
+				android:exported="true">
+			<intent-filter>
+				<action android:name="android.intent.action.VIEW" />
+				<category android:name="android.intent.category.DEFAULT" />
+				<data android:mimeType="*/*" />
+			</intent-filter>
+			<intent-filter>
+				<action android:name="android.intent.action.VIEW" />
+				<category android:name="android.intent.category.DEFAULT" />
+				<data android:scheme="content" />
+				<data android:scheme="file" />
+			</intent-filter>
+		</activity-alias>""" % [
 		PLUGIN_NAME,
 		PLUGIN_CLASS,
+		IMPORT_ALIAS_NAME,
+		GODOT_ACTIVITY_NAME,
 	]
 
 ## 前台服务与通知权限（manifest 顶层，application 之前）

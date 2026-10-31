@@ -6,18 +6,21 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.provider.OpenableColumns;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -28,6 +31,9 @@ import org.godotengine.godot.plugin.GodotPlugin;
 import org.godotengine.godot.plugin.SignalInfo;
 import org.godotengine.godot.plugin.UsedByGodot;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -98,6 +104,10 @@ public class AndroidBridge extends GodotPlugin {
 	 *  没有焦点事件的话，上层只能反复"停滞检测 → 拆桥重建 → 启动失败"，空转一整个通话。 */
 	private static final SignalInfo AUDIO_FOCUS_CHANGED =
 			new SignalInfo("audio_focus_changed", Integer.class);
+	/** 系统「打开方式」选中的文件：content:// 已复制成本地缓存文件，携带绝对路径。
+	 *  引擎未就绪时也会缓存到 pendingOpenFile，由 GDScript 侧 consume_pending_open_file 拉取。 */
+	private static final SignalInfo FILE_OPEN_REQUESTED =
+			new SignalInfo("file_open_requested", String.class);
 
 	/** 音频焦点状态（与 focus_change 的取值域对应）：
 	 *  0 = 已获得/恢复（AUDIOFOCUS_GAIN）
@@ -202,6 +212,7 @@ public class AndroidBridge extends GodotPlugin {
 		signals.add(AUDIO_OUTPUT_CHANGED);
 		signals.add(TRIM_MEMORY);
 		signals.add(AUDIO_FOCUS_CHANGED);
+		signals.add(FILE_OPEN_REQUESTED);
 		return signals;
 	}
 
@@ -448,8 +459,200 @@ public class AndroidBridge extends GodotPlugin {
 			// 插件在 Godot.initEngine() 早期就被注册（早于引擎启动），此处注册即最早时机，
 			// 不会漏掉启动阶段就到达的 onTrimMemory。
 			registerTrimCallback();
+			// 冷启动「打开方式」：intent 里的文件可能早于引擎就绪，
+			// 立即抓取并缓存；后续 intent 变化由 1s 轮询捕获（onNewIntent 会更新 Activity.intent）。
+			pollOpenIntent();
+			scheduleOpenIntentPoll();
 		});
 		return null;
+	}
+
+	// ===== 系统「打开方式」文件（file_open_requested）=====
+	//
+	// Android 的 onNewIntent 由 GodotActivity 处理，插件没有回调钩子；
+	// 但 GodotActivity.onNewIntent 会把新 Intent 写回 activity.intent，
+	// 因此用轻量轮询（1s）比对 Intent 对象身份 + data 字符串即可捕捉。
+	// content:// 由 ContentResolver 复制到应用缓存目录，GDScript 侧只处理普通文件路径。
+	/** 待 GDScript 拉取的启动文件（引擎未就绪时 signal 可能丢失，拉取通道兜底） */
+	private volatile String pendingOpenFile = "";
+	/** 上次处理过的 Intent 标识（对象身份 + action + data），避免同一 intent 每秒重复导入 */
+	private String lastOpenIntentSignature = "";
+	private final Handler _openIntentHandler = new Handler(Looper.getMainLooper());
+	private boolean openIntentPollScheduled = false;
+
+	private final Runnable openIntentRunnable = new Runnable() {
+		@Override
+		public void run() {
+			openIntentPollScheduled = false;
+			pollOpenIntent();
+			scheduleOpenIntentPoll();
+		}
+	};
+
+	private void scheduleOpenIntentPoll() {
+		if (openIntentPollScheduled) {
+			return;
+		}
+		openIntentPollScheduled = true;
+		_openIntentHandler.postDelayed(openIntentRunnable, 1000L);
+	}
+
+	/** 读取并消费 Activity 当前 Intent 中的文件（仅 ACTION_VIEW） */
+	private void pollOpenIntent() {
+		android.app.Activity activity = getActivity();
+		if (activity == null) {
+			return;
+		}
+		Intent intent = activity.getIntent();
+		if (intent == null) {
+			return;
+		}
+		Uri data = intent.getData();
+		if (data == null) {
+			return;
+		}
+		String action = intent.getAction();
+		String signature = System.identityHashCode(intent) + "|" + action + "|" + data;
+		if (signature.equals(lastOpenIntentSignature)) {
+			return;
+		}
+		lastOpenIntentSignature = signature;
+		if (!Intent.ACTION_VIEW.equals(action)) {
+			return;
+		}
+		final Uri uri = data;
+		new Thread(() -> {
+			String path = importUriToLocal(uri);
+			if (path == null || path.isEmpty()) {
+				Log.w(TAG, "[import] failed to read open-with uri: " + uri);
+				return;
+			}
+			pendingOpenFile = path;
+			Log.i(TAG, "[import] open-with file ready: " + path);
+			new Handler(Looper.getMainLooper()).post(() -> emitSignal(FILE_OPEN_REQUESTED, path));
+		}, "GodotFileOpen").start();
+	}
+
+	/**
+	 * 把 content:// 复制到应用缓存，返回本地绝对路径；file:// 直接返回路径。
+	 * 复制文件名优先取 OpenableColumns.DISPLAY_NAME，缺失时用 URI 末段并按 MIME 补扩展名。
+	 */
+	@Nullable
+	private String importUriToLocal(@NonNull Uri uri) {
+		android.app.Activity activity = getActivity();
+		if (activity == null) {
+			return null;
+		}
+		try {
+			String scheme = uri.getScheme();
+			if ("file".equalsIgnoreCase(scheme)) {
+				return uri.getPath();
+			}
+			if (!"content".equalsIgnoreCase(scheme)) {
+				return null;
+			}
+			String display = queryDisplayName(activity, uri);
+			if (display == null || display.isEmpty()) {
+				display = uri.getLastPathSegment();
+			}
+			if (display == null || display.isEmpty()) {
+				display = "import_file";
+			}
+			display = display.replaceAll("[/\\\\:*?\"<>|]", "_");
+			if (!display.contains(".")) {
+				String ext = extensionForMime(activity.getContentResolver().getType(uri));
+				if (!ext.isEmpty()) {
+					display += ext;
+				}
+			}
+			File dir = new File(activity.getCacheDir(), "import_inbox");
+			if (!dir.exists() && !dir.mkdirs()) {
+				Log.w(TAG, "[import] cannot create cache dir: " + dir.getAbsolutePath());
+				return null;
+			}
+			File out = new File(dir, display);
+			// 同名缓存文件不覆盖：新一轮导入与上一轮并存时保持各自内容独立
+			if (out.exists()) {
+				out = new File(dir, System.currentTimeMillis() + "_" + display);
+			}
+			try (InputStream in = activity.getContentResolver().openInputStream(uri);
+					FileOutputStream fos = new FileOutputStream(out)) {
+				if (in == null) {
+					return null;
+				}
+				byte[] buf = new byte[64 * 1024];
+				int n;
+				while ((n = in.read(buf)) > 0) {
+					fos.write(buf, 0, n);
+				}
+			}
+			return out.getAbsolutePath();
+		} catch (Exception e) {
+			Log.w(TAG, "[import] read uri failed: " + e.getMessage());
+			return null;
+		}
+	}
+
+	@Nullable
+	private static String queryDisplayName(@NonNull android.app.Activity activity, @NonNull Uri uri) {
+		Cursor cursor = null;
+		try {
+			cursor = activity.getContentResolver().query(uri,
+					new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null);
+			if (cursor != null && cursor.moveToFirst()) {
+				int idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+				if (idx >= 0) {
+					return cursor.getString(idx);
+				}
+			}
+		} catch (Exception e) {
+			Log.w(TAG, "[import] query display name failed: " + e.getMessage());
+		} finally {
+			if (cursor != null) {
+				cursor.close();
+			}
+		}
+		return null;
+	}
+
+	private static String extensionForMime(@Nullable String mime) {
+		if (mime == null) {
+			return "";
+		}
+		switch (mime) {
+			case "audio/midi":
+			case "audio/x-midi":
+			case "application/x-midi":
+				return ".mid";
+			case "audio/mpeg":
+				return ".mp3";
+			case "audio/wav":
+			case "audio/x-wav":
+				return ".wav";
+			case "audio/ogg":
+				return ".ogg";
+			case "audio/flac":
+				return ".flac";
+			case "application/zip":
+			case "application/x-zip-compressed":
+				return ".zip";
+			case "application/x-soundfont":
+			case "audio/x-soundfont":
+				return ".sf2";
+			default:
+				return "";
+		}
+	}
+
+	/** 供 GDScript 启动时拉取：返回并清空等待处理的文件路径 */
+	@UsedByGodot
+	public String consume_pending_open_file() {
+		String p = pendingOpenFile;
+		pendingOpenFile = "";
+		if (p != null && !p.isEmpty()) {
+			Log.i(TAG, "[import] consume pending: " + p);
+		}
+		return p;
 	}
 
 	// ===== 后台内存回收触发（两条源：后台挂留超时 / onTrimMemory） =====
@@ -756,6 +959,9 @@ public class AndroidBridge extends GodotPlugin {
 	public void onMainDestroy() {
 		// 后台空闲看门狗随插件一起撤下
 		cancelBackgroundWatchdog();
+		// 「打开方式」轮询随插件一起停止
+		_openIntentHandler.removeCallbacks(openIntentRunnable);
+		openIntentPollScheduled = false;
 		// 注销 onTrimMemory 监听（注册在 Application context 上，不注销会随进程存活）
 		if (trimCallbackRegistered) {
 			try {

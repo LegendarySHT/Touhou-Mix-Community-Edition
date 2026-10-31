@@ -42,7 +42,6 @@ const DEFAULT_COVER_PATH := "res://Resources/Covers/423be8d161a8a972c90144549218
 ## 通用加载/导入提示文案（ProcessTip，与 Main.tscn 默认文案一致）
 const LOADING_TIP_TEXT := "加载中，请稍后"
 const COPY_TIP_TEXT := "正在初始化资源，请稍后"
-const IMPORT_TIP_TEXT := "正在导入数据，请稍后"
 const SCAN_TIP_TEXT := "正在扫描谱面，请稍后"
 
 ## 图片文件扩展名列表（Godot 导出时会被转换为 .ctex，无法通过 FileAccess 直接读取）
@@ -228,9 +227,13 @@ func initialize_directory_structure() -> void:
 	for dir_path in directories:
 		_ensure_directory_exists(dir_path)
 	
-	# 启动文件处理串行管线：先复制默认资源 → 再导入外部游戏数据 → 最后扫描并更新数据库缓存
+	# 启动文件处理串行管线：先复制默认资源 → 再导入外部文件 → 最后扫描并更新数据库缓存
 	await _copy_default_resources_async()
-	await _import_external_charts_async()
+	if ImportManager.instance != null:
+		var can_continue := await ImportManager.instance.process_startup_files()
+		if not can_continue:
+			# 导入的配置需要重启：不再继续扫描，等待导入模块退出游戏
+			return
 	_scan_all_resources()
 
 ## 确保目录存在，不存在则创建
@@ -290,64 +293,6 @@ func _copy_default_resources_async() -> void:
 			bar.value = minf(done, bar.max_value)
 
 	if total_steps > 0:
-		hide_progress_ui()
-
-## 异步导入外部游戏（THMIX）数据
-## 主线程先快速检查导入任务（check_import_task，含诊断日志），决定是否显示导入 UI 并启动后台 worker
-## 转换在 WorkerThreadPool 后台执行（纯文件 I/O），进度经 progress_cb 以 call_deferred 送回主线程，
-## state 只在任务完成后读取（任务完成有 happens-before），全程无跨线程并发读写，不阻塞界面
-func _import_external_charts_async() -> void:
-	# 检查导入任务：has_work 决定是否启动后台 worker；ui_pending 决定是否显示进度 UI
-	var task_info: Dictionary = ExternalGameConverter.check_import_task()
-	if not task_info.get("has_work", false):
-		return
-	var pending: int = int(task_info.get("ui_pending", 0))
-	var show_ui: bool = pending > 0
-
-	# 显示统一进度 UI（遮罩 + 提示 + 进度条），仅当有待导入任务时
-	var ui := {}
-	var bar: ProgressBar = null
-	if show_ui:
-		ui = show_progress_ui(IMPORT_TIP_TEXT, pending)
-		bar = ui["bar"]
-
-	# 进度回调：worker 内 call_deferred 调用 → 主线程执行，更新进度条（与 Logger 的 worker 转主线程同模式）
-	var progress_cb := func(cur: int, total: int) -> void:
-		if bar:
-			if total > 0:
-				bar.max_value = maxf(total, 1)
-			bar.value = minf(cur, total)
-
-	var state: Dictionary = {}
-	var task_id := WorkerThreadPool.add_task(
-		func(): ExternalGameConverter.check_and_convert(state, progress_cb),
-		false, "ImportTHMIX"
-	)
-	if task_id < 0:
-		GLogger.error("启动 THMIX 导入 worker 失败（task_id=%d）" % task_id, "FileSystemMGR")
-		if show_ui:
-			hide_progress_ui()
-		return
-
-	while not WorkerThreadPool.is_task_completed(task_id):
-		await get_tree().process_frame
-	WorkerThreadPool.wait_for_task_completion(task_id)
-
-	# 输出 worker 收集的诊断日志（任务完成后读取，主线程统一写 GLogger）
-	for w in state.get("warnings", []):
-		GLogger.warning(w, "ExternalConverter")
-	for i in state.get("info", []):
-		GLogger.info(i, "ExternalConverter")
-
-	var converted: int = int(state.get("converted", 0))
-	GLogger.info("外部数据导入结束：转换 %d 个谱面" % converted, "FileSystemMGR")
-
-	# 立即把新导入的谱面扫描进 DB 缓存，让 _scan_all_resources 阶段 A 从缓存即可看到，无需等后台校验补扫
-	var imported_folders: Array = state.get("imported_folders", [])
-	if not imported_folders.is_empty() and ChartDB != null and ChartDB.IsOpen():
-		await _sync_imported_charts_to_db(imported_folders)
-
-	if show_ui:
 		hide_progress_ui()
 
 ## 显示统一进度 UI（遮罩 + 提示 + 进度条），供启动期复制/导入/扫描复用
@@ -434,6 +379,18 @@ func _sync_imported_charts_to_db(imported_folders: Array) -> void:
 		return
 	_save_charts_cache(new_data)
 	GLogger.info("导入完成，已将 %d 个新谱面同步到 DB 缓存（无需等后台校验）" % new_data.size(), "FileSystemMGR")
+
+## 运行期导入完成后刷新索引与数据层
+## 先把新谱面写进 DB 缓存，再走常规重扫：快速路径可直接从缓存恢复新谱面，
+## 其它资源（皮肤/特效/音源/背景）由重扫重建索引；最后通知 DataManager 重建水合缓存。
+func refresh_after_import(imported_chart_folders: Array) -> void:
+	await await_busy_done()
+	var charts_changed := not imported_chart_folders.is_empty()
+	if charts_changed and ChartDB != null and ChartDB.IsOpen():
+		await _sync_imported_charts_to_db(imported_chart_folders)
+	await rescan_resources()
+	if charts_changed and DataMGR != null:
+		DataMGR.reload_after_import()
 
 ## 统计默认谱面源目录下的子目录数（供复制进度条 max 使用）
 func _count_default_chart_folders() -> int:

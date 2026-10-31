@@ -15,6 +15,7 @@ var filesystem_manager: FileSystemManager
 var storage_manager: StorageManager
 var net_manager: NetManager
 var memory_gc: MemoryGC
+var import_manager: ImportManager
 var _is_reloading_settings: bool = false
 
 # --- 管理器引导（依赖顺序敏感，不要随意调换）---
@@ -62,12 +63,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_handle_back_request()
 	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
-		# 应用退出时关闭 CoverLoader 线程池，确保所有后台线程 wait_to_finish
-		if CoverLoader:
-			CoverLoader.shutdown()
-		# 关闭 LiteDB（Dispose 刷写 journal）
-		if ChartDB:
-			ChartDB.CloseDb()
+		shutdown_and_quit()
 	elif what == NOTIFICATION_APPLICATION_FOCUS_IN or what == NOTIFICATION_APPLICATION_RESUMED:
 			# 应用焦点回归：重新检测蓝牙输出（用户可能在离开期间切换了输出设备），
 			# 蓝牙状态变化时自动切换延迟预设并重建音频桥跟随新默认设备
@@ -90,6 +86,14 @@ func _notification(what: int) -> void:
 		# 该通知在引擎挂起前于主线程触发，与 AndroidBridge.onMainPause 同源。
 		if memory_gc != null:
 			memory_gc.set_background(true)
+
+## 应用退出清理：关闭 CoverLoader 线程池并刷写 LiteDB，再退出
+func shutdown_and_quit() -> void:
+	if CoverLoader:
+		CoverLoader.shutdown()
+	if ChartDB:
+		ChartDB.CloseDb()
+	get_tree().quit()
 
 ## 桌面端 Esc 键（仅在无其他控件消费事件时触发）
 func _unhandled_input(event: InputEvent) -> void:
@@ -203,8 +207,16 @@ func _initialize_core_systems() -> void:
 		filesystem_manager.resources_ready.connect(storage_manager.mark_rescan_done, CONNECT_ONE_SHOT)
 	if logger:
 		logger.info("FileSystemManager initialized", "Main")
+
+	# 3.1 外部文件导入管理器（打开方式 / 拖入窗口）
+	# 启动期导入由 FileSystemManager 在扫描前串行调用，运行期到达的文件即时处理
+	import_manager = ImportManager.new()
+	import_manager.name = "ImportManager"
+	add_child(import_manager)
+	if logger:
+		logger.info("ImportManager initialized", "Main")
 	
-	# 初始化目录结构（异步：复制默认资源 → 导入外部游戏 → 扫描并更新 DB 缓存）
+	# 初始化目录结构（异步：复制默认资源 → 导入外部文件 → 扫描并更新 DB 缓存）
 	# 注意：initialize_directory_structure 是异步协程，其内部扫描可能同步执行，
 	# 因此必须先把 ChartDB 打开，确保扫描读缓存时 DB 已就绪（避免每次启动误走全量扫描）
 	# 3.25. 确保 DB 目录存在后再打开 ChartDB（LiteDB 数据层），必须在 FileSystemManager 扫描前就绪

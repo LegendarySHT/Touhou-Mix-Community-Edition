@@ -100,6 +100,15 @@ func _plugin() -> Object:
 		return null
 	return Engine.get_singleton("AndroidBridge")
 
+## AndroidBridge 是 JNISingleton：@UsedByGodot 方法不在 get_method_list 里，
+## has_method 恒为 false；必须走它绑定的 has_java_method。
+func _has_java_method(plugin: Object, method: String) -> bool:
+	if plugin == null:
+		return false
+	if plugin.has_method("has_java_method"):
+		return bool(plugin.call("has_java_method", method))
+	return plugin.has_method(method)
+
 # ── 触发入口 ──────────────────────────────────────────
 
 ## Java 侧推来的档位
@@ -149,7 +158,7 @@ func _meets_threshold(level: int) -> bool:
 
 func _drain_pending_level(reason: String) -> void:
 	var plugin := _plugin()
-	if plugin == null or not plugin.has_method("consume_pending_trim_level"):
+	if not _has_java_method(plugin, "consume_pending_trim_level"):
 		return
 	var level: int = int(plugin.call("consume_pending_trim_level"))
 	if level == 0:
@@ -347,13 +356,13 @@ func _refresh_current_view_after_trim() -> void:
 ## 只看 Godot 托管堆会漏掉原生/纹理部分，PSS 更接近真实占用。
 func _log_pss(tag: String) -> void:
 	var plugin := _plugin()
-	if plugin == null or not plugin.has_method("log_pss"):
+	if not _has_java_method(plugin, "log_pss"):
 		return
 	plugin.call("log_pss", tag)
 
 ## [诊断] 系统当前把本进程当成什么（前台服务保护是否生效 / 是否已被当缓存进程）
 func debug_memory_state() -> String:
 	var plugin := _plugin()
-	if plugin == null or not plugin.has_method("get_my_memory_state"):
+	if not _has_java_method(plugin, "get_my_memory_state"):
 		return "unavailable"
 	return str(plugin.call("get_my_memory_state"))

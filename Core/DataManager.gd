@@ -81,10 +81,18 @@ func _rebuild_data_tree() -> void:
 ## 已水合的 MidiData 里带旧根绝对路径（json / 音频 / 封面），必须全部丢弃重查；
 ## DB 已指向新根，视图收到 data_loaded 后会重新按 DB 查询
 func rebuild_after_storage_change() -> void:
+	_reload_from_db("storage root switch")
+
+## 外部文件导入完成后重建数据缓存
+## 新谱面/人声已由 FileSystemManager 写入 DB 与索引，这里丢弃旧水合对象并广播刷新
+func reload_after_import() -> void:
+	_reload_from_db("resource import")
+
+func _reload_from_db(reason: String) -> void:
 	midis.clear()
 	is_loading = false
 	_pending_reload = false
-	GLogger.info("Data caches rebuilt after storage root switch", "DataMGR")
+	GLogger.info("Data caches rebuilt after %s" % reason, "DataMGR")
 	data_loaded.emit()
 
 ## ========== 惰性水合 ==========
