@@ -50,6 +50,10 @@ func _ready() -> void:
 	_end_color_edit.text_changed.connect(_on_hex_color_changed.bind(_end_color_btn))
 	_solid_color_btn.color_changed.connect(_on_color_picker_changed.bind(_solid_color_edit))
 	_solid_color_edit.text_changed.connect(_on_hex_color_changed.bind(_solid_color_btn))
+	# 统一取色器弹层形态。背景色需要透明度滑条，故 edit_alpha=true。
+	# HexColor 输入框是场景里自带的（不走 attach_hex_edit），这里只统一弹层内容。
+	for picker in [_start_color_btn, _end_color_btn, _solid_color_btn]:
+		ThemeMGR.setup_color_picker(picker, true)
 
 ## 由 PopupWindow.show_image_adjust 调用：
 ## view_name: 视图名称（main/store/score/play/track/midi/setting），用于从 ThemeManager 读取当前配置初始化控件

@@ -153,8 +153,11 @@ func _rebuild_color_buttons(count: int, colors: Array = []) -> void:
 		var btn := ColorPickerButton.new()
 		btn.custom_minimum_size = Vector2(60, 60)
 		btn.size_flags_vertical = 4     # SHRINK_CENTER
-		btn.edit_alpha = false
 		btn.color = existing[i] if i < existing.size() else Color.WHITE
+		# 只统一取色器弹层形态（色板 + 滑条 + Hex），不挂 HexEdit：
+		# 这里是按轨道数动态生成的色块序列，少则 2 个多则十几个，每个前面塞一个
+		# 输入框会把「颜色序列」这一行彻底挤爆，手机上也点不动。
+		ThemeMGR.setup_color_picker(btn, false)
 		btn.color_changed.connect(_on_alt_color_changed.bind(i))
 		_color_seq.add_child(btn)
 		_alt_colors_state.append(btn.color)

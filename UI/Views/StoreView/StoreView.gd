@@ -1433,6 +1433,19 @@ func apply_theme() -> void:
 	if underline_sb:
 		underline_sb.bg_color = primary_dark if is_light else primary_light
 
+	# 工具按钮 / 标签按钮的 disabled 样式：MidiStore.tscn 里没给这四个按钮配 disabled，
+	# 落到 MainTheme 的 Button/disabled（透明底 + 浅色下几乎看不见描边），
+	# 于是「排序字段」在人声页被禁用时看起来跟可用态一模一样。这里补齐本地覆盖。
+	var disabled_bg := surface_low.darkened(0.06) if is_light else surface_low
+	for btn in [_filter_btn, _order_btn, _batch_btn, _vocal_btn] + _tab_buttons:
+		var db := (btn as Button).get_theme_stylebox("normal") as StyleBoxFlat
+		if db == null:
+			continue
+		var d_sb := db.duplicate() as StyleBoxFlat
+		d_sb.bg_color = ThemeMGR._tint_keep_alpha(disabled_bg, db.bg_color.a)
+		d_sb.border_color = ThemeMGR._tint_keep_alpha(border_soft, db.border_color.a)
+		(btn as Button).add_theme_stylebox_override("disabled", d_sb)
+
 	# 分页
 	for btn in [_previ_btn, _next_btn]:
 		var b := btn as Button
@@ -1491,5 +1504,8 @@ func _style_flat_button(btn: Button, normal_bg: Color, hover_bg: Color, pressed_
 		pressed_sb.border_color = ThemeMGR.get_color("primary_light")
 	btn.add_theme_color_override("font_color", normal_text)
 	btn.add_theme_color_override("font_hover_color", hover_text)
-	btn.add_theme_color_override("font_disabled_color", ThemeMGR.get_color("text_dim").darkened(0.25))
-	btn.add_theme_color_override("icon_disabled_color", ThemeMGR.get_color("text_dim").darkened(0.35))
+	# 禁用态统一走 text_disabled（低饱和深灰）。不要再额外降透明度：
+	# 颜色本身已经够"熄火"，再叠 alpha 会淡到看不清
+	var disabled_text: Color = ThemeMGR.get_color("text_disabled")
+	btn.add_theme_color_override("font_disabled_color", disabled_text)
+	btn.add_theme_color_override("icon_disabled_color", disabled_text)

@@ -121,6 +121,15 @@ func _apply_stage_theme() -> void:
 		t.set_color("font_pressed_color", type, STAGE_TEXT)
 	t.set_color("font_hover_pressed_color", "Button", STAGE_TEXT)
 	t.set_color("font_disabled_color", "Button", STAGE_TEXT_DIM)
+	t.set_color("icon_disabled_color", "Button", Color(STAGE_TEXT_DIM.r, STAGE_TEXT_DIM.g, STAGE_TEXT_DIM.b, 0.85))
+	# 局部 Theme 里只写了颜色，样式框回落到主 Theme —— 而主 Theme 的禁用框是 surface_low（浅色下几乎白），
+	# 压在深色舞台上会变成一块"亮膏药"。这里给舞台按钮配一个透明的深色禁用框。
+	var stage_disabled := StyleBoxFlat.new()
+	stage_disabled.bg_color = Color(1, 1, 1, 0.06)
+	stage_disabled.set_corner_radius_all(10)
+	stage_disabled.set_content_margin_all(8)
+	stage_disabled.corner_detail = 5
+	t.set_stylebox("disabled", "Button", stage_disabled)
 	t.set_color("font_focus_color", "OptionButton", STAGE_TEXT)
 	# 图标为白色描线，深色舞台上保持浅色即正确观感
 	t.set_color("icon_normal_color", "Button", STAGE_TEXT)

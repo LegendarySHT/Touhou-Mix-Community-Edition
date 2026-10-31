@@ -40,6 +40,9 @@ func get_player_data() -> Dictionary:
 @onready var avatar: Panel = $MiniInfo/Avatar
 @onready var mini_avatar_rect: TextureRect = $MiniInfo/Avatar/TextureRect
 @onready var profile_avatar_rect: TextureRect = $ProfileView/Header/AvatarBig/TextureRect
+# 大小头像的外圈细边框（draw_center=false 的空心描边，只刷 border_color）。
+# PlayerInfoContent.tscn 里这两个 Panel 共用同一个 StyleBoxFlat，改一次即同步两处。
+@onready var profile_avatar_border: Panel = $ProfileView/Header/AvatarBig
 @onready var data: VBoxContainer = $MiniInfo/Data
 @onready var mini_name: Label = $MiniInfo/Data/name
 @onready var mini_level: Label = $MiniInfo/Data/level
@@ -92,6 +95,31 @@ func _ready() -> void:
 		profile_page.avatar_loaded.connect(_on_avatar_loaded)
 	# 启动时若已登录（从本地恢复会话），立即填充
 	_sync_from_auth()
+	if ThemeMGR:
+		ThemeMGR.register_theme_applier(self)
+		apply_theme()
+
+func _exit_tree() -> void:
+	if ThemeMGR:
+		ThemeMGR.unregister_theme_applier(self)
+
+# ========== 主题色应用 ==========
+
+## 本页只有头像外圈描边需要跟随主题色：tscn 里硬编码成淡蓝 #93B4FF（= primary_light 的初值），
+## 换主题色后仍是蓝的。圆角本身由 ImgRoundCorner shader 做，与主题无关。
+func apply_theme() -> void:
+	var ring: Color = ThemeMGR.get_color("primary") \
+		if ThemeMGR.get_appearance() == "light" else ThemeMGR.get_color("primary_light")
+	_set_border_keep_alpha(avatar, ring)
+	_set_border_keep_alpha(profile_avatar_border, ring)
+
+## 改 panel 描边色，保留原 alpha（tscn 里是 0.9，是刻意调过的，不能被冲掉）
+func _set_border_keep_alpha(node: Control, border: Color) -> void:
+	if not node:
+		return
+	var sb := node.get_theme_stylebox("panel")
+	if sb is StyleBoxFlat:
+		sb.border_color = Color(border.r, border.g, border.b, sb.border_color.a)
 
 ## ProfilePage 头像加载完成回调：同步到 MiniInfo/ProfileView 的头像
 func _on_avatar_loaded(tex: Texture2D) -> void:

@@ -32,7 +32,11 @@ signal avatar_loaded(texture: Texture2D)
 @onready var profile_pp_label: Label = $PC/PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox/Level/PPLabel
 @onready var profile_bio_label: Label = $PC/PageContent/Profile/Data/VBox/Desc/Label
 @onready var profile_avatar_rect: TextureRect = $PC/PageContent/Profile/Main/Header/HBoxContainer/AvatarBig/TextureRect
+# 头像外圈细边框（draw_center=false 的空心描边，bg_color 无意义，只刷 border_color）
+@onready var profile_avatar_border: Panel = $PC/PageContent/Profile/Main/Header/HBoxContainer/AvatarBig
 # ========== Profile 角色展示（Displayer） ==========
+# 角色卡外圈细边框（同上，空心描边）
+@onready var chara_card_border: PanelContainer = $PC/PageContent/Profile/Main/PC/Displayer/Border
 @onready var chara_display_img: TextureRect = $PC/PageContent/Profile/Main/PC/Displayer/Border/CharaImg
 @onready var bg_display_img: TextureRect = $PC/PageContent/Profile/Main/PC/Displayer/Border/BGImg
 @onready var chara_info_name: Label = $PC/PageContent/Profile/Main/PC/Displayer/Info/VBox/Name
@@ -115,9 +119,8 @@ func _ready() -> void:
 	new_pwd_edit.secret = true
 	_reset_avatar_adjust()
 	# 头像卡（Border 整块卡片框）点击进入 Chara_View：卡片框接收点击，头像图透传
-	var card_border := get_node_or_null("PC/PageContent/Profile/Main/PC/Displayer/Border")
-	if card_border:
-		card_border.gui_input.connect(_on_card_border_gui_input)
+	if chara_card_border:
+		chara_card_border.gui_input.connect(_on_card_border_gui_input)
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
@@ -199,6 +202,13 @@ func apply_theme() -> void:
 	_set_btn(_edit_confirm_btn, "normal", p.darkened(0.1), p)
 	_set_btn(_edit_confirm_btn, "pressed", p.darkened(0.3), p)
 	_set_btn(_edit_confirm_btn, "hover", p, p)
+	# 圆角头像 / 角色卡的外圈细描边：tscn 里硬编码成淡蓝 #93B4FF（= primary_light 的初值），
+	# 换主题色后仍是蓝的。这里按外观模式取强调色：深色用 primary_light（亮，暗底上才看得见），
+	# 浅色用 primary（深，浅底上才看得见）。
+	# 共 3 个空心描边 StyleBox：资料页大头像 / 编辑页头像预览框 / 角色展示卡。
+	_set_panel_border_keep_alpha(profile_avatar_border, _avatar_ring_color())
+	_set_panel_border_keep_alpha(avatar_border, _avatar_ring_color())
+	_set_panel_border_keep_alpha(chara_card_border, _avatar_ring_color())
 
 ## 设置面板 bg + border
 func _set_panel(node: Control, bg: Color, border: Color) -> void:
@@ -216,6 +226,21 @@ func _set_panel_border(node: Control, border: Color) -> void:
 	var sb := node.get_theme_stylebox("panel")
 	if sb is StyleBoxFlat:
 		sb.border_color = border
+
+## 仅设置面板 border，并保留该 StyleBox 原有的 border alpha。
+## 头像描边的 alpha 是刻意调过的（头像 0.9 / 角色卡 0.7），刷主题色时不能被冲掉。
+func _set_panel_border_keep_alpha(node: Control, border: Color) -> void:
+	if not node:
+		return
+	var sb := node.get_theme_stylebox("panel")
+	if sb is StyleBoxFlat:
+		sb.border_color = Color(border.r, border.g, border.b, sb.border_color.a)
+
+## 头像/角色卡外圈描边的颜色：深色用亮调强调色，浅色用强调色本身
+func _avatar_ring_color() -> Color:
+	if ThemeMGR.get_appearance() == "light":
+		return ThemeMGR.get_color("primary")
+	return ThemeMGR.get_color("primary_light")
 
 ## 设置按钮某状态的 bg + border
 func _set_btn(btn: Button, state: String, bg: Color, border: Color) -> void:

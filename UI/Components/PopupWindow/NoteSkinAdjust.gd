@@ -61,6 +61,10 @@ func _ready() -> void:
 	_note_long_node.resized.connect(_refresh_long_preview)
 	_note_long_node.visibility_changed.connect(_refresh_long_preview)
 	_enable_glow_cb.toggled.connect(_on_setting_changed)
+	# 三个音符取色器统一配置（无透明度、无预设/吸管），并升级成设置页那套「输入框 + 色块」
+	for picker in [_block_color_picker, _slide_color_picker, _long_color_picker]:
+		ThemeMGR.setup_color_picker(picker, false)
+		ThemeMGR.attach_hex_edit(picker, false)
 	# 自定义颜色总开关：单独处理，联动启用/禁用后续颜色子项
 	_custom_color_cb.toggled.connect(_on_custom_color_toggled)
 	_block_color_cb.toggled.connect(_on_setting_changed)
@@ -73,6 +77,12 @@ func _ready() -> void:
 	_long_color_cb.toggled.connect(_on_setting_changed)
 	_long_color_picker.color_changed.connect(_on_setting_changed)
 	_random_long_cb.toggled.connect(_on_random_color_toggled.bind(_long_color_cb))
+
+## 程序赋值同色时 color_changed 不触发，输入框需要手动补一次
+func _refresh_picker_hex(picker: ColorPickerButton) -> void:
+	var edit := picker.get_node_or_null("HexEdit") as LineEdit
+	if edit:
+		edit.text = "#" + picker.color.to_html(false)
 
 ## 自定义颜色总开关 toggled：联动启用/禁用所有颜色子项，再走通用变更流程
 func _on_custom_color_toggled(pressed: bool) -> void:
@@ -154,16 +164,19 @@ func _sync_ui_from_config() -> void:
 	var short_sec: Dictionary = _working_config.get("short", {})
 	_set_checkbox_no_signal(_block_color_cb, bool(short_sec.get("enable_color", false)))
 	_block_color_picker.color = short_sec.get("color", Color.WHITE)
+	_refresh_picker_hex(_block_color_picker)
 	_set_checkbox_no_signal(_random_block_cb, bool(short_sec.get("random_color", false)))
 
 	var instant_sec: Dictionary = _working_config.get("instant", {})
 	_set_checkbox_no_signal(_slide_color_cb, bool(instant_sec.get("enable_color", false)))
 	_slide_color_picker.color = instant_sec.get("color", Color.WHITE)
+	_refresh_picker_hex(_slide_color_picker)
 	_set_checkbox_no_signal(_random_slide_cb, bool(instant_sec.get("random_color", false)))
 
 	var long_sec: Dictionary = _working_config.get("long", {})
 	_set_checkbox_no_signal(_long_color_cb, bool(long_sec.get("enable_color", false)))
 	_long_color_picker.color = long_sec.get("color", Color.WHITE)
+	_refresh_picker_hex(_long_color_picker)
 	_set_checkbox_no_signal(_random_long_cb, bool(long_sec.get("random_color", false)))
 
 	# 长条三项模式（连接/延伸/缩放基准）：经统一映射表同步，不在各处手写索引对应关系

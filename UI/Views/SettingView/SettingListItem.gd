@@ -67,12 +67,7 @@ func setup_item(ID: String, content: String, desc: String, valueType: ValueType,
 			btn.color_changed.connect(_on_color_changed.bind(color_edit))
 			color_edit.text_changed.connect(_on_color_changed.bind(btn))
 
-			var pk: ColorPicker = btn.get_picker()
-
-			pk.edit_intensity = false
-			pk.can_add_swatches = false
-			pk.sampler_visible = false
-			pk.presets_visible = false
+			ThemeMGR.setup_color_picker(btn, false)
 
 		ValueType.TYPE_LINE_EDIT:
 			v_node = load(item_value_line_edit).instantiate()
@@ -211,8 +206,8 @@ func set_options(options: Array, default_index: int = 0) -> void:
 		if default_index >= 0 and default_index < options.size():
 			option_btn.select(default_index)
 
-# 设置颜色按钮参数
-func set_color_picker_options(edit_alpha: bool = true, presets_visible: bool = false, sampler_visible: bool = false) -> void:
+# 设置颜色按钮参数（presets/sampler 参数已废弃：统一由 ThemeMGR.setup_color_picker 固定为关闭）
+func set_color_picker_options(edit_alpha: bool = true, _presets_visible: bool = false, _sampler_visible: bool = false) -> void:
 	if value_type != ValueType.TYPE_COLOR or not value_node:
 		return
 	
@@ -220,11 +215,7 @@ func set_color_picker_options(edit_alpha: bool = true, presets_visible: bool = f
 
 	var color_btn: ColorPickerButton = value_node.get_node("ColorPickerButton")
 	if color_btn:
-		var pk: ColorPicker = color_btn.get_picker()
-		if pk:
-			pk.edit_alpha = edit_alpha
-			pk.presets_visible = presets_visible
-			pk.sampler_visible = sampler_visible
+		ThemeMGR.setup_color_picker(color_btn, edit_alpha)
 
 # 设置行编辑属性
 func set_line_edit_properties(placeholder: String = "", secret: bool = false, unit: String = "") -> void:
@@ -275,8 +266,10 @@ func set_enabled(enabled: bool) -> void:
 		ValueType.TYPE_COLOR:
 			var color_btn: ColorPickerButton = value_node.get_node("ColorPickerButton")
 			if color_btn:
-				color_btn.modulate.a = 1.0 if enabled else 0.45
 				color_btn.disabled = not enabled
+				# 禁用不止降透明度：整体降到 0.45 之后，浅色下几乎看不出这个方块"熄火"了。
+				# 叠一层灰罩（灰 + 白符号）让它在两种模式下都明确是"不可用"。
+				color_btn.modulate = Color(0.6, 0.6, 0.6, 0.55) if not enabled else Color.WHITE
 			# HexColor 是 ColorPickerButton 的兄弟节点，只禁按钮的话输入框还能打字
 			var hex_edit: LineEdit = value_node.get_node_or_null("HexColor")
 			if hex_edit:

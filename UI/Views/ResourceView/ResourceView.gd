@@ -1177,6 +1177,16 @@ func apply_theme() -> void:
 		var b_focus := btn.get_theme_stylebox("focus") as StyleBoxFlat
 		if b_focus:
 			b_focus.border_color = accent_text
+		# ResourceView.tscn 没写 disabled 样式，会落到 MainTheme 的 Button/disabled
+		# （浅色下几乎白底），压在深色工具条上像块膏药。按 normal 的几何补一份。
+		var b_normal := btn.get_theme_stylebox("normal") as StyleBoxFlat
+		if b_normal:
+			var b_disabled := b_normal.duplicate() as StyleBoxFlat
+			b_disabled.bg_color = ThemeMGR._tint_keep_alpha(
+				surface_low.darkened(0.06) if is_light else surface_low, b_normal.bg_color.a * 0.8)
+			b_disabled.border_color = ThemeMGR._tint_keep_alpha(
+				ThemeMGR.get_color("border_soft"), b_normal.border_color.a)
+			btn.add_theme_stylebox_override("disabled", b_disabled)
 
 
 func _style_flat_button(btn: Button, normal_bg: Color, hover_bg: Color, pressed_bg: Color,
@@ -1196,5 +1206,8 @@ func _style_flat_button(btn: Button, normal_bg: Color, hover_bg: Color, pressed_
 		pressed_sb.border_color = ThemeMGR.get_color("primary_light")
 	btn.add_theme_color_override("font_color", normal_text)
 	btn.add_theme_color_override("font_hover_color", hover_text)
-	btn.add_theme_color_override("font_disabled_color", ThemeMGR.get_color("text_dim").darkened(0.25))
-	btn.add_theme_color_override("icon_disabled_color", ThemeMGR.get_color("text_dim").darkened(0.35))
+	# 禁用态统一走 text_disabled（低饱和深灰）。不要再额外降透明度：
+	# 颜色本身已经够"熄火"，再叠 alpha 会淡到看不清
+	var disabled_text: Color = ThemeMGR.get_color("text_disabled")
+	btn.add_theme_color_override("font_disabled_color", disabled_text)
+	btn.add_theme_color_override("icon_disabled_color", disabled_text)

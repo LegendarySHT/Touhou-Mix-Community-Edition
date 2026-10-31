@@ -238,20 +238,6 @@ corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
-[sub_resource type="StyleBoxFlat" id="SB_progress_bg"]
-bg_color = Color(0.055, 0.07, 0.1, 1)
-corner_radius_top_left = 7
-corner_radius_top_right = 7
-corner_radius_bottom_right = 7
-corner_radius_bottom_left = 7
-
-[sub_resource type="StyleBoxFlat" id="SB_progress_fill"]
-bg_color = Color(0.36, 0.55, 1, 1)
-corner_radius_top_left = 7
-corner_radius_top_right = 7
-corner_radius_bottom_right = 7
-corner_radius_bottom_left = 7
-
 [sub_resource type="StyleBoxFlat" id="SB_pager_btn"]
 content_margin_left = 14.0
 content_margin_top = 8.0
@@ -846,8 +832,6 @@ text = "正在下载 MIDI"
 custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
 mouse_filter = 2
-theme_override_styles/background = SubResource("SB_progress_bg")
-theme_override_styles/fill = SubResource("SB_progress_fill")
 show_percentage = false
 
 [node name="Meta" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info" unique_id=1169156944]

@@ -148,6 +148,7 @@ func _apply_row_text_theme() -> void:
 		t.set_color("icon_pressed_color", type, Color.WHITE)
 	t.set_color("font_hover_pressed_color", "Button", Color.WHITE)
 	t.set_color("font_disabled_color", "Button", Color(1, 1, 1, 0.5))
+	t.set_color("icon_disabled_color", "Button", Color(1, 1, 1, 0.4))
 	theme = t
 
 ## 按当前外观模式重算整行配色。

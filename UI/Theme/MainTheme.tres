@@ -209,7 +209,7 @@ corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
 [sub_resource type="DPITexture" id="DPITexture_bg4s2"]
-_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\"><path fill=\"none\" stroke=\"#b2b2b2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-opacity=\".85\" stroke-width=\"2\" d=\"m2 4 4 4 4-4\"/></svg>
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\"><path fill=\"none\" stroke=\"#ffffff\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"m2 4 4 4 4-4\"/></svg>
 "
 base_scale = 2.5
 
@@ -226,7 +226,7 @@ corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
 [sub_resource type="DPITexture" id="DPITexture_hhcpw"]
-_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"16\"><path fill=\"none\" stroke=\"#b2b2b2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-opacity=\".45\" stroke-width=\"2\" d=\"m2.5 11 3-3-3-3\"/></svg>
+_source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"16\"><path fill=\"none\" stroke=\"#b2b2b2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-opacity=\".8\" stroke-width=\"2\" d=\"m2.5 11 3-3-3-3\"/></svg>
 "
 base_scale = 2.5
 
@@ -249,6 +249,21 @@ corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 corner_detail = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_popup_panel"]
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+corner_detail = 6
+shadow_color = Color(0, 0, 0, 0.34)
+shadow_size = 14
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_progress_bg"]
 bg_color = Color(0.0627, 0.0784, 0.1137, 1)
@@ -372,6 +387,7 @@ OptionButton/colors/font_hover_color = Color(0.95, 0.95, 0.95, 1)
 OptionButton/colors/font_pressed_color = Color(1, 1, 1, 1)
 OptionButton/constants/arrow_margin = 10
 OptionButton/constants/h_separation = 15
+OptionButton/constants/modulate_arrow = 1
 OptionButton/font_sizes/font_size = 48
 OptionButton/icons/arrow = SubResource("DPITexture_bg4s2")
 OptionButton/styles/disabled = SubResource("StyleBoxFlat_w3rk5")
@@ -392,6 +408,7 @@ PopupMenu/font_sizes/font_size = 42
 PopupMenu/icons/submenu = SubResource("DPITexture_hhcpw")
 PopupMenu/styles/hover = SubResource("StyleBoxFlat_popup_hover")
 PopupMenu/styles/panel = SubResource("StyleBoxFlat_o7g6l")
+PopupPanel/styles/panel = SubResource("StyleBoxFlat_popup_panel")
 ProgressBar/colors/font_color = Color(0.949, 0.961, 0.984, 1)
 ProgressBar/styles/background = SubResource("StyleBoxFlat_progress_bg")
 ProgressBar/styles/fill = SubResource("StyleBoxFlat_progress_fill")
