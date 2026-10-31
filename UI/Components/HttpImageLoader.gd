@@ -12,6 +12,10 @@ extends RefCounted
 
 const MAX_CACHE_SIZE := 128
 
+## 内容哈希前缀长度：与服务端 AvatarImageProcessor.ContentHashLength 约定一致，
+## 改动须两端同步，否则内容寻址判定失效、退回条件请求。
+const CONTENT_HASH_LENGTH := 32
+
 ## 缓存文件可用的图片扩展名（无法从 URL 判断时回退 .img，读取按文件内容解码）
 const IMAGE_EXTENSIONS: Array[String] = ["png", "jpg", "jpeg", "webp"]
 
@@ -160,13 +164,14 @@ static func _finish_pending(url: String, tex: Texture2D) -> void:
 static func _cache_key(url: String) -> String:
 	return url.md5_text()
 
-## 判定 URL 是否为内容寻址（文件名为 32 位十六进制内容哈希）。
+## 判定 URL 是否为内容寻址（文件名以 32 位十六进制内容哈希开头）。
+## 支持两种命名：{hash}.jpg（谱面封面等）与 {hash}_{userId}.jpg（服务端头像）。
 ## 这类 URL 换图必然换 URL，本地缓存可无条件信任，连条件请求都不必发。
 static func _is_content_addressed(url: String) -> bool:
 	var base := url.get_file().split("?")[0].get_basename()
-	if base.length() != 32:
+	if base.length() < CONTENT_HASH_LENGTH:
 		return false
-	for i in base.length():
+	for i in CONTENT_HASH_LENGTH:
 		var c := base.unicode_at(i)
 		var is_hex := (c >= 48 and c <= 57) or (c >= 97 and c <= 102) or (c >= 65 and c <= 70)
 		if not is_hex:
