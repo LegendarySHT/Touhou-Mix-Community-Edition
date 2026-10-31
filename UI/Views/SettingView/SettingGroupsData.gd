@@ -116,11 +116,12 @@ static func get_setting_groups() -> Array:
 				]
 			},
 			{
-				"id": "download_vocal",
-				"name_en": "Download Vocal",
-				"name_zh": "同时下载音频",
-				"description": "开启后下载谱面时，会一并下载该谱面的人声音频（如有）",
+				"id": "show_upload_button",
+				"name_en": "Show Upload Button",
+				"name_zh": "显示上传按钮",
+				"description": "开启后，本地导入的歌曲会在简介下方显示上传按钮，用于上传 MIDI 与人声音频",
 				"type": "TYPE_OPTION",
+				"advanced": true,
 				"options": [
 					{"text_en": "Off", "text_zh": "关闭"},
 					{"text_en": "On", "text_zh": "开启"}

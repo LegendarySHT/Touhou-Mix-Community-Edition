@@ -1,8 +1,14 @@
-## MIDI 简介配置解析器
-## 从谱面简介文本中提取推荐启用音轨、音频偏移等信息
-## 支持全角/半角标点，支持多种写法格式
+## MIDI 简介解析模块
+## 职责一：从谱面简介文本中提取推荐启用音轨、音频偏移等配置（作为默认音轨配置）
+## 职责二：把简介渲染成 RichTextLabel 可用的 BBCode，仅对 http/https 链接生成可点击的 [url]
+## 支持全角/半角标点，支持多种写法格式；渲染前统一转义简介自带的 BBCode，避免注入
 class_name MidiDescriptionParser
 extends RefCounted
+
+## 链接最大长度：过长的“链接”多为非预期文本，宁可不渲染也不把整段塞进 meta
+const MAX_URL_LENGTH := 2048
+## 链接中允许出现的字符（不含引号、尖括号、方括号、反斜杠、反引号等可破坏 BBCode 的字符）
+const URL_PATTERN := "https?://[A-Za-z0-9\\-._~:/?#@!$&()*+,;=%]+"
 
 
 ## 解析描述文本，返回配置字典
@@ -36,6 +42,115 @@ static func parse(description: String) -> Dictionary:
 			# 多个难度时只选用第一个，其余预留
 			result["recommended_tracks"] = difficulties[0]["tracks"]
 
+	return result
+
+
+## ============ 简介富文本渲染 ============
+
+## 把简介转换为 RichTextLabel BBCode：
+## - 简介原文里的 [ / ] 全部转义，简介自带的 BBCode（[url]、[img]、[color] 等）不会生效
+## - 仅把 http/https 链接包成 [url=...]...[/url]，供 meta_clicked 接收点击
+static func to_bbcode(description: String) -> String:
+	if description.is_empty():
+		return ""
+
+	var text := description.replace("\r\n", "\n").replace("\r", "\n")
+	var regex := RegEx.new()
+	regex.compile(URL_PATTERN)
+	var parts := PackedStringArray()
+	var cursor := 0
+	for match in regex.search_all(text):
+		var start := match.get_start()
+		if start < cursor:
+			continue
+		var raw := match.get_string()
+		var url := sanitize_url(raw)
+		if url.is_empty():
+			# 非法链接按普通文本处理，交给后续片段统一转义
+			continue
+		parts.append(_escape_bbcode(text.substr(cursor, start - cursor)))
+		# 只使用清洗后的 URL 作为 meta，展示文本同样不拼接任意 BBCode
+		parts.append("[url=%s]%s[/url]" % [url, _escape_bbcode(url)])
+		cursor = start + url.length()
+	parts.append(_escape_bbcode(text.substr(cursor)))
+	return "".join(parts)
+
+
+## 清洗并校验链接：只接受 http/https，拒绝可破坏 BBCode/协议处理的字符
+## 返回空串表示不可作为链接使用
+static func sanitize_url(raw: String) -> String:
+	var url := raw.strip_edges()
+	url = _trim_trailing_punctuation(url)
+	if url.is_empty() or url.length() > MAX_URL_LENGTH:
+		return ""
+
+	var lower := url.to_lower()
+	if not (lower.begins_with("http://") or lower.begins_with("https://")):
+		return ""
+
+	# 协议后必须有主机名（排除 "https://" / "https:///path" 这类残缺链接）
+	var host_start := url.find("://") + 3
+	if host_start <= 0 or host_start >= url.length():
+		return ""
+	var rest := url.substr(host_start)
+	var host := rest
+	for sep in ["/", "?", "#"]:
+		var idx := host.find(sep)
+		if idx >= 0:
+			host = host.substr(0, idx)
+	if host.is_empty() or host.begins_with(".") or host.ends_with("."):
+		return ""
+
+	# 控制字符与 BBCode/HTML 属性分隔符一律拒绝；仅允许可见 ASCII（空格已在正则/校验阶段排除）
+	for i in url.length():
+		var code := url.unicode_at(i)
+		if code <= 32 or code == 127:
+			return ""
+	for ch in ["\"", "'", "<", ">", "[", "]", "\\", "`"]:
+		if url.contains(ch):
+			return ""
+	return url
+
+
+## 打开简介中的链接（仅允许 http/https），返回是否成功交给系统浏览器
+static func open_url(raw: String) -> bool:
+	var url := sanitize_url(raw)
+	if url.is_empty():
+		push_warning("[MidiDescription] 拒绝打开非法链接：%s" % raw)
+		return false
+	var err := OS.shell_open(url)
+	if err != OK:
+		push_warning("[MidiDescription] 打开链接失败(%d)：%s" % [err, url])
+		return false
+	return true
+
+
+## 转义 BBCode 的方括号，避免简介原文被当作标签解析
+## 单次扫描逐个替换，避免先替换 '[' 后其生成的 "[lb]" 又被后续替换破坏
+static func _escape_bbcode(text: String) -> String:
+	var parts := PackedStringArray()
+	for i in text.length():
+		var ch := text.substr(i, 1)
+		if ch == "[":
+			parts.append("[lb]")
+		elif ch == "]":
+			parts.append("[rb]")
+		else:
+			parts.append(ch)
+	return "".join(parts)
+
+
+## 去掉链接末尾常见的句读/包裹符号；括号仅在左右不配对时去掉，保留合法 URL 中的括号
+static func _trim_trailing_punctuation(url: String) -> String:
+	var result := url
+	while not result.is_empty():
+		var last := result.substr(result.length() - 1, 1)
+		if ".,;:!?".contains(last):
+			result = result.substr(0, result.length() - 1)
+		elif last == ")" and result.count("(") < result.count(")"):
+			result = result.substr(0, result.length() - 1)
+		else:
+			break
 	return result
 
 

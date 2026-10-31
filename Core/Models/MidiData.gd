@@ -377,6 +377,15 @@ func from_json(json_data: Dictionary, chart_key: String = "") -> void:
 	# - from_json 只读取 _track_config_initialized（用于 PlaybackDisplay 判断是否需要初始化）
 	# 这样避免 DataManager 加载阶段（每次启动）重复解析简介
 
+## 是否为商店下载的谱面（服务端存在对应详情页）
+## 商店谱面状态为 PENDING/APPROVED；内置资源为 INCLUDED，本地导入见 is_local_import()
+func is_store_downloaded() -> bool:
+	return not is_local_import() and status != "INCLUDED"
+
+## 是否为本地导入的谱面（导入入口固定写入 album_local / uploaderName=本地导入）
+func is_local_import() -> bool:
+	return album_id == "album_local" or uploader_name == "本地导入"
+
 ## 设置选中的轨道
 func set_selected_tracks(track_indices: Array[int]) -> void:
 	selected_track_indices = track_indices

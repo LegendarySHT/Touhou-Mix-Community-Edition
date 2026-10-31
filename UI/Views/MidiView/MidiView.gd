@@ -39,8 +39,10 @@ var _pending_cleanup: bool = false
 
 # 显示midi的各种数值的地方，但是更新不在这个脚本进行
 @onready var detail_data_area: VBoxContainer = $LeftArea/DetailData
-# 点击info按钮后显示以下按钮组，用于跳转到浏览器
-@onready var redirect_btns: FlowContainer = $LeftArea/RedirectButtons
+# 点击info按钮后显示的简介操作按钮组（在网页查看 / 上传歌曲）
+@onready var redirect_btns: HBoxContainer = $LeftArea/RedirectButtons
+@onready var checkin_web_btn: Button = $LeftArea/RedirectButtons/CheckinWeb
+@onready var upload_song_btn: Button = $LeftArea/RedirectButtons/UploadSong
 
 # 管理器
 @onready var data_manager: DataManager = DataMGR
@@ -56,6 +58,10 @@ func _ready() -> void:
 	# 连接事件
 	event_bus.song_selected.connect(_on_song_selected)
 	event_bus.midi_selected.connect(_on_midi_selected)
+	# 简介里的 http/https 链接点击：统一交给简介解析模块校验并打开
+	description.meta_clicked.connect(_on_description_meta_clicked)
+	# 「显示上传按钮」在简介展开期间变更时即时刷新按钮组
+	event_bus.config_changed.connect(_on_config_changed)
 	# 监听 UI 状态变化，进入 MIDI_VIEW 时若 FavorPanel 可见则刷新
 	UiStatMGR.state_changed.connect(_on_state_changed)
 
@@ -201,6 +207,9 @@ func _on_selection_changed(index: int) -> void:
 		# 同步刷新评论区
 		if comment_area:
 			comment_area.load_comments(midi)
+		# 简介展开时同步刷新简介操作按钮（在网页查看 / 上传歌曲）
+		if showing_info:
+			_refresh_redirect_buttons(midi)
 
 # 点击开始游戏的事件
 func _on_click_start_btn() -> void:
@@ -340,8 +349,79 @@ func _set_info_visible(v: bool) -> void:
 	midi_list.get_parent().get_parent().size_flags_vertical = Control.SIZE_EXPAND_FILL if v else SIZE_FILL
 	# 数据区
 	detail_data_area.visible = not v
-	redirect_btns.visible = v
+	if v:
+		_refresh_redirect_buttons(midi_list.get_selection())
+	else:
+		redirect_btns.visible = false
 	midi_list.need_snap = true
+
+## 刷新简介下方的操作按钮组：
+## - 商店下载的谱面（存在服务端详情页）→ 显示「在网页查看」
+## - 本地导入的谱面且开启「显示上传按钮」→ 显示「上传歌曲」
+## - 两者都没有时整个按钮组不占位（简介直接铺满）
+func _refresh_redirect_buttons(midi: MidiData) -> void:
+	if not (checkin_web_btn and upload_song_btn):
+		return
+	if midi == null:
+		checkin_web_btn.visible = false
+		upload_song_btn.visible = false
+		redirect_btns.visible = false
+		return
+
+	var show_web := midi.is_store_downloaded()
+	var show_upload := midi.is_local_import() and _is_upload_button_enabled()
+	checkin_web_btn.visible = show_web
+	upload_song_btn.visible = show_upload
+	redirect_btns.visible = showing_info and (show_web or show_upload)
+
+## 「显示上传按钮」开关（高级选项，默认关闭）
+func _is_upload_button_enabled() -> bool:
+	if ConfigManager.instance == null:
+		return false
+	return ConfigManager.instance.get_int("show_upload_button", 0) == 1
+
+## 配置变更：简介展开期间即时响应「显示上传按钮」
+func _on_config_changed(key: String, _value: Variant) -> void:
+	if key == "show_upload_button" and showing_info:
+		_refresh_redirect_buttons(midi_list.get_selection())
+
+## 简介里的链接点击（BBCode [url] 的 meta 为清洗后的 URL）
+func _on_description_meta_clicked(meta: Variant) -> void:
+	if not MidiDescriptionParser.open_url(str(meta)):
+		event_bus.notify("链接无效或无法打开")
+
+## 在网页查看：商店下载的谱面跳转对应详情页
+func _on_click_checkin_web_btn() -> void:
+	var midi: MidiData = midi_list.get_selection()
+	if midi == null or not midi.is_store_downloaded():
+		return
+	var url := ""
+	if NetManager.instance != null:
+		url = NetManager.instance.get_chart_web_url(midi.file_hash if not midi.file_hash.is_empty() else midi.id)
+	if url.is_empty():
+		# 详情页地址接口尚未提供：保留占位，不做跳转
+		event_bus.notify("详情页链接尚未提供")
+		return
+	if not MidiDescriptionParser.open_url(url):
+		event_bus.notify("无法打开详情页")
+
+## 上传歌曲：仅本地导入谱面可见；MIDI 与人声文件由 NetManager 的上传入口收集
+func _on_click_upload_song_btn() -> void:
+	var midi: MidiData = midi_list.get_selection()
+	if midi == null or not midi.is_local_import():
+		return
+	if NetManager.instance == null:
+		event_bus.notify("网络管理器未就绪")
+		return
+	var result: Dictionary = NetManager.instance.upload_local_chart(midi)
+	if bool(result.get("ok", false)):
+		event_bus.notify("上传请求已提交")
+		return
+	var error := str(result.get("error", ""))
+	if error == "not_implemented":
+		event_bus.notify("上传功能尚未开放")
+	else:
+		event_bus.notify("上传失败：%s" % error)
 
 func _on_del_btn_pressed():
 	var window = PopupWindow.instance

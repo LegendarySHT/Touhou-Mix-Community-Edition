@@ -189,7 +189,8 @@ func _update_data_display() -> void:
 		push_error("[MidiNode] Info Set Failed")
 		return
 
-	description.text = midi_data.description
+	# 简介统一经解析模块渲染：链接可点击，原文 BBCode 被转义
+	description.text = MidiDescriptionParser.to_bbcode(midi_data.description)
 
 	# --- 文件状态（无需解析，选中即刷新）---
 	_refresh_file_data(info_node)

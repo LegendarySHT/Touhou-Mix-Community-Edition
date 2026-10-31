@@ -117,6 +117,50 @@ func _is_valid_host(host: String) -> bool:
 		return true
 	return "." in h
 
+## 谱面 Web 详情页地址（服务端路由：/charts/{hash}）
+## 服务端未提供“按 hash 查询详情页地址”的独立接口，这里按站点约定拼接。
+## 返回空串表示暂无可用链接：调用方保留按钮，但点击时提示尚未开放。
+func get_chart_web_url(chart_hash: String) -> String:
+	var hash := chart_hash.strip_edges()
+	if hash.is_empty() or server_url.is_empty():
+		return ""
+	var base := server_url
+	while base.ends_with("/"):
+		base = base.substr(0, base.length() - 1)
+	if base.is_empty():
+		return ""
+	return "%s/charts/%s" % [base, hash.uri_encode()]
+
+## 上传本地导入谱面（song.mid + 人声音频，人声存在才一并上传）
+## 后端上传接口尚未实现：本函数已完成文件定位与存在性校验，接口就绪后在此发起 multipart 上传即可。
+## 预期接口：POST /api/charts（multipart：song.mid + vocal.<ext> + 元数据），以后端最终定义为准。
+## 返回 {"ok": bool, "error": String}
+func upload_local_chart(midi: MidiData) -> Dictionary:
+	if midi == null:
+		return {"ok": false, "error": "midi_null"}
+
+	var chart_key := midi.chart_key if not midi.chart_key.is_empty() \
+		else (midi.file_hash if not midi.file_hash.is_empty() else midi.id)
+	var fs_mgr := FileSystemManager.instance
+
+	var midi_path := midi.midi_file_path
+	if midi_path.is_empty() and fs_mgr != null:
+		var folder := fs_mgr.get_chart_folder_path(chart_key)
+		if not folder.is_empty():
+			midi_path = folder.path_join("song.mid")
+	if midi_path.is_empty() or not FileAccess.file_exists(midi_path):
+		return {"ok": false, "error": "midi_missing"}
+
+	var vocal_path := midi.vocal_file_path
+	if vocal_path.is_empty() and fs_mgr != null:
+		vocal_path = fs_mgr.get_vocal_path(chart_key)
+	if not vocal_path.is_empty() and not FileAccess.file_exists(vocal_path):
+		vocal_path = ""
+
+	GLogger.info("谱面上传请求（接口待实现）：midi=%s vocal=%s" % [
+		midi_path, vocal_path if not vocal_path.is_empty() else "(无)"], "NetMGR")
+	return {"ok": false, "error": "not_implemented"}
+
 ## 配置变更：server_address 修改后立即生效（无需重启）
 func _on_config_changed(key: String, _value: Variant) -> void:
 	if key == "server_address":

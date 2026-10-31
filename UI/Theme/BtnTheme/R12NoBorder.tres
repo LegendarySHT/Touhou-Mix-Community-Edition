@@ -1,6 +1,8 @@
 [gd_resource type="Theme" format=3 uid="uid://clu7eeeh6aitj"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ndkpk"]
+content_margin_left = 20.0
+content_margin_right = 20.0
 draw_center = false
 border_width_left = 2
 border_width_top = 2
@@ -14,6 +16,8 @@ corner_radius_bottom_left = 10
 corner_detail = 5
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_8eqkv"]
+content_margin_left = 20.0
+content_margin_right = 20.0
 corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
@@ -21,6 +25,8 @@ corner_radius_bottom_left = 10
 corner_detail = 5
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_i6pqd"]
+content_margin_left = 20.0
+content_margin_right = 20.0
 corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10
@@ -28,6 +34,8 @@ corner_radius_bottom_left = 10
 corner_detail = 5
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qooou"]
+content_margin_left = 20.0
+content_margin_right = 20.0
 corner_radius_top_left = 10
 corner_radius_top_right = 10
 corner_radius_bottom_right = 10

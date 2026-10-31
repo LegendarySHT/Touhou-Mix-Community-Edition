@@ -120,7 +120,7 @@ func _apply_album_search_filter() -> void:
 ## 会影响专辑列表内容/顺序的配置键（显式白名单：原来的粒度是「[General] 里任何一个键」，
 ## 但 section 不再是代码可依赖的东西，所以把真正相关的键列出来）
 const ALBUM_AFFECTING_KEYS: Array[String] = [
-	"album_sort_method", "album_sort_direction", "download_vocal", "custom_storage_path",
+	"album_sort_method", "album_sort_direction", "custom_storage_path",
 ]
 
 ## 配置变更时重新排序（deferred，避免阻塞 save 流程）
