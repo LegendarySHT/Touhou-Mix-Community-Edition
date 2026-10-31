@@ -5,6 +5,7 @@
          android → net9.0；其余（linuxbsd / macos / web…）→ 纯 net8.0。
          纯 net8.0 下无 WinRT 投影，SMTC 源文件不参与编译。 -->
     <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'windows' ">net8.0-windows10.0.19041.0</TargetFramework>
     <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
     <!-- 允许在 Linux / macOS 上交叉构建 Windows 目标，首次会联网拉取 Microsoft.Windows.SDK.NET.Ref -->
     <EnableWindowsTargeting Condition=" '$(GodotTargetPlatform)' == 'windows' ">true</EnableWindowsTargeting>
