@@ -599,7 +599,8 @@ public partial class MeltySynthPlayer : Node
 	/// <param name="notifyOnLost">检测到失效时是否补发 audio_device_lost</param>
 	/// <param name="allowRecreate">是否允许整桥重建（重建较重，仅在主线程安全时机传 true）</param>
 	/// <returns>true = 设备当前可用（本来就好，或已恢复）</returns>
-	public bool EvaluateAudioDeviceHealth(string trigger, bool notifyOnLost = true, bool allowRecreate = true)
+	///
+	public bool evaluate_audio_device_health(string trigger, bool notifyOnLost = true, bool allowRecreate = true)
 	{
 		if (_audioOutput == null)
 		{
@@ -675,11 +676,11 @@ public partial class MeltySynthPlayer : Node
 
 	/// <summary>
 	/// 中断后恢复音频输出（保留旧名供过渡期调用）：等价于设备健康评估。
-	/// 【新代码请直接调 EvaluateAudioDeviceHealth】上层的焦点/回前台/停滞三条路径最终都应走它。
+	/// 【新代码请直接调 evaluate_audio_device_health】上层的焦点/回前台/停滞三条路径最终都应走它。
 	/// </summary>
 	public void resume_audio_output_in_place_or_recreate()
 	{
-		EvaluateAudioDeviceHealth("legacy_resume_call", notifyOnLost: false);
+		evaluate_audio_device_health("legacy_resume_call", notifyOnLost: false);
 	}
 
 	/// <summary>

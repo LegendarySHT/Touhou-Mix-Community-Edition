@@ -71,7 +71,7 @@ func _notification(what: int) -> void:
 				PlaybackDisplay.instance.refresh_audio_delay()
 			# 安卓：返回前台时仍处 PLAY_VIEW，设备可能已被系统打断(全屏来电/切后台再回)，
 			# 设备级重启自愈，避免挂断/返回后无声音；即使已自动暂停也先修好设备
-			# 【只触发，不判断】是否就地重启/是否整桥重建由 C# 的 EvaluateAudioDeviceHealth 决定
+			# 【只触发，不判断】是否就地重启/是否整桥重建由 C# 的 evaluate_audio_device_health 决定
 			if MeltySynth != null and OS.get_name() == "Android" \
 					and state_manager.current_state == UIStateManager.UIState.PLAY_VIEW:
 				MeltySynth.evaluate_audio_device_health("app_resume", false, true)
