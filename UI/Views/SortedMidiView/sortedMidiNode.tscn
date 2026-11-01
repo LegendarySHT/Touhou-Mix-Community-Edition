@@ -8,11 +8,10 @@
 content_margin_left = 20.0
 draw_center = false
 border_width_bottom = 2
-border_color = Color(0.576, 0.706, 1, 0.7)
+border_color = Color(1, 1, 1, 0.7019608)
 
 [node name="MidiNode" type="Button" unique_id=1823057639]
 custom_minimum_size = Vector2(900, 180)
-clip_contents = true
 offset_right = 10.0
 offset_bottom = 10.0
 size_flags_horizontal = 0
@@ -27,8 +26,19 @@ script = ExtResource("1_sx7kd")
 metadata/_edit_use_anchors_ = true
 metadata/index = 0
 
-[node name="cover" type="TextureRect" parent="." unique_id=547752909]
+[node name="C" type="Control" parent="." unique_id=1054568113]
 show_behind_parent = true
+clip_contents = true
+layout_mode = 1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 3.0
+offset_bottom = -3.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="cover" type="TextureRect" parent="C" unique_id=547752909]
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0

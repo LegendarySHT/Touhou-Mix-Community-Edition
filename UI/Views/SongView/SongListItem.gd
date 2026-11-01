@@ -3,9 +3,9 @@
 extends CoverListItemBase
 
 ## 引用节点（需要根据实际场景结构调整）
-@onready var song_name_label: Label = $HBoxC/PN/SongName
+@onready var song_name_label: Label = $HBoxC/C/SongName
 @onready var midi_count_label: Label = $HBoxC/SongCount
-@onready var cover: TextureRect = $HBoxC/PN/cover
+@onready var cover: TextureRect = $HBoxC/C/cover
 
 @onready var animation_manager: AnimationManager = AniMGR
 
@@ -18,7 +18,7 @@ func _ready() -> void:
 	# SongListItem 不使用视差滚动（封面静态显示）
 	_parallax_enabled = false
 	# 给基类 cover_texture 赋值，启用封面加载/释放机制
-	cover_texture = $HBoxC/PN/cover
+	cover_texture = $HBoxC/C/cover
 	await _init_fin
 
 	var name_str: String =" %s" % String(item_dict.get("name", "")) if item_dict.get("name", "") else "Unknown"

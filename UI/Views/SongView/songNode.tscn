@@ -4,9 +4,6 @@
 [ext_resource type="Theme" uid="uid://cm3mry6cxo28t" path="res://UI/Theme/BtnTheme/ListBtn-ColorBorder.tres" id="1_krpnw"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="5_3ky2n"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wrosb"]
-bg_color = Color(1, 1, 1, 1)
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xw3gp"]
 bg_color = Color(0.2784, 0.4431, 0.8627, 0.9)
 
@@ -39,14 +36,13 @@ grow_vertical = 2
 mouse_filter = 2
 theme_override_constants/separation = 0
 
-[node name="PN" type="Panel" parent="HBoxC" unique_id=1364822703]
-clip_children = 1
+[node name="C" type="Control" parent="HBoxC" unique_id=14575562]
+clip_contents = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_wrosb")
 
-[node name="cover" type="TextureRect" parent="HBoxC/PN" unique_id=1928751118]
+[node name="cover" type="TextureRect" parent="HBoxC/C" unique_id=1928751118]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -60,7 +56,7 @@ expand_mode = 5
 stretch_mode = 6
 metadata/_edit_use_anchors_ = true
 
-[node name="SongName" type="Label" parent="HBoxC/PN" unique_id=22989094]
+[node name="SongName" type="Label" parent="HBoxC/C" unique_id=22989094]
 custom_minimum_size = Vector2(600, 45)
 layout_mode = 1
 anchors_preset = 12
@@ -79,7 +75,7 @@ script = ExtResource("5_3ky2n")
 outline_size = 8
 metadata/_edit_use_anchors_ = true
 
-[node name="NameBox" type="Control" parent="HBoxC/PN" unique_id=22989093]
+[node name="NameBox" type="Control" parent="HBoxC/C" unique_id=22989093]
 custom_minimum_size = Vector2(600, 45)
 clip_contents = true
 layout_mode = 1

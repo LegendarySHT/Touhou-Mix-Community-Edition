@@ -30,7 +30,7 @@ signal _init_fin
 var _has_ready: bool = false
 
 func _ready() -> void:
-	cover_texture = $cover
+	cover_texture = $C/cover
 	await _init_fin
 	# 先置位 _has_ready 再刷新：_refresh_display 里据此走"复用"分支（含播放入场动画），
 	# 否则首次构建恒跳过动画（必须在 _play_refresh_slide_in / switch_cover_data 判断之前置位）
