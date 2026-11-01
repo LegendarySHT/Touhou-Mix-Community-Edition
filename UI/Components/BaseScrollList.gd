@@ -130,7 +130,6 @@ func _ready() -> void:
 
 	get_v_scroll_bar().gui_input.connect(_on_v_scrollbar_gui_input)
 	get_v_scroll_bar().value_changed.connect(_on_v_scrollbar_changed)
-	get_v_scroll_bar().custom_minimum_size.x = 18
 
 ## 用户拖拽开始（越过死区、列表开始跟随手指/鼠标移动）
 func _on_drag_scroll_started() -> void:

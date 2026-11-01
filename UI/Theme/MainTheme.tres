@@ -94,31 +94,37 @@ _source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\">
 base_scale = 3.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_grabber"]
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
 bg_color = Color(1, 1, 1, 1)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
-expand_margin_left = 4.0
-expand_margin_top = 2.0
-expand_margin_right = 4.0
-expand_margin_bottom = 2.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_grabber_hl"]
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
 bg_color = Color(1, 1, 1, 1)
 corner_radius_top_left = 4
 corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
-expand_margin_left = 4.0
-expand_margin_top = 2.0
-expand_margin_right = 4.0
-expand_margin_bottom = 2.0
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_scroll"]
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
 bg_color = Color(0, 0, 0, 0.15)
-expand_margin_left = 2.0
-expand_margin_right = 2.0
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
 
 [sub_resource type="DPITexture" id="DPITexture_5tuhn"]
 
@@ -416,6 +422,7 @@ RichTextLabel/font_sizes/bold_font_size = 28
 RichTextLabel/font_sizes/bold_italics_font_size = 28
 RichTextLabel/font_sizes/italics_font_size = 28
 RichTextLabel/font_sizes/normal_font_size = 28
+ScrollContainer/constants/scrollbar_h_separation = 20
 TabContainer/constants/icon_max_width = 5
 TabContainer/constants/icon_separation = 4
 TabContainer/constants/outline_size = 0

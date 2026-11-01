@@ -1303,7 +1303,7 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	# 这里只刷底色/描边，浅色模式下才不会残留引擎默认的半透明黑
 	tmp.set_stylebox("panel", "PopupPanel", _theme_panel_stylebox())
 
-	# 滚动条抓取柄
+	# 滚动条：几何统一收在 MainTheme.tres（V/HScrollBar 的 grabber/scroll 样式盒 content_margin=10
 	for type in ["VScrollBar", "HScrollBar"]:
 		_set_theme_stylebox(thm, tmp, type, "grabber", border, border)
 		_set_theme_stylebox(thm, tmp, type, "grabber_highlight", p, p)
