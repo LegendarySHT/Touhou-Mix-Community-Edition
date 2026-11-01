@@ -68,6 +68,10 @@ var _is_quitting: bool = false
 ## 游戏是否已正式开始, 用于区分开局准备阶段是否完成并可以开始
 var _game_started: bool = false
 
+## 自定义 HUD 编辑模式：进入打歌页但不播放，只调 HUD 布局
+var _hud_edit_mode: bool = false
+var _hud_editor: HudEditor = null
+
 ## 游戏代次：每次 _prepare_game 自增，用于让已启动的 _on_game_finished 协程在
 ## 用户重试（仍停留在 PLAY_VIEW）时失效，避免等待结束后被强切回 ScoreView
 var _game_generation: int = 0
@@ -163,9 +167,10 @@ func _ready() -> void:
 	flow_area.long_holding.connect(_on_long_holding)
 	flow_area.parent_node = self
 
-	# HUD 展示层回调（结算检测 / 背景闪光请求）
+	# HUD 展示层回调（结算检测 / 背景闪光请求 / 暂停按钮）
 	hud.game_finished_requested.connect(_on_game_finished)
 	hud.flash_requested.connect(bg.flash)
+	hud.pause_requested.connect(show_or_hide_menu)
 	retry_btn.pressed.connect(func ():
 		_prepare_game()
 	)
@@ -225,6 +230,9 @@ var _saved_accumulated_input: bool = true
 var _accumulated_input_override_active: bool = false
 
 func _process(delta: float) -> void:
+	# 自定义 HUD 编辑：不推进任何游玩逻辑（不读播放位置、不刷进度条）
+	if _hud_edit_mode:
+		return
 	if not is_pause:
 		if _is_finishing_game:
 			# 游戏结束阶段：用delta模拟时间推进，让剩余音符自然下落
@@ -395,6 +403,8 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 
 	# 离开播放视图时统一清理所有资源（无论从哪条路径退出都走这里）
 	if _oldState == UIStateManager.UIState.PLAY_VIEW and state != UIStateManager.UIState.PLAY_VIEW:
+		if _hud_edit_mode:
+			exit_hud_edit_mode()
 		if playback_mgr:
 			# 预卷中途退出（还没归零）：把播放器里的起播调度一起作废，
 			# 否则下次进入别的视图时播放器仍持有上一次的预卷状态
@@ -577,6 +587,11 @@ var is_pause: bool = false:
 				_visual_time_needs_anchor = true
 
 func show_or_hide_menu():
+	# 自定义 HUD 编辑中：返回键 / 暂停按钮等同于「关闭编辑器」
+	if _hud_edit_mode:
+		if _hud_editor != null and is_instance_valid(_hud_editor):
+			_hud_editor.request_close()
+		return
 	if is_pause and menu.visible:
 		if _game_started:
 			# 只有在"准备阶段就呼出暂停菜单"时，预卷才还没被玩家看到过，需要重新起算；
@@ -597,6 +612,60 @@ func _show_pause_menu() -> void:
 	if not center_bg.visible:
 		ani.animate_fade_in(center_bg, 0.2, "_show_bg")
 	ani.animate_fade_in(menu, 0.2, "_show_menu")
+
+# ==================== 自定义 HUD 编辑模式 ====================
+
+## 从设置页「自定义 HUD」进入：停在打歌页但不放歌，只显示 HUD 与编辑面板
+func enter_hud_edit_mode() -> void:
+	if _hud_edit_mode:
+		return
+	_hud_edit_mode = true
+	set_process(false)
+	center_bg.visible = false
+	menu.visible = false
+	song_info.visible = false
+	auto_label.visible = false
+	flow_area.visible = false
+	lane_area.visible = false
+	_start_hud_editor()
+
+
+func exit_hud_edit_mode() -> void:
+	if not _hud_edit_mode:
+		return
+	_hud_edit_mode = false
+	_close_hud_editor()
+	hud.set_edit_mode(false)
+	flow_area.visible = true
+	lane_area.visible = true
+	song_info.visible = true
+	auto_label.visible = flow_area.auto_mode
+	set_process(UiStatMGR.current_state == UIStateManager.UIState.PLAY_VIEW)
+
+
+func _start_hud_editor() -> void:
+	hud.set_edit_mode(true)
+	hud.apply_all_layouts()
+	_hud_editor = HudEditor.new()
+	_hud_editor.name = "HudEditor"
+	add_child(_hud_editor)
+	_hud_editor.closed.connect(_on_hud_editor_closed)
+	_hud_editor.setup(hud)
+	GLogger.info("进入自定义 HUD 编辑模式", "PlayView")
+
+
+func _close_hud_editor() -> void:
+	if _hud_editor != null and is_instance_valid(_hud_editor):
+		remove_child(_hud_editor)
+		_hud_editor.queue_free()
+	_hud_editor = null
+
+
+func _on_hud_editor_closed() -> void:
+	exit_hud_edit_mode()
+	if UiStatMGR.current_state == UIStateManager.UIState.PLAY_VIEW:
+		if not UiStatMGR.go_back():
+			GLogger.warning("HUD 编辑结束但无历史可退，停留在打歌页", "PlayView")
 
 func _on_window_focus_exited() -> void:
 	_auto_pause_on_background("window_focus_exited")
@@ -1343,6 +1412,13 @@ func _init_display(show_ready_animation: bool = true):
 	var difficulty_id := ConfigManager.instance.get_int(DIFFICULTY_CFG_KEY, 1)
 	if difficulty_id >= 0 and difficulty_id < DIFFICULTY_NAMES.size():
 		difficulty.text = DIFFICULTY_NAMES[difficulty_id]
+
+	# 自定义 HUD 里的信息类组件用同一份数据
+	hud.set_song_info(
+		current_midi.album_name if not current_midi.album_name.is_empty() else current_midi.artist_name,
+		current_midi.song_name,
+		current_midi.name,
+		difficulty.text)
 
 	menu.visible = false
 	song_info.visible = true

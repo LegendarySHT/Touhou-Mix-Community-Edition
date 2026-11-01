@@ -659,6 +659,14 @@ static func get_setting_groups() -> Array:
 				]
 			},
 			{
+				"id": "custom_hud",
+				"name_en": "Custom HUD",
+				"name_zh": "自定义 HUD",
+				"description": "点击进入打歌界面调整 HUD：可增删组件、拖动位置、设置锚点/偏移/缩放与动画参数",
+				"type": "TYPE_BUTTON",
+				"on_click": "_open_hud_customize"
+			},
+			{
 				"id": "play_background",
 				"name_en": "Play Background",
 				"name_zh": "游玩界面背景",

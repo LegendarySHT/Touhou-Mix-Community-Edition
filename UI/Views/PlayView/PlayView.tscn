@@ -32,13 +32,6 @@ blend_mode = 1
 [sub_resource type="FontVariation" id="FontVariation_v7581"]
 variation_embolden = 0.5
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_fx5ny"]
-atlas = ExtResource("9_q4lmo")
-region = Rect2(160, 240, 80, 80)
-
-[sub_resource type="FontVariation" id="FontVariation_nq3r2"]
-variation_embolden = 0.5
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jlvmc"]
 bg_color = Color(0.0941, 0.1176, 0.1686, 0.55)
 border_width_left = 1
@@ -169,16 +162,6 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("7_hud")
 
-[node name="BackBtn" type="Button" parent="Layer" unique_id=418222251]
-layout_mode = 0
-offset_right = 120.0
-offset_bottom = 120.0
-theme_override_constants/icon_max_width = 60
-icon = SubResource("AtlasTexture_fx5ny")
-flat = true
-icon_alignment = 1
-expand_icon = true
-
 [node name="DebugInfo" type="Label" parent="Layer" unique_id=2091083272]
 visible = false
 layout_mode = 0
@@ -190,48 +173,6 @@ theme_override_constants/outline_size = 2
 theme_override_font_sizes/font_size = 20
 text = "调试信息"
 
-[node name="Center" type="VBoxContainer" parent="Layer" unique_id=823749499]
-custom_minimum_size = Vector2(450, 300)
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -225.0
-offset_top = -150.0
-offset_right = 225.0
-offset_bottom = 150.0
-grow_horizontal = 2
-grow_vertical = 2
-pivot_offset = Vector2(225, 150)
-mouse_filter = 2
-alignment = 1
-
-[node name="up" type="Label" parent="Layer/Center" unique_id=1270257322]
-layout_mode = 2
-theme_override_font_sizes/font_size = 32
-text = "0 ms early"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="type" type="Label" parent="Layer/Center" unique_id=264990940]
-modulate = Color(1, 1, 1, 1)
-self_modulate = Color(1, 1, 1, 1)
-layout_mode = 2
-theme_override_fonts/font = SubResource("FontVariation_nq3r2")
-theme_override_font_sizes/font_size = 72
-text = "PERFECT"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="down" type="Label" parent="Layer/Center" unique_id=1571845594]
-layout_mode = 2
-theme_override_font_sizes/font_size = 32
-text = "0 ms late"
-horizontal_alignment = 1
-vertical_alignment = 1
-
 [node name="TopProgressBar" type="ProgressBar" parent="Layer" unique_id=975580623]
 layout_mode = 1
 anchors_preset = 10
@@ -242,105 +183,6 @@ mouse_filter = 2
 theme_override_styles/fill = SubResource("StyleBoxEmpty_50kwk")
 value = 40.0
 show_percentage = false
-
-[node name="LeftBottom" type="Label" parent="Layer" unique_id=2067637448]
-custom_minimum_size = Vector2(250, 100)
-layout_mode = 1
-anchors_preset = 2
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = 10.0
-offset_top = -110.0
-offset_right = 260.0
-offset_bottom = -10.0
-grow_vertical = 0
-theme_override_font_sizes/font_size = 64
-text = "99.99 pp"
-vertical_alignment = 2
-
-[node name="RightBottom" type="Label" parent="Layer" unique_id=157299669]
-custom_minimum_size = Vector2(250, 100)
-layout_mode = 1
-anchors_preset = 3
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -260.0
-offset_top = -110.0
-offset_right = -10.0
-offset_bottom = -10.0
-grow_horizontal = 0
-grow_vertical = 0
-theme_override_font_sizes/font_size = 64
-text = "99.61%"
-horizontal_alignment = 2
-vertical_alignment = 2
-
-[node name="Score" type="VBoxContainer" parent="Layer" unique_id=1590342882]
-custom_minimum_size = Vector2(450, 0)
-layout_mode = 1
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -470.0
-offset_top = 20.0
-offset_right = -20.0
-offset_bottom = 160.0
-grow_horizontal = 0
-pivot_offset = Vector2(450, 70)
-mouse_filter = 2
-alignment = 1
-
-[node name="type" type="Label" parent="Layer/Score" unique_id=1052822198]
-visible = false
-layout_mode = 2
-theme_override_font_sizes/font_size = 48
-text = "SCORE"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="count" type="Label" parent="Layer/Score" unique_id=1452473314]
-layout_mode = 2
-theme_override_font_sizes/font_size = 72
-text = "0"
-horizontal_alignment = 2
-vertical_alignment = 1
-
-[node name="add" type="Label" parent="Layer/Score" unique_id=624719103]
-layout_mode = 2
-size_flags_horizontal = 8
-theme_override_font_sizes/font_size = 48
-text = "0"
-horizontal_alignment = 2
-vertical_alignment = 1
-
-[node name="Combo" type="VBoxContainer" parent="Layer" unique_id=850182523]
-custom_minimum_size = Vector2(450, 0)
-layout_mode = 1
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -225.0
-offset_right = 225.0
-offset_bottom = 200.0
-grow_horizontal = 2
-mouse_filter = 2
-alignment = 1
-
-[node name="count" type="Label" parent="Layer/Combo" unique_id=845915732]
-layout_mode = 2
-theme_override_font_sizes/font_size = 48
-text = "0"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="type" type="Label" parent="Layer/Combo" unique_id=1003307005]
-layout_mode = 2
-theme_override_font_sizes/font_size = 42
-text = "COMBO"
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="CenterBackGround" type="ColorRect" parent="." unique_id=1184293941]
 visible = false
@@ -553,7 +395,6 @@ theme_override_font_sizes/font_size = 72
 icon = SubResource("AtlasTexture_p7r7c")
 icon_alignment = 1
 
-[connection signal="pressed" from="Layer/BackBtn" to="." method="show_or_hide_menu"]
 [connection signal="value_changed" from="Layer/TopProgressBar" to="Layer" method="_on_progress_bar_value_changed"]
 [connection signal="pressed" from="CenterBackGround/VBox/Menu/continue" to="." method="show_or_hide_menu"]
 [connection signal="pressed" from="CenterBackGround/VBox/Menu/quit" to="." method="_on_quit_pressed"]

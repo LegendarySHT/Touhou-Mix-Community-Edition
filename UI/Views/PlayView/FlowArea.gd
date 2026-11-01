@@ -1104,6 +1104,11 @@ func _gui_input(event: InputEvent) -> void:
 func _input(event: InputEvent) -> void:
 
 	if ui.current_state == ui.UIState.PLAY_VIEW and event is InputEventKey:
+		# 有 GUI 控件持有键盘焦点时（HUD 编辑器的数值/文本输入框）不抢按键：
+		# 这里无条件 accept_event() 会让输入框一个字符都收不到。
+		# 正常打歌时焦点恒为 null（FocusManager 在 PLAY_VIEW 不接管），行为不变。
+		if get_viewport().gui_get_focus_owner() != null:
+			return
 		accept_event()
 		if event.is_echo():
 			return

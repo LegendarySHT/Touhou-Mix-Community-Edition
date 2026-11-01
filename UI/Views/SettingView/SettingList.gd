@@ -560,6 +560,19 @@ func _popup_spark_adjust() -> void:
 # 配置即时保存到 theme.ini 的 [backgrounds] 段（由 ThemeManager.set_view_background 处理）
 # 不走 _pending_config（不走 config.ini），因此退出 SettingView 时无需 diff 保存
 
+# ===== 自定义 HUD =====
+# 直接切到打歌页（不播放歌曲），由 PlayView 打开 HUD 编辑面板。
+# 返回时走 UiStatMGR.go_back()，因为 change_state 带了 stash=true，历史栈里是设置页。
+func _open_hud_customize() -> void:
+	UiStatMGR.change_state(UIStateManager.UIState.PLAY_VIEW, true)
+	var play_view = UiStatMGR.get_loaded_view(UIStateManager.UIState.PLAY_VIEW)
+	if play_view == null or not play_view.has_method("enter_hud_edit_mode"):
+		GLogger.warning("打歌页未就绪，无法打开自定义 HUD", "SettingList")
+		return
+	play_view.enter_hud_edit_mode()
+	GLogger.info("打开自定义 HUD 编辑", "SettingList")
+
+
 func _popup_play_background_adjust() -> void:
 	await _popup_view_background_adjust("play")
 
