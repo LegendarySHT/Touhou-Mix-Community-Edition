@@ -32,6 +32,8 @@ class_name ImageAdjust
 # 封面模式相关节点（已在 tscn 中存在，默认 visible=false）
 @onready var _cover_blur_label: Control = $VBoxC/OtherOptions/Label6
 @onready var _cover_blur_edit: LineEdit = $VBoxC/OtherOptions/BlurIntensity
+@onready var _cover_style_label: Control = $VBoxC/OtherOptions/Label7
+@onready var _cover_style_btn: OptionButton = $VBoxC/OtherOptions/BlurStyle
 
 # ===== 图片设置页 =====
 ## 图片类型枚举（与 ImgType OptionButton 顺序一致）
@@ -43,6 +45,10 @@ const IMG_TYPE_SOLID: int = 3
 const IMG_TYPE_COVER: int = 4
 
 const _PREVIEW_BG_BLUR_SHADER_PATH := "res://UI/Views/PlayView/Shaders/BackgroundBlur.gdshader"
+
+## 预览用的带 mipmap 封面副本（shader 的 textureLod 依赖 mipmap）
+var _preview_mip_texture: Texture2D = null
+var _preview_mip_key: Texture2D = null
 
 func _ready() -> void:
 	_start_color_btn.color_changed.connect(_on_color_picker_changed.bind(_start_color_edit))
@@ -83,6 +89,7 @@ func init_adjust(view_name: String = "", allow_cover: bool = false) -> void:
 ##   "to": Vector2 (渐变结束坐标 0~1)
 ##   "solid_color": Color (纯色)
 ##   "cover_blur": float (封面模糊强度 0~1)
+##   "cover_style": String (封面模糊算法名，见 ViewBackground.COVER_BLUR_STYLES)
 func get_result() -> Dictionary:
 	var img_type := _img_type_btn.selected
 	return {
@@ -105,6 +112,9 @@ func get_result() -> Dictionary:
 		"solid_color": _solid_color_btn.color,
 		# 封面模式
 		"cover_blur": float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8,
+		"cover_style": ViewBackground.COVER_BLUR_STYLES[
+			clampi(_cover_style_btn.selected, 0, ViewBackground.COVER_BLUR_STYLES.size() - 1)
+		],
 	}
 
 ## 扫描背景图片文件列表
@@ -163,9 +173,11 @@ func _update_image_options_visibility() -> void:
 	# 纯色模式
 	_solid_color_label.visible = show_solid
 	_solid_color_container.visible = show_solid
-	# 封面模式（仅 cover 显示模糊输入）
+	# 封面模式（仅 cover 显示模糊强度 + 算法）
 	_cover_blur_label.visible = show_cover
 	_cover_blur_edit.visible = show_cover
+	_cover_style_label.visible = show_cover
+	_cover_style_btn.visible = show_cover
 
 ## 创建纯色纹理（1x1 白色像素，通过 modulate 着色）
 func _create_solid_texture() -> ImageTexture:
@@ -238,7 +250,7 @@ func _update_image_preview() -> void:
 				_image_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 				_image_texture_rect.modulate = Color.WHITE
 				var blur_strength := float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8
-				_apply_preview_cover_blur(blur_strength)
+				_apply_preview_cover_blur(blur_strength, _cover_style_btn.selected)
 			else:
 				# 无封面可用，显示占位
 				_image_texture_rect.texture = null
@@ -282,7 +294,13 @@ func _on_cover_blur_changed(_new_text: String) -> void:
 	# 仅在当前预览为封面模式时实时刷新模糊强度
 	if _img_type_btn.selected == IMG_TYPE_COVER:
 		var blur_strength := float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8
-		_apply_preview_cover_blur(blur_strength)
+		_apply_preview_cover_blur(blur_strength, _cover_style_btn.selected)
+
+## 封面模糊算法切换
+func _on_cover_style_selected(_index: int) -> void:
+	if _img_type_btn.selected == IMG_TYPE_COVER:
+		var blur_strength := float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8
+		_apply_preview_cover_blur(blur_strength, _cover_style_btn.selected)
 
 ## 获取一个可用于预览的封面（随机从 AlbumList 已渲染的列表项中取一个封面纹理）
 ## 优先用界面已加载的封面，避免重复 IO；AlbumList 不可用时回退到数据层取第一个
@@ -320,15 +338,33 @@ func _get_preview_cover_texture() -> Texture2D:
 	return fs_mgr.get_cover_by_midiData(midis[0])
 
 ## 应用封面模糊 shader 到预览节点
-func _apply_preview_cover_blur(blur_strength: float) -> void:
+## style 索引与 ViewBackground.COVER_BLUR_STYLES / 场景下拉项一致
+func _apply_preview_cover_blur(blur_strength: float, style: int = 1) -> void:
 	var shader := load(_PREVIEW_BG_BLUR_SHADER_PATH)
 	if shader == null:
 		_image_texture_rect.material = null
 		return
+	# shader 靠 textureLod 做大半径降采样，纹理必须先有 mipmap
+	_image_texture_rect.texture = _ensure_preview_mipmap(_image_texture_rect.texture)
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
+	mat.set_shader_parameter("style", style)
 	mat.set_shader_parameter("blur_strength", clampf(blur_strength, 0.0, 1.0))
 	_image_texture_rect.material = mat
+
+## 预览用：原纹理没有 mipmap 时生成一份带 mip 的副本（只影响预览，不动共享纹理）
+func _ensure_preview_mipmap(tex: Texture2D) -> Texture2D:
+	if tex == null:
+		return null
+	if tex == _preview_mip_texture:
+		return tex
+	var img := tex.get_image()
+	if img == null or img.is_empty() or img.has_mipmaps():
+		return tex
+	img.generate_mipmaps()
+	_preview_mip_texture = ImageTexture.create_from_image(img)
+	_preview_mip_key = tex
+	return _preview_mip_texture
 
 ## 从 ThemeManager 读取指定视图的背景配置，初始化弹窗控件
 ## view_name 为空时使用默认值（保持向后兼容）
@@ -343,6 +379,7 @@ func _init_image_controls_from_theme(view_name: String) -> void:
 	var gradient_from := Vector2(0.0, 0.0)
 	var gradient_to := Vector2(0.0, 1.0)
 	var cover_blur := 0.8
+	var cover_style := ViewBackground.DEFAULT_COVER_STYLE
 
 	if not view_name.is_empty() and ThemeMGR:
 		var bg := ThemeMGR.get_view_background(view_name)
@@ -361,6 +398,7 @@ func _init_image_controls_from_theme(view_name: String) -> void:
 			float(bg.get("gradient_to_y", gradient_to.y))
 		)
 		cover_blur = float(bg.get("cover_blur", cover_blur))
+		cover_style = String(bg.get("cover_blur_style", cover_style))
 
 	# 设置类型 OptionButton
 	var type_idx := IMG_TYPE_DEFAULT
@@ -377,7 +415,7 @@ func _init_image_controls_from_theme(view_name: String) -> void:
 	var touched: Array[Control] = [
 		_img_type_btn, _img_name_btn, _img_fill_mode_btn,
 		_solid_color_btn, _start_color_btn, _end_color_btn,
-		_from_x_edit, _from_y_edit, _to_x_edit, _to_y_edit, _cover_blur_edit,
+		_from_x_edit, _from_y_edit, _to_x_edit, _to_y_edit, _cover_blur_edit, _cover_style_btn,
 	]
 	for c in touched:
 		c.set_block_signals(true)
@@ -412,8 +450,9 @@ func _init_image_controls_from_theme(view_name: String) -> void:
 	_to_x_edit.text = str(gradient_to.x)
 	_to_y_edit.text = str(gradient_to.y)
 
-	# 设置封面模糊强度
+	# 设置封面模糊强度 + 算法
 	_cover_blur_edit.text = str(cover_blur)
+	_cover_style_btn.selected = ViewBackground.cover_blur_style_index(cover_style)
 
 	for c in touched:
 		c.set_block_signals(false)

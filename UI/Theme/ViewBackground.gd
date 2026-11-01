@@ -13,6 +13,25 @@ const COVER_BLUR_SHADER := "res://UI/Views/PlayView/Shaders/BackgroundBlur.gdsha
 const COMPOSITE_SHADER := "res://UI/Views/PlayView/Shaders/BackgroundComposite.gdshader"
 ## 封面模糊未配置时的兜底强度
 const DEFAULT_COVER_BLUR := 0.8
+## 封面模糊算法表。索引即 shader 的 style 值，顺序必须与 BackgroundBlur.gdshader 一致。
+## 设置界面下拉项（PopupWindow.tscn 的 BlurStyle）也按这个顺序排列。
+const COVER_BLUR_STYLES: Array[String] = [
+	"none",      # 原图
+	"gaussian",  # 高斯
+	"box",       # 盒式均值
+	"tent",      # 三角/帐篷
+	"bokeh",     # 圆盘散景
+	"pixelate",  # 马赛克
+	"glass",     # 磨砂玻璃
+]
+const DEFAULT_COVER_STYLE := "gaussian"
+
+## 风格名 -> shader style 索引（未知值退回默认）
+static func cover_blur_style_index(style_name: String) -> int:
+	var idx := COVER_BLUR_STYLES.find(style_name)
+	if idx < 0:
+		idx = COVER_BLUR_STYLES.find(DEFAULT_COVER_STYLE)
+	return idx
 
 ## 视图名：main / midi / track / setting / score / store / play
 @export var view_name: String = ""
@@ -37,6 +56,10 @@ var _bake_free_pending: bool = false
 var _bake_id: int = 0
 var _baked_key: String = ""
 var _baked_blur: float = -1.0
+var _baked_style: int = -1
+## 带 mipmap 的封面副本（shader 的 textureLod 依赖它，原纹理由文件管理器持有，不能就地加 mip）
+var _cover_mip_texture: Texture2D = null
+var _cover_mip_key: String = ""
 ## 纹理代次：异步操作（mipmap 生成）回主线程时用它判断背景是否已被换掉
 var _texture_gen: int = 0
 
@@ -70,7 +93,11 @@ func apply(force: bool = false) -> void:
 	var type := String(cfg.get("type", "default"))
 	var tag := type + "|" + str(cfg)
 	if type == "cover":
-		tag += "|%s|%.3f" % [_cover_key, float(cfg.get("cover_blur", DEFAULT_COVER_BLUR))]
+		tag += "|%s|%.3f|%s" % [
+			_cover_key,
+			float(cfg.get("cover_blur", DEFAULT_COVER_BLUR)),
+			String(cfg.get("cover_blur_style", DEFAULT_COVER_STYLE)),
+		]
 	elif type == "default":
 		# 默认背景的颜色是主题色衍生的，深浅色/强调色变了必须重算
 		tag += "|" + ThemeMGR.get_default_background_key()
@@ -96,6 +123,9 @@ func apply(force: bool = false) -> void:
 ## 设置封面（play 专用）。key 用于复用已烘焙结果，同谱面重试不再重新烘焙。
 func set_cover(tex: Texture2D, key: String = "") -> void:
 	var key_changed := key != _cover_key
+	if key_changed:
+		_cover_mip_texture = null
+		_cover_mip_key = ""
 	_cover_texture = tex
 	_cover_key = key
 	if key_changed:
@@ -215,21 +245,25 @@ func _apply_image(cfg: Dictionary) -> void:
 
 func _apply_cover(cfg: Dictionary) -> void:
 	var blur := float(cfg.get("cover_blur", DEFAULT_COVER_BLUR))
+	var style_name := String(cfg.get("cover_blur_style", DEFAULT_COVER_STYLE))
+	var style := cover_blur_style_index(style_name)
 	if _cover_texture == null:
 		# 没有封面可用：退回默认背景，不要把界面刷成纯色
 		_apply_default()
 		return
-	if blur <= 0.001:
+	# 不模糊（强度 0，或显式选 none）：直接铺原图
+	if blur <= 0.001 or style == 0:
 		_set_texture(_cover_texture, TextureRect.STRETCH_KEEP_ASPECT_COVERED, CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS)
 		_discard_bake()
 		_ensure_mipmaps(_cover_texture)
 		return
-	if _can_reuse_bake(blur):
+	if _can_reuse_bake(blur, style):
 		_set_texture(_bake_viewport.get_texture(), TextureRect.STRETCH_KEEP_ASPECT_COVERED, CanvasItem.TEXTURE_FILTER_LINEAR)
 		return
+	# 烘焙前先铺原图当占位（烘焙完成才换成结果纹理）
 	_set_texture(_cover_texture, TextureRect.STRETCH_KEEP_ASPECT_COVERED, CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS)
 	_ensure_mipmaps(_cover_texture)
-	_bake(blur)
+	_bake(blur, style)
 
 # ============ 纹理与材质 ============
 
@@ -272,13 +306,30 @@ func _generate_mipmaps_deferred(image: Image, gen: int) -> void:
 	image.generate_mipmaps()
 	texture = ImageTexture.create_from_image(image)
 
-## 是否可复用已烘焙结果：同谱面 + 同模糊强度 + SubViewport 仍有效
-func _can_reuse_bake(blur: float) -> bool:
+## 是否可复用已烘焙结果：同谱面 + 同模糊强度 + 同算法 + SubViewport 仍有效
+func _can_reuse_bake(blur: float, style: int) -> bool:
 	if _bake_viewport == null or _baked_key.is_empty():
 		return false
-	return _baked_key == _cover_key and absf(_baked_blur - blur) < 0.001
+	return _baked_key == _cover_key and absf(_baked_blur - blur) < 0.001 and _baked_style == style
 
-func _bake(blur: float) -> void:
+## 取带 mipmap 的封面副本。shader 用 textureLod 做大半径降采样，必须依赖 mipmap；
+## 原纹理由 FileSystemManager 缓存并可能被别处引用，不能就地 generate_mipmaps。
+## 副本按封面 key 缓存，同一谱面反复进页不重复回读。
+func _get_mip_source(key: String) -> Texture2D:
+	if _cover_texture == null:
+		return null
+	if _cover_mip_texture != null and _cover_mip_key == key:
+		return _cover_mip_texture
+	var img := _cover_texture.get_image()
+	if img == null or img.is_empty():
+		return _cover_texture
+	if not img.has_mipmaps():
+		img.generate_mipmaps()
+	_cover_mip_texture = ImageTexture.create_from_image(img)
+	_cover_mip_key = key
+	return _cover_mip_texture
+
+func _bake(blur: float, style: int) -> void:
 	_discard_bake()
 	_bake_free_pending = false
 	_bake_id += 1
@@ -299,7 +350,10 @@ func _bake(blur: float) -> void:
 	add_child(_bake_viewport)
 
 	_bake_rect = TextureRect.new()
-	_bake_rect.texture = _cover_texture
+	# 只有带 mipmap 的源纹理才能让 shader 的 textureLod 拿到低分辨率层
+	_bake_rect.texture = _get_mip_source(_cover_key)
+	if _bake_rect.texture == null:
+		_bake_rect.texture = _cover_texture
 	_bake_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_bake_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	_bake_rect.position = Vector2.ZERO
@@ -309,6 +363,7 @@ func _bake(blur: float) -> void:
 
 	var mat := ShaderMaterial.new()
 	mat.shader = load(COVER_BLUR_SHADER)
+	mat.set_shader_parameter("style", style)
 	mat.set_shader_parameter("blur_strength", clampf(blur, 0.0, 1.0))
 	_bake_rect.material = mat
 
@@ -319,6 +374,7 @@ func _bake(blur: float) -> void:
 	_set_texture(_bake_viewport.get_texture(), TextureRect.STRETCH_KEEP_ASPECT_COVERED, CanvasItem.TEXTURE_FILTER_LINEAR)
 	_baked_key = _cover_key
 	_baked_blur = blur
+	_baked_style = style
 
 func _discard_bake() -> void:
 	if _bake_viewport:
@@ -338,6 +394,7 @@ func _discard_bake() -> void:
 	# SubViewport 释放后 ViewportTexture 失效，不再可复用
 	_baked_key = ""
 	_baked_blur = -1.0
+	_baked_style = -1
 
 # ============ 工具 ============
 

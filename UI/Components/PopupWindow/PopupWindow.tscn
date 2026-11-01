@@ -1285,6 +1285,42 @@ alignment = 1
 max_length = 64
 emoji_menu_enabled = false
 
+[node name="Label7" type="Label" parent="ImageAdjust/VBoxC/OtherOptions" unique_id=1790634758]
+visible = false
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 32
+text = "封面模糊算法"
+vertical_alignment = 1
+
+[node name="BlurStyle" type="OptionButton" parent="ImageAdjust/VBoxC/OtherOptions" unique_id=1097737912]
+visible = false
+custom_minimum_size = Vector2(380, 60)
+custom_maximum_size = Vector2(500, -1)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 1
+theme_override_font_sizes/font_size = 32
+alignment = 1
+clip_text = true
+selected = 1
+item_count = 7
+popup/item_0/text = "不模糊"
+popup/item_0/id = 0
+popup/item_1/text = "高斯"
+popup/item_1/id = 1
+popup/item_2/text = "盒式"
+popup/item_2/id = 2
+popup/item_3/text = "三角"
+popup/item_3/id = 3
+popup/item_4/text = "圆盘散景"
+popup/item_4/id = 4
+popup/item_5/text = "马赛克"
+popup/item_5/id = 5
+popup/item_6/text = "磨砂玻璃"
+popup/item_6/id = 6
+
 [node name="KBModeAdjust" type="VBoxContainer" parent="." unique_id=1259222601]
 visible = false
 layout_mode = 2
@@ -1921,6 +1957,7 @@ text = "保留目标已有版本（合并补缺）"
 [connection signal="text_changed" from="ImageAdjust/VBoxC/OtherOptions/ToX/LineEdit" to="ImageAdjust" method="_on_gradient_coords_changed"]
 [connection signal="text_changed" from="ImageAdjust/VBoxC/OtherOptions/ToY/LineEdit" to="ImageAdjust" method="_on_gradient_coords_changed"]
 [connection signal="text_changed" from="ImageAdjust/VBoxC/OtherOptions/BlurIntensity" to="ImageAdjust" method="_on_cover_blur_changed"]
+[connection signal="item_selected" from="ImageAdjust/VBoxC/OtherOptions/BlurStyle" to="ImageAdjust" method="_on_cover_style_selected"]
 [connection signal="pressed" from="KBModeAdjust/KeySequence/VFlowC/AddBtn" to="KBModeAdjust" method="_on_add_btn_pressed"]
 [connection signal="text_changed" from="KBModeAdjust/HBox/Center/KeyDisplayName/LineEdit" to="KBModeAdjust" method="_on_display_name_changed"]
 [connection signal="pressed" from="KBModeAdjust/HBox/Center/KeyConfig/Button" to="KBModeAdjust" method="_on_key_config_btn_pressed"]

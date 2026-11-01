@@ -613,6 +613,7 @@ func _popup_view_background_adjust(view_name: String) -> void:
 	config["gradient_to_y"] = str(to.y)
 	if allow_cover:
 		config["cover_blur"] = str(result.get("cover_blur", 0.8))
+		config["cover_blur_style"] = str(result.get("cover_style", ViewBackground.DEFAULT_COVER_STYLE))
 	# 即时保存到 theme.ini + 轻量刷新背景（refresh_backgrounds，不触发完整主题刷新）
 	# play 的 cover 模式由 PlayView 在切回 PLAY_VIEW 时通过 Background 节点（ViewBackground）重新应用
 	ThemeMGR.set_view_background(view_name, config)
