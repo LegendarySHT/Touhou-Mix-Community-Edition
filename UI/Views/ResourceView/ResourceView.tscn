@@ -90,6 +90,8 @@ corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
+[sub_resource type="ButtonGroup" id="ButtonGroup_8w0rt"]
+
 [sub_resource type="StyleBoxFlat" id="SB_underline"]
 bg_color = Color(0.58, 0.72, 1, 1)
 corner_radius_top_left = 2
@@ -271,6 +273,7 @@ theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
 theme_override_styles/focus = SubResource("SB_tab_focus")
 toggle_mode = true
 button_pressed = true
+button_group = SubResource("ButtonGroup_8w0rt")
 text = "歌曲"
 
 [node name="TabSkin" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1318609674]
@@ -286,6 +289,7 @@ theme_override_styles/hover = SubResource("SB_tab_hover")
 theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
 theme_override_styles/focus = SubResource("SB_tab_focus")
 toggle_mode = true
+button_group = SubResource("ButtonGroup_8w0rt")
 text = "皮肤"
 
 [node name="TabEffect" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=19408384]
@@ -301,6 +305,7 @@ theme_override_styles/hover = SubResource("SB_tab_hover")
 theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
 theme_override_styles/focus = SubResource("SB_tab_focus")
 toggle_mode = true
+button_group = SubResource("ButtonGroup_8w0rt")
 text = "特效"
 
 [node name="TabSoundfont" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=301803233]
@@ -316,6 +321,7 @@ theme_override_styles/hover = SubResource("SB_tab_hover")
 theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
 theme_override_styles/focus = SubResource("SB_tab_focus")
 toggle_mode = true
+button_group = SubResource("ButtonGroup_8w0rt")
 text = "音源"
 
 [node name="TabBackground" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=195846473]
@@ -331,6 +337,7 @@ theme_override_styles/hover = SubResource("SB_tab_hover")
 theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
 theme_override_styles/focus = SubResource("SB_tab_focus")
 toggle_mode = true
+button_group = SubResource("ButtonGroup_8w0rt")
 text = "背景"
 
 [node name="TabUnderline" type="Panel" parent="TopBar" unique_id=416198582]
