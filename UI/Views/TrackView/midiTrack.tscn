@@ -138,7 +138,7 @@ shadow_offset = Vector2(0, 3)
 
 [sub_resource type="StyleBoxLine" id="StyleBoxLine_7vp1s"]
 color = Color(1, 1, 1, 0.25)
-thickness = 2
+thickness = 8
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_c3ket"]
 draw_center = false
@@ -155,23 +155,6 @@ load_path = "res://.godot/imported/icon_set.png-96c5ab029ee097edb55aef049d22d02c
 resource_local_to_scene = true
 atlas = SubResource("CompressedTexture2D_phpps")
 region = Rect2(0, 240, 80, 80)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_gihxt"]
-resource_local_to_scene = true
-atlas = ExtResource("2_phpps")
-region = Rect2(80, 160, 80, 80)
-
-[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_kgiiq"]
-load_path = "res://.godot/imported/icon_set.png-96c5ab029ee097edb55aef049d22d02c.ctex"
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_kpleu"]
-resource_local_to_scene = true
-atlas = SubResource("CompressedTexture2D_kgiiq")
-region = Rect2(80, 160, 80, 80)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_oqd7d"]
-atlas = ExtResource("2_phpps")
-region = Rect2(320, 320, 80, 80)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slider_fill"]
 bg_color = Color(1, 1, 1, 1)
@@ -193,12 +176,29 @@ corner_detail = 5
 expand_margin_top = 8.0
 expand_margin_bottom = 8.0
 
+[sub_resource type="AtlasTexture" id="AtlasTexture_gihxt"]
+resource_local_to_scene = true
+atlas = ExtResource("2_phpps")
+region = Rect2(80, 160, 80, 80)
+
+[sub_resource type="CompressedTexture2D" id="CompressedTexture2D_kgiiq"]
+load_path = "res://.godot/imported/icon_set.png-96c5ab029ee097edb55aef049d22d02c.ctex"
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_kpleu"]
+resource_local_to_scene = true
+atlas = SubResource("CompressedTexture2D_kgiiq")
+region = Rect2(80, 160, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_oqd7d"]
+atlas = ExtResource("2_phpps")
+region = Rect2(320, 320, 80, 80)
+
 [node name="MidiTrack" type="Panel" unique_id=1103190500]
 custom_minimum_size = Vector2(1600, 220)
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_bottom = -830.0
+offset_bottom = -860.0
 grow_horizontal = 2
 grow_vertical = 2
 size_flags_horizontal = 3
@@ -206,111 +206,74 @@ mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_31lmn")
 script = ExtResource("1_7rc5s")
 
-[node name="HBoxC" type="HBoxContainer" parent="." unique_id=1434828365]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_constants/separation = 0
-
-[node name="CH" type="Panel" parent="HBoxC" unique_id=1411896934]
+[node name="CH" type="Panel" parent="." unique_id=1411896934]
 custom_minimum_size = Vector2(60, 0)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 60.0
+grow_vertical = 2
 size_flags_horizontal = 0
 mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_83r2u")
 
-[node name="ChannelBtn" type="Button" parent="HBoxC/CH" unique_id=2026164560]
+[node name="ChannelNum" type="Label" parent="CH" unique_id=1233572765]
+custom_minimum_size = Vector2(220, 60)
 layout_mode = 1
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_top = -34.83368
-offset_right = 163.03627
-offset_bottom = 25.16632
+offset_right = 220.0
+offset_bottom = 60.0
 grow_vertical = 0
 rotation = -1.5707964
-focus_mode = 0
-mouse_filter = 1
 theme_override_font_sizes/font_size = 32
-toggle_mode = true
-text = "Channel"
-flat = true
-alignment = 0
-icon_alignment = 1
-
-[node name="ChannelNum" type="Label" parent="HBoxC/CH" unique_id=1233572765]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_top = 60.0
-offset_bottom = 119.99999
-grow_horizontal = 2
-rotation = -1.5707964
-theme_override_font_sizes/font_size = 32
-text = "18"
+text = "Channel 18"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="TR" type="Panel" parent="HBoxC" unique_id=673994964]
+[node name="TR" type="Panel" parent="." unique_id=673994964]
 custom_minimum_size = Vector2(60, 0)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = -1
+anchor_bottom = 1.0
+offset_left = 60.0
+grow_vertical = 2
 size_flags_horizontal = 0
 mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_7vp1s")
 
-[node name="TrackBtn" type="Button" parent="HBoxC/TR" unique_id=542580576]
+[node name="TrackNum" type="Label" parent="TR" unique_id=238719046]
+custom_minimum_size = Vector2(220, 60)
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
+anchors_preset = 2
+anchor_top = 1.0
 anchor_bottom = 1.0
-offset_top = 215.16632
-offset_right = 103.03627
-offset_bottom = 25.16632
-grow_horizontal = 2
-grow_vertical = 2
-rotation = -1.5707964
-focus_mode = 0
-mouse_filter = 1
-theme_override_font_sizes/font_size = 32
-toggle_mode = true
-text = "Track"
-flat = true
-alignment = 0
-icon_alignment = 1
-
-[node name="TrackNum" type="Label" parent="HBoxC/TR" unique_id=238719046]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_top = 60.0
-offset_bottom = 120.0
-grow_horizontal = 2
+offset_right = 220.0
+offset_bottom = 60.0
+grow_vertical = 0
 rotation = -1.5707964
 theme_override_font_sizes/font_size = 32
-text = "1"
+text = "Track 1"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="MC" type="MarginContainer" parent="HBoxC" unique_id=1397601145]
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/margin_left = 30
-theme_override_constants/margin_top = 20
-theme_override_constants/margin_right = 50
-theme_override_constants/margin_bottom = 20
-
-[node name="HBoxC" type="HBoxContainer" parent="HBoxC/MC" unique_id=327389710]
+[node name="HBoxC" type="HBoxContainer" parent="." unique_id=327389710]
 custom_minimum_size = Vector2(1080, 0)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 150.0
+offset_top = 20.0
+offset_right = -50.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 theme_override_constants/separation = -4
 
-[node name="enableBtn" type="Button" parent="HBoxC/MC/HBoxC" unique_id=888662538]
+[node name="enableBtn" type="Button" parent="HBoxC" unique_id=888662538]
 z_index = 1
 custom_minimum_size = Vector2(280, 180)
 layout_mode = 2
@@ -334,28 +297,28 @@ text = "已启用"
 icon = SubResource("AtlasTexture_7rc5s")
 expand_icon = true
 
-[node name="MC" type="MarginContainer" parent="HBoxC/MC/HBoxC" unique_id=1795218493]
+[node name="MC" type="MarginContainer" parent="HBoxC" unique_id=1795218493]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/margin_top = 25
 theme_override_constants/margin_bottom = 25
 
-[node name="flowArea" type="HBoxContainer" parent="HBoxC/MC/HBoxC/MC" unique_id=1152135973]
+[node name="flowArea" type="HBoxContainer" parent="HBoxC/MC" unique_id=1152135973]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 0
 script = ExtResource("2_7rc5s")
 
-[node name="noteFlowArea" type="Panel" parent="HBoxC/MC/HBoxC/MC/flowArea" unique_id=938369012]
+[node name="noteFlowArea" type="Panel" parent="HBoxC/MC/flowArea" unique_id=938369012]
 custom_minimum_size = Vector2(940, 160)
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxTexture_kgiiq")
 
-[node name="canvas" type="Panel" parent="HBoxC/MC/HBoxC/MC/flowArea/noteFlowArea" unique_id=1782789059]
-clip_children = 1
+[node name="canvas" type="Control" parent="HBoxC/MC/flowArea/noteFlowArea" unique_id=877753186]
+clip_contents = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -364,72 +327,66 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="noteTotal" type="Panel" parent="HBoxC/MC/HBoxC/MC/flowArea" unique_id=876599378]
+[node name="noteTotal" type="Panel" parent="HBoxC/MC/flowArea" unique_id=876599378]
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_xcqgn")
 
-[node name="VBoxC" type="VBoxContainer" parent="HBoxC/MC/HBoxC/MC/flowArea/noteTotal" unique_id=1115858912]
+[node name="passedNote" type="Label" parent="HBoxC/MC/flowArea/noteTotal" unique_id=485936147]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+offset_top = 18.0
+offset_right = -60.0
+offset_bottom = 68.0
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 44
+text = "0"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="HBoxC/MC/flowArea/noteTotal" unique_id=1309576665]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -90.0
-offset_top = -80.0
-offset_right = 110.0
-offset_bottom = 80.0
+offset_left = -100.0
+offset_top = -2.0
+offset_right = 100.0
+offset_bottom = 2.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 2
-alignment = 1
-
-[node name="passedNote" type="Label" parent="HBoxC/MC/HBoxC/MC/flowArea/noteTotal/VBoxC" unique_id=485936147]
-custom_minimum_size = Vector2(150, 0)
-layout_mode = 2
-size_flags_horizontal = 4
-theme_override_font_sizes/font_size = 44
-text = "0"
-vertical_alignment = 1
-
-[node name="Control" type="Control" parent="HBoxC/MC/HBoxC/MC/flowArea/noteTotal/VBoxC" unique_id=1616577273]
-custom_minimum_size = Vector2(0, 20)
-layout_mode = 2
-mouse_filter = 2
-
-[node name="HSeparator" type="HSeparator" parent="HBoxC/MC/HBoxC/MC/flowArea/noteTotal/VBoxC/Control" unique_id=1309576665]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 35.0
-offset_top = 15.0
-offset_right = -65.0
-offset_bottom = 15.0
-grow_horizontal = 2
-grow_vertical = 2
-rotation = -0.34906584
+offset_transform_enabled = true
+offset_transform_scale = Vector2(0.7, 0.7)
+offset_transform_rotation = -0.2617994
 mouse_filter = 2
 theme_override_styles/separator = SubResource("StyleBoxLine_7vp1s")
 
-[node name="totalNote" type="Label" parent="HBoxC/MC/HBoxC/MC/flowArea/noteTotal/VBoxC" unique_id=884233785]
-custom_minimum_size = Vector2(150, 0)
-layout_mode = 2
+[node name="totalNote" type="Label" parent="HBoxC/MC/flowArea/noteTotal" unique_id=884233785]
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 60.0
+offset_bottom = -18.0
+grow_vertical = 0
 size_flags_horizontal = 8
 theme_override_font_sizes/font_size = 44
-text = "9999"
+text = "99999"
 vertical_alignment = 1
 
-[node name="ControlPanel" type="Panel" parent="HBoxC/MC/HBoxC/MC" unique_id=211174657]
+[node name="ControlPanel" type="Panel" parent="HBoxC/MC" unique_id=211174657]
 custom_minimum_size = Vector2(600, 0)
 layout_mode = 2
 size_flags_horizontal = 0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_c3ket")
 
-[node name="GridC" type="GridContainer" parent="HBoxC/MC/HBoxC/MC/ControlPanel" unique_id=761362062]
+[node name="GridC" type="GridContainer" parent="HBoxC/MC/ControlPanel" unique_id=761362062]
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -443,7 +400,7 @@ theme_override_constants/h_separation = 40
 theme_override_constants/v_separation = 20
 columns = 3
 
-[node name="MuteBtn" type="TextureButton" parent="HBoxC/MC/HBoxC/MC/ControlPanel/GridC" unique_id=1626224669]
+[node name="MuteBtn" type="TextureButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=1626224669]
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
 offset_transform_enabled = true
@@ -456,12 +413,12 @@ texture_pressed = SubResource("AtlasTexture_r0ui6")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="Volume" type="HBoxContainer" parent="HBoxC/MC/HBoxC/MC/ControlPanel/GridC" unique_id=34573128]
+[node name="Volume" type="HBoxContainer" parent="HBoxC/MC/ControlPanel/GridC" unique_id=34573128]
 custom_minimum_size = Vector2(320, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Slider" type="HSlider" parent="HBoxC/MC/HBoxC/MC/ControlPanel/GridC/Volume" unique_id=1999306910]
+[node name="Slider" type="HSlider" parent="HBoxC/MC/ControlPanel/GridC/Volume" unique_id=1999306910]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 1
@@ -471,18 +428,18 @@ theme_override_styles/grabber_area_highlight = SubResource("StyleBoxFlat_slider_
 max_value = 1.0
 step = 0.01
 
-[node name="Label" type="Label" parent="HBoxC/MC/HBoxC/MC/ControlPanel/GridC/Volume" unique_id=592580644]
+[node name="Label" type="Label" parent="HBoxC/MC/ControlPanel/GridC/Volume" unique_id=592580644]
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 text = "-1.00dB"
 horizontal_alignment = 2
 
-[node name="PlaceHolderBtn" type="TextureButton" parent="HBoxC/MC/HBoxC/MC/ControlPanel/GridC" unique_id=1252566824]
+[node name="PlaceHolderBtn" type="TextureButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=1252566824]
 layout_mode = 2
 focus_mode = 0
 disabled = true
 
-[node name="SoloBtn" type="TextureButton" parent="HBoxC/MC/HBoxC/MC/ControlPanel/GridC" unique_id=1461801783]
+[node name="SoloBtn" type="TextureButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=1461801783]
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
 offset_transform_enabled = true
@@ -495,7 +452,7 @@ texture_pressed = SubResource("AtlasTexture_kpleu")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="InstrumentBtn" type="MenuButton" parent="HBoxC/MC/HBoxC/MC/ControlPanel/GridC" unique_id=673420758]
+[node name="InstrumentBtn" type="MenuButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=673420758]
 custom_minimum_size = Vector2(250, 50)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -503,7 +460,7 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 32
 switch_on_hover = true
 
-[node name="ResetBtn" type="TextureButton" parent="HBoxC/MC/HBoxC/MC/ControlPanel/GridC" unique_id=955571887]
+[node name="ResetBtn" type="TextureButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=955571887]
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
 texture_normal = SubResource("AtlasTexture_oqd7d")

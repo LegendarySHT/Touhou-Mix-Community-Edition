@@ -6,27 +6,33 @@ class_name TrackView
 ## （实测掉过），那样本脚本会在解析期直接报错。preload 不依赖全局类表。
 const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
 
-@onready var master_note_displayer: NoteDisplayer = $MC/VBox/TotalView/MC/VBoxC/flowArea
-@onready var current_time: Label = $MC/VBox/TotalView/MC/VBoxC/playArea/currentTime
-@onready var progress_bar: HSlider = $MC/VBox/TotalView/MC/VBoxC/playArea/progressBar
-@onready var total_time: Label = $MC/VBox/TotalView/MC/VBoxC/playArea/totalTime
+# 主面板
+@onready var total_view: Panel = $VBox/TotalView
+@onready var expand_btn: Button = $VBox/TotalView/VBoxC/flowArea/noteFlowArea/Button
+@onready var master_note_displayer: NoteDisplayer = $VBox/TotalView/VBoxC/flowArea
+@onready var current_time: Label = $VBox/TotalView/VBoxC/playArea/currentTime
+@onready var progress_bar: HSlider = $VBox/TotalView/VBoxC/playArea/progressBar
+@onready var total_time: Label = $VBox/TotalView/VBoxC/playArea/totalTime
+
+@onready var total_note_panel: Panel = $VBox/TotalView/VBoxC/flowArea/noteTotal
+@onready var separator_line: HSeparator = $VBox/TotalView/VBoxC/flowArea/noteTotal/HSeparator
 
 # 导入人声按钮
-@onready var vocal_import_btn: TextureButton = $MC/VBox/VolumeView/HBoxC/VBoxC2/VocalImportBtn
+@onready var vocal_import_btn: TextureButton = $VBox/VolumeView/HBoxC/VBoxC2/VocalImportBtn
 # 切换人声启用状态按钮
-@onready var vocal_enable_btn: Button = $MC/VBox/VolumeView/HBoxC/VBoxC2/VocalEnableBtn
+@onready var vocal_enable_btn: Button = $VBox/VolumeView/HBoxC/VBoxC2/VocalEnableBtn
 
-@onready var latency_edit: LineEdit = $MC/VBox/VolumeView/HBoxC/VBoxC2/HBoxC/Latency
-@onready var midi_vol_btn: TextureButton = $MC/VBox/VolumeView/HBoxC/GridC/midiVolIcon
-@onready var midi_vol_slider: HSlider = $MC/VBox/VolumeView/HBoxC/GridC/midiVolSlider
-@onready var vocal_vol_btn: TextureButton = $MC/VBox/VolumeView/HBoxC/GridC/vocalVolIcon
-@onready var vocal_vol_slider: HSlider = $MC/VBox/VolumeView/HBoxC/GridC/vocalVolSlider
+@onready var latency_container: HBoxContainer = $VBox/VolumeView/HBoxC/VBoxC2/HBoxC
+@onready var latency_edit: LineEdit = $VBox/VolumeView/HBoxC/VBoxC2/HBoxC/Latency
+@onready var midi_vol_btn: TextureButton = $VBox/VolumeView/HBoxC/GridC/midiVolIcon
+@onready var midi_vol_slider: HSlider = $VBox/VolumeView/HBoxC/GridC/midiVolSlider
+@onready var vocal_vol_btn: TextureButton = $VBox/VolumeView/HBoxC/GridC/vocalVolIcon
+@onready var vocal_vol_slider: HSlider = $VBox/VolumeView/HBoxC/GridC/vocalVolSlider
 
-@onready var midi_vol_label: Label = $MC/VBox/VolumeView/HBoxC/GridC/midiVolLabel
-@onready var vocal_vol_label: Label = $MC/VBox/VolumeView/HBoxC/GridC/vocalVolLabel
+@onready var midi_vol_label: Label = $VBox/VolumeView/HBoxC/GridC/midiVolLabel
+@onready var vocal_vol_label: Label = $VBox/VolumeView/HBoxC/GridC/vocalVolLabel
 
 # MIDI播放相关
-
 @onready var midi_playback_manager: PlaybackDisplay = PlaybackDisplay.instance
 @onready var ui_stat_mgr: UIStateManager = UiStatMGR
 
@@ -152,17 +158,20 @@ func apply_theme() -> void:
 	var surface_high := ThemeMGR.get_color("surface_high")
 	var surface_hover := ThemeMGR.get_color("surface_hover")
 	# TotalView panel -> 凸起面（与 VolumeView 共享同一 StyleBox，稍亮以突出顶部大面板）
-	var total_view := get_node_or_null("MC/VBox/TotalView") as Panel
 	if total_view:
 		var sb := total_view.get_theme_stylebox("panel")
 		if sb is StyleBoxFlat:
 			sb.bg_color = surface_high
 	# noteTotal panel -> 内嵌面（比 TotalView 底色更深，避免与背景同色分不出来）
-	var note_total := get_node_or_null("MC/VBox/TotalView/MC/VBoxC/flowArea/noteTotal") as Panel
-	if note_total:
-		var sb := note_total.get_theme_stylebox("panel")
+	if total_note_panel:
+		var sb := total_note_panel.get_theme_stylebox("panel")
 		if sb is StyleBoxFlat:
 			sb.bg_color = surface
+	# noteTotal 的斜线分隔条：浅色底板上白线看不见，换成黑色；深色底板沿用场景里的白色
+	if separator_line:
+		var sb_sep := separator_line.get_theme_stylebox("separator")
+		if sb_sep is StyleBoxLine:
+			sb_sep.color = Color(0, 0, 0, 0.25) if ThemeMGR.get_appearance() == "light" else Color(1, 1, 1, 0.65)
 	# VocalEnableBtn button states（开启=中性，关闭/按下=危险色）
 	if vocal_enable_btn:
 		var sb_n := vocal_enable_btn.get_theme_stylebox("normal")
@@ -626,15 +635,14 @@ func _on_vocal_enable_btn_toggled(toggle_on: bool) -> void:
 	_vocal_controller.on_vocal_enable_btn_toggled(toggle_on)
 
 func _on_expand_master_area_btn_toggled(is_expanded: bool) -> void:
-	var node: Panel = $MC/VBox/TotalView
 	var expd_y:int = int(get_viewport().get_visible_rect().size.y) - 50
 	
 	var tween: Tween = AniMGR.create_managed_tween(self)
 	tween.pause()
 	tween.set_parallel(true)
 	
-	var finl_size = Vector2(node.custom_minimum_size.x, expd_y if is_expanded else 350)
-	tween.tween_property(node, "custom_minimum_size", finl_size, 0.25)
+	var finl_size = Vector2(total_view.custom_minimum_size.x, expd_y if is_expanded else 350)
+	tween.tween_property(total_view, "custom_minimum_size", finl_size, 0.25)
 	
 	container.custom_minimum_size.y += expd_y if is_expanded else -expd_y
 	await get_tree().process_frame
@@ -1203,7 +1211,7 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 
 		_set_note_displayers_process(false)
 		# 收起主面板的展开状态
-		get_node("MC/VBox/TotalView/MC/VBoxC/flowArea/noteFlowArea/Button").button_pressed = false
+		expand_btn.button_pressed = false
 
 	# 进入本视图时接管系统媒体控制（切后台继续播放由 miniaudio 音频线程维持）
 	if new_state == work_state:

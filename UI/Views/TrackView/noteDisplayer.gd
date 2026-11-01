@@ -2,9 +2,10 @@ extends HBoxContainer
 
 class_name NoteDisplayer
 
-@onready var flow_area: Panel = $noteFlowArea/canvas
-@onready var note_count_passed: Label = $noteTotal/VBoxC/passedNote
-@onready var note_count_total: Label = $noteTotal/VBoxC/totalNote
+# canvas 在 midiTrack.tscn 里是 Control、在 TrackView.tscn 里是 Panel，统一按基类 Control 取
+@onready var flow_area: Control = $noteFlowArea/canvas
+@onready var note_count_passed: Label = $noteTotal/passedNote
+@onready var note_count_total: Label = $noteTotal/totalNote
 
 var area_height: float = 160
 var area_width: float = 0

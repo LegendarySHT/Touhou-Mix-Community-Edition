@@ -2,24 +2,20 @@ extends ListItemBase
 
 class_name MidiTrack
 
-@onready var note_display: NoteDisplayer = $HBoxC/MC/HBoxC/MC/flowArea
+@onready var note_display: NoteDisplayer = $HBoxC/MC/flowArea
 
-# 写着"Track"的按钮
-@onready var track_btn: Button = $HBoxC/TR/TrackBtn
-@onready var track_num: Label = $HBoxC/TR/TrackNum
-
-@onready var channel_btn: Button = $HBoxC/CH/ChannelBtn
-@onready var channel_num: Label = $HBoxC/CH/ChannelNum
+@onready var track_num: Label = $TR/TrackNum
+@onready var channel_num: Label = $CH/ChannelNum
 # 切换轨道启用状态的按钮
-@onready var enable_btn: Button = $HBoxC/MC/HBoxC/enableBtn
+@onready var enable_btn: Button = $HBoxC/enableBtn
 
-@onready var mute_btn: TextureButton = $HBoxC/MC/HBoxC/MC/ControlPanel/GridC/MuteBtn
-@onready var solo_btn: TextureButton = $HBoxC/MC/HBoxC/MC/ControlPanel/GridC/SoloBtn
-@onready var reset_btn: TextureButton = $HBoxC/MC/HBoxC/MC/ControlPanel/GridC/ResetBtn
-@onready var volume_slider: HSlider = $HBoxC/MC/HBoxC/MC/ControlPanel/GridC/Volume/Slider
-@onready var volume_label: Label = $HBoxC/MC/HBoxC/MC/ControlPanel/GridC/Volume/Label
+@onready var mute_btn: TextureButton = $HBoxC/MC/ControlPanel/GridC/MuteBtn
+@onready var solo_btn: TextureButton = $HBoxC/MC/ControlPanel/GridC/SoloBtn
+@onready var reset_btn: TextureButton = $HBoxC/MC/ControlPanel/GridC/ResetBtn
+@onready var volume_slider: HSlider = $HBoxC/MC/ControlPanel/GridC/Volume/Slider
+@onready var volume_label: Label = $HBoxC/MC/ControlPanel/GridC/Volume/Label
 # 乐器两级选择菜单：大类(MenuButton) → 具体乐器(子菜单)
-@onready var instruments_btn: MenuButton = $HBoxC/MC/HBoxC/MC/ControlPanel/GridC/InstrumentBtn
+@onready var instruments_btn: MenuButton = $HBoxC/MC/ControlPanel/GridC/InstrumentBtn
 
 # category(int) -> Array[String] 该类下的乐器 display_name（由 instrument_options 分组）
 var _category_items: Dictionary = {}
@@ -43,10 +39,10 @@ var _submenu_open := false          # 是否有任一子菜单打开
 const _SUBMENU_AUTOCLOSE_DELAY_MS := 200
 
 # 初始化时需要调节颜色的节点 除下面的之外还有self和enable_btn
-@onready var track_panel: Panel = $HBoxC/TR
-@onready var channel_panel: Panel = $HBoxC/CH
-@onready var note_panel: Panel = $HBoxC/MC/HBoxC/MC/flowArea/noteTotal
-
+@onready var track_panel: Panel = $TR
+@onready var channel_panel: Panel = $CH
+@onready var note_panel: Panel = $HBoxC/MC/flowArea/noteTotal
+@onready var separator_line: HSeparator = $HBoxC/MC/flowArea/noteTotal/HSeparator
 
 # 轨道属性
 var track_index: int = 2
@@ -74,8 +70,8 @@ func _ready():
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 
-	track_num.text = str(track_index)
-	channel_num.text = str(track_channel)
+	track_num.text   = " Track    %3d" % track_index
+	channel_num.text = "Channel %3d" % track_channel
 
 	if not instrument_options:
 		if not parent_node:
@@ -201,13 +197,6 @@ func _set_track_base_colors(light: bool) -> void:
 	if nt_sb is StyleBoxFlat:
 		nt_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.45177418, 0.4929024, 0.558753, 0.9019608)
 		nt_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0, 0, 0, 0.25)
-	# 注：noteFlowArea 上的半透明黑渐变叠加层（StyleBoxTexture）保持 .tscn 原样，不随外观模式改动。
-	# noteTotal 里的白色斜线分隔条在浅色下不可见，改为深色半透明
-	var sep := get_node_or_null("HBoxC/MC/HBoxC/MC/flowArea/noteTotal/VBoxC/Control/HSeparator") as HSeparator
-	if sep:
-		var ssb := sep.get_theme_stylebox("separator")
-		if ssb is StyleBoxLine:
-			ssb.color = Color(0, 0, 0, 0.25) if light else Color(1, 1, 1, 0.25)
 
 ## enableBtn 四态配色。其图标/文字挂在按钮自身上，若用 self_modulate 染色会连它们一起被染，
 ## 故这里直接给按钮「每实例独立」的样式框（.tscn 中 resource_local_to_scene）写入

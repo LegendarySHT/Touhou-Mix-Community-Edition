@@ -253,13 +253,12 @@ static func resolve_vocal_path(midi_data: MidiData) -> String:
 
 # 在这个函数执行前需要先检查有无人声音频
 func init_vocal_btn_display() -> void:
-	var latency_container = _track_view.get_node("MC/VBox/VolumeView/HBoxC/VBoxC2/HBoxC")
 	var enable: bool = vocal_file_path != ""
 
 	# 设置组件可见性
 	_vocal_import_btn.visible = not enable
 
-	latency_container.visible = enable
+	_track_view.latency_container.visible = enable
 	_vocal_enable_btn.visible = enable
 
 	_vocal_vol_btn.visible = enable
