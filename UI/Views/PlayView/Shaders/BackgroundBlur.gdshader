@@ -8,15 +8,17 @@ shader_type canvas_item;
 //   2 box       盒式均值（最快，边缘略硬）
 //   3 tent      三角/帐篷（两次盒式的等效，比 box 柔）
 //   4 bokeh     圆盘散景（高光摊成碟，摄影感）
-//   5 pixelate  马赛克（强度 = 块边长，不吃半径）
-//   6 glass     磨砂玻璃（模糊 + 噪点 + 轻微色散）
+//   5 glass     磨砂玻璃（模糊 + 噪点 + 轻微色散）
+//   6 pixelate  方块马赛克（硬边，强度 = 块边长）
+//   7 soft      模糊马赛克（块间双线性过渡，块心仍是纯色）
+//   8 cells     瓷砖马赛克（Voronoi 不规则块，没有方形硬角）
 //
 // 大半径靠 textureLod 降采样支撑：半径越大选越高 mip，单级内半径永远不超过
 // LOD_STEP 个纹素，采样点不会稀疏。注意单点 LOD 采样会糊成色块（旧版"水彩糊"），
 // 这里是「降采样 + 多点 gather」，两回事。
 // 要求传入的纹理带 mipmap，否则 textureLod 恒返回 0 级、大半径会退化成稀疏噪声。
 
-uniform int style : hint_range(0, 6) = 1;
+uniform int style : hint_range(0, 8) = 1;
 uniform float blur_strength : hint_range(0.0, 1.0) = 0.8;
 // 半径占画面宽度的比例（blur_strength = 1 时的基准）。0.09 ≈ 屏宽 9%。
 // 仅对卷积类算法有效；马赛克的 blur_strength 语义是块边长，不看这个值。
@@ -92,17 +94,58 @@ vec4 f_bokeh(sampler2D tex, vec2 uv, float lr, float lod, float jitter) {
 	return acc / wsum;
 }
 
-// 马赛克：块边长由调用方按 blur_strength 给出（uv 单位，与封面分辨率无关）。
-// 块内取 5 点平均，只取中心点会生硬。
-vec4 f_pixelate(sampler2D tex, vec2 uv, float lod, float block_uv) {
+// 马赛克类按块大小选 mip：块越大 mip 越低，保证块内采样不稀疏、又不跨块取色
+float block_lod(float block_uv, float tex_w) {
+	return max(0.0, log2(max(block_uv * tex_w, 1.0) / LOD_STEP));
+}
+
+// 方块马赛克：块内统一取中心一色。多点采样会跨到邻块，块越大越混色（"颜色乱"）。
+vec4 f_pixelate(sampler2D tex, vec2 uv, float block_uv, float lod) {
 	vec2 block = vec2(block_uv);
 	vec2 snapped = (floor(uv / block) + 0.5) * block;
-	vec4 acc = textureLod(tex, snapped, lod);
-	acc += textureLod(tex, snapped + vec2(0.25, 0.25) * block, lod);
-	acc += textureLod(tex, snapped + vec2(-0.25, 0.25) * block, lod);
-	acc += textureLod(tex, snapped + vec2(0.25, -0.25) * block, lod);
-	acc += textureLod(tex, snapped + vec2(-0.25, -0.25) * block, lod);
-	return acc * 0.2;
+	// 再降半级 mip：块心取的是块内平均色，不是某一个纹素
+	return textureLod(tex, snapped, lod + 0.5);
+}
+
+// 模糊马赛克：块中心取色后按块内位置双线性插值，等于把缩小几倍的图放大回来。
+// 块边界是渐变而非断面，大块时不会一格一格跳色。
+vec4 f_pixelate_soft(sampler2D tex, vec2 uv, float block_uv, float lod) {
+	vec2 g = uv / block_uv - 0.5;
+	vec2 i = floor(g);
+	vec2 f = g - i;
+	// smoothstep：块心附近变化慢（纯色）、块边界附近变化快（过渡窄），
+	// 纯线性插值会让块心也带坡度，整片糊成一块，看不出马赛克结构
+	f = f * f * (3.0 - 2.0 * f);
+	vec2 b = vec2(block_uv);
+	vec4 c00 = textureLod(tex, (i + vec2(0.5, 0.5)) * b, lod);
+	vec4 c10 = textureLod(tex, (i + vec2(1.5, 0.5)) * b, lod);
+	vec4 c01 = textureLod(tex, (i + vec2(0.5, 1.5)) * b, lod);
+	vec4 c11 = textureLod(tex, (i + vec2(1.5, 1.5)) * b, lod);
+	return mix(mix(c00, c10, f.x), mix(c01, c11, f.x), f.y);
+}
+
+// 瓷砖马赛克：每格放一个随机偏移的特征点，整块取最近特征点所在格的颜色。
+// 块形状是 Voronoi 多边形，没有方形硬角，比方格自然；块内仍只有一色，不跳色。
+vec4 f_cells(sampler2D tex, vec2 uv, float block_uv, float lod) {
+	vec2 g = uv / block_uv;
+	vec2 base = floor(g);
+	float best = 1e9;
+	vec2 bestp = g;
+	// 3x3 邻域足够：特征点偏移不超过半格，最近的必在相邻格内
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 cell = base + vec2(float(x), float(y));
+			vec2 jit = vec2(hash12(cell), hash12(cell + vec2(17.3, 41.7))) - 0.5;
+			vec2 p = cell + 0.5 + jit * 0.8;
+			vec2 d = g - p;
+			float dd = dot(d, d);
+			if (dd < best) {
+				best = dd;
+				bestp = p;
+			}
+		}
+	}
+	return textureLod(tex, bestp * block_uv, lod);
 }
 
 // 磨砂玻璃：高斯打底 + 轻微色散（RGB 采样半径略不同）+ 颗粒
@@ -154,13 +197,19 @@ void fragment() {
 		} else if (style == 4) {
 			col = f_bokeh(TEXTURE, UV, lr, lod, jitter);
 		} else if (style == 5) {
-			// 马赛克没有"半径"，用强度直接控制块边长：0.4% → 12.4% 屏宽（约 250 块 → 8 块）。
-			// lod 按块大小单独选，否则块中心会采样到别块的色，边缘渗透。
-			float block_uv = 0.004 + s * 0.12;
-			float block_lod = max(0.0, log2(max(block_uv * tex_w, 1.0) / LOD_STEP));
-			col = f_pixelate(TEXTURE, UV, block_lod, block_uv);
-		} else {
 			col = f_glass(TEXTURE, UV, lr, lod, jitter);
+		} else {
+			// 马赛克类没有"半径"，用强度直接控制块边长：0.4% → 12.4% 屏宽（约 250 块 → 8 块）。
+			// mip 按块大小单独选，否则块心会采样到别块的色，边缘渗透。
+			float buv = 0.004 + s * 0.12;
+			float blod = block_lod(buv, tex_w);
+			if (style == 6) {
+				col = f_pixelate(TEXTURE, UV, buv, blod);
+			} else if (style == 7) {
+				col = f_pixelate_soft(TEXTURE, UV, buv, blod);
+			} else {
+				col = f_cells(TEXTURE, UV, buv, blod);
+			}
 		}
 
 		// 饱和度恢复（抵消模糊导致的发白）

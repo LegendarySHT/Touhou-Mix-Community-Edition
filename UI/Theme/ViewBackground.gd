@@ -21,8 +21,10 @@ const COVER_BLUR_STYLES: Array[String] = [
 	"box",       # 盒式均值
 	"tent",      # 三角/帐篷
 	"bokeh",     # 圆盘散景
-	"pixelate",  # 马赛克
 	"glass",     # 磨砂玻璃
+	"pixelate",  # 方块马赛克
+	"soft",      # 模糊马赛克
+	"cells",     # 瓷砖马赛克
 ]
 const DEFAULT_COVER_STYLE := "gaussian"
 
