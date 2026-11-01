@@ -112,10 +112,10 @@ func _draw() -> void:
 	if tex_size.x <= 0.0 or tex_size.y <= 0.0 or size.x <= 0.0 or size.y <= 0.0:
 		return
 	var max_size := size - Vector2(PREVIEW_MARGIN, PREVIEW_MARGIN) * 2.0
-	var scale := minf(max_size.x / tex_size.x, max_size.y / tex_size.y)
-	if scale <= 0.0:
+	var fit_scale := minf(max_size.x / tex_size.x, max_size.y / tex_size.y)
+	if fit_scale <= 0.0:
 		return
-	var draw_size := tex_size * scale
+	var draw_size := tex_size * fit_scale
 	var rect := Rect2((size - draw_size) * 0.5, draw_size)
 	# 与 NoteBatchDrawer._draw_note_layers 相同的叠加顺序：先 base，后 core 上色。
 	if _base_tex != null:

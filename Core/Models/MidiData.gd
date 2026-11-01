@@ -198,7 +198,7 @@ var desc_recommended_tracks: Array[int] = []
 ## 从JSON数据构造MIDI数据
 ## chart_key：规范键（folder_name）。用于从 MidiCore（配置权威）读取运行时配置；
 ## 留空则回退 json_data 里的 _runtime 注入字段（兼容旧调用方式）。
-func from_json(json_data: Dictionary, chart_key: String = "") -> void:
+func from_json(json_data: Dictionary, cfg_chart_key: String = "") -> void:
 	id = json_data.get("_id", "")
 	name = json_data.get("name", "")
 	description = json_data.get("desc", "")
@@ -255,8 +255,8 @@ func from_json(json_data: Dictionary, chart_key: String = "") -> void:
 	# 水合路径，两条并存会分歧。传入 chart_key 时从权威取；未传则回退旧注入字段
 	# （调用方若不提供 key，至少仍能按原路径水合，不会静默丢配置）。
 	var runtime_config: Variant = {}
-	if not chart_key.is_empty() and MidiCore != null:
-		var cfg: Variant = MidiCore.GetConfig(chart_key)
+	if not cfg_chart_key.is_empty() and MidiCore != null:
+		var cfg: Variant = MidiCore.GetConfig(cfg_chart_key)
 		if cfg is Dictionary:
 			runtime_config = cfg
 	else:
@@ -450,8 +450,8 @@ func has_notes() -> bool:
 ##
 ## 数组本身由 C# MidiCore 解析缓存提供（NoteSoa.from_core 直读，不经中间字典）；
 ## timebase / bpm_timeline 由调用方给出（bpm_timeline 仍留在 GDScript 侧）。
-func set_parsed_soa(midi_path: String, timebase: int, bpm_timeline: Array) -> void:
-	notes_soa = NoteSoa.from_core(midi_path, timebase, bpm_timeline)
+func set_parsed_soa(midi_path: String, timebase: int, bpm_timeline_arg: Array) -> void:
+	notes_soa = NoteSoa.from_core(midi_path, timebase, bpm_timeline_arg)
 	notes_parsed_at = Time.get_ticks_msec()
 	# 轨道-通道分组与 SOA 同步构建（来源数组已按 start_tick 升序，逐元素追加即有序）
 	runtime_track_channel_notes = notes_soa.grouped_indices()

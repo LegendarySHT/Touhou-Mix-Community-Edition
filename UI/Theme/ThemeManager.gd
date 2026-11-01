@@ -691,7 +691,7 @@ func _make_stylebox(theme: Theme, type: String, state: String, bg: Color, border
 ##      自带的 PopupPanel，不挂上去就永远是引擎写死的半透明黑，与主题脱节。
 ##   2. 整体尺寸 —— 项目把正文字号放大到 28/48，默认的 label_width=90 + sv_width=220
 ##      会让滑条和色板挤成一团；这里统一放大，同时保留足够的触摸热区。
-func _style_color_picker(theme: Theme, tmp: Theme, _p: Color) -> void:
+func _style_color_picker(_theme: Theme, tmp: Theme, _p: Color) -> void:
 	tmp.set_constant("h_width", "ColorPicker", 30)
 	# 取色光标：外圈用正文色，浅色模式下避免白圈糊在浅色色板上
 	tmp.set_color("focused_not_editing_cursor_color", "ColorPicker", get_color("text_primary"))
@@ -1218,7 +1218,7 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	var border := get_color("border")
 	var border_soft := get_color("border_soft")
 	var text_primary := get_color("text_primary")
-	var text_dim := get_color("text_dim")
+	var _text_dim := get_color("text_dim")
 	var tmp := Theme.new()
 
 	# 按钮 / 选项按钮：中性板面 + 强调色交互态

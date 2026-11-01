@@ -52,32 +52,32 @@ func _apply() -> void:
 	var muted := ThemeMGR.get_color("text_secondary") if is_light \
 		else (ThemeMGR.get_color("text_dim") if ThemeMGR else Color(0.6, 0.65, 0.72))
 	var color := muted
-	var icon: Texture2D = StoreIconsLib.download_cloud()
-	var text := "等待中"
+	var status_icon_tex: Texture2D = StoreIconsLib.download_cloud()
+	var status_text := "等待中"
 	match state:
 		STATE_QUEUED:
-			text = "等待中"
+			status_text = "等待中"
 			color = muted
-			icon = StoreIconsLib.download_cloud()
+			status_icon_tex = StoreIconsLib.download_cloud()
 		ResourceManager.DownloadState.DOWNLOADING:
-			text = _stage_text(stage)
+			status_text = _stage_text(stage)
 			if percent >= 0.0:
-				text = "%s %d%%" % [text, int(round(percent * 100.0))]
+				status_text = "%s %d%%" % [status_text, int(round(percent * 100.0))]
 			color = ThemeMGR.get_color("warning") if ThemeMGR else color
-			icon = StoreIconsLib.download_cloud()
+			status_icon_tex = StoreIconsLib.download_cloud()
 		ResourceManager.DownloadState.DOWNLOADED:
-			text = "已完成"
+			status_text = "已完成"
 			color = ThemeMGR.get_color("success") if ThemeMGR else color
-			icon = StoreIconsLib.check()
+			status_icon_tex = StoreIconsLib.check()
 		ResourceManager.DownloadState.FAILED:
-			text = "下载失败"
+			status_text = "下载失败"
 			color = ThemeMGR.get_color("danger") if ThemeMGR else color
-			icon = StoreIconsLib.close()
+			status_icon_tex = StoreIconsLib.close()
 		_:
-			text = "—"
-	_status.text = text
+			status_text = "—"
+	_status.text = status_text
 	_status.add_theme_color_override("font_color", color)
-	_status_icon.texture = icon
+	_status_icon.texture = status_icon_tex
 	_status_icon.modulate = color
 
 

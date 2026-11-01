@@ -6,6 +6,7 @@ extends Control
 ## 子类实现 _build_content() 与 on_state()，不直接读写 PlayHud 内部状态。
 
 ## 组件内部动作（暂停按钮等）回传给 PlayHud
+# warning-ignore:unused_signal
 signal action_requested(action: String, payload: Variant)
 
 ## 组件类型 id（与 HudSchema 注册表一致，也是布局文件里的唯一键）
@@ -242,7 +243,7 @@ func _make_label(text: String, font_size: int,
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", font_size)
-	l.horizontal_alignment = align
+	l.horizontal_alignment = align as HorizontalAlignment
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l

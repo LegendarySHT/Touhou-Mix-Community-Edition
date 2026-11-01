@@ -309,8 +309,8 @@ func _stagger_about_children() -> void:
 	# AboutPage 的三个直接子节点：项目头（Project）/ 分隔线（Line）/ 标签页（TabContainer）
 	var child_names := ["Project", "Line", "TabContainer"]
 	var i := 0
-	for name in child_names:
-		var node := about_page.get_node_or_null(name)
+	for child_name in child_names:
+		var node := about_page.get_node_or_null(child_name)
 		if node == null or not (node is Control):
 			continue
 		node.offset_transform_enabled = true

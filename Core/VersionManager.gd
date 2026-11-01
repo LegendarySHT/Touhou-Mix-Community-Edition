@@ -149,33 +149,33 @@ func get_update_manifest_url() -> String:
 ##   { ok, has_update, current, latest, latest_entry(若有), reason(若失败) }
 func check_for_updates() -> Dictionary:
 	if _manifest_url.is_empty():
-		var r := {"ok": false, "has_update": false, "reason": "disabled", "current": get_version_string()}
-		update_check_finished.emit(r)
-		return r
+		var disabled_result := {"ok": false, "has_update": false, "reason": "disabled", "current": get_version_string()}
+		update_check_finished.emit(disabled_result)
+		return disabled_result
 	var http := HTTPRequest.new()
 	add_child(http)
 	http.timeout = 10.0
 	var err := http.request(_manifest_url)
 	if err != OK:
 		http.queue_free()
-		var r := {"ok": false, "has_update": false, "reason": "request_failed:%d" % err, "current": get_version_string()}
-		update_check_finished.emit(r)
-		return r
+		var request_fail_result := {"ok": false, "has_update": false, "reason": "request_failed:%d" % err, "current": get_version_string()}
+		update_check_finished.emit(request_fail_result)
+		return request_fail_result
 	var resp = await http.request_completed
 	http.queue_free()
 	var result_code: int = resp[0]
 	var response_code: int = resp[1]
 	var body: PackedByteArray = resp[3]
 	if result_code != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
-		var r := {"ok": false, "has_update": false, "reason": "HTTP %d (result=%d)" % [response_code, result_code], "current": get_version_string()}
-		update_check_finished.emit(r)
-		return r
+		var http_fail_result := {"ok": false, "has_update": false, "reason": "HTTP %d (result=%d)" % [response_code, result_code], "current": get_version_string()}
+		update_check_finished.emit(http_fail_result)
+		return http_fail_result
 	var text := body.get_string_from_utf8()
 	var remote: Variant = JSON.parse_string(text)
 	if remote == null or not (remote is Dictionary):
-		var r := {"ok": false, "has_update": false, "reason": "invalid_json", "current": get_version_string()}
-		update_check_finished.emit(r)
-		return r
+		var json_fail_result := {"ok": false, "has_update": false, "reason": "invalid_json", "current": get_version_string()}
+		update_check_finished.emit(json_fail_result)
+		return json_fail_result
 	var remote_current: String = str(remote.get("current", ""))
 	var remote_entries: Array = remote.get("entries", [])
 	if not remote_current.is_empty() and not remote_entries.is_empty():

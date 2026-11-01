@@ -191,28 +191,28 @@ func _apply_download_state() -> void:
 		return
 	var state := int(item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
 	var base := ThemeMGR.get_color("primary") if ThemeMGR else Color("#2E55C8")
-	var icon: Texture2D = StoreIconsLib.download()
-	var text := "下载"
+	var icon_tex: Texture2D = StoreIconsLib.download()
+	var label_text := "下载"
 	var tip := "下载该谱面"
 	match state:
 		ResourceManager.DownloadState.DOWNLOADING:
 			base = ThemeMGR.get_color("warning") if ThemeMGR else Color("#D89A2A")
-			icon = StoreIconsLib.download_cloud()
-			text = "下载中"
+			icon_tex = StoreIconsLib.download_cloud()
+			label_text = "下载中"
 			tip = "正在下载…"
 		ResourceManager.DownloadState.DOWNLOADED:
 			base = ThemeMGR.get_color("success") if ThemeMGR else Color("#2FA66A")
-			icon = StoreIconsLib.check()
-			text = "已下载"
+			icon_tex = StoreIconsLib.check()
+			label_text = "已下载"
 			tip = "已下载到本地"
 		ResourceManager.DownloadState.FAILED:
 			base = ThemeMGR.get_color("danger") if ThemeMGR else Color("#C7303F")
-			icon = StoreIconsLib.close()
-			text = "重试"
+			icon_tex = StoreIconsLib.close()
+			label_text = "重试"
 			tip = "下载失败，点击重试"
-	_download_btn.icon = icon
+	_download_btn.icon = icon_tex
 	_download_btn.tooltip_text = tip
-	_state_label.text = text
+	_state_label.text = label_text
 
 	_set_download_colors(base)
 
@@ -299,8 +299,8 @@ func apply_theme() -> void:
 
 	for label in [_stat_downloads_count, _stat_plays_count, _stat_likes_count]:
 		label.add_theme_color_override("font_color", muted_text)
-	for icon in _stats.find_children("*", "TextureRect", true, false):
-		(icon as TextureRect).modulate = muted_text
+	for icon_node in _stats.find_children("*", "TextureRect", true, false):
+		(icon_node as TextureRect).modulate = muted_text
 	_cover_placeholder.modulate = muted_text
 	_cover_placeholder.modulate.a = 0.4
 

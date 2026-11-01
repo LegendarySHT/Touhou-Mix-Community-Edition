@@ -121,15 +121,15 @@ func _is_valid_host(host: String) -> bool:
 ## 服务端未提供“按 hash 查询详情页地址”的独立接口，这里按站点约定拼接。
 ## 返回空串表示暂无可用链接：调用方保留按钮，但点击时提示尚未开放。
 func get_chart_web_url(chart_hash: String) -> String:
-	var hash := chart_hash.strip_edges()
-	if hash.is_empty() or server_url.is_empty():
+	var hash_str := chart_hash.strip_edges()
+	if hash_str.is_empty() or server_url.is_empty():
 		return ""
 	var base := server_url
 	while base.ends_with("/"):
 		base = base.substr(0, base.length() - 1)
 	if base.is_empty():
 		return ""
-	return "%s/charts/%s" % [base, hash.uri_encode()]
+	return "%s/charts/%s" % [base, hash_str.uri_encode()]
 
 ## 上传本地导入谱面（song.mid + 人声音频，人声存在才一并上传）
 ## 后端上传接口尚未实现：本函数已完成文件定位与存在性校验，接口就绪后在此发起 multipart 上传即可。

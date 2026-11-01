@@ -575,7 +575,7 @@ func _refresh_song_info() -> void:
 ## mm:ss 格式
 func _fmt_time(ms: float) -> String:
 	var total_s := int(maxf(ms, 0.0) / 1000.0)
-	return "%d:%02d" % [total_s / 60, total_s % 60]
+	return "%d:%02d" % [int(total_s / 60.0), total_s % 60]
 
 ## 当前时间 / 总时间标签
 func _update_time_labels(mgr) -> void:

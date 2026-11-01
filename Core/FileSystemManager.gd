@@ -1029,7 +1029,7 @@ func _start_charts_cache_validation(all_chart_folders: Array, cached_charts: Dic
 ## 启动缓存校验分片的在途并发上限：只占 1/4 的核，余下留给主线程/渲染
 ## （Android 8 核 → 2；纯粹 stat 组成，少并发只拉长后台耗时，不影响 UI 响应）
 func _validate_max_concurrency() -> int:
-	return clampi(OS.get_processor_count() / 4, 1, 3)
+	return clampi(int(OS.get_processor_count() / 4.0), 1, 3)
 
 ## 在 worker 线程中校验一组缓存条目（纯文件 stat，无引擎 API 调用）
 ## 结果：{changed_folders} —— mTime 变化或 json/mid 缺失、需重扫的文件夹
@@ -1563,11 +1563,11 @@ func _remove_chart_index(folder_name: String) -> void:
 func refresh_chart_folders(folders: Array) -> void:
 	var names: Array[String] = []
 	for f in folders:
-		var name := str(f)
-		if name.is_empty():
+		var folder_name := str(f)
+		if folder_name.is_empty():
 			continue
-		if DirAccess.dir_exists_absolute(CHARTS_DIR.path_join(name)):
-			names.append(name)
+		if DirAccess.dir_exists_absolute(CHARTS_DIR.path_join(folder_name)):
+			names.append(folder_name)
 	if names.is_empty():
 		return
 

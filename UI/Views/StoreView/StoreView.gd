@@ -372,17 +372,17 @@ func _load_songs() -> void:
 
 ## 服务端 ChartResponse → 卡片/详情共用的规范化条目
 func _make_song_item(chart: Dictionary) -> Dictionary:
-	var hash := str(chart.get("hash", ""))
+	var hash_str := str(chart.get("hash", ""))
 	var server := ""
 	if NetManager.instance != null:
 		server = NetManager.instance.server_url
 	var state := int(ResourceManager.DownloadState.NOT_DOWNLOADED)
-	if ResMGR != null and not hash.is_empty():
-		state = ResMGR.get_download_state(hash)
+	if ResMGR != null and not hash_str.is_empty():
+		state = ResMGR.get_download_state(hash_str)
 	return {
 		"kind": "song",
-		"hash": hash,
-		"key": hash,
+		"hash": hash_str,
+		"key": hash_str,
 		"title": str(chart.get("title", chart.get("name", "未命名谱面"))),
 		"author": str(chart.get("midiAuthor", chart.get("artistName", ""))),
 		"album": str(chart.get("albumName", "")),
@@ -400,8 +400,8 @@ func _make_song_item(chart: Dictionary) -> Dictionary:
 		"likes": int(chart.get("likeCount", chart.get("upCount", -1))),
 		"dislikes": int(chart.get("dislikeCount", chart.get("downCount", -1))),
 		"uploaded_at": str(chart.get("uploadedAt", "")),
-		"cover_url": ("%s/api/charts/%s/cover" % [server, hash]) \
-			if (not server.is_empty() and not hash.is_empty()) else "",
+		"cover_url": ("%s/api/charts/%s/cover" % [server, hash_str]) \
+			if (not server.is_empty() and not hash_str.is_empty()) else "",
 		"state": state,
 		"raw": chart,
 	}
@@ -811,14 +811,14 @@ func _on_detail_download_requested(item: Dictionary) -> void:
 
 ## 单曲下载入口：空闲时立刻开跑，忙时排队（批量下载/另一个单曲下载进行中）
 func _request_download(item: Dictionary) -> void:
-	var hash := str(item.get("hash", ""))
-	if hash.is_empty() or ResMGR == null:
+	var hash_str := str(item.get("hash", ""))
+	if hash_str.is_empty() or ResMGR == null:
 		return
-	if ResMGR.get_download_state(hash) == ResourceManager.DownloadState.DOWNLOADED:
-		_set_entry_state(hash, ResourceManager.DownloadState.DOWNLOADED,
+	if ResMGR.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+		_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 			ResourceManager.DownloadStage.RESCAN, 1.0)
 		return
-	if _is_hash_queue(hash) or _active_hashes.has(hash):
+	if _is_hash_queue(hash_str) or _active_hashes.has(hash_str):
 		return
 
 	if _batch_running or _manual_running or not _active_hashes.is_empty():
@@ -841,9 +841,9 @@ func _run_manual_queue() -> void:
 		if _batch_running:
 			break
 		var item: Dictionary = _manual_queue.pop_front()
-		var hash := str(item.get("hash", ""))
-		if ResMGR != null and ResMGR.get_download_state(hash) == ResourceManager.DownloadState.DOWNLOADED:
-			_set_entry_state(hash, ResourceManager.DownloadState.DOWNLOADED,
+		var hash_str := str(item.get("hash", ""))
+		if ResMGR != null and ResMGR.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
 			continue
 		await _start_download(item)
@@ -853,31 +853,31 @@ func _run_manual_queue() -> void:
 		_refresh_downloads_page(false)
 
 
-func _is_hash_queue(hash: String) -> bool:
-	if _download_entries.has(hash):
-		var state := int(_download_entries[hash].get("state", -1))
+func _is_hash_queue(hash_str: String) -> bool:
+	if _download_entries.has(hash_str):
+		var state := int(_download_entries[hash_str].get("state", -1))
 		if state == DownloadRowLib.STATE_QUEUED:
 			return true
 	for item in _manual_queue:
-		if str(item.get("hash", "")) == hash:
+		if str(item.get("hash", "")) == hash_str:
 			return true
 	for item in _batch_queue:
-		if str(item.get("hash", "")) == hash:
+		if str(item.get("hash", "")) == hash_str:
 			return true
 	return false
 
 
 func _start_download(item: Dictionary, from_batch: bool = false) -> void:
-	var hash := str(item.get("hash", ""))
-	if hash.is_empty() or ResMGR == null:
+	var hash_str := str(item.get("hash", ""))
+	if hash_str.is_empty() or ResMGR == null:
 		return
-	if _active_hashes.has(hash):
+	if _active_hashes.has(hash_str):
 		return
-	var state := ResMGR.get_download_state(hash)
+	var state := ResMGR.get_download_state(hash_str)
 	if state == ResourceManager.DownloadState.DOWNLOADED:
-		_set_entry_state(hash, ResourceManager.DownloadState.DOWNLOADED,
+		_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 			ResourceManager.DownloadStage.RESCAN, 1.0)
-		_refresh_card_state(hash)
+		_refresh_card_state(hash_str)
 		return
 	if state == ResourceManager.DownloadState.DOWNLOADING and not from_batch:
 		return
@@ -885,25 +885,25 @@ func _start_download(item: Dictionary, from_batch: bool = false) -> void:
 	item["state"] = ResourceManager.DownloadState.DOWNLOADING
 	_ensure_download_entry(item, ResourceManager.DownloadState.DOWNLOADING,
 		ResourceManager.DownloadStage.METADATA, 0.0)
-	_active_hashes[hash] = true
-	_refresh_bound_card(hash)
+	_active_hashes[hash_str] = true
+	_refresh_bound_card(hash_str)
 	if _current_tab == Tab.DOWNLOADS:
 		_refresh_downloads_page(false)
 
-	var result: Dictionary = await ResMGR.download_chart(hash,
-		Callable(self, "_on_download_progress").bind(hash), _get_download_hint(item))
+	var result: Dictionary = await ResMGR.download_chart(hash_str,
+		Callable(self, "_on_download_progress").bind(hash_str), _get_download_hint(item))
 
-	_active_hashes.erase(hash)
+	_active_hashes.erase(hash_str)
 	if result.get("ok", false):
-		_set_entry_state(hash, ResourceManager.DownloadState.DOWNLOADED,
+		_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 			ResourceManager.DownloadStage.RESCAN, 1.0)
-		GLogger.info("商店谱面下载完成: %s" % hash, "StoreView")
+		GLogger.info("商店谱面下载完成: %s" % hash_str, "StoreView")
 	else:
-		var entry: Dictionary = _download_entries.get(hash, {})
-		_set_entry_state(hash, ResourceManager.DownloadState.FAILED,
+		var entry: Dictionary = _download_entries.get(hash_str, {})
+		_set_entry_state(hash_str, ResourceManager.DownloadState.FAILED,
 			int(entry.get("stage", ResourceManager.DownloadStage.METADATA)),
 			float(entry.get("percent", -1.0)))
-		GLogger.warning("商店谱面下载失败: %s (%s)" % [hash, str(result.get("error", ""))], "StoreView")
+		GLogger.warning("商店谱面下载失败: %s (%s)" % [hash_str, str(result.get("error", ""))], "StoreView")
 
 	if _current_tab == Tab.DOWNLOADS:
 		_refresh_downloads_page(false)
@@ -938,17 +938,17 @@ func _get_download_hint(item: Dictionary) -> Dictionary:
 
 
 func _ensure_download_entry(item: Dictionary, state: int, stage: int, percent: float) -> void:
-	var hash := str(item.get("hash", ""))
-	if hash.is_empty():
+	var hash_str := str(item.get("hash", ""))
+	if hash_str.is_empty():
 		return
 	var order := _download_order
-	if _download_entries.has(hash):
-		order = int(_download_entries[hash].get("order", order))
+	if _download_entries.has(hash_str):
+		order = int(_download_entries[hash_str].get("order", order))
 	else:
 		_download_order += 1
 		order = _download_order
-	_download_entries[hash] = {
-		"hash": hash,
+	_download_entries[hash_str] = {
+		"hash": hash_str,
 		"item": item,
 		"state": state,
 		"stage": stage,
@@ -957,35 +957,35 @@ func _ensure_download_entry(item: Dictionary, state: int, stage: int, percent: f
 	}
 
 
-func _set_entry_state(hash: String, state: int, stage: int, percent: float) -> void:
-	if not _download_entries.has(hash):
+func _set_entry_state(hash_str: String, state: int, stage: int, percent: float) -> void:
+	if not _download_entries.has(hash_str):
 		return
-	var entry: Dictionary = _download_entries[hash]
+	var entry: Dictionary = _download_entries[hash_str]
 	entry["state"] = state
 	entry["stage"] = stage
 	entry["percent"] = percent
-	_refresh_card_state(hash)
+	_refresh_card_state(hash_str)
 	if _current_tab == Tab.DOWNLOADS:
 		_refresh_downloads_page(false)
 
 
-func _refresh_card_state(hash: String) -> void:
+func _refresh_card_state(hash_str: String) -> void:
 	for item in _song_items:
-		if str(item.get("hash", "")) == hash:
-			item["state"] = ResMGR.get_download_state(hash) if ResMGR != null \
+		if str(item.get("hash", "")) == hash_str:
+			item["state"] = ResMGR.get_download_state(hash_str) if ResMGR != null \
 				else ResourceManager.DownloadState.NOT_DOWNLOADED
 			break
-	_refresh_bound_card(hash)
+	_refresh_bound_card(hash_str)
 	_update_batch_button()
 
 
-func _refresh_bound_card(hash: String) -> void:
+func _refresh_bound_card(hash_str: String) -> void:
 	if _song_vlist != null:
 		for node in _song_vlist.bound_nodes():
 			if not is_instance_valid(node):
 				continue
 			var node_item = node.get("item")
-			if node_item is Dictionary and str(node_item.get("hash", "")) == hash \
+			if node_item is Dictionary and str(node_item.get("hash", "")) == hash_str \
 					and node.has_method("refresh_download_state"):
 				node.call("refresh_download_state")
 	if _detail.is_open():
@@ -994,19 +994,19 @@ func _refresh_bound_card(hash: String) -> void:
 
 func _sync_song_states() -> void:
 	for item in _song_items:
-		var hash := str(item.get("hash", ""))
-		if hash.is_empty() or ResMGR == null:
+		var hash_str := str(item.get("hash", ""))
+		if hash_str.is_empty() or ResMGR == null:
 			continue
-		item["state"] = ResMGR.get_download_state(hash)
+		item["state"] = ResMGR.get_download_state(hash_str)
 
 
 ## 切到下载管理页时，把当前页已经下载的谱面并入记录（只做一次）
 func _seed_download_entries() -> void:
 	for item in _song_items:
-		var hash := str(item.get("hash", ""))
-		if hash.is_empty() or _download_entries.has(hash):
+		var hash_str := str(item.get("hash", ""))
+		if hash_str.is_empty() or _download_entries.has(hash_str):
 			continue
-		if ResMGR != null and ResMGR.get_download_state(hash) == ResourceManager.DownloadState.DOWNLOADED:
+		if ResMGR != null and ResMGR.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 			_ensure_download_entry(item, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
 
@@ -1019,14 +1019,14 @@ func _on_batch_download_pressed() -> void:
 		return
 	var pending: Array = []
 	for item in _song_items:
-		var hash := str(item.get("hash", ""))
-		if hash.is_empty() or _download_entries.has(hash):
+		var hash_str := str(item.get("hash", ""))
+		if hash_str.is_empty() or _download_entries.has(hash_str):
 			continue
 		if ResMGR == null:
 			continue
-		if ResMGR.get_download_state(hash) == ResourceManager.DownloadState.DOWNLOADED:
+		if ResMGR.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 			continue
-		if _active_hashes.has(hash):
+		if _active_hashes.has(hash_str):
 			continue
 		pending.append(item)
 	if pending.is_empty():
@@ -1043,11 +1043,11 @@ func _on_batch_download_pressed() -> void:
 func _run_batch() -> void:
 	while not _batch_queue.is_empty():
 		var item: Dictionary = _batch_queue.pop_front()
-		var hash := str(item.get("hash", ""))
-		_batch_current = hash
+		var hash_str := str(item.get("hash", ""))
+		_batch_current = hash_str
 		_update_batch_button()
-		if ResMGR != null and ResMGR.get_download_state(hash) == ResourceManager.DownloadState.DOWNLOADED:
-			_set_entry_state(hash, ResourceManager.DownloadState.DOWNLOADED,
+		if ResMGR != null and ResMGR.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
 			continue
 		await _start_download(item, true)
@@ -1068,10 +1068,10 @@ func _has_downloadable_songs() -> bool:
 	if ResMGR == null:
 		return false
 	for item in _song_items:
-		var hash := str(item.get("hash", ""))
-		if hash.is_empty() or _active_hashes.has(hash):
+		var hash_str := str(item.get("hash", ""))
+		if hash_str.is_empty() or _active_hashes.has(hash_str):
 			continue
-		if ResMGR.get_download_state(hash) != ResourceManager.DownloadState.DOWNLOADED:
+		if ResMGR.get_download_state(hash_str) != ResourceManager.DownloadState.DOWNLOADED:
 			return true
 	return false
 
@@ -1175,9 +1175,9 @@ func _refresh_hero() -> void:
 	_hero_empty.visible = false
 
 	var item: Dictionary = active.get("item", {})
-	var hash := str(active.get("hash", ""))
-	if hash != _hero_hash:
-		_hero_hash = hash
+	var hash_str := str(active.get("hash", ""))
+	if hash_str != _hero_hash:
+		_hero_hash = hash_str
 		_load_hero_cover(item)
 
 	var percent := float(active.get("percent", -1.0))
@@ -1220,12 +1220,12 @@ func _load_hero_cover(item: Dictionary) -> void:
 	)
 
 
-func _refresh_download_row(hash: String) -> void:
+func _refresh_download_row(hash_str: String) -> void:
 	if _dl_vlist == null:
 		return
 	for i in _download_rows.size():
 		var entry: Dictionary = _download_rows[i]
-		if str(entry.get("hash", "")) != hash:
+		if str(entry.get("hash", "")) != hash_str:
 			continue
 		var node := _dl_vlist.node_at(i)
 		if node != null and node.has_method("set_entry"):
@@ -1319,9 +1319,9 @@ func _node_shows_item(node: Control, item: Dictionary) -> bool:
 	var node_item = node.get("item")
 	if not node_item is Dictionary:
 		return false
-	var hash := str(item.get("hash", ""))
-	if not hash.is_empty():
-		return str(node_item.get("hash", "")) == hash
+	var hash_str := str(item.get("hash", ""))
+	if not hash_str.is_empty():
+		return str(node_item.get("hash", "")) == hash_str
 	var key := str(item.get("key", ""))
 	return not key.is_empty() and str(node_item.get("key", "")) == key
 

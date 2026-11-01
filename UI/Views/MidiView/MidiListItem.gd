@@ -257,11 +257,11 @@ func _start_midi_compute() -> void:
 
 	# 若音符数据已就绪（SOA 或旧对象路径；之前解析过或 PlaybackDisplay 加载过），直接算 Note 数量
 	if midi.duration_ms > 0 and midi.has_notes():
-		var entry: Dictionary = _info_cache.get(midi.id, {})
+		var cached_entry: Dictionary = _info_cache.get(midi.id, {})
 		# 补全 time 缓存（可能之前没建过）
-		if not entry.has("time_str"):
-			_fill_time_cache(midi, entry)
-			_info_cache[midi.id] = entry
+		if not cached_entry.has("time_str"):
+			_fill_time_cache(midi, cached_entry)
+			_info_cache[midi.id] = cached_entry
 		# 重算 Note / MPP
 		_compute_and_cache_notes(midi)
 		return

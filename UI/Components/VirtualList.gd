@@ -126,8 +126,8 @@ func set_total(n: int, reset_scroll: bool = true) -> void:
 	_release_all()
 	_apply_content_height()
 	if scroll != null:
-		scroll.scroll_vertical = 0.0 if reset_scroll \
-			else _clamp_scroll(float(scroll.scroll_vertical))
+		scroll.scroll_vertical = 0 if reset_scroll \
+			else int(_clamp_scroll(float(scroll.scroll_vertical)))
 	sync(true)
 
 
@@ -135,7 +135,7 @@ func set_total(n: int, reset_scroll: bool = true) -> void:
 func set_scroll(v: float) -> void:
 	if scroll == null:
 		return
-	scroll.scroll_vertical = _clamp_scroll(v)
+	scroll.scroll_vertical = int(_clamp_scroll(v))
 	sync(true)
 
 
@@ -328,7 +328,7 @@ func _bind(slot: int, idx: int) -> void:
 ## 也就不会因为"绑定时 list 还没量出宽度"把列宽算成 0（那样整行卡片会全叠在第一列上）
 func _place(node: Control, idx: int) -> void:
 	var cols := maxi(1, columns)
-	var row := idx / cols
+	var row := int(idx / float(cols))
 	if cols > 1:
 		var col := idx % cols
 		node.anchor_left = float(col) / float(cols)

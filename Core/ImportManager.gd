@@ -234,23 +234,23 @@ func _import_path(path: String, startup: bool) -> Dictionary:
 
 ## MIDI：以 MD5 为谱面 hash，创建 Charts/{hash}_{文件名}/info.json+song.mid
 func _import_midi_file(path: String) -> Dictionary:
-	var hash := FileAccess.get_md5(path).to_lower()
-	if hash.is_empty():
+	var entry_hash := FileAccess.get_md5(path).to_lower()
+	if entry_hash.is_empty():
 		_notify("导入失败：无法读取 MIDI 文件（%s）" % path.get_file())
 		return {"ok": false}
 
-	var existing := _find_chart_folder_by_hash(hash)
+	var existing := _find_chart_folder_by_hash(entry_hash)
 	if not existing.is_empty():
 		_notify("导入失败：谱面已存在（%s）" % path.get_file())
 		# 已存在也算“目标明确”：失败提示照常弹，但仍跳到已有谱面的 MidiView
 		return {
 			"ok": false,
 			"chart_folders": [existing],
-			"nav_target": _read_chart_nav(existing, hash),
+			"nav_target": _read_chart_nav(existing, entry_hash),
 			"nav_folder": existing,
 		}
 
-	var folder := _create_chart_folder_from_file(path, hash, path.get_file().get_basename())
+	var folder := _create_chart_folder_from_file(path, entry_hash, path.get_file().get_basename())
 	if folder.is_empty():
 		_notify("导入失败：无法创建谱面文件夹（%s）" % path.get_file())
 		return {"ok": false}
@@ -259,7 +259,7 @@ func _import_midi_file(path: String) -> Dictionary:
 	return {
 		"ok": true,
 		"chart_folders": [folder],
-		"nav_target": _local_chart_nav(hash),
+		"nav_target": _local_chart_nav(entry_hash),
 	}
 
 ## SF2：复制到音源目录；同名且内容一致视为已存在，内容不同则覆盖
@@ -282,8 +282,8 @@ func _import_soundfont_file(path: String) -> Dictionary:
 ## 音频：文件名（去扩展名）必须匹配已有谱面的 hash，复制为该谱面的人声文件
 func _import_audio_file(path: String) -> Dictionary:
 	var stem := path.get_file().get_basename()
-	var hash := stem.to_lower()
-	var folder := _find_chart_folder_by_hash(hash)
+	var entry_hash := stem.to_lower()
+	var folder := _find_chart_folder_by_hash(entry_hash)
 	if folder.is_empty():
 		_notify("导入失败：找不到与文件名匹配的谱面（文件名需为 MIDI 哈希）")
 		return {"ok": false}
@@ -297,7 +297,7 @@ func _import_audio_file(path: String) -> Dictionary:
 			return {
 				"ok": false,
 				"chart_folders": [folder],
-				"nav_target": _read_chart_nav(folder, hash),
+				"nav_target": _read_chart_nav(folder, entry_hash),
 				"nav_folder": folder,
 			}
 
@@ -308,7 +308,7 @@ func _import_audio_file(path: String) -> Dictionary:
 	return {
 		"ok": true,
 		"chart_folders": [folder],
-		"nav_target": _read_chart_nav(folder, hash),
+		"nav_target": _read_chart_nav(folder, entry_hash),
 	}
 
 ## 导入完成后的跳转目标：单文件 MIDI / 人声导入后进入对应歌曲的 MidiView
@@ -335,11 +335,11 @@ func _apply_nav_target(nav: Variant, startup: bool) -> void:
 		UiStatMGR.navigate_to_album_song(album_id, song_id, midi_id)
 
 ## 新导入的本地 MIDI：info.json 固定使用 album_local / song_{hash} / hash
-func _local_chart_nav(hash: String) -> Dictionary:
+func _local_chart_nav(hash_str: String) -> Dictionary:
 	return {
 		"album_id": "album_local",
-		"song_id": "song_" + hash,
-		"midi_id": hash,
+		"song_id": "song_" + hash_str,
+		"midi_id": hash_str,
 	}
 
 ## 从已有谱面（人声导入目标）解析导航信息；info.json 缺失时回退 DB 投影
@@ -647,12 +647,12 @@ func _build_zip_plan(zip: ZIPReader, entries: Array[Dictionary], layout: Diction
 		var info_hash := ""
 		if not info_orig.is_empty():
 			info_hash = _read_zip_json_hash(zip, info_orig)
-		var hash := info_hash
-		if hash.is_empty() and not midi_orig.is_empty():
-			hash = _read_zip_md5(zip, midi_orig)
-		if hash.is_empty() or seen_hashes.has(hash):
+		var entry_hash := info_hash
+		if entry_hash.is_empty() and not midi_orig.is_empty():
+			entry_hash = _read_zip_md5(zip, midi_orig)
+		if entry_hash.is_empty() or seen_hashes.has(entry_hash):
 			continue
-		seen_hashes[hash] = true
+		seen_hashes[entry_hash] = true
 
 		# info.json 缺失/缺 hash 时在导入后补写，避免生成不可见的谱面
 		var info_mode := "keep"
@@ -661,10 +661,10 @@ func _build_zip_plan(zip: ZIPReader, entries: Array[Dictionary], layout: Diction
 		elif info_hash.is_empty():
 			info_mode = "patch"
 
-		var target := str(existing_hashes.get(hash, ""))
+		var target := str(existing_hashes.get(entry_hash, ""))
 		if target.is_empty():
-			target = _zip_chart_target_folder(folder, hash)
-		existing_hashes[hash] = target
+			target = _zip_chart_target_folder(folder, entry_hash)
+		existing_hashes[entry_hash] = target
 		# 只有一个 MIDI 且不叫 song.mid 时复制为 song.mid，保证扫描器能找到主 MIDI
 		var rename_midi_sub := ""
 		if midi_count == 1 and midi_sub.to_lower() != "song.mid":
@@ -672,7 +672,7 @@ func _build_zip_plan(zip: ZIPReader, entries: Array[Dictionary], layout: Diction
 		plan["chart_folders"].append({
 			"folder": target,
 			"entries": folder_entries,
-			"hash": hash,
+			"hash": entry_hash,
 			"name": folder,
 			"info_mode": info_mode,
 			"rename_midi_sub": rename_midi_sub,
@@ -692,12 +692,12 @@ func _build_zip_plan(zip: ZIPReader, entries: Array[Dictionary], layout: Diction
 			var bytes := zip.read_file(str(f["orig"]))
 			if bytes.is_empty():
 				continue
-			var hash := _md5_bytes(bytes)
-			if hash.is_empty() or seen_hashes.has(hash) or existing_hashes.has(hash):
+			var entry_hash := _md5_bytes(bytes)
+			if entry_hash.is_empty() or seen_hashes.has(entry_hash) or existing_hashes.has(entry_hash):
 				continue
-			seen_hashes[hash] = true
-			var name := str(f["sub"]).get_basename()
-			plan["loose_midis"].append({"orig": f["orig"], "hash": hash, "name": name})
+			seen_hashes[entry_hash] = true
+			var entry_name := str(f["sub"]).get_basename()
+			plan["loose_midis"].append({"orig": f["orig"], "hash": entry_hash, "name": entry_name})
 			plan["counts"]["midi"] = int(plan["counts"]["midi"]) + 1
 
 	# Skins：子文件夹各算一套；Skin 根目录直接放图片时按一套处理，名字用压缩包名
@@ -839,11 +839,11 @@ func _build_zip_jobs(plan: Dictionary) -> Array[Dictionary]:
 				continue
 			jobs.append({"kind": "file", "orig": f["orig"], "dest": pack_dir.path_join(sub)})
 	for sf in plan.get("soundfonts", []):
-		var name := _sanitize_filename(str(sf["name"]).get_file())
-		jobs.append({"kind": "file", "orig": sf["orig"], "dest": FileSystemManager.SOUNDFONT_DIR.path_join(name)})
+		var sf_name := _sanitize_filename(str(sf["name"]).get_file())
+		jobs.append({"kind": "file", "orig": sf["orig"], "dest": FileSystemManager.SOUNDFONT_DIR.path_join(sf_name)})
 	for bg in plan.get("backgrounds", []):
-		var name := _sanitize_filename(str(bg["name"]).get_file())
-		jobs.append({"kind": "file", "orig": bg["orig"], "dest": FileSystemManager.BACKGROUND_DIR.path_join(name)})
+		var bg_name := _sanitize_filename(str(bg["name"]).get_file())
+		jobs.append({"kind": "file", "orig": bg["orig"], "dest": FileSystemManager.BACKGROUND_DIR.path_join(bg_name)})
 	for cfg in plan.get("configs", []):
 		jobs.append({"kind": "file", "orig": cfg["orig"], "dest": PathHelper.get_files_dir().path_join(str(cfg["name"]))})
 	return jobs
@@ -852,10 +852,10 @@ func _build_zip_jobs(plan: Dictionary) -> Array[Dictionary]:
 func _execute_zip_job(zip: ZIPReader, job: Dictionary) -> String:
 	var bytes := zip.read_file(str(job["orig"]))
 	if job["kind"] == "midi":
-		var hash := str(job["hash"])
-		if not _find_chart_folder_by_hash(hash).is_empty():
+		var entry_hash := str(job["hash"])
+		if not _find_chart_folder_by_hash(entry_hash).is_empty():
 			return "skipped"
-		var folder := await _create_chart_folder_from_bytes(hash, str(job["name"]), bytes)
+		var folder := await _create_chart_folder_from_bytes(entry_hash, str(job["name"]), bytes)
 		return "ok" if not folder.is_empty() else "failed"
 
 	var dest := str(job["dest"])
@@ -1004,10 +1004,10 @@ func _hide_progress() -> void:
 # ============================================================
 
 ## 按 hash 查找已有谱面文件夹（磁盘文件夹名前缀，启动期索引尚未建立时也可用）
-func _find_chart_folder_by_hash(hash: String) -> String:
-	if hash.is_empty():
+func _find_chart_folder_by_hash(hash_str: String) -> String:
+	if hash_str.is_empty():
 		return ""
-	var low := hash.to_lower()
+	var low := hash_str.to_lower()
 	var dir := DirAccess.open(FileSystemManager.CHARTS_DIR)
 	if dir != null:
 		dir.list_dir_begin()
@@ -1047,13 +1047,13 @@ func _collect_existing_chart_hashes() -> Dictionary:
 	return hashes
 
 ## 由 MIDI 文件创建谱面文件夹，返回文件夹名（空串表示失败）
-func _create_chart_folder_from_file(midi_src: String, hash: String, name: String) -> String:
-	var folder := _new_chart_folder_name(hash, name)
+func _create_chart_folder_from_file(midi_src: String, hash_str: String, chart_name: String) -> String:
+	var folder := _new_chart_folder_name(hash_str, chart_name)
 	var chart_dir := FileSystemManager.CHARTS_DIR.path_join(folder)
 	if DirAccess.make_dir_recursive_absolute(chart_dir) != OK:
 		return ""
 	var info_path := chart_dir.path_join("info.json")
-	if not _write_chart_info(info_path, hash, name):
+	if not _write_chart_info(info_path, hash_str, chart_name):
 		_cleanup_failed_chart(chart_dir, info_path)
 		return ""
 	var midi_dst := chart_dir.path_join("song.mid")
@@ -1063,13 +1063,13 @@ func _create_chart_folder_from_file(midi_src: String, hash: String, name: String
 	return folder
 
 ## 由 MIDI 字节创建谱面文件夹（ZIP 内散落 MIDI 用）
-func _create_chart_folder_from_bytes(hash: String, name: String, bytes: PackedByteArray) -> String:
-	var folder := _new_chart_folder_name(hash, name)
+func _create_chart_folder_from_bytes(hash_str: String, chart_name: String, bytes: PackedByteArray) -> String:
+	var folder := _new_chart_folder_name(hash_str, chart_name)
 	var chart_dir := FileSystemManager.CHARTS_DIR.path_join(folder)
 	if DirAccess.make_dir_recursive_absolute(chart_dir) != OK:
 		return ""
 	var info_path := chart_dir.path_join("info.json")
-	if not _write_chart_info(info_path, hash, name):
+	if not _write_chart_info(info_path, hash_str, chart_name):
 		_cleanup_failed_chart(chart_dir, info_path)
 		return ""
 	if not await _write_bytes_chunked(bytes, chart_dir.path_join("song.mid")):
@@ -1077,20 +1077,20 @@ func _create_chart_folder_from_bytes(hash: String, name: String, bytes: PackedBy
 		return ""
 	return folder
 
-func _new_chart_folder_name(hash: String, name: String) -> String:
-	var clean := _sanitize_filename(name)
+func _new_chart_folder_name(hash_str: String, chart_name: String) -> String:
+	var clean := _sanitize_filename(chart_name)
 	if clean.is_empty():
-		clean = hash
-	return "%s_%s" % [hash, clean]
+		clean = hash_str
+	return "%s_%s" % [hash_str, clean]
 
-func _write_chart_info(info_path: String, hash: String, name: String) -> bool:
+func _write_chart_info(info_path: String, hash_str: String, chart_name: String) -> bool:
 	var now := Time.get_datetime_string_from_system(true) + "Z"
 	var data := {
-		"hash": hash,
+		"hash": hash_str,
 		"uploaderId": "",
 		"uploaderName": "本地导入",
 		"uploaderAvatarUrl": "",
-		"name": name,
+		"name": chart_name,
 		"desc": "",
 		"artistName": "",
 		"artistUrl": "",
@@ -1103,8 +1103,8 @@ func _write_chart_info(info_path: String, hash: String, name: String) -> bool:
 		"upCount": 0,
 		"downCount": 0,
 		"song": {
-			"_id": "song_" + hash,
-			"name": name,
+			"_id": "song_" + hash_str,
+			"name": chart_name,
 			"track": 0,
 			"author": "",
 		},
@@ -1129,9 +1129,9 @@ func _cleanup_failed_chart(chart_dir: String, info_path: String) -> void:
 	DirAccess.remove_absolute(chart_dir)
 
 ## ZIP 内 info.json 存在但缺 hash 字段：补写 hash，其余元数据保持不变
-func _patch_chart_info_hash(info_path: String, hash: String, name: String) -> void:
+func _patch_chart_info_hash(info_path: String, hash_str: String, chart_name: String) -> void:
 	if not FileAccess.file_exists(info_path):
-		_write_chart_info(info_path, hash, name)
+		_write_chart_info(info_path, hash_str, chart_name)
 		return
 	var f := FileAccess.open(info_path, FileAccess.READ)
 	if f == null:
@@ -1140,15 +1140,15 @@ func _patch_chart_info_hash(info_path: String, hash: String, name: String) -> vo
 	f.close()
 	var parsed = JSON.parse_string(text)
 	if parsed == null or not parsed is Dictionary:
-		_write_chart_info(info_path, hash, name)
+		_write_chart_info(info_path, hash_str, chart_name)
 		return
 	var data: Dictionary = parsed
 	var changed := false
-	if str(data.get("hash", "")) != hash:
-		data["hash"] = hash
+	if str(data.get("hash", "")) != hash_str:
+		data["hash"] = hash_str
 		changed = true
-	if data.has("file_hash") and str(data.get("file_hash", "")) != hash:
-		data["file_hash"] = hash
+	if data.has("file_hash") and str(data.get("file_hash", "")) != hash_str:
+		data["file_hash"] = hash_str
 		changed = true
 	if not changed:
 		return
@@ -1159,12 +1159,12 @@ func _patch_chart_info_hash(info_path: String, hash: String, name: String) -> vo
 	out.close()
 
 ## ZIP 内图表文件夹目标名：已带 hash 前缀则保留，否则补前缀
-func _zip_chart_target_folder(folder: String, hash: String) -> String:
+func _zip_chart_target_folder(folder: String, hash_str: String) -> String:
 	var clean := _sanitize_filename(folder)
 	var low := clean.to_lower()
-	if low == hash or low.begins_with(hash + "_"):
+	if low == hash_str or low.begins_with(hash_str + "_"):
 		return clean
-	return "%s_%s" % [hash, clean]
+	return "%s_%s" % [hash_str, clean]
 
 ## 递归建父目录并写入字节（大文件分块让出主线程）
 func _write_bytes_chunked(bytes: PackedByteArray, dest: String) -> bool:
@@ -1320,14 +1320,14 @@ static func _counts_total(counts: Dictionary) -> int:
 		total += int(counts[key])
 	return total
 
-static func _is_midi_name(name: String) -> bool:
-	return MIDI_EXTS.has(name.get_extension().to_lower())
+static func _is_midi_name(chart_name: String) -> bool:
+	return MIDI_EXTS.has(chart_name.get_extension().to_lower())
 
-static func _is_audio_name(name: String) -> bool:
-	return AUDIO_EXTS.has(name.get_extension().to_lower())
+static func _is_audio_name(chart_name: String) -> bool:
+	return AUDIO_EXTS.has(chart_name.get_extension().to_lower())
 
-static func _is_image_name(name: String, exts: Array[String]) -> bool:
-	return exts.has(name.get_extension().to_lower())
+static func _is_image_name(chart_name: String, exts: Array[String]) -> bool:
+	return exts.has(chart_name.get_extension().to_lower())
 
 static func _is_same_path(a: String, b: String) -> bool:
 	return a.replace("\\", "/") == b.replace("\\", "/")

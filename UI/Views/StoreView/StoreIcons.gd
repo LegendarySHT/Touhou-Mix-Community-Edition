@@ -142,8 +142,8 @@ static func format_duration(seconds: int) -> String:
 	if seconds <= 0:
 		return ""
 	var total := seconds
-	var h := int(total / 3600)
-	var m := int((total % 3600) / 60)
+	var h := int(total / 3600.0)
+	var m := int((total % 3600) / 60.0)
 	var sec := int(total % 60)
 	if h > 0:
 		return "%d:%02d:%02d" % [h, m, sec]

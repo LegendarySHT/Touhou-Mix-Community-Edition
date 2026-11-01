@@ -324,7 +324,7 @@ func get_track_count() -> int:
 
 # ===================== 轨道配置初始化 =====================
 
-func ensure_track_config_initialized(midi_data: MidiData, notes: Array) -> void:
+func ensure_track_config_initialized(midi_data: MidiData, _notes: Array) -> void:
 	if midi_data == null or midi_data.is_track_config_initialized():
 		return
 	var desc_parse = MidiDescriptionParser.parse(midi_data.description)
@@ -502,9 +502,9 @@ func get_backend_volume_db() -> float:
 	return MeltySynth.get_volume_db() if MeltySynth != null else -20.0
 
 func load_soundfont_from_config() -> void:
-	var name: String = str(ConfigManager.instance.get_value("soundfont_file"))
-	name = name.replace(".sf2", "").replace("[内置]", "").strip_edges()
-	if not name.is_empty() and set_soundfont(name):
+	var sf_name: String = str(ConfigManager.instance.get_value("soundfont_file"))
+	sf_name = sf_name.replace(".sf2", "").replace("[内置]", "").strip_edges()
+	if not sf_name.is_empty() and set_soundfont(sf_name):
 		return
 	current_soundfont_path = DEFAULT_SOUNDFONT_PATH
 
@@ -1040,8 +1040,8 @@ func set_vocal_offset_ms(offset_ms: float) -> void:
 	if MeltySynth != null: MeltySynth.set_vocal_offset_ms(offset_ms)
 func get_vocal_position() -> float:
 	return MeltySynth.get_vocal_position() if MeltySynth != null else 0.0
-func seek_vocal(position_ms: float) -> void:
-	if MeltySynth != null: MeltySynth.seek_vocal(position_ms)
+func seek_vocal(pos_ms: float) -> void:
+	if MeltySynth != null: MeltySynth.seek_vocal(pos_ms)
 func set_vocal_playing(on: bool) -> void:
 	if MeltySynth != null: MeltySynth.set_vocal_playing(on)
 func play_vocal_file(path: String, offset_ms: float = 0.0) -> bool:
@@ -1202,9 +1202,9 @@ func is_session_owner(view: Node) -> bool:
 	if view == null:
 		return false
 	if _session_owner != null:
-		var owner: Node = _session_owner.get_ref() as Node
-		if owner != null:
-			return owner == view
+		var owner_view: Node = _session_owner.get_ref() as Node
+		if owner_view != null:
+			return owner_view == view
 		_session_owner = null   # 页面已释放
 	if UiStatMGR == null or not ("work_state" in view):
 		return false

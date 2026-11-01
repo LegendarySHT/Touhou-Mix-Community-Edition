@@ -155,28 +155,28 @@ func _placeholder_icon(kind: String) -> Texture2D:
 func _apply_state() -> void:
 	var state := int(item.get("state", STATE_INSTALLED))
 	var base := ThemeMGR.get_color("success") if ThemeMGR else Color("#2FA66A")
-	var icon: Texture2D = StoreIconsLib.check()
-	var text := "已安装"
+	var icon_tex: Texture2D = StoreIconsLib.check()
+	var label_text := "已安装"
 	var tip := "该资源已在本地"
 	match state:
 		ResourceManager.DownloadState.NOT_DOWNLOADED:
 			base = ThemeMGR.get_color("primary") if ThemeMGR else Color("#2E55C8")
-			icon = StoreIconsLib.download()
-			text = "获取"
+			icon_tex = StoreIconsLib.download()
+			label_text = "获取"
 			tip = "下载该资源"
 		ResourceManager.DownloadState.DOWNLOADING:
 			base = ThemeMGR.get_color("warning") if ThemeMGR else Color("#D89A2A")
-			icon = StoreIconsLib.download_cloud()
-			text = "下载中"
+			icon_tex = StoreIconsLib.download_cloud()
+			label_text = "下载中"
 			tip = "正在下载…"
 		ResourceManager.DownloadState.FAILED:
 			base = ThemeMGR.get_color("danger") if ThemeMGR else Color("#C7303F")
-			icon = StoreIconsLib.close()
-			text = "重试"
+			icon_tex = StoreIconsLib.close()
+			label_text = "重试"
 			tip = "下载失败，点击重试"
-	_download_btn.icon = icon
+	_download_btn.icon = icon_tex
 	_download_btn.tooltip_text = tip
-	_state_label.text = text
+	_state_label.text = label_text
 	_set_download_colors(base)
 
 

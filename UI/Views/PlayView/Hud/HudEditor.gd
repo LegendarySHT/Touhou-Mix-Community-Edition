@@ -474,7 +474,6 @@ func _finalize_num(le: LineEdit, cb: Callable) -> void:
 	var is_int := bool(le.get_meta("is_int", false))
 	var min_v := float(le.get_meta("min", -1e9))
 	var max_v := float(le.get_meta("max", 1e9))
-	var decimals := int(le.get_meta("decimals", 2))
 	var last := float(le.get_meta("last", 0.0))
 	var v := _parse_num(le.text)
 	if is_nan(v):
@@ -1203,7 +1202,7 @@ func _on_visible_toggled(on: bool) -> void:
 func _on_param_number(v: float, key: String) -> void:
 	if _syncing or _selected == null:
 		return
-	_selected.set_param(key, int(round(v)) if _is_int_param(key) else v)
+	_selected.set_param(key, float(int(round(v))) if _is_int_param(key) else v)
 	_selected.rebuild()
 	_selected.refresh_visible()
 	_mark_dirty()

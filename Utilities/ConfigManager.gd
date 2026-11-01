@@ -223,12 +223,12 @@ func _prune_misplaced_keys(config: Variant = null) -> int:
 		return 0
 
 	# key → 权威 section
-	var owner := {}
+	var key_owner := {}
 	for section in default_config.keys():
 		var sec_data = default_config[section]
 		if sec_data is Dictionary:
 			for key in sec_data.keys():
-				owner[key] = section
+				key_owner[key] = section
 
 	var removed := 0
 	var moved: Array[String] = []
@@ -237,7 +237,7 @@ func _prune_misplaced_keys(config: Variant = null) -> int:
 			continue
 		var stray: Array[String] = []
 		for key in config[section].keys():
-			if owner.has(key) and owner[key] != section:
+			if key_owner.has(key) and key_owner[key] != section:
 				stray.append(key)
 		for key in stray:
 			var home: String = owner[key]
