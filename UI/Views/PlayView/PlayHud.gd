@@ -10,7 +10,7 @@ extends Control
 
 ## 进度条到达最大值（由 PlayView 连接 _on_game_finished）
 signal game_finished_requested
-## 判定命中请求背景闪光（由 PlayView 连接 bg_ctrl.flash）
+## 判定命中请求背景闪光（由 PlayView 连接 bg.flash）
 signal flash_requested
 
 @onready var ani: AnimationManager = AniMGR

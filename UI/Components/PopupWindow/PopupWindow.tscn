@@ -996,15 +996,17 @@ size_flags_vertical = 0
 theme_override_font_sizes/font_size = 32
 alignment = 1
 selected = 0
-item_count = 4
-popup/item_0/text = "图片"
+item_count = 5
+popup/item_0/text = "跟随主题"
 popup/item_0/id = 0
-popup/item_1/text = "渐变"
+popup/item_1/text = "图片"
 popup/item_1/id = 1
-popup/item_2/text = "纯色"
+popup/item_2/text = "渐变"
 popup/item_2/id = 2
-popup/item_3/text = "封面"
+popup/item_3/text = "纯色"
 popup/item_3/id = 3
+popup/item_4/text = "封面"
+popup/item_4/id = 4
 
 [node name="OtherOptions" type="GridContainer" parent="ImageAdjust/VBoxC" unique_id=758230520]
 custom_minimum_size = Vector2(0, 390)

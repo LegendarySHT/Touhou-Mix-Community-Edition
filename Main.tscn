@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://jvmwtrulpf5g"]
 
 [ext_resource type="Script" uid="uid://dvieqmomxd1k7" path="res://Main.gd" id="1_w3rk5"]
+[ext_resource type="Script" uid="uid://cq7vbk2mxn3dr" path="res://UI/Theme/ViewBackground.gd" id="3_vbg"]
 [ext_resource type="Script" uid="uid://co2lh8xsnaw8m" path="res://UI/Components/PlayerInfo/PlayerInfoPanel.gd" id="2_w3rk5"]
 [ext_resource type="Script" uid="uid://dhil2784gca17" path="res://UI/Components/RightBottomBtn.gd" id="7_sqvbp"]
 [ext_resource type="Script" uid="uid://d2g2knk0s5svb" path="res://UI/Views/AlbumView/AlbumView.gd" id="7_w3rk5"]
@@ -407,6 +408,7 @@ mouse_filter = 2
 texture = SubResource("GradientTexture2D_xrxkg")
 expand_mode = 3
 metadata/_edit_lock_ = true
+script = ExtResource("3_vbg")
 
 [node name="Background2" type="TextureRect" parent="." unique_id=1594491345]
 visible = false
@@ -421,6 +423,7 @@ mouse_filter = 2
 texture = SubResource("GradientTexture2D_xrxkg")
 expand_mode = 3
 metadata/_edit_lock_ = true
+script = ExtResource("3_vbg")
 
 [node name="TaskProgress" type="ProgressBar" parent="." unique_id=222059329]
 visible = false

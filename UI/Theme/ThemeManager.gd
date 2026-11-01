@@ -8,8 +8,8 @@
 ## 外部接口：
 ##   ThemeMGR.get_color("primary")
 ##   ThemeMGR.apply_preset("pink")
-##   ThemeMGR.refresh_theme_only()   # 主题变更后刷新主题色（不刷新背景）
-##   ThemeMGR.refresh_backgrounds()  # 仅刷新背景（给设置界面）
+##   ThemeMGR.refresh_theme_only()   # 主题变更后刷新主题色（背景由 register_background 的节点自管）
+##   ThemeMGR.refresh_backgrounds()  # 通知所有背景节点重新应用
 class_name ThemeManager
 extends Node
 
@@ -19,6 +19,7 @@ const SUBMENU_ARROW_SRC_COLOR := "#b2b2b2"
 func _ready() -> void:
 	add_to_group("singletons")
 	load_theme()
+	apply_clear_color()
 	_apply_boot_background_color()
 	_save_timer = Timer.new()
 	_save_timer.one_shot = true
@@ -37,6 +38,9 @@ func _ready() -> void:
 
 const DEFAULT_THEME_PATH := "res://Resources/Config/theme.ini"
 const DEFAULT_PRESET := "blue"
+## 主题配置版本。2.1.0 起背景默认值不再是「每页写死的渐变色」，而是「不设颜色 + 按主题衍生」，
+## 因此版本不一致时丢弃旧 theme.ini 的 [backgrounds] 段——否则老配置会盖住新默认值，看起来像没生效。
+const THEME_VERSION := "2.1.0"
 
 # 共享按钮 Theme 资源（几何参数收在 .tres，颜色由本管理器按主题统一刷新）
 const SHARED_LIST_BTN_THEME_PATH := "res://UI/Theme/BtnTheme/ListBtn-ColorBorder.tres"
@@ -74,7 +78,7 @@ const SAVE_DEBOUNCE_SECONDS := 0.25
 
 # 背景图异步加载（TMX-037）：缓存未命中时由后台线程读盘，避免主线程同步 IO 卡顿
 var _bg_load_thread: Thread = null
-var _bg_pending_rects: Dictionary = {}   # file_name -> Array[{rect, stretch}]
+var _bg_pending_nodes: Dictionary = {}   # file_name -> Array[{node, stretch}]
 var _bg_load_queue: Array[String] = []
 
 # 颜色令牌一览（get_color 可取的键，均来自 theme.ini 的 [common] + 预设）：
@@ -192,8 +196,8 @@ func set_appearance(mode: String) -> void:
 	_apply_neutral_layer()
 	GLogger.info("外观模式已切换: %s" % _appearance, "ThemeManager")
 	_schedule_save_theme()
+	# refresh_theme_only 末尾会重算默认背景（深浅色变了默认背景也要跟着变）
 	refresh_theme_only()
-	refresh_backgrounds()
 	if EvtBus:
 		EvtBus.theme_changed.emit(_theme_name)
 
@@ -264,6 +268,12 @@ func load_theme(file_path: String = "") -> bool:
 	if FileAccess.file_exists(user_path):
 		user_cfg = ConfigManager.instance.load_config(user_path)
 
+	# 版本迁移：丢弃旧版存下的 [backgrounds]（背景默认值语义变了，见 THEME_VERSION）
+	if _get_str(user_cfg, "Theme", "version", "") != THEME_VERSION:
+		if user_cfg.has("backgrounds"):
+			GLogger.info("旧版背景配置已丢弃，改用主题衍生默认背景", "ThemeManager")
+			user_cfg.erase("backgrounds")
+
 	var merged := ConfigManager.instance.merge_with_defaults(user_cfg, default_cfg)
 	_parse_theme_config(merged)
 
@@ -285,33 +295,40 @@ func _apply_boot_background_color() -> void:
 	if OS.has_feature("editor"):
 		return  # 编辑器内无启动图，跳过
 
-	# 取主界面背景的代表色：main 背景默认是 gradient（theme.ini: bg_main_type），
-	# 所以必须处理渐变分支——之前只认 solid 导致永远走写死的深蓝兜底。
-	var bg := get_view_background("main")
-	var base := Color("#0A0D15")
-	var bg_type: String = bg.get("type", "gradient")
-	if bg_type == "solid":
-		var c: String = bg.get("solid_color", "#0A0D14")
-		if c.is_valid_html_color():
-			base = Color(c)
-	else:
-		var top: String = bg.get("gradient_top", "#0B0F1C")
-		var bottom: String = bg.get("gradient_bottom", "#161E33")
-		if top.is_valid_html_color() and bottom.is_valid_html_color():
-			base = (Color(top) + Color(bottom)) * 0.5
-
-	# 走与主界面背景同一套浅染逻辑（_lightify_bg），保证深浅色模式下启动窗都跟主界面一致
-	var boot_color := _lightify_bg(base)
+	# 每次启动只算一次代表色：主界面没配背景时直接用默认背景的中值（深浅色 + 主题色都已含在内）
+	var boot_color := get_main_bg_base_color()
 
 	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
 	img.set_pixel(0, 0, Color(0, 0, 0, 0))  # 透明：只保留底色，不画 logo
 	RenderingServer.set_boot_image_with_stretch(img, boot_color, RenderingServer.SPLASH_STRETCH_MODE_DISABLED, true)
 
+## 主界面背景的代表色（单色场景用：启动图底色、引擎清屏色）。
+## 没配背景色 → 默认背景（主题衍生）中值；image/cover 取不到代表色 → 同样退回默认背景色。
+func get_main_bg_base_color() -> Color:
+	var bg := get_view_background("main")
+	match String(bg.get("type", "default")):
+		"solid":
+			var c := String(bg.get("solid_color", ""))
+			if c.is_valid_html_color():
+				return Color(c)
+		"gradient":
+			var top := String(bg.get("gradient_top", ""))
+			var bottom := String(bg.get("gradient_bottom", ""))
+			if top.is_valid_html_color() and bottom.is_valid_html_color():
+				return (Color(top) + Color(bottom)) * 0.5
+	return get_default_background_color()
+
+## 引擎清屏色跟随主题背景色。
+## 页面/根视口露出底色时（切场景、UI 隐藏、透明区域）会是这张清屏色，
+## 不设置就是引擎默认灰，浅色主题下格外突兀。跟随主题后深浅色/强调色变化自动同步。
+func apply_clear_color() -> void:
+	RenderingServer.set_default_clear_color(get_main_bg_base_color())
+
 func save_theme(file_path: String = "") -> bool:
 	var user_path := file_path if not file_path.is_empty() else USER_THEME_PATH
 	var cfg: Dictionary = {}
 
-	cfg["Theme"] = {"version": "2.0.0", "active_preset": _theme_name, "appearance": _appearance}
+	cfg["Theme"] = {"version": THEME_VERSION, "active_preset": _theme_name, "appearance": _appearance}
 	cfg["preset_" + _theme_name] = {}
 	for key in _palette:
 		cfg["preset_" + _theme_name][key] = (_palette[key] as Color).to_html(true)
@@ -339,6 +356,18 @@ func get_font_size(key: String, default: int = 32) -> int:
 	return default
 
 # ============ 背景管理 ============
+#
+# 分工：
+#   ThemeManager —— 配置读写（theme.ini [backgrounds]）、背景图缓存/异步读盘、默认背景生成、主背景双缓冲切换
+#   ViewBackground（UI/Theme/ViewBackground.gd）—— 挂在背景 TextureRect 上，自己解析类型并应用纹理
+#
+# 页面背景不要在这里手动 apply，也不要再往背景上叠主题色：节点自管。
+
+## 已注册的背景节点（instance_id → ViewBackground）
+var _background_nodes: Dictionary[int, Node] = {}
+## 默认背景纹理（多个页面共用一张，主题色/深浅色变了才重建）
+var _default_bg_tex: GradientTexture2D = null
+var _default_bg_key: String = ""
 
 func get_view_background(view_name: String) -> Dictionary:
 	var bg: Dictionary = {}
@@ -357,40 +386,67 @@ func set_view_background(view_name: String, config: Dictionary) -> void:
 	# 仅刷新背景（不 emit theme_changed，避免触发 refresh_theme_only 完整主题刷新导致卡顿）
 	refresh_backgrounds()
 
-func apply_background(texture_rect: TextureRect, view_name: String) -> void:
-	if texture_rect == null:
-		return
+## 背景节点在 _ready 里自注册（ViewBackground）
+func register_background(node: Node) -> void:
+	if node:
+		_background_nodes[node.get_instance_id()] = node
 
-	var prefix := "bg_" + view_name + "_"
-	var bg_type: String = _backgrounds.get(prefix + "type", "gradient")
+func unregister_background(node: Node) -> void:
+	if node:
+		_background_nodes.erase(node.get_instance_id())
 
-	match bg_type:
-		"cover":
-			# 封面模式由 PlayView 自己处理（需要曲包封面 + 模糊烘焙）
-			# ThemeManager 不实际应用，仅作为配置占位，让 PlayView 完全接管
-			return
-		"solid":
-			var color_str: String = _backgrounds.get(prefix + "solid_color", "#0A0D14")
-			var solid_color := Color(color_str) if color_str.is_valid_html_color() else Color("#0A0D14")
-			texture_rect.texture = _create_solid_gradient_texture(solid_color)
-			texture_rect.modulate = Color.WHITE
-		"image":
-			var img_path: String = _backgrounds.get(prefix + "image_path", "")
-			if not img_path.is_empty():
-				var tex := get_cached_background_image(img_path)
-				if tex:
-					texture_rect.texture = tex
-					texture_rect.modulate = Color.WHITE
-					var stretch: String = _backgrounds.get(prefix + "image_stretch", "cover")
-					texture_rect.stretch_mode = _parse_stretch_mode(stretch)
-					return
-				# 缓存未命中：先应用渐变占位，再异步加载背景图（避免主线程同步 IO 卡顿）
-				_apply_gradient(texture_rect, prefix)
-				_request_background_image_load(img_path, texture_rect, _parse_stretch_mode(_backgrounds.get(prefix + "image_stretch", "cover")))
-				return
-			_apply_gradient(texture_rect, prefix)
-		_:
-			_apply_gradient(texture_rect, prefix)
+## 通知所有背景节点按当前配置/主题重新应用。
+## ViewBackground 内部有配置指纹，未变化时不会重建纹理。
+func refresh_all_backgrounds() -> void:
+	var stale: Array[int] = []
+	for id in _background_nodes.keys():
+		var node: Node = _background_nodes[id]
+		if is_instance_valid(node):
+			node.apply()
+		else:
+			stale.append(id)
+	for id in stale:
+		_background_nodes.erase(id)
+
+# ---- 默认背景（未设置颜色的页面用） ----
+
+## 默认背景两端颜色：
+##   深色 → 近黑的板面底 → 主题强调色暗部（一眼看出当前主题色，又不抢内容）
+##   浅色 → 浅板面 → 浅主题色（浅色模式下不许留下整块深底）
+func get_default_background_colors() -> Array[Color]:
+	if _appearance == "light":
+		var top := get_color("surface_low").lightened(0.05)
+		return [top, get_color("primary_light").lerp(get_color("surface_low"), 0.35)]
+	return [get_color("surface_low").darkened(0.15), get_color("primary_dark").darkened(0.55)]
+
+## 默认背景的代表色（启动图底色等单色场景用）
+func get_default_background_color() -> Color:
+	var cols := get_default_background_colors()
+	return (cols[0] + cols[1]) * 0.5
+
+## 默认背景的颜色指纹（背景节点判断要不要重建纹理用）
+func get_default_background_key() -> String:
+	var cols := get_default_background_colors()
+	return cols[0].to_html() + cols[1].to_html()
+
+## 默认背景纹理：竖直渐变，所有未配置颜色的页面共用这一张
+func get_default_background_texture() -> Texture2D:
+	var cols := get_default_background_colors()
+	var key := get_default_background_key()
+	if _default_bg_tex != null and key == _default_bg_key:
+		return _default_bg_tex
+	_default_bg_key = key
+	var gradient := Gradient.new()
+	gradient.set_color(0, cols[0])
+	gradient.set_color(1, cols[1])
+	var tex := GradientTexture2D.new()
+	tex.gradient = gradient
+	tex.width = 256
+	tex.height = 256
+	tex.fill_from = Vector2(0.0, 0.0)
+	tex.fill_to = Vector2(0.0, 1.0)
+	_default_bg_tex = tex
+	return tex
 
 ## 获取已缓存的背景图（不触发磁盘 IO）；未缓存返回 null
 func get_cached_background_image(file_name: String) -> Texture2D:
@@ -405,7 +461,7 @@ func get_cached_background_image(file_name: String) -> Texture2D:
 	return null
 
 ## 同步加载背景图（读盘 + 缓存）。仅限用户触发的单图预览（如 ImageAdjust 弹窗），
-## 批量应用背景请走 apply_background（缓存命中立即、未命中走异步加载）。
+## 批量应用背景请走 ViewBackground.apply（缓存命中立即、未命中走异步加载）。
 func load_background_image(file_name: String) -> Texture2D:
 	var cached := get_cached_background_image(file_name)
 	if cached:
@@ -422,21 +478,17 @@ func load_background_image(file_name: String) -> Texture2D:
 	return tex
 
 ## 请求异步加载背景图：命中缓存立即应用；否则入队由后台线程读盘（TMX-037）
-func _request_background_image_load(file_name: String, rect: TextureRect, stretch: int) -> void:
-	if file_name.is_empty() or not is_instance_valid(rect):
+func request_background_image(file_name: String, node: Node, stretch: String) -> void:
+	if file_name.is_empty() or not is_instance_valid(node):
 		return
 	var cached := get_cached_background_image(file_name)
 	if cached:
-		rect.texture = cached
-		rect.modulate = Color.WHITE
-		rect.stretch_mode = stretch as TextureRect.StretchMode
+		node.set_background_image(cached, stretch)
 		return
-	if not _bg_pending_rects.has(file_name):
-		_bg_pending_rects[file_name] = []
+	if not _bg_pending_nodes.has(file_name):
+		_bg_pending_nodes[file_name] = []
 		_bg_load_queue.append(file_name)
-	var rects: Array = _bg_pending_rects[file_name]
-	rects.append({"rect": rect, "stretch": stretch})
-	_bg_pending_rects[file_name] = rects
+	_bg_pending_nodes[file_name].append({"node": node, "stretch": stretch})
 	_start_bg_load_if_idle()
 
 func _start_bg_load_if_idle() -> void:
@@ -456,7 +508,7 @@ func _bg_image_load_worker(file_name: String) -> void:
 	# call_deferred 跨线程投递到主线程是安全的
 	call_deferred("_on_bg_image_loaded", file_name, img)
 
-## 主线程：把后台加载的图片应用到所有等待中的 TextureRect
+## 主线程：把后台加载的图片应用到所有等待中的背景节点
 func _on_bg_image_loaded(file_name: String, img: Image) -> void:
 	if _bg_load_thread:
 		_bg_load_thread.wait_to_finish()
@@ -466,16 +518,13 @@ func _on_bg_image_loaded(file_name: String, img: Image) -> void:
 		tex = ImageTexture.create_from_image(img)
 		if tex:
 			_bg_image_cache[file_name] = tex
-	var rects: Array = _bg_pending_rects.get(file_name, [])
-	_bg_pending_rects.erase(file_name)
-	for entry in rects:
-		var rect: TextureRect = entry.get("rect")
-		if is_instance_valid(rect):
-			if tex:
-				rect.texture = tex
-				rect.modulate = Color.WHITE
-				rect.stretch_mode = entry.get("stretch", rect.stretch_mode)
-			# 加载失败：保持渐变占位（apply_background 已应用）
+	var entries: Array = _bg_pending_nodes.get(file_name, [])
+	_bg_pending_nodes.erase(file_name)
+	for entry in entries:
+		var node: Node = entry.get("node")
+		# 加载失败：保持占位（ViewBackground 已铺默认背景）
+		if tex and is_instance_valid(node):
+			node.set_background_image(tex, str(entry.get("stretch", "cover")))
 	_start_bg_load_if_idle()
 
 func _exit_tree() -> void:
@@ -984,16 +1033,18 @@ func unregister_theme_applier(node: Node) -> void:
 	if node:
 		_theme_appliers.erase(node.get_instance_id())
 
-## 刷新主题色（不刷新背景）
+## 刷新主题色（同时刷新由主题衍生的默认背景）
 ## 仅刷新调色板、Theme 资源，并广播通知所有已注册应用者各自更新内部样式；
-## 不调用 _apply_all_backgrounds，因为背景与主题色独立，切换主题不应触发背景重新加载（避免 Image.load_from_file 同步阻塞）。
-## 若需要刷新背景，调用 refresh_backgrounds()。
+## 背景图不再重新读盘（用户配了具体背景的节点会因配置指纹未变而跳过），
+## 只有 type=default 的页面会重新生成主题渐变。
 ##
 ## 注意：本函数是协程（含 await get_tree().process_frame），但调用方无需 await：
 ## - 主题色挨个帧更新在视觉上可接受；
 ## - 真正的痛点是 godot 内部对 StyleBox/Theme 的批量重绘卡顿，分帧是把卡顿摊到多帧而非消除。
 ## - 短时间内连续调用会并发执行多个协程，但 _palette 已是终态值，每帧的阶段幂等。
 func refresh_theme_only() -> void:
+	# 清屏色纯 Palette 计算，不依赖 Main，先同步掉（避免露底时看到上一套主题的底色）
+	apply_clear_color()
 	var main := get_node_or_null(PathRegistry.MAIN)
 	if not main:
 		return
@@ -1033,6 +1084,9 @@ func refresh_theme_only() -> void:
 			stale.append(id)
 	for id in stale:
 		_theme_appliers.erase(id)
+	# 第三阶段：默认背景由主题色衍生，强调色/深浅色变了必须重算
+	# （配了 solid/gradient/image/cover 的节点指纹未变，apply 直接返回，不会重建纹理）
+	refresh_backgrounds()
 	GLogger.info("主题刷新完成: %s" % _theme_name, "ThemeManager")
 
 func _on_theme_changed(preset_name: String) -> void:
@@ -1056,33 +1110,10 @@ func _on_theme_changed(preset_name: String) -> void:
 	#   但 emit 时 preset_name 等于 _theme_name，故也走此跳过分支）
 	# 此处跳过避免了双重 save/refresh 导致的卡顿
 
-## 仅刷新背景（设置界面修改背景配置后调用）
+## 仅刷新背景（设置界面改背景、或主题色/深浅色变化后调用）
 func refresh_backgrounds() -> void:
-	var main := get_node_or_null(PathRegistry.MAIN)
-	if not main:
-		return
-	_apply_all_backgrounds(main)
-	GLogger.info("背景刷新完成", "ThemeManager")
-
-# ============ 内部：背景批量应用 ============
-
-func _apply_all_backgrounds(main: Node) -> void:
-	# 独立背景节点（score/store/play 有自己的 Background 子节点）
-	# main/midi/track/setting 共享主场景的 Background / Background2，由 _switch_main_bg 切换
-	var bg_map := {
-		"score": "ScoreView/BackGround",
-		"store": "Store/Background",
-		"play": "PlayView/Background",
-	}
-
-	for view_name in bg_map:
-		var rect := main.get_node_or_null(bg_map[view_name])
-		if rect:
-			apply_background(rect, view_name)
-
-	# 主背景节点：应用当前 view_name 的背景（首次或主题刷新时）
-	if _active_bg and not _current_main_bg_view.is_empty():
-		apply_background(_active_bg, _current_main_bg_view)
+	apply_clear_color()
+	refresh_all_backgrounds()
 
 func get_theme_name() -> String:
 	return _theme_name
@@ -1093,8 +1124,8 @@ func is_loaded() -> bool:
 # ============ 主背景交叉淡入淡出切换 ============
 
 # 主背景交叉淡入淡出状态
-var _active_bg: TextureRect = null       # 当前可见的背景节点（初始为 Background）
-var _inactive_bg: TextureRect = null      # 备用背景节点（初始为 Background2）
+var _active_bg: ViewBackground = null       # 当前可见的背景节点（初始为 Background）
+var _inactive_bg: ViewBackground = null      # 备用背景节点（初始为 Background2）
 var _current_main_bg_view: String = "main" # 当前主背景所属的 view_name
 var _bg_switch_tween: Tween = null        # 切换补间
 const _BG_SWITCH_DURATION := 0.4         # 交叉淡入淡出时长（秒）
@@ -1104,15 +1135,15 @@ func _init_main_bg_nodes() -> void:
 	var main := get_node_or_null(PathRegistry.MAIN)
 	if not main:
 		return
-	_active_bg = main.get_node_or_null("Background")
-	_inactive_bg = main.get_node_or_null("Background2")
+	_active_bg = main.get_node_or_null("Background") as ViewBackground
+	_inactive_bg = main.get_node_or_null("Background2") as ViewBackground
 	if _active_bg and _inactive_bg:
 		_active_bg.modulate.a = 1.0
 		_active_bg.visible = true
 		_inactive_bg.modulate.a = 0.0
 		_inactive_bg.visible = false
 		# 应用初始背景（main 组）
-		apply_background(_active_bg, "main")
+		_active_bg.set_view("main")
 		_current_main_bg_view = "main"
 
 ## UIState → 主背景组映射（空字符串表示不切主背景，使用独立节点）
@@ -1155,7 +1186,7 @@ func _switch_main_bg(target_view: String) -> void:
 	# 把新背景应用到 inactive 节点
 	_inactive_bg.visible = true
 	_inactive_bg.modulate.a = 0.0
-	apply_background(_inactive_bg, target_view)
+	_inactive_bg.set_view(target_view)
 	# 交叉淡入淡出（inactive 0→1，active 1→0）
 	_bg_switch_tween = AniMGR.create_managed_tween(self)
 	_bg_switch_tween.set_parallel(true)
@@ -1374,64 +1405,3 @@ func _get_str(cfg: Dictionary, section: String, key: String, default: String) ->
 	if cfg.has(section) and cfg[section].has(key):
 		return cfg[section][key]
 	return default
-
-func _apply_gradient(texture_rect: TextureRect, prefix: String) -> void:
-	var top_str: String = _backgrounds.get(prefix + "gradient_top", "#0B0F1A")
-	var bottom_str: String = _backgrounds.get(prefix + "gradient_bottom", "#0A0D15")
-
-	var top_color := Color(top_str) if top_str.is_valid_html_color() else Color("#0B0F1A")
-	var bottom_color := Color(bottom_str) if bottom_str.is_valid_html_color() else Color("#0A0D15")
-	top_color = _lightify_bg(top_color)
-	bottom_color = _lightify_bg(bottom_color)
-
-	var gradient := Gradient.new()
-	# 用 set_color 替换默认黑白点，而非 add_point 追加导致 4 个点
-	gradient.set_color(0, top_color)
-	gradient.set_color(1, bottom_color)
-
-	var tex := GradientTexture2D.new()
-	tex.gradient = gradient
-	tex.width = 256
-	tex.height = 256
-	tex.fill_from = Vector2(
-		float(_backgrounds.get(prefix + "gradient_from_x", "0.0")),
-		float(_backgrounds.get(prefix + "gradient_from_y", "0.0"))
-	)
-	tex.fill_to = Vector2(
-		float(_backgrounds.get(prefix + "gradient_to_x", "0.0")),
-		float(_backgrounds.get(prefix + "gradient_to_y", "1.0"))
-	)
-
-	texture_rect.texture = tex
-	texture_rect.modulate = Color.WHITE
-
-## 浅色模式下把背景色转为「同色相浅染色」：保留各视图原始渐变色相（本就带主题味），
-## 拉高明度的同时尽量保留饱和，让浅色背景也像上个提交之前那样有鲜明的色彩，
-## 而不是退化成通用灰白。非浅色模式原样返回。
-func _lightify_bg(c: Color) -> Color:
-	if _appearance != "light":
-		return c
-	var v :float = 0.80 + clamp(c.v, 0.0, 1.0) * 0.12
-	return Color.from_hsv(c.h, min(c.s * 0.75, 0.55), v)
-
-## 创建单色 GradientTexture2D（两个点都设为同色，避免 texture=null 时 modulate 失效）
-func _create_solid_gradient_texture(color: Color) -> GradientTexture2D:
-	var c := _lightify_bg(color)
-	var g := Gradient.new()
-	g.set_color(0, c)
-	g.set_color(1, c)
-	var tex := GradientTexture2D.new()
-	tex.gradient = g
-	tex.width = 4
-	tex.height = 4
-	return tex
-
-func _parse_stretch_mode(mode: String) -> TextureRect.StretchMode:
-	match mode:
-		"scale": return TextureRect.STRETCH_SCALE
-		"tile": return TextureRect.STRETCH_TILE
-		"cover": return TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		"fit": return TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		"center": return TextureRect.STRETCH_KEEP_CENTERED
-		"keep": return TextureRect.STRETCH_KEEP
-	return TextureRect.STRETCH_KEEP_ASPECT_COVERED

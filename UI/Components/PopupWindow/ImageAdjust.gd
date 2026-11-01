@@ -36,10 +36,11 @@ class_name ImageAdjust
 # ===== 图片设置页 =====
 ## 图片类型枚举（与 ImgType OptionButton 顺序一致）
 ## public（无下划线前缀）：SettingList 通过 ImageAdjust.IMG_TYPE_* 访问
-const IMG_TYPE_IMAGE: int = 0
-const IMG_TYPE_GRADIENT: int = 1
-const IMG_TYPE_SOLID: int = 2
-const IMG_TYPE_COVER: int = 3
+const IMG_TYPE_DEFAULT: int = 0
+const IMG_TYPE_IMAGE: int = 1
+const IMG_TYPE_GRADIENT: int = 2
+const IMG_TYPE_SOLID: int = 3
+const IMG_TYPE_COVER: int = 4
 
 const _PREVIEW_BG_BLUR_SHADER_PATH := "res://UI/Views/PlayView/Shaders/BackgroundBlur.gdshader"
 
@@ -65,15 +66,15 @@ func init_adjust(view_name: String = "", allow_cover: bool = false) -> void:
 	_img_type_btn.set_item_disabled(IMG_TYPE_COVER, not allow_cover)
 	# 从 ThemeManager 读取当前配置初始化控件
 	_init_image_controls_from_theme(view_name)
-	# 若禁用且当前选中是封面，切回默认（图片）
+	# 若禁用且当前选中是封面，切回"跟随主题"
 	if not allow_cover and _img_type_btn.selected == IMG_TYPE_COVER:
-		_img_type_btn.selected = IMG_TYPE_IMAGE
+		_img_type_btn.selected = IMG_TYPE_DEFAULT
 	_update_image_options_visibility()
 	_update_image_preview()
 
 ## 返回当前图片设置（供 PopupWindow.show_image_adjust 返回）
 ## 包含字段：
-##   "type": int (0=图片, 1=渐变, 2=纯色, 3=封面)
+##   "type": int (0=跟随主题, 1=图片, 2=渐变, 3=纯色, 4=封面)
 ##   "image_file": String (图片模式下选中的文件名)
 ##   "fill_mode": int (图片填充方式，0=覆盖, 1=适应)
 ##   "start_color": Color (渐变起始色)
@@ -103,7 +104,7 @@ func get_result() -> Dictionary:
 		# 纯色模式
 		"solid_color": _solid_color_btn.color,
 		# 封面模式
-		"cover_blur": float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.35,
+		"cover_blur": float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8,
 	}
 
 ## 扫描背景图片文件列表
@@ -144,6 +145,7 @@ func _update_image_options_visibility() -> void:
 	var show_gradient := img_type == IMG_TYPE_GRADIENT
 	var show_solid := img_type == IMG_TYPE_SOLID
 	var show_cover := img_type == IMG_TYPE_COVER
+	# 跟随主题：不显示任何参数
 	# 图片模式
 	_img_name_label.visible = show_image
 	_img_name_btn.visible = show_image
@@ -193,6 +195,11 @@ func _update_image_preview() -> void:
 	# 默认清除模糊 shader，仅 cover 分支重新设置
 	_image_texture_rect.material = null
 	match img_type:
+		IMG_TYPE_DEFAULT:
+			# 跟随主题：直接预览主题衍生的默认背景
+			_image_texture_rect.texture = ThemeMGR.get_default_background_texture()
+			_image_texture_rect.stretch_mode = TextureRect.STRETCH_SCALE
+			_image_texture_rect.modulate = Color.WHITE
 		IMG_TYPE_IMAGE:
 			if _img_name_btn.item_count > 0:
 				var file_name := _img_name_btn.get_item_text(_img_name_btn.selected)
@@ -230,7 +237,7 @@ func _update_image_preview() -> void:
 				_image_texture_rect.texture = cover_tex
 				_image_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 				_image_texture_rect.modulate = Color.WHITE
-				var blur_strength := float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.35
+				var blur_strength := float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8
 				_apply_preview_cover_blur(blur_strength)
 			else:
 				# 无封面可用，显示占位
@@ -274,7 +281,7 @@ func _on_gradient_coords_changed(_new_text: String) -> void:
 func _on_cover_blur_changed(_new_text: String) -> void:
 	# 仅在当前预览为封面模式时实时刷新模糊强度
 	if _img_type_btn.selected == IMG_TYPE_COVER:
-		var blur_strength := float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.35
+		var blur_strength := float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8
 		_apply_preview_cover_blur(blur_strength)
 
 ## 获取一个可用于预览的封面（随机从 AlbumList 已渲染的列表项中取一个封面纹理）
@@ -327,7 +334,7 @@ func _apply_preview_cover_blur(blur_strength: float) -> void:
 ## view_name 为空时使用默认值（保持向后兼容）
 func _init_image_controls_from_theme(view_name: String) -> void:
 	# 默认值
-	var bg_type_str := "image"
+	var bg_type_str := "default"
 	var image_path := ""
 	var image_stretch := "cover"
 	var solid_color := "#0D1020"
@@ -335,7 +342,7 @@ func _init_image_controls_from_theme(view_name: String) -> void:
 	var gradient_bottom := "#0A0F1E"
 	var gradient_from := Vector2(0.0, 0.0)
 	var gradient_to := Vector2(0.0, 1.0)
-	var cover_blur := 0.35
+	var cover_blur := 0.8
 
 	if not view_name.is_empty() and ThemeMGR:
 		var bg := ThemeMGR.get_view_background(view_name)
@@ -356,8 +363,9 @@ func _init_image_controls_from_theme(view_name: String) -> void:
 		cover_blur = float(bg.get("cover_blur", cover_blur))
 
 	# 设置类型 OptionButton
-	var type_idx := IMG_TYPE_IMAGE
+	var type_idx := IMG_TYPE_DEFAULT
 	match bg_type_str:
+		"default": type_idx = IMG_TYPE_DEFAULT
 		"image": type_idx = IMG_TYPE_IMAGE
 		"gradient": type_idx = IMG_TYPE_GRADIENT
 		"solid": type_idx = IMG_TYPE_SOLID

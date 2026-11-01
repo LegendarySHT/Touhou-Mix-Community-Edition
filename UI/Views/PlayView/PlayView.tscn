@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://da4iihe2e4ool" path="res://UI/Views/PlayView/LaneEffect.gd" id="3_kvdpo"]
 [ext_resource type="Script" uid="uid://b47npyuqw7acg" path="res://UI/Views/PlayView/NoteBatchDrawer.gd" id="4_8x7c2"]
 [ext_resource type="PackedScene" uid="uid://cx3nanq2v7dp1" path="res://UI/Views/PlayView/particle_player.tscn" id="5_ptcl"]
-[ext_resource type="Script" uid="uid://cekagah86op12" path="res://UI/Views/PlayView/PlayBackground.gd" id="6_bgctrl"]
+[ext_resource type="Script" uid="uid://cq7vbk2mxn3dr" path="res://UI/Theme/ViewBackground.gd" id="6_bgctrl"]
 [ext_resource type="Script" uid="uid://c1jieae2d3edr" path="res://UI/Views/PlayView/PlayHud.gd" id="7_hud"]
 [ext_resource type="Script" uid="uid://cbp1sof2efk35" path="res://UI/Views/PlayView/GlowLayer.gd" id="8_glow"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="9_q4lmo"]
@@ -85,9 +85,9 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 texture = SubResource("GradientTexture2D_uj6qe")
-
-[node name="BackgroundControl" type="Node" parent="." unique_id=1928374650]
 script = ExtResource("6_bgctrl")
+view_name = "play"
+use_dim = true
 
 [node name="Lane" type="Control" parent="." unique_id=2025598350]
 layout_mode = 1

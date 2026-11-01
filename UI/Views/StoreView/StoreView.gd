@@ -97,7 +97,6 @@ var _dl_vlist: VirtualListLib = null
 var _bind_animate: bool = false
 var _dl_last_count: int = -1
 
-@onready var _background: TextureRect = $Background
 @onready var _top_bar: Panel = $TopBar
 @onready var _tab_underline: Panel = $TopBar/TabUnderline
 @onready var _search_edit: LineEdit = $TopBar/HeaderMargin/Row/Toolbar/SearchEdit
@@ -1359,21 +1358,6 @@ func apply_theme() -> void:
 	# 次要文字从 text_dim（浅色下偏灰）提到 text_secondary，保证小字号可读
 	var accent_text := primary_dark if is_light else primary_light
 	var muted_text := text_secondary if is_light else text_dim
-
-	# 渐变背景：深色模式从深中性过渡到主题暗部；浅色模式改成浅板面 → 浅主题色，
-	# 否则浅色主题会留下一整块深蓝底，与浅色卡片/顶栏割裂
-	var bg_tex := _background.texture as GradientTexture2D
-	if bg_tex and bg_tex.gradient:
-		if is_light:
-			var c0 := surface_low.lightened(0.05)
-			var c2 := primary_light.lerp(surface_low, 0.35)
-			bg_tex.gradient.set_color(0, c0)
-			bg_tex.gradient.set_color(1, c0.lerp(c2, 0.55))
-			bg_tex.gradient.set_color(2, c2)
-		else:
-			bg_tex.gradient.set_color(0, surface_low.darkened(0.45))
-			bg_tex.gradient.set_color(1, surface_low.darkened(0.45).lerp(primary_dark.darkened(0.55), 0.55))
-			bg_tex.gradient.set_color(2, primary_dark.darkened(0.55))
 
 	var top_sb := _top_bar.get_theme_stylebox("panel") as StyleBoxFlat
 	if top_sb:

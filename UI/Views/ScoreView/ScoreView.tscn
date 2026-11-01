@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://bysbwc1jgvu75"]
 
 [ext_resource type="Script" uid="uid://sdxdtvdsllvp" path="res://UI/Views/ScoreView/ScoreView.gd" id="1_xn8wu"]
+[ext_resource type="Script" uid="uid://cq7vbk2mxn3dr" path="res://UI/Theme/ViewBackground.gd" id="1_vbg"]
 [ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ImgRoundCorner.gdshader" id="3_y1cb1"]
 [ext_resource type="Texture2D" uid="uid://bxkgbenh2ja4h" path="res://Resources/Covers/423be8d161a8a972c9014454921864a9.jpg" id="4_iqsw5"]
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="5_0sw27"]
@@ -161,6 +162,8 @@ grow_horizontal = 2
 grow_vertical = 2
 pivot_offset_ratio = Vector2(0.5, 0.5)
 texture = SubResource("GradientTexture2D_2uqmb")
+script = ExtResource("1_vbg")
+view_name = "score"
 
 [node name="Score" type="Panel" parent="." unique_id=1324214120]
 custom_minimum_size = Vector2(0, 150)

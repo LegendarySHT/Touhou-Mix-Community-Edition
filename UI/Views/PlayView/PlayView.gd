@@ -8,8 +8,8 @@ signal retry_pressed
 
 # 音符显示区
 @onready var flow_area: Panel = $FlowArea
-# 背景控制器（BackgroundControl 节点，封装封面/模糊/暗化/闪光）
-@onready var bg_ctrl: PlayBackground = $BackgroundControl
+# 背景节点自管（ViewBackground 脚本挂在 Background 上）：封面/模糊/暗化/闪光都在那边
+@onready var bg: ViewBackground = $Background
 # HUD 展示层（Layer 节点，封装判定 UI/进度条/调试悬浮）
 @onready var hud: PlayHud = $Layer
 
@@ -165,7 +165,7 @@ func _ready() -> void:
 
 	# HUD 展示层回调（结算检测 / 背景闪光请求）
 	hud.game_finished_requested.connect(_on_game_finished)
-	hud.flash_requested.connect(bg_ctrl.flash)
+	hud.flash_requested.connect(bg.flash)
 	retry_btn.pressed.connect(func ():
 		_prepare_game()
 	)
@@ -409,7 +409,7 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 		# 结算页(from SCORE_VIEW 重试)与播放页同 MIDI，保留已烘焙的模糊背景以便重试复用；
 		# 仅离开播放到其它视图时才清理，避免重试触发重新烘焙、闪现清晰原图
 		if state != UIStateManager.UIState.SCORE_VIEW:
-			bg_ctrl.clear_blur_bake()
+			bg.clear_bake()
 		# 不 unload_midi / 不 clear_sequences / 不 clear_parsed_notes：
 		# 同一 MIDI 在 MidiView/TrackView/PlayView 间切换时复用解析数据与 GameSequence 缓存，
 		# 避免反复重解析/重生成。离开 MidiView 或切换 MidiList 项时才彻底清理
@@ -423,16 +423,12 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 		GLogger.info("Node: %s , ProcessMode: %s" % [self.name, enable], "PlayView")
 		# 从设置界面切回时，背景配置可能已变更，重新应用 play 背景（含 cover 模式烘焙）
 		if _oldState == UIStateManager.UIState.SETTINGS_VIEW and current_midi != null:
-			bg_ctrl.apply_background(null, false, current_midi)
+			bg.set_cover(FileSystemManager.instance.get_cover_by_midiData(current_midi), _midi_key(current_midi))
 
 ## 新增：配置变更回调（只按 key 分派）
 func _on_config_changed(key: String, value: Variant) -> void:
-	if key == "background_dim_color":
-		bg_ctrl.apply_dim()
-		return
-
-	if key == "background_image_flash_color":
-		bg_ctrl.apply_dim()
+	if key == "background_dim_color" or key == "background_image_flash_color":
+		bg.refresh_dim()
 		return
 
 	if key in ["note_glow_intensity", "note_glow_size"]:
@@ -1314,6 +1310,12 @@ func _upload_score_on_quit() -> void:
 	snap["play_duration_ms"] = Time.get_ticks_msec() - _play_start_time
 	await _upload_score_async(current_midi, snap)
 
+## 谱面标识（背景封面烘焙的复用判断）
+func _midi_key(midi: MidiData) -> String:
+	if midi == null:
+		return ""
+	return midi.chart_key if not midi.chart_key.is_empty() else midi.file_hash
+
 # 初始化分数等内容的显示
 func _init_display(show_ready_animation: bool = true):
 	_is_finishing_game = false
@@ -1321,10 +1323,10 @@ func _init_display(show_ready_animation: bool = true):
 
 	# 设置歌曲信息（封面只加载一次，同时传给信息面板和背景）
 	var cover_texture = FileSystemManager.instance.get_cover_by_midiData(current_midi)
-	var has_custom_cover := bg_ctrl.has_cover_for_current_midi(current_midi)
 	if cover_texture:
 		cover.texture = cover_texture
-	bg_ctrl.apply_background(cover_texture, has_custom_cover, current_midi)
+	# 背景自己按 play 段配置取用（默认 cover + 模糊），没封面时自动退回默认背景
+	bg.set_cover(cover_texture, _midi_key(current_midi))
 
 	if show_ready_animation:
 		ani.animate_fade_in(center_bg, 0.2, "_show_bg")

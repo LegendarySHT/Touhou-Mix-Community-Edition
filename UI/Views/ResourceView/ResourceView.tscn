@@ -2,9 +2,6 @@
 
 [ext_resource type="Script" uid="uid://dbpfsdvc011ox" path="res://UI/Views/ResourceView/ResourceView.gd" id="1_rv"]
 
-[sub_resource type="StyleBoxFlat" id="SB_bg"]
-bg_color = Color(0.043, 0.055, 0.08, 0.97)
-
 [sub_resource type="StyleBoxFlat" id="SB_topbar"]
 bg_color = Color(0.055, 0.071, 0.102, 0.97)
 border_width_bottom = 2
@@ -188,16 +185,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_rv")
-
-[node name="Background" type="Panel" parent="." unique_id=155280771]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("SB_bg")
 
 [node name="TopBar" type="Panel" parent="." unique_id=1643836484]
 custom_minimum_size = Vector2(0, 118)

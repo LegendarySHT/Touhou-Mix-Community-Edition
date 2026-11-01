@@ -590,8 +590,9 @@ func _popup_view_background_adjust(view_name: String) -> void:
 	if result.is_empty():
 		return
 	# 转换为 ThemeManager 期望的格式（值统一为 String，与 theme.ini 读取时一致）
-	var type_str := "image"
+	var type_str := "default"
 	match int(result.get("type", 0)):
+		ImageAdjust.IMG_TYPE_DEFAULT: type_str = "default"
 		ImageAdjust.IMG_TYPE_IMAGE: type_str = "image"
 		ImageAdjust.IMG_TYPE_GRADIENT: type_str = "gradient"
 		ImageAdjust.IMG_TYPE_SOLID: type_str = "solid"
@@ -611,9 +612,9 @@ func _popup_view_background_adjust(view_name: String) -> void:
 	config["gradient_to_x"] = str(to.x)
 	config["gradient_to_y"] = str(to.y)
 	if allow_cover:
-		config["cover_blur"] = str(result.get("cover_blur", 0.35))
+		config["cover_blur"] = str(result.get("cover_blur", 0.8))
 	# 即时保存到 theme.ini + 轻量刷新背景（refresh_backgrounds，不触发完整主题刷新）
-	# PlayView 的 cover 模式由 PlayView 在切回 PLAY_VIEW 时通过 PlayBackground.apply_background 处理
+	# play 的 cover 模式由 PlayView 在切回 PLAY_VIEW 时通过 Background 节点（ViewBackground）重新应用
 	ThemeMGR.set_view_background(view_name, config)
 	GLogger.info("%s background updated: type=%s" % [view_name, type_str], "SettingList")
 

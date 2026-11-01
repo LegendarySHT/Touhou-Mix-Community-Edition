@@ -68,7 +68,6 @@ var _pending_vlist: VirtualListLib = null
 
 var _bind_animate: bool = false
 
-@onready var _background: Panel = $Background
 @onready var _top_bar: Panel = $TopBar
 @onready var _tab_underline: Panel = $TopBar/TabUnderline
 @onready var _search_edit: LineEdit = $TopBar/HeaderMargin/Row/Toolbar/SearchEdit
@@ -1112,9 +1111,6 @@ func apply_theme() -> void:
 	var accent_text := primary_dark if is_light else primary_light
 	var muted_text := text_secondary if is_light else text_dim
 
-	var bg_sb := _background.get_theme_stylebox("panel") as StyleBoxFlat
-	if bg_sb:
-		bg_sb.bg_color = ThemeMGR._tint_keep_alpha(surface_low, 0.97)
 	var top_sb := _top_bar.get_theme_stylebox("panel") as StyleBoxFlat
 	if top_sb:
 		top_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.97)
