@@ -68,8 +68,12 @@ func get_player_data() -> Dictionary:
 @onready var play_time_label: Label = $Summary/StatsGrid/PlayTimeLabel
 @onready var expand_btn: Button = $Summary/ExpandBtn
 @onready var logout_btn: Button = $Summary/LogoutBtn
-# ProfileView（Main 下的独立全屏详情视图）
-@onready var profile_view: ProfileView = get_node_or_null(PathRegistry.PROFILE_VIEW) as ProfileView
+# ProfileView（Main 下的独立全屏详情视图，懒加载：首次进入详情页才实例化）
+var profile_view: ProfileView = null
+## 当前头像纹理（懒加载的 ProfileView 创建后据此回填）
+var _avatar_texture: Texture2D = null
+## 头像请求代次：切换账号/登出时递增，用于丢弃过期结果
+var _avatar_load_token: int = 0
 
 ## 提交进行中（防止重复点击）
 var _submitting: bool = false
@@ -85,14 +89,12 @@ func _ready() -> void:
 	# 监听成绩上传成功，刷新统计
 	if not EvtBus.score_uploaded.is_connected(_on_score_uploaded):
 		EvtBus.score_uploaded.connect(_on_score_uploaded)
-	# ProfileView 资料更新后刷新
-	if profile_view and not profile_view.profile_updated.is_connected(_fetch_profile_and_stats_async):
-		profile_view.profile_updated.connect(_fetch_profile_and_stats_async)
-	# ProfileView 头像加载完成后，同步到 MiniInfo 和 Summary 的头像
-	if profile_view and not profile_view.avatar_loaded.is_connected(_on_avatar_loaded):
-		profile_view.avatar_loaded.connect(_on_avatar_loaded)
-	# 启动时若已登录（从本地恢复会话），立即填充。
-	# ProfileView 在本节点之后入树，推迟一帧等它的 @onready 就绪再回填数据。
+	# ProfileView 是懒加载视图：已经存在就直接绑定，否则等它首次实例化
+	if not UiStatMGR.view_loaded.is_connected(_on_lazy_view_loaded):
+		UiStatMGR.view_loaded.connect(_on_lazy_view_loaded)
+	profile_view = get_node_or_null(PathRegistry.PROFILE_VIEW) as ProfileView
+	_bind_profile_view()
+	# 启动时若已登录（从本地恢复会话），立即填充
 	_sync_from_auth.call_deferred()
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
@@ -101,6 +103,29 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if ThemeMGR:
 		ThemeMGR.unregister_theme_applier(self)
+
+# ========== 懒加载视图绑定 ==========
+
+## 懒加载视图实例化完成：只关心 ProfileView
+func _on_lazy_view_loaded(state: UIStateManager.UIState, node: Node) -> void:
+	if state != UIStateManager.UIState.PROFILE_VIEW:
+		return
+	profile_view = node as ProfileView
+	_bind_profile_view()
+
+## 连接 ProfileView 的信号，并把当前玩家数据灌进去。
+## 视图可能在登录态变化之后才创建，所以这里要补一次全量回填。
+func _bind_profile_view() -> void:
+	if profile_view == null:
+		return
+	if not profile_view.profile_updated.is_connected(_fetch_profile_and_stats_async):
+		profile_view.profile_updated.connect(_fetch_profile_and_stats_async)
+	if not profile_view.avatar_uploaded.is_connected(_on_avatar_uploaded):
+		profile_view.avatar_uploaded.connect(_on_avatar_uploaded)
+	# 头像由本节点统一加载：视图晚于头像就绪创建时用已有纹理回填
+	if _avatar_texture:
+		profile_view.set_avatar_texture(_avatar_texture)
+	profile_view.update_display(_player_data)
 
 # ========== 主题色应用 ==========
 
@@ -136,12 +161,49 @@ func _set_border_keep_alpha(node: Control, border: Color) -> void:
 	if sb is StyleBoxFlat:
 		sb.border_color = Color(border.r, border.g, border.b, sb.border_color.a)
 
-## ProfileView 头像加载完成回调：同步到 MiniInfo/Summary 的头像
-func _on_avatar_loaded(tex: Texture2D) -> void:
+## 头像上屏：MiniInfo / Summary，以及已加载的 ProfileView
+func _apply_avatar_texture(tex: Texture2D) -> void:
+	_avatar_texture = tex
 	if mini_avatar_rect:
 		mini_avatar_rect.texture = tex
 	if profile_avatar_rect:
 		profile_avatar_rect.texture = tex
+	if profile_view:
+		profile_view.set_avatar_texture(tex)
+
+## 重置为默认头像（登出/无头像）
+func _apply_default_avatar() -> void:
+	_avatar_load_token += 1
+	_apply_avatar_texture(load("res://Resources/icon/NoAvatar.jpg") as Texture2D)
+
+## 按 _player_data.avatar_url 拉头像：先本地缓存立即上屏，再联网刷新。
+## 头像属于玩家数据，不能依赖懒加载的 ProfileView 是否存在。
+func _load_avatar_async() -> void:
+	var avatar_url := str(_player_data.get("avatar_url", ""))
+	if avatar_url.is_empty() or NetManager.instance == null:
+		return
+	var full_url := "%s%s" % [NetManager.instance.server_url, avatar_url]
+	_avatar_load_token += 1
+	var my_token := _avatar_load_token
+	HttpImageLoader.load_cached(full_url, self, func(tex: Texture2D) -> void:
+		if my_token != _avatar_load_token or tex == null:
+			return
+		_apply_avatar_texture(tex)
+	)
+	if not NetManager.instance.is_online:
+		return
+	HttpImageLoader.load(full_url, self, func(tex: Texture2D) -> void:
+		if my_token != _avatar_load_token or tex == null:
+			return
+		_apply_avatar_texture(tex)
+	)
+
+## 头像上传成功：直接用返回的新 URL 加载，不必等资料拉取往返
+func _on_avatar_uploaded(url: String) -> void:
+	if url.is_empty():
+		return
+	_player_data.avatar_url = url
+	_load_avatar_async()
 
 ## 认证状态变化回调
 func _on_auth_changed(_user_data: Variant) -> void:
@@ -176,6 +238,11 @@ func _sync_from_auth() -> void:
 		populate_mini_info()
 		if profile_view:
 			profile_view.update_display(_player_data)
+		# 先用缓存 URL 把头像显示出来，不依赖详情页是否已打开
+		if _player_data.avatar_url.is_empty():
+			_apply_default_avatar()
+		else:
+			_load_avatar_async()
 		# 异步拉取服务端资料与统计
 		_fetch_profile_and_stats_async()
 	else:
@@ -191,14 +258,7 @@ func _sync_from_auth() -> void:
 		_player_data.play_duration_ms = 0
 		_player_data.grades = {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0, "F": 0}
 		# 重置头像为默认
-		var default_tex := load("res://Resources/icon/NoAvatar.jpg")
-		if mini_avatar_rect:
-			mini_avatar_rect.texture = default_tex
-		if profile_avatar_rect:
-			profile_avatar_rect.texture = default_tex
-		if profile_view:
-			profile_view.profile_avatar_rect.texture = default_tex
-			profile_view.avatar_border.set_display_texture(default_tex)
+		_apply_default_avatar()
 		populate_profile()
 		populate_mini_info()
 		if profile_view:
@@ -227,6 +287,7 @@ func _fetch_profile_and_stats_async() -> void:
 		populate_mini_info()
 		if profile_view:
 			profile_view.update_display(_player_data)
+		_load_avatar_async()
 		_save_cached_profile()
 	# 拉取统计
 	_fetch_stats_async()

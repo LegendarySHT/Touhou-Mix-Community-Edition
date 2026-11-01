@@ -6,9 +6,8 @@ class_name ProfileView
 
 ## 资料更新成功后通知外部刷新（PlayerInfoContent 监听）
 signal profile_updated()
-
-## 头像加载完成后的纹理（供 PlayerInfoContent 同步到 MiniInfo/ProfileView）
-signal avatar_loaded(texture: Texture2D)
+## 头像上传成功后的新 URL（PlayerInfoContent 据此立即刷新各处头像）
+signal avatar_uploaded(url: String)
 
 # ========== PageContent（Profile / History / Edit） ==========
 @onready var page_content: TabContainer = $PageContent
@@ -91,8 +90,6 @@ const RECORD_PAGE_LIMIT := 20
 var _busy: bool = false
 ## 头像 FileDialog（运行时创建）
 var _avatar_file_dialog: FileDialog = null
-## 头像图片 HTTP 加载请求（避免重复加载）
-var _avatar_load_token: int = 0
 ## 待保存头像源图（本地选图解码后，保存时裁剪方形区域）
 var _pending_avatar: Image = null
 
@@ -333,44 +330,14 @@ func update_display(data: Dictionary) -> void:
 	# 同步 Edit 页输入框为当前值
 	nickname_edit.text = display_name
 	desc_edit.text = bio
-	# 加载头像
-	var avatar_url = data.get("avatar_url", "")
-	if avatar_url == null:
-		avatar_url = ""
-	_load_avatar_async(str(avatar_url))
 
-## 异步加载头像（从服务端 URL），同时更新 Profile 页和 Edit 页预览
-## 两步：先读本地磁盘缓存立即上屏（重启后不必先闪默认头像，断网也能显示），
-## 再走 HttpImageLoader 联网刷新（同 URL 复用内存/本地缓存，内容寻址 URL 零请求）
-func _load_avatar_async(avatar_url: String) -> void:
-	if avatar_url.is_empty():
+## 头像上屏：Profile 页大图 + Edit 页预览。
+## 头像由 PlayerInfoContent 统一加载（MiniInfo/Summary 也要用），这里只负责显示。
+func set_avatar_texture(tex: Texture2D) -> void:
+	if tex == null:
 		return
-	if NetManager.instance == null:
-		return
-	_avatar_load_token += 1
-	var my_token := _avatar_load_token
-	var full_url := "%s%s" % [NetManager.instance.server_url, avatar_url]
-	HttpImageLoader.load_cached(full_url, self, func(tex: Texture2D) -> void:
-		if my_token != _avatar_load_token or tex == null:
-			return
-		_apply_avatar(tex, full_url, false)
-	)
-	if not NetManager.instance.is_online:
-		return
-	HttpImageLoader.load(full_url, self, func(tex: Texture2D) -> void:
-		# token 失效说明已有更新的头像请求，丢弃本次结果
-		if my_token != _avatar_load_token or tex == null:
-			return
-		_apply_avatar(tex, full_url, true)
-	)
-
-## 头像上屏：Profile 页大图 + Edit 页预览 + 通知 PlayerInfoContent 同步其他头像位
-func _apply_avatar(tex: Texture2D, url: String, from_network: bool) -> void:
 	profile_avatar_rect.texture = tex
 	avatar_border.set_display_texture(tex)
-	avatar_loaded.emit(tex)
-	if from_network:
-		GLogger.info("Avatar loaded: %s" % url, "ProfileView")
 
 # ========== Edit 页面：资料修改 ==========
 
@@ -500,12 +467,12 @@ func _on_save_avatar_btn_pressed() -> void:
 	avatar_save_btn.disabled = false
 	if result.get("ok", false):
 		GLogger.info("Avatar uploaded", "ProfileView")
-		# 直接从上传响应中提取 avatarUrl 并立即加载头像
+		# 上传响应里的新头像 URL 交给 PlayerInfoContent 统一加载，避免等一次资料拉取
 		if result.data is Dictionary:
 			var av = result.data.get("avatarUrl", "")
 			var av_url := str(av) if av != null else ""
 			if not av_url.is_empty():
-				_load_avatar_async(av_url)
+				avatar_uploaded.emit(av_url)
 		profile_updated.emit()
 		# 保存成功：复位预览变换并隐藏调整控件（回到「仅显示当前头像」）
 		_reset_avatar_adjust()

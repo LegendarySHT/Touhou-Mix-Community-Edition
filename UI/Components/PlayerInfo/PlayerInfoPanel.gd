@@ -30,7 +30,6 @@ const TAB_RIGHT_RESERVE_NORM := 150.0
 # ========== 节点 ==========
 @onready var info_panel_btn: SkewButton = $InfoPanelBtn
 @onready var info_tab_c: PlayerInfoContent = $InfoPanelBtn/TabC
-@onready var profile_view: ProfileView = get_node_or_null(PathRegistry.PROFILE_VIEW) as ProfileView
 @onready var _btn_styleboxes: Array[StyleBoxFlat] = [
 	info_panel_btn.get_theme_stylebox("normal"),
 	info_panel_btn.get_theme_stylebox("pressed"),
@@ -72,14 +71,22 @@ func _on_auth_changed(user_data: Variant) -> void:
 		# 未登录
 		set_logged_out()
 
+# ========== 懒加载视图 ==========
+
+## ProfileView 首次进入详情页时才实例化，这里只读已加载的实例
+func _get_profile_view() -> ProfileView:
+	return UiStatMGR.get_loaded_view(UIStateManager.UIState.PROFILE_VIEW) as ProfileView
+
 # ========== 状态应用 ==========
 
 func _animate_to_state(s: State) -> void:
 	if _tween and _tween.is_valid():
 		_tween.kill()
 	# 离开 ProfileView 详情页（FULL_EXPANDED）时复位头像调整区，恢复首次进入时的状态
-	if _state == State.FULL_EXPANDED and s != State.FULL_EXPANDED and profile_view:
-		profile_view._reset_avatar_adjust()
+	if _state == State.FULL_EXPANDED and s != State.FULL_EXPANDED:
+		var pv := _get_profile_view()
+		if pv:
+			pv._reset_avatar_adjust()
 	_tween = AniMGR.create_managed_tween(self)
 	_tween.set_parallel(true)
 	_tween.set_ease(Tween.EASE_OUT)
@@ -103,9 +110,11 @@ func _animate_to_state(s: State) -> void:
 	# 让 PROFILE → CHARA → 返回等导航复用标准 change_state/go_back，无需特判
 	if s == State.FULL_EXPANDED:
 		if UiStatMGR.current_state != UIStateManager.UIState.PROFILE_VIEW:
-			if profile_view and profile_view.is_node_ready():
-				profile_view.page_content.modulate.a = 0.0
-				var navi := profile_view.get_node_or_null("Navi")
+			# 详情页是懒加载视图：先实例化，才能在切状态前预置入场初值
+			var pv := UiStatMGR.ensure_view_loaded(UIStateManager.UIState.PROFILE_VIEW) as ProfileView
+			if pv and pv.is_node_ready():
+				pv.page_content.modulate.a = 0.0
+				var navi := pv.get_node_or_null("Navi")
 				if navi:
 					navi.offset_transform_enabled = true
 					navi.offset_transform_position = Vector2(0, navi.size.y)

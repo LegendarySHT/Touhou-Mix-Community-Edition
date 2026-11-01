@@ -21,6 +21,14 @@ enum UIState {
 	MUSIC_PLAYER_VIEW = 9, # 音乐播放器界面
 }
 
+## 懒加载视图的固定挂载位置。遮挡关系只由树序表达，不再设置 z_index。
+enum ViewLayer {
+	SKEW_C,          ## skew/C 末尾：跟随倾斜区域的列表/详情视图
+	MAIN_AFTER_RB,   ## RB_Btn 之后：压在左上/右下按钮之上（进入该视图时按钮通常已隐藏）
+	MAIN_BEFORE_RB,  ## RB_Btn 之前：只挡左上角 LT_Btn，RB_Btn 仍在最上层
+	MAIN_BEFORE_LT,  ## LT_Btn 之前：LT_Btn / RB_Btn 都保持可见、可点
+}
+
 ## 当前UI状态（启动时为 NONE，数据就绪后通过 change_state 进入真实视图）
 var current_state: UIState = UIState.NONE
 
@@ -32,6 +40,8 @@ var state_history: Array[UIState] = []
 
 ## 状态改变信号
 signal state_changed(old_state: UIState, new_state: UIState)
+## 懒加载视图首次实例化完成（常驻组件需要在视图就绪后回填数据时订阅）
+signal view_loaded(state: UIState, node: Node)
 # signal state_entering(state: UIState)
 # signal state_exiting(state: UIState)
 
@@ -47,19 +57,21 @@ const LAZY_VIEW_PATHS := {
 	UIState.PLAY_VIEW: "res://UI/Views/PlayView/PlayView.tscn",
 	UIState.SCORE_VIEW: "res://UI/Views/ScoreView/ScoreView.tscn",
 	UIState.CHARA_VIEW: "res://UI/Views/CharaView/CharaView.tscn",
+	UIState.PROFILE_VIEW: "res://UI/Views/ProfileView/ProfileView.tscn",
 	UIState.MUSIC_PLAYER_VIEW: "res://UI/Views/MusicPlayerView/MusicPlayerView.tscn",
 }
 
-## 视图父节点路径（与 Main.tscn 结构对应）
-const LAZY_VIEW_PARENTS := {
-	UIState.MIDI_VIEW: PathRegistry.SKEW_C,
-	UIState.STORE_VIEW: PathRegistry.MAIN,
-	UIState.TRACK_VIEW: PathRegistry.SKEW_C,
-	UIState.SETTINGS_VIEW: PathRegistry.SKEW_C,
-	UIState.PLAY_VIEW: PathRegistry.MAIN,
-	UIState.SCORE_VIEW: PathRegistry.MAIN,
-	UIState.CHARA_VIEW: PathRegistry.MAIN,
-	UIState.MUSIC_PLAYER_VIEW: PathRegistry.MAIN,
+## 懒加载视图的挂载层级（UIState → ViewLayer）
+const LAZY_VIEW_LAYERS := {
+	UIState.MIDI_VIEW: ViewLayer.SKEW_C,
+	UIState.STORE_VIEW: ViewLayer.MAIN_BEFORE_RB,
+	UIState.TRACK_VIEW: ViewLayer.SKEW_C,
+	UIState.SETTINGS_VIEW: ViewLayer.SKEW_C,
+	UIState.PLAY_VIEW: ViewLayer.MAIN_AFTER_RB,
+	UIState.SCORE_VIEW: ViewLayer.MAIN_BEFORE_LT,
+	UIState.CHARA_VIEW: ViewLayer.MAIN_BEFORE_RB,
+	UIState.PROFILE_VIEW: ViewLayer.MAIN_BEFORE_RB,
+	UIState.MUSIC_PLAYER_VIEW: ViewLayer.MAIN_AFTER_RB,
 }
 
 ## 已加载的懒加载视图实例 {UIState: Node}
@@ -198,6 +210,45 @@ func _enter_initial_view(state: UIState) -> void:
 		return
 	change_state(state, false)
 
+## 统一的新建入口：加载场景 → 实例化 → 按 layer 插入 → 置为隐藏。
+## 视图的绘制/点击优先级全部由插入位置（树序）表达，不设置 z_index。
+func create_view(scene_path: String, layer: ViewLayer) -> Node:
+	var packed: PackedScene = load(scene_path)
+	if packed == null:
+		push_error("Failed to load view: %s" % scene_path)
+		return null
+	var instance: Node = packed.instantiate()
+	instance.visible = false
+	if not _place_view(instance, layer):
+		instance.free()
+		return null
+	return instance
+
+## 把新视图插到 Main / skew.C 的固定位置
+func _place_view(instance: Node, layer: ViewLayer) -> bool:
+	if layer == ViewLayer.SKEW_C:
+		var skew_c := get_node_or_null(PathRegistry.SKEW_C)
+		if skew_c == null:
+			push_error("skew/C not found for lazy view")
+			return false
+		skew_c.add_child(instance)
+		return true
+	var main := get_node_or_null(PathRegistry.MAIN)
+	if main == null:
+		push_error("Main not found for lazy view")
+		return false
+	# 仅 MAIN_BEFORE_LT 以 LT_Btn 为锚点，其余以 RB_Btn 为准：
+	# RB_Btn 之前只挡 LT；RB_Btn 之后覆盖两个角按钮
+	var anchor_path := PathRegistry.LT_BTN if layer == ViewLayer.MAIN_BEFORE_LT else PathRegistry.RB_BTN
+	var anchor := get_node_or_null(anchor_path)
+	if anchor == null or anchor.get_parent() != main:
+		push_error("Corner button not found under Main for lazy view")
+		return false
+	main.add_child(instance)
+	var anchor_index := anchor.get_index()
+	main.move_child(instance, anchor_index + (1 if layer == ViewLayer.MAIN_AFTER_RB else 0))
+	return true
+
 ## 确保懒加载视图已实例化（首次进入对应 state 时调用）
 ## 返回实例化的节点，失败返回 null
 func ensure_view_loaded(state: UIState) -> Node:
@@ -208,34 +259,11 @@ func ensure_view_loaded(state: UIState) -> Node:
 		_loaded_lazy_views.erase(state)
 	if not LAZY_VIEW_PATHS.has(state):
 		return null
-	var packed: PackedScene = load(LAZY_VIEW_PATHS[state])
-	if packed == null:
-		push_error("Failed to load view: %s" % LAZY_VIEW_PATHS[state])
+	var instance: Node = create_view(LAZY_VIEW_PATHS[state], LAZY_VIEW_LAYERS[state])
+	if instance == null:
 		return null
-	var instance: Node = packed.instantiate()
-	var parent: Node = get_node_or_null(LAZY_VIEW_PARENTS[state])
-	if parent == null:
-		push_error("Parent not found for view: %s" % state)
-		return null
-	instance.visible = false
-	parent.add_child(instance)
-	# StoreView/ScoreView 为全屏 ScrollContainer，会拦截按钮点击；
-	# 将视图移到对应导航按钮之前，让按钮盖在视图上方（按钮位置不变）
-	# StoreView → 移到 RB_Btn 之前；ScoreView → 移到 LT_Btn 之前
-	match state:
-		UIState.STORE_VIEW:
-			var rb := get_node_or_null(PathRegistry.RB_BTN)
-			if rb and rb.get_parent() == parent:
-				parent.move_child(instance, rb.get_index())
-		UIState.CHARA_VIEW:
-			var rb := get_node_or_null(PathRegistry.RB_BTN)
-			if rb and rb.get_parent() == parent:
-				parent.move_child(instance, rb.get_index())
-		UIState.SCORE_VIEW:
-			var lt := get_node_or_null(PathRegistry.LT_BTN)
-			if lt and lt.get_parent() == parent:
-				parent.move_child(instance, lt.get_index())
 	_loaded_lazy_views[state] = instance
+	view_loaded.emit(state, instance)
 	# 主题色由视图自身 _ready 注册到 ThemeMGR._theme_appliers 并自调 apply_theme() 完成，
 	# 不再需要在此手动补应用（见 ThemeManager.register_theme_applier）
 	return instance
