@@ -1,7 +1,8 @@
 extends TabContainer
 class_name PlayerInfoContent
 
-## PlayerInfo 的内容容器，管理 MiniInfo / LogIn / ProfileView / ProfilePage 四个 tab。
+## PlayerInfo 的内容容器，管理 MiniInfo / LogIn / Summary 三个 tab；
+## 全屏的 ProfileView 是 Main 下的独立视图，不在此处。
 ## 负责表单交互、个人信息填充等页面内逻辑；
 ## 状态切换、面板几何动画由 PlayerInfo.gd 处理。
 
@@ -39,45 +40,42 @@ func get_player_data() -> Dictionary:
 @onready var tip_label: Label = $MiniInfo/Tip/Label
 @onready var avatar: Panel = $MiniInfo/Avatar
 @onready var mini_avatar_rect: TextureRect = $MiniInfo/Avatar/TextureRect
-@onready var profile_avatar_rect: TextureRect = $ProfileView/Header/AvatarBig/TextureRect
+@onready var profile_avatar_rect: TextureRect = $Summary/Header/AvatarBig/TextureRect
 # 大小头像的外圈细边框（draw_center=false 的空心描边，只刷 border_color）。
 # PlayerInfoContent.tscn 里这两个 Panel 共用同一个 StyleBoxFlat，改一次即同步两处。
-@onready var profile_avatar_border: Panel = $ProfileView/Header/AvatarBig
+@onready var profile_avatar_border: Panel = $Summary/Header/AvatarBig
 @onready var data: VBoxContainer = $MiniInfo/Data
 @onready var mini_name: Label = $MiniInfo/Data/name
 @onready var mini_level: Label = $MiniInfo/Data/level
 @onready var mini_pp: Label = $MiniInfo/Data/pp
-@onready var mini_progress: ProgressBar = $MiniInfo/Data/MC/ProgressBar
-# LogIn（登录/注册表单）
-@onready var login_tab: Button = $C/Skew/LogIn/ModeToggle/LoginTab
-@onready var signup_tab: Button = $C/Skew/LogIn/ModeToggle/SignUpTab
+@onready var mini_progress: ProgressBar = $MiniInfo/Data/ProgressBar
+# LogIn（登录表单）
 @onready var account_edit: LineEdit = $C/Skew/LogIn/AccountLineEdit
 @onready var pwd_edit: LineEdit = $C/Skew/LogIn/PwdLineEdit
-@onready var confirm_pwd_label: Label = $C/Skew/LogIn/ConfirmPassword
-@onready var confirm_pwd_edit: LineEdit = $C/Skew/LogIn/ConfirmPwdLineEdit
 @onready var submit_btn: Button = $C/Skew/LogIn/SubmitBtn
+@onready var register_btn: Button = $C/Skew/LogIn/RegisterBtn
 @onready var error_msg: Label = $C/Skew/LogIn/ErrorMsg
-# ProfileView（个人信息概要，半展开状态）
-@onready var profile_name: Label = $ProfileView/Header/NameLevelVBox/NameLabel
-@onready var profile_level: Label = $ProfileView/Header/NameLevelVBox/HBox/VBox/HBox/LevelLabel
-@onready var profile_pp: Label = $ProfileView/Header/NameLevelVBox/HBox/VBox/HBox/PPLabel
-@onready var profile_rank: Label = $ProfileView/Header/NameLevelVBox/HBox/RankLabel
-@onready var profile_desc: Label = $ProfileView/Header/NameLevelVBox/HBox/VBox/Desc
-@onready var level_progress: ProgressBar = $ProfileView/ProgressMC/LevelProgressBar
-@onready var total_plays_label: Label = $ProfileView/StatsGrid/TotalPlaysLabel
-@onready var accuracy_label: Label = $ProfileView/StatsGrid/AccuracyLabel
-@onready var max_combo_label: Label = $ProfileView/StatsGrid/MaxComboLabel
-@onready var play_time_label: Label = $ProfileView/StatsGrid/PlayTimeLabel
-@onready var expand_btn: Button = $ProfileView/ExpandBtn
-@onready var logout_btn: Button = $ProfileView/LogoutBtn
-# ProfilePage（详情页，tab 3）
-@onready var profile_page: ProfilePage = $ProfilePage
+# Summary（个人信息概要，半展开状态）
+@onready var profile_name: Label = $Summary/Header/NameLevelVBox/NameLabel
+@onready var profile_level: Label = $Summary/Header/NameLevelVBox/HBox/VBox/HBox/LevelLabel
+@onready var profile_pp: Label = $Summary/Header/NameLevelVBox/HBox/VBox/HBox/PPLabel
+@onready var profile_rank: Label = $Summary/Header/NameLevelVBox/HBox/RankLabel
+@onready var profile_desc: Label = $Summary/Header/NameLevelVBox/HBox/VBox/Desc
+@onready var level_progress: ProgressBar = $Summary/LevelProgressBar
+@onready var total_plays_label: Label = $Summary/StatsGrid/TotalPlaysLabel
+@onready var accuracy_label: Label = $Summary/StatsGrid/AccuracyLabel
+@onready var max_combo_label: Label = $Summary/StatsGrid/MaxComboLabel
+@onready var play_time_label: Label = $Summary/StatsGrid/PlayTimeLabel
+@onready var expand_btn: Button = $Summary/ExpandBtn
+@onready var logout_btn: Button = $Summary/LogoutBtn
+# ProfileView（Main 下的独立全屏详情视图）
+@onready var profile_view: ProfileView = get_node_or_null(PathRegistry.PROFILE_VIEW) as ProfileView
 
 ## 提交进行中（防止重复点击）
 var _submitting: bool = false
 
 func _ready() -> void:
-	_set_login_mode()
+	_reset_login_form()
 	# 监听认证状态变化，自动同步显示
 	if not EvtBus.auth_changed.is_connected(_on_auth_changed):
 		EvtBus.auth_changed.connect(_on_auth_changed)
@@ -87,14 +85,15 @@ func _ready() -> void:
 	# 监听成绩上传成功，刷新统计
 	if not EvtBus.score_uploaded.is_connected(_on_score_uploaded):
 		EvtBus.score_uploaded.connect(_on_score_uploaded)
-	# ProfilePage 资料更新后刷新
-	if profile_page and not profile_page.profile_updated.is_connected(_fetch_profile_and_stats_async):
-		profile_page.profile_updated.connect(_fetch_profile_and_stats_async)
-	# ProfilePage 头像加载完成后，同步到 MiniInfo 和 ProfileView 的头像
-	if profile_page and not profile_page.avatar_loaded.is_connected(_on_avatar_loaded):
-		profile_page.avatar_loaded.connect(_on_avatar_loaded)
-	# 启动时若已登录（从本地恢复会话），立即填充
-	_sync_from_auth()
+	# ProfileView 资料更新后刷新
+	if profile_view and not profile_view.profile_updated.is_connected(_fetch_profile_and_stats_async):
+		profile_view.profile_updated.connect(_fetch_profile_and_stats_async)
+	# ProfileView 头像加载完成后，同步到 MiniInfo 和 Summary 的头像
+	if profile_view and not profile_view.avatar_loaded.is_connected(_on_avatar_loaded):
+		profile_view.avatar_loaded.connect(_on_avatar_loaded)
+	# 启动时若已登录（从本地恢复会话），立即填充。
+	# ProfileView 在本节点之后入树，推迟一帧等它的 @onready 就绪再回填数据。
+	_sync_from_auth.call_deferred()
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
@@ -105,13 +104,29 @@ func _exit_tree() -> void:
 
 # ========== 主题色应用 ==========
 
-## 本页只有头像外圈描边需要跟随主题色：tscn 里硬编码成淡蓝 #93B4FF（= primary_light 的初值），
-## 换主题色后仍是蓝的。圆角本身由 ImgRoundCorner shader 做，与主题无关。
+## 跟随主题色的部分：头像外圈描边 +「前往网页注册」链接按钮字色。
+## 圆角本身由 ImgRoundCorner shader 做，与主题无关。
 func apply_theme() -> void:
 	var ring: Color = ThemeMGR.get_color("primary") \
 		if ThemeMGR.get_appearance() == "light" else ThemeMGR.get_color("primary_light")
 	_set_border_keep_alpha(avatar, ring)
 	_set_border_keep_alpha(profile_avatar_border, ring)
+	_apply_register_link_theme()
+
+## 「前往网页注册」链接按钮的字色：浅色底用 primary_dark（深一档），
+## 深色底用 primary_light；hover/pressed 在此基础上做明暗反馈。
+func _apply_register_link_theme() -> void:
+	if not register_btn:
+		return
+	var is_light := ThemeMGR.get_appearance() == "light"
+	var base: Color = ThemeMGR.get_color("primary_dark") \
+		if is_light else ThemeMGR.get_color("primary_light")
+	var hover: Color = base.darkened(0.18) if is_light else base.lightened(0.22)
+	var pressed: Color = base.darkened(0.32) if is_light else base.darkened(0.08)
+	register_btn.add_theme_color_override("font_color", base)
+	register_btn.add_theme_color_override("font_hover_color", hover)
+	register_btn.add_theme_color_override("font_pressed_color", pressed)
+	register_btn.add_theme_color_override("font_focus_color", hover)
 
 ## 改 panel 描边色，保留原 alpha（tscn 里是 0.9，是刻意调过的，不能被冲掉）
 func _set_border_keep_alpha(node: Control, border: Color) -> void:
@@ -121,7 +136,7 @@ func _set_border_keep_alpha(node: Control, border: Color) -> void:
 	if sb is StyleBoxFlat:
 		sb.border_color = Color(border.r, border.g, border.b, sb.border_color.a)
 
-## ProfilePage 头像加载完成回调：同步到 MiniInfo/ProfileView 的头像
+## ProfileView 头像加载完成回调：同步到 MiniInfo/Summary 的头像
 func _on_avatar_loaded(tex: Texture2D) -> void:
 	if mini_avatar_rect:
 		mini_avatar_rect.texture = tex
@@ -159,7 +174,8 @@ func _sync_from_auth() -> void:
 			_player_data.avatar_url = str(cached.get("avatarUrl", ""))
 		populate_profile()
 		populate_mini_info()
-		profile_page.update_display(_player_data)
+		if profile_view:
+			profile_view.update_display(_player_data)
 		# 异步拉取服务端资料与统计
 		_fetch_profile_and_stats_async()
 	else:
@@ -180,14 +196,15 @@ func _sync_from_auth() -> void:
 			mini_avatar_rect.texture = default_tex
 		if profile_avatar_rect:
 			profile_avatar_rect.texture = default_tex
-		if profile_page:
-			profile_page.profile_avatar_rect.texture = default_tex
-			profile_page.avatar_border.set_display_texture(default_tex)
+		if profile_view:
+			profile_view.profile_avatar_rect.texture = default_tex
+			profile_view.avatar_border.set_display_texture(default_tex)
 		populate_profile()
 		populate_mini_info()
-		profile_page.update_display(_player_data)
-		# 清空历史列表（退出登录时）
-		profile_page.clear_history_lists()
+		if profile_view:
+			profile_view.update_display(_player_data)
+			# 清空历史列表（退出登录时）
+			profile_view.clear_history_lists()
 
 ## 异步拉取用户资料（昵称/简介/头像）并刷新显示
 func _fetch_profile_and_stats_async() -> void:
@@ -208,7 +225,8 @@ func _fetch_profile_and_stats_async() -> void:
 		_player_data.avatar_url = str(avatar_val) if avatar_val != null else ""
 		populate_profile()
 		populate_mini_info()
-		profile_page.update_display(_player_data)
+		if profile_view:
+			profile_view.update_display(_player_data)
 		_save_cached_profile()
 	# 拉取统计
 	_fetch_stats_async()
@@ -271,9 +289,10 @@ func _fetch_stats_async() -> void:
 	_player_data.grades = _group_grades(s.get("gradeDistribution", {}))
 	populate_profile()
 	populate_mini_info()
-	profile_page.update_display(_player_data)
-	# 通知 ProfilePage 刷新历史列表（成绩上传后会触发此路径）
-	profile_page.refresh_history_lists()
+	if profile_view:
+		profile_view.update_display(_player_data)
+		# 通知 ProfileView 刷新历史列表（成绩上传后会触发此路径）
+		profile_view.refresh_history_lists()
 	# 通知外部视图（如 ScoreView）统计已刷新，可同步更新显示
 	stats_refreshed.emit()
 
@@ -310,11 +329,10 @@ func apply_mini_visibility(show_tip: bool) -> void:
 	avatar.visible = not show_tip
 	data.visible = not show_tip
 
-## ProfileView 详情切换：
-## full=false（LOGGED_IN_EXPANDED）→ tab 2 概要页
-## full=true （FULL_EXPANDED）      → tab 3 ProfilePage 详情页
+## 概要页切换（tab 2）：full 仅用于切换按钮文案，
+## 全屏详情由 Main 下的 ProfileView 独立承担。
 func apply_profile_visibility(full: bool) -> void:
-	current_tab = 3 if full else 2
+	current_tab = 2
 	expand_btn.text = "收起详情" if full else "展开详情"
 
 # ========== 登录表单 ==========
@@ -328,12 +346,8 @@ const REGISTER_URL := WEBSITE_URL + "/register"
 ## ErrorMsg 兼作提示条：错误为红（场景里定义），提示为蓝。
 const HINT_COLOR := Color(0.45, 0.75, 1.0, 1.0)
 
-func _on_login_tab_pressed() -> void:
-	_set_login_mode()
-
-## 「去网页注册」：打开系统浏览器，并保留当前登录表单（不切换模式）。
-func _on_signup_tab_pressed() -> void:
-	_set_login_mode()
+## 「前往网页注册」：打开系统浏览器，登录表单保持原样。
+func _on_register_btn_pressed() -> void:
 	var err := OS.shell_open(REGISTER_URL)
 	if err != OK:
 		GLogger.warning("打开注册页失败(%d): %s" % [err, REGISTER_URL], "PlayerInfo")
@@ -341,12 +355,7 @@ func _on_signup_tab_pressed() -> void:
 		return
 	_show_hint("已在浏览器打开注册页，注册完成后回到这里登录即可", false)
 
-func _set_login_mode() -> void:
-	login_tab.button_pressed = true
-	signup_tab.button_pressed = false
-	# 注册模式下才需要的「确认密码」保留在场景里但恒不显示（隐藏节点仍在，不影响布局）
-	confirm_pwd_label.visible = false
-	confirm_pwd_edit.visible = false
+func _reset_login_form() -> void:
 	submit_btn.text = "登录"
 	_show_hint("", false)
 
@@ -418,12 +427,11 @@ func _format_error(err: String) -> String:
 func _clear_login_form() -> void:
 	account_edit.text = ""
 	pwd_edit.text = ""
-	confirm_pwd_edit.text = ""
 	error_msg.text = ""
 
 # ========== 个人信息页面 ==========
 
-## 从 _player_data 填充 ProfileView 的所有 label
+## 从 _player_data 填充 Summary 的所有 label
 func populate_profile() -> void:
 	profile_name.text = _player_data.display_name if not _player_data.display_name.is_empty() else _player_data.name
 	# 等级 = floor(sqrt(pp))，升级进度 = (pp - level²) / ((level+1)² - level²)

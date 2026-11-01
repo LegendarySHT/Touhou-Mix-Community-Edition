@@ -1,5 +1,5 @@
-extends VBoxContainer
-class_name ProfilePage
+extends Control
+class_name ProfileView
 
 ## 个人信息详情页：Profile / History / Edit 三页切换
 ## Profile 页显示资料，Edit 页提供修改功能
@@ -11,67 +11,67 @@ signal profile_updated()
 signal avatar_loaded(texture: Texture2D)
 
 # ========== PageContent（Profile / History / Edit） ==========
-@onready var page_content: TabContainer = $PC/PageContent
+@onready var page_content: TabContainer = $PageContent
 @onready var navi_profile_btn: Button = $Navi/Btns/Profile
 @onready var navi_history_btn: Button = $Navi/Btns/History
 @onready var navi_edit_btn: Button = $Navi/Btns/Edit
 
 # ========== History 页面 List 切换 ==========
-@onready var history_list: TabContainer = $PC/PageContent/History/List
-@onready var recent_play_btn: Button = $PC/PageContent/History/PC/TopBar/TopBtns/RecentPlay
-@onready var best_play_btn: Button = $PC/PageContent/History/PC/TopBar/TopBtns/BestPlay
-@onready var most_play_btn: Button = $PC/PageContent/History/PC/TopBar/TopBtns/MostPlay
+@onready var history_list: TabContainer = $PageContent/History/List
+@onready var recent_play_btn: Button = $PageContent/History/PC/TopBar/TopBtns/RecentPlay
+@onready var best_play_btn: Button = $PageContent/History/PC/TopBar/TopBtns/BestPlay
+@onready var most_play_btn: Button = $PageContent/History/PC/TopBar/TopBtns/MostPlay
 
 # ========== History 页三个列表的 VBox 容器 ==========
-@onready var recent_list_vbox: VBoxContainer = $PC/PageContent/History/List/RecentPlay/VBox
-@onready var best_list_vbox: VBoxContainer = $PC/PageContent/History/List/BestPlay/VBox
-@onready var most_list_vbox: VBoxContainer = $PC/PageContent/History/List/MostPlay/VBox
+@onready var recent_list_vbox: VBoxContainer = $PageContent/History/List/RecentPlay/VBox
+@onready var best_list_vbox: VBoxContainer = $PageContent/History/List/BestPlay/VBox
+@onready var most_list_vbox: VBoxContainer = $PageContent/History/List/MostPlay/VBox
 
 # ========== Profile 页显示节点 ==========
-@onready var profile_name_label: Label = $PC/PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox/NameLabel
-@onready var profile_pp_label: Label = $PC/PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox/Level/PPLabel
-@onready var profile_bio_label: Label = $PC/PageContent/Profile/Data/VBox/Desc/Label
-@onready var profile_avatar_rect: TextureRect = $PC/PageContent/Profile/Main/Header/HBoxContainer/AvatarBig/TextureRect
+@onready var profile_name_label: Label = $PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox/NameLabel
+@onready var profile_pp_label: Label = $PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox/Level/PPLabel
+@onready var profile_bio_label: Label = $PageContent/Profile/Data/VBox/Desc/Label
+@onready var profile_avatar_rect: TextureRect = $PageContent/Profile/Main/Header/HBoxContainer/AvatarBig/TextureRect
 # 头像外圈细边框（draw_center=false 的空心描边，bg_color 无意义，只刷 border_color）
-@onready var profile_avatar_border: Panel = $PC/PageContent/Profile/Main/Header/HBoxContainer/AvatarBig
+@onready var profile_avatar_border: Panel = $PageContent/Profile/Main/Header/HBoxContainer/AvatarBig
 # ========== Profile 角色展示（Displayer） ==========
 # 角色卡外圈细边框（同上，空心描边）
-@onready var chara_card_border: PanelContainer = $PC/PageContent/Profile/Main/PC/Displayer/Border
-@onready var chara_display_img: TextureRect = $PC/PageContent/Profile/Main/PC/Displayer/Border/CharaImg
-@onready var bg_display_img: TextureRect = $PC/PageContent/Profile/Main/PC/Displayer/Border/BGImg
-@onready var chara_info_name: Label = $PC/PageContent/Profile/Main/PC/Displayer/Info/VBox/Name
-@onready var chara_info_author: Label = $PC/PageContent/Profile/Main/PC/Displayer/Info/VBox/Illustrator
+@onready var chara_card_border: PanelContainer = $PageContent/Profile/Main/Displayer/Border
+@onready var chara_display_img: TextureRect = $PageContent/Profile/Main/Displayer/Border/CharaImg
+@onready var bg_display_img: TextureRect = $PageContent/Profile/Main/Displayer/Border/BGImg
+@onready var chara_info_name: Label = $PageContent/Profile/Main/Displayer/Info/VBox/Name
+@onready var chara_info_author: Label = $PageContent/Profile/Main/Displayer/Info/VBox/Illustrator
 
 # ========== History 页统计显示节点（TopBar/Grid） ==========
-@onready var history_pp_label: Label = $PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid/pp
-@onready var history_s_count: Label = $PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid/SCount
-@onready var history_a_count: Label = $PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid/ACount
-@onready var history_b_count: Label = $PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid/BCount
-@onready var history_c_count: Label = $PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid/CCount
-@onready var history_d_count: Label = $PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid/DCount
-@onready var history_f_count: Label = $PC/PageContent/History/PC/TopBar/PC/InnerMargin/Grid/FCount
+@onready var history_pp_label: Label = $PageContent/History/PC/TopBar/PC/Grid/pp
+@onready var history_s_count: Label = $PageContent/History/PC/TopBar/PC/Grid/SCount
+@onready var history_a_count: Label = $PageContent/History/PC/TopBar/PC/Grid/ACount
+@onready var history_b_count: Label = $PageContent/History/PC/TopBar/PC/Grid/BCount
+@onready var history_c_count: Label = $PageContent/History/PC/TopBar/PC/Grid/CCount
+@onready var history_d_count: Label = $PageContent/History/PC/TopBar/PC/Grid/DCount
+@onready var history_f_count: Label = $PageContent/History/PC/TopBar/PC/Grid/FCount
 
 # ========== Edit 页输入节点 ==========
-@onready var nickname_edit: LineEdit = $PC/PageContent/Edit/HBox/ProfileEdit/Nickname/LineEdit
-@onready var desc_edit: LineEdit = $PC/PageContent/Edit/HBox/ProfileEdit/Desc/LineEdit
-@onready var old_pwd_edit: LineEdit = $PC/PageContent/Edit/HBox/OtherEdit/Password/LineEdit
-@onready var new_pwd_edit: LineEdit = $PC/PageContent/Edit/HBox/OtherEdit/NewPassword/LineEdit
-@onready var avatar_border: AvatarPreview = $PC/PageContent/Edit/HBox/OtherEdit/AvatorEdit/Border
-@onready var avatar_scale_slider: HSlider = $PC/PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/ScaleSlider
-@onready var upload_avatar_btn: Button = $PC/PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/UploadBtn
-@onready var avatar_save_btn: Button = $PC/PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/SaveBtn
-@onready var nickname_confirm_btn: Button = $PC/PageContent/Edit/HBox/ProfileEdit/Nickname/ConfirmBtn
-@onready var desc_confirm_btn: Button = $PC/PageContent/Edit/HBox/ProfileEdit/Desc/ConfirmBtn
-@onready var pwd_confirm_btn: Button = $PC/PageContent/Edit/HBox/OtherEdit/NewPassword/ConfirmBtn
+@onready var nickname_edit: LineEdit = $PageContent/Edit/HBox/ProfileEdit/Nickname/LineEdit
+@onready var desc_edit: LineEdit = $PageContent/Edit/HBox/ProfileEdit/Desc/LineEdit
+@onready var old_pwd_edit: LineEdit = $PageContent/Edit/HBox/OtherEdit/Password/LineEdit
+@onready var new_pwd_edit: LineEdit = $PageContent/Edit/HBox/OtherEdit/NewPassword/LineEdit
+@onready var avatar_border: AvatarPreview = $PageContent/Edit/HBox/OtherEdit/AvatorEdit/Border
+@onready var avatar_scale_slider: HSlider = $PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/ScaleSlider
+@onready var upload_avatar_btn: Button = $PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/UploadBtn
+@onready var avatar_save_btn: Button = $PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/SaveBtn
+@onready var nickname_confirm_btn: Button = $PageContent/Edit/HBox/ProfileEdit/Nickname/ConfirmBtn
+@onready var desc_confirm_btn: Button = $PageContent/Edit/HBox/ProfileEdit/Desc/ConfirmBtn
+@onready var pwd_confirm_btn: Button = $PageContent/Edit/HBox/OtherEdit/NewPassword/ConfirmBtn
 
 # ========== 主题色引用节点（每个共享 StyleBox 取一个代表节点） ==========
-@onready var _info_panel: PanelContainer = $PC/PageContent/Profile/Main/PC/Displayer/Info
-@onready var _header_panel: PanelContainer = $PC/PageContent/Profile/Main/Header
-@onready var _play_panel: PanelContainer = $PC/PageContent/Profile/Data/VBox/Play
-@onready var _rank_total: PanelContainer = $PC/PageContent/Profile/Data/VBox/Desc/Rank/RankTotal
+@onready var _info_panel: PanelContainer = $PageContent/Profile/Main/Displayer/Info
+@onready var _header_panel: PanelContainer = $PageContent/Profile/Main/Header
+@onready var _play_panel: PanelContainer = $PageContent/Profile/Data/VBox/Play
+@onready var _rank_total: Panel = $PageContent/Profile/Data/VBox/Desc/Rank/RankTotal
 @onready var _navi_panel: PanelContainer = $Navi
-@onready var _history_pc: PanelContainer = $PC/PageContent/History/PC
-@onready var _edit_confirm_btn: Button = $PC/PageContent/Edit/HBox/ProfileEdit/Nickname/ConfirmBtn
+@onready var _history_pc: PanelContainer = $PageContent/History/PC
+@onready var _edit_confirm_btn: Button = $PageContent/Edit/HBox/ProfileEdit/Nickname/ConfirmBtn
 
 # PageContent tab 索引
 const TAB_PROFILE := 0
@@ -83,7 +83,7 @@ const LIST_BEST := 1
 const LIST_MOST := 2
 
 # 记录列表项场景（preload 避免每次加载）
-const RECORD_ITEM_SCENE := preload("res://UI/Components/PlayerInfo/recordListItem.tscn")
+const RECORD_ITEM_SCENE := preload("res://UI/Views/ProfileView/recordListItem.tscn")
 # 单页记录数
 const RECORD_PAGE_LIMIT := 20
 
@@ -370,7 +370,7 @@ func _apply_avatar(tex: Texture2D, url: String, from_network: bool) -> void:
 	avatar_border.set_display_texture(tex)
 	avatar_loaded.emit(tex)
 	if from_network:
-		GLogger.info("Avatar loaded: %s" % url, "ProfilePage")
+		GLogger.info("Avatar loaded: %s" % url, "ProfileView")
 
 # ========== Edit 页面：资料修改 ==========
 
@@ -389,10 +389,10 @@ func _on_save_nickname_btn_pressed() -> void:
 	_busy = false
 	nickname_confirm_btn.disabled = false
 	if result.get("ok", false):
-		GLogger.info("Nickname updated: %s" % new_name, "ProfilePage")
+		GLogger.info("Nickname updated: %s" % new_name, "ProfileView")
 		profile_updated.emit()
 	else:
-		GLogger.warning("Nickname update failed: %s" % str(result.get("error", "")), "ProfilePage")
+		GLogger.warning("Nickname update failed: %s" % str(result.get("error", "")), "ProfileView")
 
 ## 保存简介
 func _on_save_desc_btn_pressed() -> void:
@@ -407,10 +407,10 @@ func _on_save_desc_btn_pressed() -> void:
 	_busy = false
 	desc_confirm_btn.disabled = false
 	if result.get("ok", false):
-		GLogger.info("Bio updated", "ProfilePage")
+		GLogger.info("Bio updated", "ProfileView")
 		profile_updated.emit()
 	else:
-		GLogger.warning("Bio update failed: %s" % str(result.get("error", "")), "ProfilePage")
+		GLogger.warning("Bio update failed: %s" % str(result.get("error", "")), "ProfileView")
 
 ## 修改密码
 func _on_save_pwd_btn_pressed() -> void:
@@ -431,11 +431,11 @@ func _on_save_pwd_btn_pressed() -> void:
 	_busy = false
 	pwd_confirm_btn.disabled = false
 	if result.get("ok", false):
-		GLogger.info("Password changed", "ProfilePage")
+		GLogger.info("Password changed", "ProfileView")
 		old_pwd_edit.text = ""
 		new_pwd_edit.text = ""
 	else:
-		GLogger.warning("Password change failed: %s" % str(result.get("error", "")), "ProfilePage")
+		GLogger.warning("Password change failed: %s" % str(result.get("error", "")), "ProfileView")
 		old_pwd_edit.text = ""
 
 ## 上传头像：弹出 FileDialog 选择图片
@@ -462,7 +462,7 @@ func _on_save_avatar_btn_pressed() -> void:
 	if _busy:
 		return
 	if _pending_avatar == null:
-		GLogger.info("No avatar selected to save", "ProfilePage")
+		GLogger.info("No avatar selected to save", "ProfileView")
 		return
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
 		return
@@ -480,7 +480,7 @@ func _on_save_avatar_btn_pressed() -> void:
 	var crop_rect := Rect2(-off / s, view / s)
 	crop_rect = crop_rect.intersection(Rect2(0, 0, img.get_width(), img.get_height()))
 	if crop_rect.size.x < 1 or crop_rect.size.y < 1:
-		GLogger.warning("Avatar crop region empty", "ProfilePage")
+		GLogger.warning("Avatar crop region empty", "ProfileView")
 		return
 	var square := img.get_region(Rect2i(crop_rect))
 	# 限制输出最长边 <= 512，避免上传超大图
@@ -490,7 +490,7 @@ func _on_save_avatar_btn_pressed() -> void:
 		square.resize(maxi(1, int(square.get_width() * ratio)), maxi(1, int(square.get_height() * ratio)))
 	var png := square.save_png_to_buffer()
 	if png.is_empty():
-		GLogger.warning("Avatar PNG encode failed", "ProfilePage")
+		GLogger.warning("Avatar PNG encode failed", "ProfileView")
 		return
 	_busy = true
 	avatar_save_btn.disabled = true
@@ -499,7 +499,7 @@ func _on_save_avatar_btn_pressed() -> void:
 	_busy = false
 	avatar_save_btn.disabled = false
 	if result.get("ok", false):
-		GLogger.info("Avatar uploaded", "ProfilePage")
+		GLogger.info("Avatar uploaded", "ProfileView")
 		# 直接从上传响应中提取 avatarUrl 并立即加载头像
 		if result.data is Dictionary:
 			var av = result.data.get("avatarUrl", "")
@@ -510,7 +510,7 @@ func _on_save_avatar_btn_pressed() -> void:
 		# 保存成功：复位预览变换并隐藏调整控件（回到「仅显示当前头像」）
 		_reset_avatar_adjust()
 	else:
-		GLogger.warning("Avatar upload failed: %s" % str(result.get("error", "")), "ProfilePage")
+		GLogger.warning("Avatar upload failed: %s" % str(result.get("error", "")), "ProfileView")
 
 ## FileDialog 选择图片后：解码载入预览（保存时再裁剪上传）
 func _on_avatar_file_selected(path: String) -> void:
@@ -521,7 +521,7 @@ func _on_avatar_file_selected(path: String) -> void:
 		return
 	# 源图过大时直接拒绝（解码占用内存）
 	if bytes.size() > 8 * 1024 * 1024:
-		GLogger.warning("Avatar too large (>%d bytes), skipping" % (8 * 1024 * 1024), "ProfilePage")
+		GLogger.warning("Avatar too large (>%d bytes), skipping" % (8 * 1024 * 1024), "ProfileView")
 		return
 	var img := Image.new()
 	var ext := path.get_extension().to_lower()
@@ -535,7 +535,7 @@ func _on_avatar_file_selected(path: String) -> void:
 		if err != OK:
 			err = img.load_jpg_from_buffer(bytes)
 	if err != OK or img.get_width() <= 0 or img.get_height() <= 0:
-		GLogger.warning("Avatar image decode failed (not PNG/JPG): %s" % path, "ProfilePage")
+		GLogger.warning("Avatar image decode failed (not PNG/JPG): %s" % path, "ProfileView")
 		return
 	# 过长边降到 2048 内，避免预览/记忆体浪费
 	var max_side := maxi(img.get_width(), img.get_height())
@@ -543,7 +543,7 @@ func _on_avatar_file_selected(path: String) -> void:
 		var ratio := 2048.0 / max_side
 		img.resize(maxi(1, int(img.get_width() * ratio)), maxi(1, int(img.get_height() * ratio)))
 	_show_avatar_preview(img)
-	GLogger.info("Avatar loaded for preview: %s" % path, "ProfilePage")
+	GLogger.info("Avatar loaded for preview: %s" % path, "ProfileView")
 
 ## 载入源图到预览：交给 Border 自绘（可平移/缩放）
 func _show_avatar_preview(img: Image) -> void:
@@ -582,7 +582,7 @@ func _load_recent_scores() -> void:
 	if not is_instance_valid(self):
 		return
 	if not result.get("ok", false) or not result.data is Dictionary:
-		GLogger.warning("Failed to load recent scores: %s" % str(result.get("error", "")), "ProfilePage")
+		GLogger.warning("Failed to load recent scores: %s" % str(result.get("error", "")), "ProfileView")
 		return
 	_populate_records(recent_list_vbox, result.data.get("records", []), RecordListItem.RecordMode.RECENT)
 	_recent_loaded = true
@@ -601,7 +601,7 @@ func _load_best_scores() -> void:
 	if not is_instance_valid(self):
 		return
 	if not result.get("ok", false) or not result.data is Dictionary:
-		GLogger.warning("Failed to load best scores: %s" % str(result.get("error", "")), "ProfilePage")
+		GLogger.warning("Failed to load best scores: %s" % str(result.get("error", "")), "ProfileView")
 		return
 	_populate_records(best_list_vbox, result.data.get("records", []), RecordListItem.RecordMode.BEST)
 	_best_loaded = true
@@ -620,7 +620,7 @@ func _load_most_played() -> void:
 	if not is_instance_valid(self):
 		return
 	if not result.get("ok", false) or not result.data is Dictionary:
-		GLogger.warning("Failed to load most played: %s" % str(result.get("error", "")), "ProfilePage")
+		GLogger.warning("Failed to load most played: %s" % str(result.get("error", "")), "ProfileView")
 		return
 	_populate_records(most_list_vbox, result.data.get("records", []), RecordListItem.RecordMode.MOST)
 	_most_loaded = true

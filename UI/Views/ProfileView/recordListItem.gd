@@ -1,7 +1,7 @@
 extends ListItemBase
 class_name RecordListItem
 
-## 记录列表项（ProfilePage History 页三个 tab 共用）
+## 记录列表项（ProfileView History 页三个 tab 共用）
 ## 按 RecordMode 自动调整 MainInfo 显示内容与分数旁 PP 标签的可见性
 
 ## 记录列表类型（对应 History/List 的三个 tab）

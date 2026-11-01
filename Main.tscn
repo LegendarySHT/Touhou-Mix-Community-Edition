@@ -19,6 +19,7 @@
 [ext_resource type="Script" uid="uid://dly3k36hy880k" path="res://UI/Components/PopupWindow/PopupWindow.gd" id="23_bg4s2"]
 [ext_resource type="Script" uid="uid://bb04m122u3fvm" path="res://UI/Components/LeftTopBtn.gd" id="23_mxvw5"]
 [ext_resource type="PackedScene" uid="uid://ck0ou0rxonnto" path="res://UI/Components/PlayerInfo/PlayerInfoContent.tscn" id="23_oye8v"]
+[ext_resource type="PackedScene" uid="uid://bt37v73uu1f0n" path="res://UI/Views/ProfileView/ProfileView.tscn" id="27_pfvw"]
 [ext_resource type="Script" uid="uid://darocq4d7rwmu" path="res://UI/Views/SortedMidiView/SortedMidiView.gd" id="26_5mvff"]
 [ext_resource type="Script" uid="uid://c6mxoockmlm1a" path="res://UI/Components/FocusManager.gd" id="26_xrxkg"]
 [ext_resource type="PackedScene" uid="uid://6x22q0274hxw" path="res://UI/Components/PopupWindow/PopupWindow.tscn" id="28_hri7i"]
@@ -978,6 +979,16 @@ anchors_preset = -1
 offset_left = 55.0
 offset_top = 10.0
 offset_right = -205.0
+
+[node name="ProfileView" parent="." instance=ExtResource("27_pfvw")]
+visible = false
+z_index = 30
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
 [node name="RB_Btn" type="Button" parent="." unique_id=1566254107]
 z_index = 99

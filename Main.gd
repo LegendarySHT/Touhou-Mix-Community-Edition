@@ -359,7 +359,7 @@ func apply_theme() -> void:
 		if sc_sb is StyleBoxFlat:
 			sc_sb.bg_color = ThemeMGR.get_color("surface_high")
 			sc_sb.border_color = Color(primary.r, primary.g, primary.b, 0.55)
-	# PlayerInfo 面板按钮 — 展开后兼作 ProfilePage 的页面底色，用较深的中性面（内容面板在其上更亮，形成层次）
+	# PlayerInfo 面板按钮 — 展开后兼作 ProfileView 的页面底色，用较深的中性面（内容面板在其上更亮，形成层次）
 	var info_btn := get_node_or_null("PlayerInfo/InfoPanelBtn") as Button
 	if info_btn:
 		for state in ["normal", "pressed", "hover"]:

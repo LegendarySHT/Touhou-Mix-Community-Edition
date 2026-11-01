@@ -442,7 +442,7 @@ var ui_exist = {
 	"Setting_View": false,
 	"Score_View": false,
 	"Chara_View": false,
-	"Profile_Page": false,
+	"Profile_View": false,
 	"Music_Player_View": false,
 }
 
@@ -459,7 +459,7 @@ var ui_part = {
 	UIStateManager.UIState.PLAY_VIEW: ["Play_View"],
 	UIStateManager.UIState.SCORE_VIEW: ["Score_View"],
 	UIStateManager.UIState.CHARA_VIEW: ["Chara_View"],
-	UIStateManager.UIState.PROFILE_VIEW: ["Profile_Page", "Player_Info"],
+	UIStateManager.UIState.PROFILE_VIEW: ["Profile_View", "Player_Info"],
 	UIStateManager.UIState.MUSIC_PLAYER_VIEW: ["Music_Player_View"],
 }
 
@@ -477,7 +477,7 @@ var ui_path_map = {
 	"Setting_View": PathRegistry.SETTING_VIEW,
 	"Score_View": PathRegistry.SCORE_VIEW,
 	"Chara_View": PathRegistry.CHARA_VIEW,
-	"Profile_Page": PathRegistry.PROFILE_PAGE,
+	"Profile_View": PathRegistry.PROFILE_VIEW,
 	"Music_Player_View": PathRegistry.MUSIC_PLAYER_VIEW,
 }
 
@@ -674,13 +674,18 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 				return null
 			if ani_comp.has_method("play_exit"):
 				ani_comp.play_exit()
-		"Profile_Page":
+		"Profile_View":
 			var navi := ani_comp.get_node_or_null("Navi")
 			if navi:
 				animate_offset_to(navi, Vector2(0, navi.size.y), 0.3, "ProfileNaviOut")
-			var content := ani_comp.get_node_or_null("PC/PageContent")
+			var content := ani_comp.get_node_or_null("PageContent")
 			if content:
 				tween = animate_fade_out(content, 0.3, tween_id)
+				# 独立视图：退场动画结束后隐藏，避免盖在其它页面上
+				tween.finished.connect(func() -> void:
+					if is_instance_valid(ani_comp) and UiStatMGR.current_state != UIStateManager.UIState.PROFILE_VIEW:
+						ani_comp.visible = false
+				)
 		"Music_Player_View":
 			# 退出动画同样由页面自管（animate(false)）
 			if ani_comp == null or not is_instance_valid(ani_comp):
@@ -828,13 +833,13 @@ func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween
 				return null
 			if ani_comp.has_method("play_enter"):
 				ani_comp.play_enter()
-		"Profile_Page":
+		"Profile_View":
 			# 底栏向上滑入 + 内容区淡入
 			var navi := ani_comp.get_node_or_null("Navi")
 			if navi:
 				navi.offset_transform_position = Vector2(0, navi.size.y)
 				animate_offset_back(navi, 0.3, "ProfileNaviIn")
-			var content := ani_comp.get_node_or_null("PC/PageContent")
+			var content := ani_comp.get_node_or_null("PageContent")
 			if content:
 				content.modulate.a = 0.0
 				tween = animate_fade_in(content, 0.35, tween_id)

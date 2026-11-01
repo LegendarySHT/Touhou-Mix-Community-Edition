@@ -21,7 +21,7 @@ const RB_BTN := "/root/Main/RB_Btn"
 ## 常驻 UI
 const PLAYER_INFO := "/root/Main/PlayerInfo"
 const PLAYER_INFO_TAB_C := "/root/Main/PlayerInfo/InfoPanelBtn/TabC"
-const PROFILE_PAGE := "/root/Main/PlayerInfo/InfoPanelBtn/TabC/ProfilePage"
+const PROFILE_VIEW := "/root/Main/ProfileView"
 const CHARACTER := "/root/Main/Chara"
 
 const POPUP_WINDOW_SHADER := "/root/Main/PopupWindowShader"

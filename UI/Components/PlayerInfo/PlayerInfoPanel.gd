@@ -30,6 +30,7 @@ const TAB_RIGHT_RESERVE_NORM := 150.0
 # ========== 节点 ==========
 @onready var info_panel_btn: SkewButton = $InfoPanelBtn
 @onready var info_tab_c: PlayerInfoContent = $InfoPanelBtn/TabC
+@onready var profile_view: ProfileView = get_node_or_null(PathRegistry.PROFILE_VIEW) as ProfileView
 @onready var _btn_styleboxes: Array[StyleBoxFlat] = [
 	info_panel_btn.get_theme_stylebox("normal"),
 	info_panel_btn.get_theme_stylebox("pressed"),
@@ -76,9 +77,9 @@ func _on_auth_changed(user_data: Variant) -> void:
 func _animate_to_state(s: State) -> void:
 	if _tween and _tween.is_valid():
 		_tween.kill()
-	# 离开 ProfilePage 详情页（FULL_EXPANDED）时复位头像调整区，恢复首次进入时的状态
-	if _state == State.FULL_EXPANDED and s != State.FULL_EXPANDED:
-		info_tab_c.profile_page._reset_avatar_adjust()
+	# 离开 ProfileView 详情页（FULL_EXPANDED）时复位头像调整区，恢复首次进入时的状态
+	if _state == State.FULL_EXPANDED and s != State.FULL_EXPANDED and profile_view:
+		profile_view._reset_avatar_adjust()
 	_tween = AniMGR.create_managed_tween(self)
 	_tween.set_parallel(true)
 	_tween.set_ease(Tween.EASE_OUT)
@@ -102,10 +103,9 @@ func _animate_to_state(s: State) -> void:
 	# 让 PROFILE → CHARA → 返回等导航复用标准 change_state/go_back，无需特判
 	if s == State.FULL_EXPANDED:
 		if UiStatMGR.current_state != UIStateManager.UIState.PROFILE_VIEW:
-			var pp := info_tab_c.profile_page
-			if pp:
-				pp.page_content.modulate.a = 0.0
-				var navi := pp.get_node_or_null("Navi")
+			if profile_view and profile_view.is_node_ready():
+				profile_view.page_content.modulate.a = 0.0
+				var navi := profile_view.get_node_or_null("Navi")
 				if navi:
 					navi.offset_transform_enabled = true
 					navi.offset_transform_position = Vector2(0, navi.size.y)
@@ -121,8 +121,10 @@ func _animate_to_state(s: State) -> void:
 func _is_expanded(s: State) -> bool:
 	return s == State.EXPANDED or s == State.LOGGED_IN_EXPANDED or s == State.FULL_EXPANDED
 
-## 3-way 内容切换：用 TabContainer.current_tab 切换 MiniInfo / LogIn / ProfileView / ProfilePage
+## 内容切换：MiniInfo / LogIn / Summary 用 TabContainer.current_tab 切换；
+## 全屏详情由 Main 下的独立 ProfileView 承担，此时 TabC 整体隐藏，只露出面板底色。
 func _apply_content_visibility(s: State) -> void:
+	info_tab_c.visible = s != State.FULL_EXPANDED
 	if not _is_expanded(s):
 		# 收起状态：MiniInfo (tab 0)
 		info_tab_c.current_tab = 0
@@ -131,7 +133,7 @@ func _apply_content_visibility(s: State) -> void:
 		# 登录/注册表单 (tab 1)
 		info_tab_c.current_tab = 1
 	else:
-		# LOGGED_IN_EXPANDED → tab 2 概要页；FULL_EXPANDED → tab 3 ProfilePage
+		# LOGGED_IN_EXPANDED → tab 2 概要页；FULL_EXPANDED → 概要页留在下面，由 ProfileView 覆盖
 		info_tab_c.apply_profile_visibility(s == State.FULL_EXPANDED)
 
 # ========== 面板几何 ==========

@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cjgolmmrnft4n"]
 
-[ext_resource type="Script" uid="uid://bnunrurnc8gvb" path="res://UI/Components/PlayerInfo/recordListItem.gd" id="1_v8uxu"]
+[ext_resource type="Script" uid="uid://bnunrurnc8gvb" path="res://UI/Views/ProfileView/recordListItem.gd" id="1_v8uxu"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="3_e3e5v"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ng81m"]

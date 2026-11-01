@@ -3,9 +3,10 @@
 [ext_resource type="Script" uid="uid://c24k3xb5msmbw" path="res://UI/Components/PlayerInfo/PlayerInfoContent.gd" id="1_5k12w"]
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="2_1nkbp"]
 [ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ImgRoundCorner.gdshader" id="2_yxdox"]
-[ext_resource type="PackedScene" uid="uid://bt37v73uu1f0n" path="res://UI/Components/PlayerInfo/ProfilePage.tscn" id="3_nu1yf"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_3y6u5"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_link"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hhcpw"]
 draw_center = false
@@ -29,13 +30,13 @@ shadow_size = 10
 shader = ExtResource("2_yxdox")
 shader_parameter/corner_radius = 12.0
 shader_parameter/rect_size = Vector2(150, 150)
-
-[sub_resource type="ButtonGroup" id="ButtonGroup_shxvi"]
+shader_parameter/uv_rect = Vector4(0, 0, 1, 1)
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_yverd"]
 shader = ExtResource("2_yxdox")
 shader_parameter/corner_radius = 12.0
 shader_parameter/rect_size = Vector2(200, 200)
+shader_parameter/uv_rect = Vector4(0, 0, 1, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3y6u5"]
 draw_center = false
@@ -52,7 +53,6 @@ expand_margin_right = 15.0
 expand_margin_bottom = 10.0
 
 [node name="TabC" type="TabContainer" unique_id=1566850446]
-anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
@@ -87,7 +87,7 @@ grow_vertical = 0
 rotation = -1.0471976
 offset_transform_enabled = true
 offset_transform_position = Vector2(-25, -45)
-text = "点击此处注册"
+text = "点击登录"
 
 [node name="Avatar" type="Panel" parent="MiniInfo" unique_id=2043667768]
 visible = false
@@ -138,12 +138,8 @@ theme_override_font_sizes/font_size = 30
 text = "114514 pp"
 vertical_alignment = 2
 
-[node name="MC" type="MarginContainer" parent="MiniInfo/Data" unique_id=1463041133]
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/margin_top = 10
-
-[node name="ProgressBar" type="ProgressBar" parent="MiniInfo/Data/MC" unique_id=1609053280]
+[node name="ProgressBar" type="ProgressBar" parent="MiniInfo/Data" unique_id=1609053280]
+custom_minimum_size = Vector2(0, 30)
 layout_mode = 2
 mouse_filter = 2
 
@@ -166,26 +162,6 @@ offset_bottom = 630.0
 theme_override_constants/separation = 15
 alignment = 1
 
-[node name="ModeToggle" type="HBoxContainer" parent="C/Skew/LogIn" unique_id=2071699909]
-layout_mode = 2
-theme_override_constants/separation = 0
-alignment = 1
-
-[node name="LoginTab" type="Button" parent="C/Skew/LogIn/ModeToggle" unique_id=2122185296]
-custom_minimum_size = Vector2(160, 80)
-layout_mode = 2
-toggle_mode = true
-button_pressed = true
-button_group = SubResource("ButtonGroup_shxvi")
-text = "登录"
-
-[node name="SignUpTab" type="Button" parent="C/Skew/LogIn/ModeToggle" unique_id=828383406]
-custom_minimum_size = Vector2(220, 80)
-layout_mode = 2
-toggle_mode = true
-button_group = SubResource("ButtonGroup_shxvi")
-text = "跳转到网页注册"
-
 [node name="Account" type="Label" parent="C/Skew/LogIn" unique_id=327849834]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
@@ -207,19 +183,6 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 32
 secret = true
 
-[node name="ConfirmPassword" type="Label" parent="C/Skew/LogIn" unique_id=1095402338]
-visible = false
-layout_mode = 2
-theme_override_font_sizes/font_size = 32
-text = "确认密码"
-
-[node name="ConfirmPwdLineEdit" type="LineEdit" parent="C/Skew/LogIn" unique_id=1586639670]
-visible = false
-custom_minimum_size = Vector2(0, 60)
-layout_mode = 2
-theme_override_font_sizes/font_size = 32
-secret = true
-
 [node name="Control" type="Control" parent="C/Skew/LogIn" unique_id=197178585]
 custom_minimum_size = Vector2(0, 30)
 layout_mode = 2
@@ -235,30 +198,38 @@ text = "登录"
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
 theme_override_font_sizes/font_size = 32
-text = ""
 horizontal_alignment = 1
 autowrap_mode = 3
 
-[node name="ProfileView" type="VBoxContainer" parent="." unique_id=65430877]
+[node name="RegisterBtn" type="Button" parent="C/Skew/LogIn"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("StyleBoxEmpty_link")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_link")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_link")
+text = "没有账号？前往网页注册"
+
+[node name="Summary" type="VBoxContainer" parent="." unique_id=65430877]
 visible = false
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 15
 metadata/_tab_index = 2
 
-[node name="Header" type="HBoxContainer" parent="ProfileView" unique_id=504012720]
+[node name="Header" type="HBoxContainer" parent="Summary" unique_id=504012720]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 30
 
-[node name="AvatarBig" type="Panel" parent="ProfileView/Header" unique_id=1572480588]
+[node name="AvatarBig" type="Panel" parent="Summary/Header" unique_id=1572480588]
 custom_minimum_size = Vector2(200, 200)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_hhcpw")
 
-[node name="TextureRect" type="TextureRect" parent="ProfileView/Header/AvatarBig" unique_id=1518243604]
+[node name="TextureRect" type="TextureRect" parent="Summary/Header/AvatarBig" unique_id=1518243604]
 material = SubResource("ShaderMaterial_yverd")
 layout_mode = 1
 anchors_preset = 15
@@ -271,7 +242,7 @@ texture = ExtResource("2_1nkbp")
 expand_mode = 3
 stretch_mode = 5
 
-[node name="NameLevelVBox" type="VBoxContainer" parent="ProfileView/Header" unique_id=2024943027]
+[node name="NameLevelVBox" type="VBoxContainer" parent="Summary/Header" unique_id=2024943027]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
@@ -279,24 +250,24 @@ mouse_filter = 2
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="NameLabel" type="Label" parent="ProfileView/Header/NameLevelVBox" unique_id=977938233]
+[node name="NameLabel" type="Label" parent="Summary/Header/NameLevelVBox" unique_id=977938233]
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "Anonymous Player"
 vertical_alignment = 1
 
-[node name="HBox" type="HBoxContainer" parent="ProfileView/Header/NameLevelVBox" unique_id=1102625609]
+[node name="HBox" type="HBoxContainer" parent="Summary/Header/NameLevelVBox" unique_id=1102625609]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="VBox" type="VBoxContainer" parent="ProfileView/Header/NameLevelVBox/HBox" unique_id=307888191]
+[node name="VBox" type="VBoxContainer" parent="Summary/Header/NameLevelVBox/HBox" unique_id=307888191]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 3.0
 theme_override_constants/separation = 0
 
-[node name="Desc" type="Label" parent="ProfileView/Header/NameLevelVBox/HBox/VBox" unique_id=54913783]
+[node name="Desc" type="Label" parent="Summary/Header/NameLevelVBox/HBox/VBox" unique_id=54913783]
 custom_minimum_size = Vector2(350, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -306,11 +277,11 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_3y6u5")
 text = "个人简介"
 autowrap_mode = 1
 
-[node name="HBox" type="HBoxContainer" parent="ProfileView/Header/NameLevelVBox/HBox/VBox" unique_id=387149746]
+[node name="HBox" type="HBoxContainer" parent="Summary/Header/NameLevelVBox/HBox/VBox" unique_id=387149746]
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="LevelLabel" type="Label" parent="ProfileView/Header/NameLevelVBox/HBox/VBox/HBox" unique_id=2074223748]
+[node name="LevelLabel" type="Label" parent="Summary/Header/NameLevelVBox/HBox/VBox/HBox" unique_id=2074223748]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 28
@@ -318,7 +289,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_3y6u5")
 text = "Level 1"
 horizontal_alignment = 1
 
-[node name="PPLabel" type="Label" parent="ProfileView/Header/NameLevelVBox/HBox/VBox/HBox" unique_id=906206609]
+[node name="PPLabel" type="Label" parent="Summary/Header/NameLevelVBox/HBox/VBox/HBox" unique_id=906206609]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 28
@@ -326,7 +297,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_3y6u5")
 text = "0 pp"
 horizontal_alignment = 1
 
-[node name="RankLabel" type="Label" parent="ProfileView/Header/NameLevelVBox/HBox" unique_id=1059053701]
+[node name="RankLabel" type="Label" parent="Summary/Header/NameLevelVBox/HBox" unique_id=1059053701]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 32
@@ -334,37 +305,32 @@ text = "Unranked"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="ProgressMC" type="MarginContainer" parent="ProfileView" unique_id=98318325]
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/margin_top = 5
-
-[node name="LevelProgressBar" type="ProgressBar" parent="ProfileView/ProgressMC" unique_id=1523172660]
+[node name="LevelProgressBar" type="ProgressBar" parent="Summary" unique_id=1523172660]
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 mouse_filter = 2
 rounded = true
 
-[node name="StatsGrid" type="GridContainer" parent="ProfileView" unique_id=915956401]
+[node name="StatsGrid" type="GridContainer" parent="Summary" unique_id=915956401]
 layout_mode = 2
 mouse_filter = 2
 columns = 2
 
-[node name="TotalPlaysLabel" type="Label" parent="ProfileView/StatsGrid" unique_id=590004141]
+[node name="TotalPlaysLabel" type="Label" parent="Summary/StatsGrid" unique_id=590004141]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 24
 text = "Total Plays: 0"
 horizontal_alignment = 1
 
-[node name="AccuracyLabel" type="Label" parent="ProfileView/StatsGrid" unique_id=1025555811]
+[node name="AccuracyLabel" type="Label" parent="Summary/StatsGrid" unique_id=1025555811]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 24
 text = "Accuracy: 0.00%"
 horizontal_alignment = 1
 
-[node name="MaxComboLabel" type="Label" parent="ProfileView/StatsGrid" unique_id=807132868]
+[node name="MaxComboLabel" type="Label" parent="Summary/StatsGrid" unique_id=807132868]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 24
@@ -372,7 +338,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_b1c4s")
 text = "Max Combo: 0"
 horizontal_alignment = 1
 
-[node name="PlayTimeLabel" type="Label" parent="ProfileView/StatsGrid" unique_id=731451521]
+[node name="PlayTimeLabel" type="Label" parent="Summary/StatsGrid" unique_id=731451521]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 24
@@ -380,7 +346,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_b1c4s")
 text = "Play Time: 0h"
 horizontal_alignment = 1
 
-[node name="ExpandBtn" type="Button" parent="ProfileView" unique_id=581980517]
+[node name="ExpandBtn" type="Button" parent="Summary" unique_id=581980517]
 custom_minimum_size = Vector2(220, 45)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -391,7 +357,7 @@ offset_transform_visual_only = false
 theme_override_font_sizes/font_size = 24
 text = "展开详情"
 
-[node name="LogoutBtn" type="Button" parent="ProfileView" unique_id=581980518]
+[node name="LogoutBtn" type="Button" parent="Summary" unique_id=581980518]
 custom_minimum_size = Vector2(220, 45)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -402,12 +368,7 @@ offset_transform_visual_only = false
 theme_override_font_sizes/font_size = 24
 text = "退出登录"
 
-[node name="ProfilePage" parent="." unique_id=1874994953 instance=ExtResource("3_nu1yf")]
-visible = false
-layout_mode = 2
-
-[connection signal="pressed" from="C/Skew/LogIn/ModeToggle/LoginTab" to="." method="_on_login_tab_pressed"]
-[connection signal="pressed" from="C/Skew/LogIn/ModeToggle/SignUpTab" to="." method="_on_signup_tab_pressed"]
 [connection signal="pressed" from="C/Skew/LogIn/SubmitBtn" to="." method="_on_submit_btn_pressed"]
-[connection signal="pressed" from="ProfileView/ExpandBtn" to="." method="_on_expand_btn_pressed"]
-[connection signal="pressed" from="ProfileView/LogoutBtn" to="." method="_on_logout_btn_pressed"]
+[connection signal="pressed" from="C/Skew/LogIn/RegisterBtn" to="." method="_on_register_btn_pressed"]
+[connection signal="pressed" from="Summary/ExpandBtn" to="." method="_on_expand_btn_pressed"]
+[connection signal="pressed" from="Summary/LogoutBtn" to="." method="_on_logout_btn_pressed"]
