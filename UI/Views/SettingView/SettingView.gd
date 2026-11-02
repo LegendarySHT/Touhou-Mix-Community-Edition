@@ -1,5 +1,7 @@
 extends ViewBase
 
+class_name SettingView
+
 # 焦点管理器引用了这个
 @onready var short_cut_btns = %ShortCutBtns
 

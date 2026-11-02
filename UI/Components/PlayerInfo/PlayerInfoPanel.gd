@@ -1,5 +1,7 @@
 extends Control
 
+class_name PlayerInfoPanel
+
 # ========== 状态 ==========
 # LOGGED_OUT:          未登录 mini 收起，只显示 Tip/Label
 # LOGGED_IN:           已登录收起，显示 Avatar + Data
@@ -39,6 +41,8 @@ var _login_result: bool = false
 var _saved_rb_stat = -1
 
 func _ready() -> void:
+	# 供跨场景读取的页签容器（ScoreView 等）
+	GlobalNodes.player_info_tabs = %Tabs
 	# 跨场景信号：内容容器的登录提交 / 登出 / 详情切换 → 状态机
 	%Tabs.login_submitted.connect(set_logged_in)
 	%Tabs.logout_submitted.connect(set_logged_out)

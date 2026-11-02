@@ -1,4 +1,6 @@
 extends ViewBase
+
+class_name MusicPlayerView
 ## 音乐播放器页
 ##
 ## 与其他页面不同，本页不驱动播放——系统媒体控件与页面按钮的命令都经

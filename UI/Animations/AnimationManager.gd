@@ -467,35 +467,46 @@ var ui_part = {
 	UIStateManager.UIState.MUSIC_PLAYER_VIEW: ["Music_Player_View"],
 }
 
-var ui_path_map = {
-	"Album_List" : PathRegistry.ALBUM_LIST,
-	"Song_List" : PathRegistry.SONG_LIST,
-	"Player_Info": PathRegistry.PLAYER_INFO,
-	"Character": PathRegistry.CHARACTER,
-	"Sorted_List" : PathRegistry.SORTED_MIDIS_LIST,
-	"Shortcut_Menu" : PathRegistry.SHORTCUT_MENU,
-	"Midi_Info_View" : PathRegistry.MIDI_VIEW,
-	"Store_View": PathRegistry.STORE_VIEW,
-	"Track_List": PathRegistry.TRACK_VIEW,
-	"Play_View": PathRegistry.PLAY_VIEW,
-	"Setting_View": PathRegistry.SETTING_VIEW,
-	"Score_View": PathRegistry.SCORE_VIEW,
-	"Chara_View": PathRegistry.CHARA_VIEW,
-	"Profile_View": PathRegistry.PROFILE_VIEW,
-	"Music_Player_View": PathRegistry.MUSIC_PLAYER_VIEW,
-}
-
+## 动画组件名 → 全局节点（未加载的懒加载视图为 null）
 func get_comp(ui_part_name: String) -> Node:
-	if not ui_path_map[ui_part_name]:
-		return
-	var node = get_node_or_null(ui_path_map[ui_part_name])
+	var node: Node = null
+	match ui_part_name:
+		"Album_List":
+			node = GlobalNodes.album_view
+		"Song_List":
+			node = GlobalNodes.song_view
+		"Player_Info":
+			node = GlobalNodes.player_info
+		"Character":
+			node = GlobalNodes.character
+		"Sorted_List":
+			node = GlobalNodes.sorted_view
+		"Shortcut_Menu":
+			node = GlobalNodes.shortcut_menu
+		"Midi_Info_View":
+			node = GlobalNodes.midi_view
+		"Store_View":
+			node = GlobalNodes.store_view
+		"Track_List":
+			node = GlobalNodes.track_view
+		"Play_View":
+			node = GlobalNodes.play_view
+		"Setting_View":
+			node = GlobalNodes.setting_view
+		"Score_View":
+			node = GlobalNodes.score_view
+		"Chara_View":
+			node = GlobalNodes.chara_view
+		"Profile_View":
+			node = GlobalNodes.profile_view
+		"Music_Player_View":
+			node = GlobalNodes.music_player_view
 	if node:
 		return node
-	else:
-		# 懒加载视图未实例化时返回 null 是合法状态（调用方均用 is_instance_valid 检查）
-		# 用 debug 而非 push_error，避免每次切换视图时对未加载视图产生噪音
-		GLogger.debug("[AniMGR] COMP %s Not Found" % ui_part_name, "AniMGR")
-		return null
+	# 懒加载视图未实例化时返回 null 是合法状态（调用方均用 is_instance_valid 检查）
+	# 用 debug 而非 push_error，避免每次切换视图时对未加载视图产生噪音
+	GLogger.debug("[AniMGR] COMP %s Not Found" % ui_part_name, "AniMGR")
+	return null
 
 var tan15 = tan(deg_to_rad(15))
 
@@ -589,7 +600,7 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 			if new_state == UIStateManager.UIState.SONG_VIEW:
 				var album_data := _get_selected_album_data()
 				if not album_data.is_empty():
-					var sa := get_node_or_null(PathRegistry.SELECTED_ALBUM)
+					var sa := GlobalNodes.selected_album
 					if sa:
 						sa.set_display_album(album_data)
 
@@ -598,10 +609,10 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 
 			out_item_idx = sIndex
 			tween = animate_fade_out(album_list, 0.5, "AlbumListFadeOut")
-			animate_fade_out(get_node(PathRegistry.RANDOM_SELECT_BTN), 0.7, "RandomSelectFadeOut")
+			animate_fade_out(GlobalNodes.random_select_btn, 0.7, "RandomSelectFadeOut")
 		"Song_List":
 			# 静态 SelectedAlbum：离开 SongView 时左移退出，结束后隐藏并复位（去向一致）
-			var sa := get_node_or_null(PathRegistry.SELECTED_ALBUM)
+			var sa := GlobalNodes.selected_album
 			if sa:
 				sa.offset_transform_enabled = true
 				var sa_tween := animate_offset_to(sa, Vector2(-1200, 0), 0.25, "SSPosition")
@@ -676,7 +687,7 @@ func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween
 			TextScrollMGR.suspend_page(song_list)
 			
 			# 静态 SelectedAlbum 常驻：回到 AlbumView 时确保隐藏复位（原 SS 为临时节点此处 queue_free）
-			var sa := get_node_or_null(PathRegistry.SELECTED_ALBUM)
+			var sa := GlobalNodes.selected_album
 			if sa:
 				sa.visible = false
 				TextScrollMGR.suspend_page(sa)
@@ -692,9 +703,9 @@ func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween
 			tween = animate_list_item_horizontal(album_list, sIndex, 0, tween_id)
 			
 			song_list.clear_items.call_deferred()
-			tween = animate_fade_in(get_node(PathRegistry.RANDOM_SELECT_BTN), 0.35, "RandomSelectFadeIn")
+			tween = animate_fade_in(GlobalNodes.random_select_btn, 0.35, "RandomSelectFadeIn")
 		"Song_List":
-			var sa := get_node_or_null(PathRegistry.SELECTED_ALBUM)
+			var sa := GlobalNodes.selected_album
 			# 进入 SongView：头部卡片从左侧起步、右移滑入到位（内容在退出时已设置，此处兜底覆盖恢复/直达路径）
 			if sa:
 				var album_data := _get_selected_album_data()

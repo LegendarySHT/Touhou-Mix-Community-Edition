@@ -40,6 +40,26 @@ func _bootstrap_post_managers() -> void:
 	]
 	_bootstrap_managers(specs)
 
+func _enter_tree() -> void:
+	# 全局节点自注册：Main 直属常驻节点
+	# 放在 _enter_tree 是为了保证早于子节点（FocusManager 等）的 _ready
+	GlobalNodes.main = self
+	GlobalNodes.skew_c = %SkewC
+	GlobalNodes.selected_album = %SelectedAlbum as AlbumListItem
+	GlobalNodes.album_view = %AlbumList as AlbumView
+	GlobalNodes.song_view = %SongList as SongView
+	GlobalNodes.sorted_view = %SortedMidisList as SortedMidiView
+	GlobalNodes.shortcut_menu = %ShortCutMenu as Shortcut_Menu
+	GlobalNodes.player_info = %PlayerInfo as PlayerInfoPanel
+	GlobalNodes.lt_btn = %LTBtn as LT_Btn
+	GlobalNodes.rb_btn = %RBBtn as RB_Btn
+	GlobalNodes.character = %CharaDisplay
+	GlobalNodes.random_select_btn = %RandomSelectBtn
+	GlobalNodes.popup_window_shader = %PopupWindowShader
+	GlobalNodes.task_progress = %TaskProgress
+	GlobalNodes.process_tip = %ProcessTip
+	GlobalNodes.process_progress = %ProcessProgress
+
 func _ready():
 	# Android 平台：仅在日志中记录（不再启动时固定请求存储权限——
 	# 默认路径位于应用私有目录，无需任何权限；权限改为玩家把存储路径改到

@@ -145,6 +145,7 @@ func _on_button_pressed() -> void:
 		UiStatMGR.UIState.SCORE_VIEW:
 			UiStatMGR.change_state(UiStatMGR.UIState.PLAY_VIEW, false)
 			#await get_tree().create_timer(0.3).timeout
-			get_node(PathRegistry.PLAY_VIEW).retry_pressed.emit()
+			if GlobalNodes.play_view:
+				GlobalNodes.play_view.retry_pressed.emit()
 		_:
 			UiStatMGR.change_state(UiStatMGR.UIState.SETTINGS_VIEW)

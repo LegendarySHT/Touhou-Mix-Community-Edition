@@ -63,7 +63,7 @@ func _ready() -> void:
 	# ProfileView 是懒加载视图：已经存在就直接绑定，否则等它首次实例化
 	if not UiStatMGR.view_loaded.is_connected(_on_lazy_view_loaded):
 		UiStatMGR.view_loaded.connect(_on_lazy_view_loaded)
-	profile_view = get_node_or_null(PathRegistry.PROFILE_VIEW) as ProfileView
+	profile_view = GlobalNodes.profile_view
 	_bind_profile_view()
 	# 启动时若已登录（从本地恢复会话），立即填充
 	_sync_from_auth.call_deferred()

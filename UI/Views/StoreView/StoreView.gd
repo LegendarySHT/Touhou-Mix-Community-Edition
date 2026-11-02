@@ -415,18 +415,16 @@ func _on_detail_requested(item: Dictionary, source_rect: Rect2) -> void:
 ## 打开期间先藏起来，关闭时按原可见性还原
 func _hide_nav_buttons() -> void:
 	_saved_nav_visible.clear()
-	for path in [PathRegistry.RB_BTN, PathRegistry.LT_BTN]:
-		var btn = get_node_or_null(path)
+	for btn in [GlobalNodes.rb_btn, GlobalNodes.lt_btn]:
 		if btn is CanvasItem:
-			_saved_nav_visible[path] = (btn as CanvasItem).visible
+			_saved_nav_visible[btn] = (btn as CanvasItem).visible
 			(btn as CanvasItem).visible = false
 
 
 func _restore_nav_buttons() -> void:
-	for path in _saved_nav_visible:
-		var btn = get_node_or_null(path)
-		if btn is CanvasItem:
-			(btn as CanvasItem).visible = bool(_saved_nav_visible[path])
+	for btn in _saved_nav_visible:
+		if is_instance_valid(btn) and btn is CanvasItem:
+			(btn as CanvasItem).visible = bool(_saved_nav_visible[btn])
 	_saved_nav_visible.clear()
 
 

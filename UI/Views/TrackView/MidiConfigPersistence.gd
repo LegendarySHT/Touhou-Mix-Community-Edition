@@ -135,7 +135,7 @@ func _value_signature(v) -> String:
 ## >1 视为百分数（旧存值），<=0 视为 dB。优先取设置页当前值，取不到再回落到配置单例。
 func _global_default_vocal_volume() -> float:
 	var raw := 50.0
-	var setting_view = _track_view.get_node_or_null(PathRegistry.SETTING_VIEW)
+	var setting_view = GlobalNodes.setting_view
 	if setting_view and setting_view.has_method("get_setting_value"):
 		var v = setting_view.get_setting_value("default_vocal_volume")
 		if v != null:

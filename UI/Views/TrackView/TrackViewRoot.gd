@@ -8,6 +8,8 @@
 ## 作用在根节点上等价于原来的整页滑动，且淡入淡出覆盖整棵子树。
 extends ViewBase
 
+class_name TrackViewRoot
+
 @onready var content: TrackView = %PageContent
 
 ## 主题转发给列表脚本（TrackView.gd 不再自行注册主题应用者）

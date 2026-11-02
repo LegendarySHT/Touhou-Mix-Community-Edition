@@ -31,7 +31,7 @@ func _ready() -> void:
 	# 监听 UI 状态变化，触发主背景交叉淡入淡出
 	if UiStatMGR:
 		UiStatMGR.state_changed.connect(_on_state_changed_for_bg)
-	# 延迟初始化主背景节点引用，确保 PathRegistry.MAIN 已就绪
+	# 延迟初始化主背景节点引用，确保 GlobalNodes.main 已就绪
 	call_deferred("_init_main_bg_nodes")
 
 # ============ 配置路径 ============
@@ -978,7 +978,7 @@ func unregister_theme_applier(node: Node) -> void:
 func refresh_theme_only() -> void:
 	# 清屏色纯 Palette 计算，不依赖 Main，先同步掉（避免露底时看到上一套主题的底色）
 	apply_clear_color()
-	var main := get_node_or_null(PathRegistry.MAIN)
+	var main := GlobalNodes.main
 	if not main:
 		return
 	theme_revision += 1
@@ -1065,7 +1065,7 @@ const _BG_SWITCH_DURATION := 0.4         # 交叉淡入淡出时长（秒）
 
 ## 初始化主背景节点引用（延迟调用确保 Main 就绪）
 func _init_main_bg_nodes() -> void:
-	var main := get_node_or_null(PathRegistry.MAIN)
+	var main := GlobalNodes.main
 	if not main:
 		return
 	_active_bg = main.get_node_or_null("Background") as ViewBackground

@@ -206,7 +206,7 @@ func _update_ss_count() -> void:
 	var album: Dictionary = ChartDB.GetAlbum(current_album_id)
 	if album.is_empty():
 		return
-	var ss_node = get_node_or_null(PathRegistry.SELECTED_ALBUM)
+	var ss_node = GlobalNodes.selected_album
 	if not is_instance_valid(ss_node):
 		return
 	var count_label = ss_node.get_node_or_null("%SongCount")

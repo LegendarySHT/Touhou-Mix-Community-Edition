@@ -1,5 +1,7 @@
 extends ViewBase
 
+class_name MidiView
+
 # 下面的三个主要按钮
 @onready var track_view_btn: Button =%TrackViewBtn
 @onready var play_btn: Button = %PlayBtn
@@ -33,6 +35,8 @@ var _pending_cleanup: bool = false
 var showing_info: bool = false
 
 func _on_view_ready() -> void:
+	# 供跨场景读取的谱面列表
+	GlobalNodes.midi_list = %MidiList
 	# 连接事件
 	EvtBus.song_selected.connect(_on_song_selected)
 	EvtBus.midi_selected.connect(_on_midi_selected)
@@ -159,7 +163,7 @@ func _on_midi_selected(_midi_id: String, midi: MidiData) -> void:
 	NavigationState.save(midi.album_id, midi.song_id, midi.id)
 	# 需要 as 成真实类型：`%` 的静态类型是 Node，动态调用时编译器看不到参数签名，
 	# `[midi]` 会保持无类型 Array，被 load_midi(Array[MidiData]) 的运行时检查拒绝
-	(%MidiList as MidiView).load_midi([midi])
+	(%MidiList as MidiList).load_midi([midi])
 
 
 # 歌曲选择：加载该歌曲的 midi 列表（选中项刷新由 selection_changed 信号处理）
@@ -517,7 +521,7 @@ func _on_del_btn_pressed():
 			else:
 				# Song 和 Album 都被删除，直接跳回 AlbumView
 				# 确保静态 SelectedAlbum 头部卡片隐藏复位（直接跳转时可能跳过 SongView 的退出流程）
-				var sa_node = get_node_or_null(PathRegistry.SELECTED_ALBUM)
+				var sa_node = GlobalNodes.selected_album
 				if is_instance_valid(sa_node):
 					sa_node.visible = false
 					sa_node.modulate.a = 1.0

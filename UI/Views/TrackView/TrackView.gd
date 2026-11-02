@@ -911,7 +911,8 @@ func _on_focus_regained() -> void:
 
 func _notification(what: int) -> void:
 	# 节点初始化早期也会收到这些通知，此时 @onready 成员尚未赋值，访问会中断 autoload 初始化
-	if midi_playback_manager == null or ui_stat_mgr == null or %MasterNoteDisplayer == null:
+	if midi_playback_manager == null or ui_stat_mgr == null \
+			or get_node_or_null("%MasterNoteDisplayer") == null:
 		return
 	# 只在 Android 切后台时停显示：该平台主循环随渲染线程挂起，_process 不再运行。
 	# 桌面端不因失焦停——系统媒体浮层/音量面板弹出同样夺走焦点（且浮层存活期间焦点

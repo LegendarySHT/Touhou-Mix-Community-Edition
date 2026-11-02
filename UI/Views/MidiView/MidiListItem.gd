@@ -3,7 +3,6 @@
 extends CoverListItemBase
 
 # 引用MidiView的部分组件
-@onready var midi_view = get_node(PathRegistry.MIDI_VIEW)
 
 ## MIDI数据
 var midi_data: MidiData
@@ -85,7 +84,7 @@ func _days_in_month(year: int, month: int) -> int:
 
 
 ## 从MidiData初始化显示
-func setup_with_midi(parent: MidiView, midi: MidiData, index: int, bg: ButtonGroup) -> void:
+func setup_with_midi(parent: MidiList, midi: MidiData, index: int, bg: ButtonGroup) -> void:
 	midi_data = midi
 	item_id = midi.id
 	item_type = "midi"
@@ -122,7 +121,7 @@ func on_item_button_toggled(toggled_on: bool):
 	if not toggled_on and not parent_node._collapsed and button.button_pressed:
 		return
 	# 更新该项的指示器颜色（开=高亮暗色，关=亮色，随主题）
-	AniMGR.create_managed_tween(self).tween_property(midi_view.indicators.get_child(item_index), "color", parent_node.get_indicator_color(toggled_on), 0.15)
+	AniMGR.create_managed_tween(self).tween_property(GlobalNodes.midi_view.indicators.get_child(item_index), "color", parent_node.get_indicator_color(toggled_on), 0.15)
 	if toggled_on:
 		# 切换到新 MIDI 项时，清理上一个 MIDI 的运行时缓存（parsed_notes + GameSequence + 播放管理器）
 		# 避免浏览多个大 MIDI 后 parsed_notes 累积导致内存增长
@@ -137,7 +136,7 @@ func on_item_button_toggled(toggled_on: bool):
 		else:
 			parent_node.need_snap = true
 			# 指示器移到新选中项（统一走 MidiList 的偏移计算，避免两处写死值不一致）
-			AniMGR.create_managed_tween(self).tween_property(midi_view.indicators, "offset_transform_position:y", parent_node._compute_indicator_offset(item_index), 0.35)
+			AniMGR.create_managed_tween(self).tween_property(GlobalNodes.midi_view.indicators, "offset_transform_position:y", parent_node._compute_indicator_offset(item_index), 0.35)
 		_update_data_display()
 
 ## 设置展开/收起（由 MidiList._show_midi_list 批量调用）
@@ -155,7 +154,7 @@ func set_expanded(expanded: bool) -> void:
 	expand_tween.tween_property(%MidiName, "theme_override_font_sizes/font_size", 30 + 10 * expa, 0.25)
 	# 指示器颜色（选中=高亮暗色，其余=亮色，随主题）
 	var highlight = expanded and (parent_node.selected_item == item_index)
-	expand_tween.tween_property(midi_view.indicators.get_child(item_index), "color", parent_node.get_indicator_color(highlight), 0.15)
+	expand_tween.tween_property(GlobalNodes.midi_view.indicators.get_child(item_index), "color", parent_node.get_indicator_color(highlight), 0.15)
 	expand_tween.finished.connect(func():
 		expand_tween.kill()
 		expand_tween = null
@@ -164,7 +163,7 @@ func set_expanded(expanded: bool) -> void:
 
 ## 更新信息面板（入口）
 func _update_data_display() -> void:
-	var description: RichTextLabel = midi_view.description
+	var description: RichTextLabel = GlobalNodes.midi_view.description
 
 	# 简介统一经解析模块渲染：链接可点击，原文 BBCode 被转义
 	description.text = MidiDescriptionParser.to_bbcode(midi_data.description)
@@ -175,9 +174,9 @@ func _update_data_display() -> void:
 	# --- 缓存/计算数据 ---
 	var entry: Dictionary = _info_cache.get(midi_data.id, {})
 
-	midi_view.data_duration.text = entry.get("time_str", "...")
-	midi_view.data_note_total.text = entry.get("note_str", "...")
-	midi_view.data_npm.text = entry.get("mpp_str", "...")
+	GlobalNodes.midi_view.data_duration.text = entry.get("time_str", "...")
+	GlobalNodes.midi_view.data_note_total.text = entry.get("note_str", "...")
+	GlobalNodes.midi_view.data_npm.text = entry.get("mpp_str", "...")
 
 	# 如果缓存不完整，后台触发计算
 	if not entry.has("time_str") or not entry.has("note_str"):
@@ -189,11 +188,11 @@ func _refresh_file_data() -> void:
 	if not midi_data:
 		return
 	# TrackCtn：解析完成前可能无数据，显示占位
-	midi_view.data_track_ctn.text = _format_track_count(midi_data)
+	GlobalNodes.midi_view.data_track_ctn.text = _format_track_count(midi_data)
 	# MidiHash：midi 文件 md5（与曲包目录 {hash}_ 一致）
-	midi_view.data_midi_hash.text = midi_data.file_hash if not midi_data.file_hash.is_empty() else "—"
+	GlobalNodes.midi_view.data_midi_hash.text = midi_data.file_hash if not midi_data.file_hash.is_empty() else "—"
 	# VocalState：解析人声路径后按 无文件/禁用/启用 显示状态
-	midi_view.data_vocal_state.text = _get_vocal_state_text()
+	GlobalNodes.midi_view.data_vocal_state.text = _get_vocal_state_text()
 
 
 ## 统计当前 MIDI 的轨道数量（= TrackView 解析出的非空 (track, channel) 轨道数）
@@ -377,9 +376,9 @@ func _apply_display() -> void:
 	_refresh_file_data()
 
 	var entry: Dictionary = _info_cache.get(midi_data.id, {})
-	midi_view.data_duration.text = entry.get("time_str", "...")
-	midi_view.data_note_total.text = entry.get("note_str", "...")
-	midi_view.data_npm.text = entry.get("mpp_str", "...")
+	GlobalNodes.midi_view.data_duration.text = entry.get("time_str", "...")
+	GlobalNodes.midi_view.data_note_total.text = entry.get("note_str", "...")
+	GlobalNodes.midi_view.data_npm.text = entry.get("mpp_str", "...")
 
 
 ## 配置变更：仅影响 Note 数量/连接关系的字段才清除缓存并重算
@@ -405,8 +404,8 @@ func _on_config_changed(key: String, _value: Variant) -> void:
 		_info_cache[mid_id].erase("mpp_str")
 	# 若本 item 正展开，标记待重算并去抖：同一帧内多次配置变更只触发一次后台重算
 	if parent_node and parent_node.selected_item == item_index and midi_data != null:
-		midi_view.data_note_total.text = "..."
-		midi_view.data_npm.text = "..."
+		GlobalNodes.midi_view.data_note_total.text = "..."
+		GlobalNodes.midi_view.data_npm.text = "..."
 		_schedule_recompute()
 
 ## 配置变更后延迟到下一帧重算 Note（同一帧内多次 config_changed 合并为一次），
@@ -432,8 +431,8 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 			_info_cache[mid_id].erase("mpp_str")
 		# 若本 item 正展开，立即重触发
 		if parent_node and parent_node.selected_item == item_index and midi_data != null:
-			midi_view.data_note_total.text = "..."
-			midi_view.data_npm.text = "..."
+			GlobalNodes.midi_view.data_note_total.text = "..."
+			GlobalNodes.midi_view.data_npm.text = "..."
 			# 人声开关/导入可能已变，立即刷新文件状态
 			_refresh_file_data()
 			# parsed_notes 已有，直接重算（不用启线程）

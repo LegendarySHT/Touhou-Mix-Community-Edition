@@ -995,7 +995,7 @@ func _hide_progress() -> void:
 		fsm.hide_progress_ui()
 	# 启动期保留「加载中」提示，运行期导入结束后不应留下常驻提示
 	if _startup_done and not _startup_import_active:
-		var tip := get_node_or_null(PathRegistry.PROCESS_TIP) as Label
+		var tip := GlobalNodes.process_tip
 		if tip:
 			tip.visible = false
 

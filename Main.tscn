@@ -277,6 +277,7 @@ script = ExtResource("3_vbg")
 metadata/_edit_lock_ = true
 
 [node name="TaskProgress" type="ProgressBar" parent="." unique_id=222059329]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = -1
@@ -285,7 +286,8 @@ offset_bottom = 10.0
 grow_horizontal = 2
 show_percentage = false
 
-[node name="Chara" type="Control" parent="." unique_id=44287360]
+[node name="CharaDisplay" type="Control" parent="." unique_id=44287360]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(800, 1000)
 layout_mode = 1
 anchors_preset = 3
@@ -302,7 +304,7 @@ offset_transform_position = Vector2(0, 1000)
 offset_transform_visual_only = false
 mouse_filter = 2
 
-[node name="CharaBtn" type="TextureButton" parent="Chara" unique_id=174886287]
+[node name="CharaBtn" type="TextureButton" parent="CharaDisplay" unique_id=174886287]
 custom_minimum_size = Vector2(600, 0)
 layout_mode = 1
 anchors_preset = 7
@@ -321,7 +323,7 @@ offset_transform_pivot_ratio = Vector2(0.5, 1)
 ignore_texture_size = true
 script = ExtResource("12_5tuhn")
 
-[node name="Dialog" type="Label" parent="Chara" unique_id=1574841853]
+[node name="Dialog" type="Label" parent="CharaDisplay" unique_id=1574841853]
 visible = false
 custom_minimum_size = Vector2(300, 40)
 layout_mode = 1
@@ -343,7 +345,8 @@ autowrap_mode = 3
 editor_description = "用来摆放需要倾斜的组件的"
 skew = 0.2617994
 
-[node name="C" type="Control" parent="Skew" unique_id=35177544]
+[node name="SkewC" type="Control" parent="Skew" unique_id=35177544]
+unique_name_in_owner = true
 editor_description = "为斜向的项提供锚点定位的区域"
 layout_mode = 3
 anchors_preset = 0
@@ -354,11 +357,12 @@ mouse_filter = 2
 script = ExtResource("8_3b0ty")
 metadata/_edit_lock_ = true
 
-[node name="ShortCutMenu" parent="Skew/C" unique_id=1142631087 instance=ExtResource("5_kjvhd")]
+[node name="ShortCutMenu" parent="Skew/SkewC" unique_id=1142631087 instance=ExtResource("5_kjvhd")]
 unique_name_in_owner = true
 layout_mode = 1
 
-[node name="AlbumList" type="ScrollContainer" parent="Skew/C" unique_id=257977288]
+[node name="AlbumList" type="ScrollContainer" parent="Skew/SkewC" unique_id=257977288]
+unique_name_in_owner = true
 physics_interpolation_mode = 1
 visible = false
 clip_contents = false
@@ -374,14 +378,14 @@ container_path = NodePath("VBox/VBox")
 list_item_class = "res://UI/Views/AlbumView/albumNode.tscn"
 metadata/_edit_lock_ = true
 
-[node name="VBox" type="VBoxContainer" parent="Skew/C/AlbumList" unique_id=1809549679]
+[node name="VBox" type="VBoxContainer" parent="Skew/SkewC/AlbumList" unique_id=1809549679]
 layout_mode = 2
 
-[node name="MarginTop" type="MarginContainer" parent="Skew/C/AlbumList/VBox" unique_id=347624655]
+[node name="MarginTop" type="MarginContainer" parent="Skew/SkewC/AlbumList/VBox" unique_id=347624655]
 layout_mode = 2
 theme_override_constants/margin_top = 250
 
-[node name="VBox" type="VBoxContainer" parent="Skew/C/AlbumList/VBox" unique_id=1696024062]
+[node name="VBox" type="VBoxContainer" parent="Skew/SkewC/AlbumList/VBox" unique_id=1696024062]
 custom_minimum_size = Vector2(630, 0)
 layout_mode = 2
 size_flags_horizontal = 2
@@ -389,11 +393,12 @@ mouse_filter = 2
 theme_override_constants/separation = 29
 alignment = 1
 
-[node name="MarginBottom" type="MarginContainer" parent="Skew/C/AlbumList/VBox" unique_id=273776046]
+[node name="MarginBottom" type="MarginContainer" parent="Skew/SkewC/AlbumList/VBox" unique_id=273776046]
 layout_mode = 2
 theme_override_constants/margin_bottom = 900
 
-[node name="SongList" type="ScrollContainer" parent="Skew/C" unique_id=2135907176]
+[node name="SongList" type="ScrollContainer" parent="Skew/SkewC" unique_id=2135907176]
+unique_name_in_owner = true
 physics_interpolation_mode = 1
 visible = false
 custom_minimum_size = Vector2(1014, 725)
@@ -414,13 +419,14 @@ script = ExtResource("8_w3rk5")
 container_path = NodePath("VBox")
 list_item_class = "res://UI/Views/SongView/songNode.tscn"
 
-[node name="VBox" type="VBoxContainer" parent="Skew/C/SongList" unique_id=170013894]
+[node name="VBox" type="VBoxContainer" parent="Skew/SkewC/SongList" unique_id=170013894]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 29
 alignment = 1
 
-[node name="SortedMidisList" type="ScrollContainer" parent="Skew/C" unique_id=1679713169]
+[node name="SortedMidisList" type="ScrollContainer" parent="Skew/SkewC" unique_id=1679713169]
+unique_name_in_owner = true
 physics_interpolation_mode = 1
 visible = false
 layout_mode = 1
@@ -436,13 +442,13 @@ horizontal_scroll_mode = 0
 script = ExtResource("26_5mvff")
 list_item_class = "res://UI/Views/SortedMidiView/sortedMidiNode.tscn"
 
-[node name="ListContent" type="Control" parent="Skew/C/SortedMidisList" unique_id=1834154471]
+[node name="ListContent" type="Control" parent="Skew/SkewC/SortedMidisList" unique_id=1834154471]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="NoItems" type="Label" parent="Skew/C" unique_id=756567896]
+[node name="NoItems" type="Label" parent="Skew/SkewC" unique_id=756567896]
 unique_name_in_owner = true
 visible = false
 layout_mode = 0
@@ -455,7 +461,8 @@ text = "列表为空"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="RandomSelectBtn" type="Button" parent="Skew/C" unique_id=80715155 node_paths=PackedStringArray("shortcut_context")]
+[node name="RandomSelectBtn" type="Button" parent="Skew/SkewC" unique_id=80715155 node_paths=PackedStringArray("shortcut_context")]
+unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(110, 110)
 layout_mode = 1
@@ -477,7 +484,8 @@ flat = true
 icon_alignment = 1
 expand_icon = true
 
-[node name="SelectedAlbum" parent="Skew/C" unique_id=1523238690 instance=ExtResource("17_5mvff")]
+[node name="SelectedAlbum" parent="Skew/SkewC" unique_id=1523238690 instance=ExtResource("17_5mvff")]
+unique_name_in_owner = true
 visible = false
 layout_mode = 0
 offset_top = 40.0
@@ -489,6 +497,7 @@ focus_mode = 0
 button_pressed = true
 
 [node name="LTBtn" type="Button" parent="." unique_id=427482582]
+unique_name_in_owner = true
 layout_mode = 0
 offset_left = 23.999994
 offset_top = -75.999985
@@ -682,6 +691,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="ProcessProgress" type="ProgressBar" parent="ProcessTip" unique_id=300482769]
+unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 1
@@ -726,7 +736,7 @@ flat = true
 [node name="PopupWindow" parent="." unique_id=1542807723 instance=ExtResource("28_hri7i")]
 visible = false
 
-[connection signal="pressed" from="Skew/C/RandomSelectBtn" to="Skew/C/AlbumList" method="_on_random_select_btn_pressed"]
-[connection signal="pressed" from="Skew/C/SelectedAlbum" to="Skew/C/SelectedAlbum" method="_on_selected_album_pressed"]
+[connection signal="pressed" from="Skew/SkewC/RandomSelectBtn" to="Skew/SkewC/AlbumList" method="_on_random_select_btn_pressed"]
+[connection signal="pressed" from="Skew/SkewC/SelectedAlbum" to="Skew/SkewC/SelectedAlbum" method="_on_selected_album_pressed"]
 [connection signal="pressed" from="LTBtn" to="LTBtn" method="_on_button_pressed"]
 [connection signal="pressed" from="RBBtn" to="RBBtn" method="_on_button_pressed"]

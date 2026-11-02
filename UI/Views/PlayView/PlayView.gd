@@ -1,5 +1,7 @@
 extends ViewBase
 
+class_name PlayView
+
 ## 播放相关枚举（换曲入口的 SongMode 等；真值在 C# MeltySynth）
 const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
 
@@ -778,7 +780,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	# 读取并设置音频同步阈值
 	# 优先取设置页当前值（含未落盘的待保存值）；设置页已被后台内存回收时回退到配置值
 	var sync_threshold = null
-	var setting_view = get_node_or_null(PathRegistry.SETTING_VIEW)
+	var setting_view = GlobalNodes.setting_view
 	if setting_view and setting_view.has_method("get_setting_value"):
 		sync_threshold = setting_view.get_setting_value("audio_sync_threshold")
 	if sync_threshold == null:
@@ -1255,10 +1257,10 @@ func _on_game_finished() -> void:
 	if UiStatMGR.current_state != UIStateManager.UIState.PLAY_VIEW or _game_generation != start_generation:
 		return
 	UiStatMGR.change_state(UIStateManager.UIState.SCORE_VIEW, false)
-	get_node(PathRegistry.SCORE_VIEW).set_display(play_result, current_midi, _is_auto_mode_play)
+	GlobalNodes.score_view.set_display(play_result, current_midi, _is_auto_mode_play)
 	# 异步上传成绩（由 ScoreView 展示结果与重试按钮，不阻塞结算界面）
 	if not _is_auto_mode_play:
-		get_node(PathRegistry.SCORE_VIEW).request_upload(current_midi, snap)
+		GlobalNodes.score_view.request_upload(current_midi, snap)
 
 ## 异步上传成绩（fire-and-forget，失败仅记日志）
 func _upload_score_async(midi: MidiData, snapshot: Dictionary) -> void:

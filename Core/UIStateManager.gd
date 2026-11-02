@@ -223,9 +223,14 @@ func create_view(scene_path: String, state: UIState, layer_override: int = -1) -
 		return null
 	var instance: Node = packed.instantiate()
 	instance.visible = false
+	# 先注册全局节点：视图子节点的 _ready 里可能读取本视图（如 MidiList.apply_theme 读 MidiView）
+	_set_global_view(state, instance)
 	if not _place_view(instance, _resolve_layer(instance, state, layer_override)):
+		_set_global_view(state, null)
 		instance.free()
 		return null
+	# 再注册一次：部分视图（TrackViewRoot）的转发字段要等 _ready 后才可用
+	_set_global_view(state, instance)
 	return instance
 
 ## 解析视图挂载层级：显式参数 > 视图自声明 > 中央表兜底
@@ -240,23 +245,22 @@ func _resolve_layer(instance: Node, state: UIState, override: int = -1) -> ViewL
 	GLogger.debug("[UiStatMGR] %s layer=%d (中央表兜底)" % [instance.name, fallback], "UiStatMGR")
 	return fallback
 
-## 把新视图插到 Main / skew.C 的固定位置
+## 把新视图插到 Main / SkewC 的固定位置
 func _place_view(instance: Node, layer: ViewLayer) -> bool:
 	if layer == ViewLayer.SKEW_C:
-		var skew_c := get_node_or_null(PathRegistry.SKEW_C)
+		var skew_c := GlobalNodes.skew_c
 		if skew_c == null:
-			push_error("skew/C not found for lazy view")
+			push_error("SkewC not found for lazy view")
 			return false
 		skew_c.add_child(instance)
 		return true
-	var main := get_node_or_null(PathRegistry.MAIN)
+	var main := GlobalNodes.main
 	if main == null:
 		push_error("Main not found for lazy view")
 		return false
 	# 仅 MAIN_BEFORE_LT 以 LT_Btn 为锚点，其余以 RB_Btn 为准：
 	# RB_Btn 之前只挡 LT；RB_Btn 之后覆盖两个角按钮
-	var anchor_path := PathRegistry.LT_BTN if layer == ViewLayer.MAIN_BEFORE_LT else PathRegistry.RB_BTN
-	var anchor := get_node_or_null(anchor_path)
+	var anchor: Control = (GlobalNodes.lt_btn as Control) if layer == ViewLayer.MAIN_BEFORE_LT else (GlobalNodes.rb_btn as Control)
 	if anchor == null or anchor.get_parent() != main:
 		push_error("Corner button not found under Main for lazy view")
 		return false
@@ -283,6 +287,28 @@ func ensure_view_loaded(state: UIState) -> Node:
 	# 主题色由视图自身 _ready 注册到 ThemeMGR._theme_appliers 并自调 apply_theme() 完成，
 	# 不再需要在此手动补应用（见 ThemeManager.register_theme_applier）
 	return instance
+
+## 写入全局节点表（instance 为 null 时清空对应字段）
+func _set_global_view(state: UIState, instance: Node) -> void:
+	match state:
+		UIState.MIDI_VIEW:
+			GlobalNodes.midi_view = instance as MidiView
+		UIState.TRACK_VIEW:
+			GlobalNodes.track_view = instance as TrackViewRoot
+		UIState.SETTINGS_VIEW:
+			GlobalNodes.setting_view = instance as SettingView
+		UIState.PLAY_VIEW:
+			GlobalNodes.play_view = instance as PlayView
+		UIState.SCORE_VIEW:
+			GlobalNodes.score_view = instance as ScoreView
+		UIState.STORE_VIEW:
+			GlobalNodes.store_view = instance as StoreView
+		UIState.CHARA_VIEW:
+			GlobalNodes.chara_view = instance as CharaView
+		UIState.PROFILE_VIEW:
+			GlobalNodes.profile_view = instance as ProfileView
+		UIState.MUSIC_PLAYER_VIEW:
+			GlobalNodes.music_player_view = instance as MusicPlayerView
 
 ## 获取已加载的懒加载视图实例（未加载返回 null）
 func get_loaded_view(state: UIState) -> Node:

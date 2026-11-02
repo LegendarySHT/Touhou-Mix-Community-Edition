@@ -133,7 +133,7 @@ func setup_with_dict(d: Dictionary, index: int, bg:ButtonGroup) -> void:
 	# 初始化按钮（MidiNode 本身即 Button，复用时已初始化，跳过重复初始化）
 	if not button:
 		button = self
-		enable_selected_animation(button, get_node(PathRegistry.SORTED_MIDIS_LIST))
+		enable_selected_animation(button, GlobalNodes.sorted_view)
 	button.button_group = bg
 
 	if _has_ready:

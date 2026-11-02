@@ -3,7 +3,6 @@ extends Control
 class_name FocusManager
 
 var _last_input_was_keyboard := false
-var _skew_c: Control = null
 
 # 弹窗打开前持有焦点的控件，关闭时恢复（仅键盘输入触发）
 var _popup_source_ctrl: Control = null
@@ -15,7 +14,6 @@ const _NAV_KEYS: Array = [
 
 func _ready() -> void:
 	get_viewport().gui_focus_changed.connect(_on_focus_change)
-	_skew_c = get_node_or_null(PathRegistry.SKEW_C)
 	# PopupWindow 是 Main 下子节点，_ready 时序晚于本节点，延迟连接
 	call_deferred("_connect_popup_window")
 
@@ -116,7 +114,7 @@ func _on_focus_change(node: Control):
 		return
 	# 焦点落到 skew/C（视图容器）或其下的列表容器时，按当前 UI 状态转发给选中项。
 	# 触发场景：ShortCutMenu 搜索按钮 focus_neighbor_left → AlbumList（按左方向键）等。
-	if node == _skew_c or ("selected_item" in node):
+	if node == GlobalNodes.skew_c or ("selected_item" in node):
 		_redirect_focus_by_state()
 
 ## 按当前 UI 状态把焦点转发到本页合法项（列表选中项 / 设置导航 / 商店首项）
@@ -124,21 +122,21 @@ func _on_focus_change(node: Control):
 func _redirect_focus_by_state() -> void:
 	match UiStatMGR.current_state:
 		UiStatMGR.UIState.ALBUM_VIEW:
-			_grab_list_selected(PathRegistry.ALBUM_LIST)
+			_grab_list_selected(GlobalNodes.album_view)
 		UiStatMGR.UIState.SONG_VIEW:
-			_grab_list_selected(PathRegistry.SONG_LIST)
+			_grab_list_selected(GlobalNodes.song_view)
 		UiStatMGR.UIState.SORTED_VIEW:
-			_grab_list_selected(PathRegistry.SORTED_MIDIS_LIST)
+			_grab_list_selected(GlobalNodes.sorted_view)
 		UiStatMGR.UIState.MIDI_VIEW:
-			_grab_list_selected(PathRegistry.MIDI_LIST)
+			_grab_list_selected(GlobalNodes.midi_list)
 		UiStatMGR.UIState.STORE_VIEW:
 			_grab_store_first()
 		UiStatMGR.UIState.SETTINGS_VIEW:
 			_redirect_settings_focus()
 
 ## 让列表的选中项获得焦点：无选中项时选首项兜底；列表为空则不做动作
-func _grab_list_selected(list_path: String) -> void:
-	var nd = get_node_or_null(list_path)
+func _grab_list_selected(list: Node) -> void:
+	var nd = list
 	if nd == null or not ("selected_item" in nd):
 		return
 	# 虚拟化列表：项可能已滚出屏幕被释放，交给其负责先滚动补位再聚焦
@@ -155,11 +153,11 @@ func _grab_list_selected(list_path: String) -> void:
 	if selected_node == null:
 		return
 	selected_node.button.grab_focus()
-	GLogger.debug("[FocusMGR] 焦点转发 → %s 选中项 #%d" % [list_path, nd.selected_item], "FocusMGR")
+	GLogger.debug("[FocusMGR] 焦点转发 → %s 选中项 #%d" % [nd.name, nd.selected_item], "FocusMGR")
 
 ## SETTINGS_VIEW：资源管理子页可见时聚焦首个标签按钮，否则聚焦左侧当前选中的快捷按钮
 func _redirect_settings_focus() -> void:
-	var sv = get_node_or_null(PathRegistry.SETTING_VIEW)
+	var sv = GlobalNodes.setting_view
 	if sv == null:
 		return
 	var resource_view = sv.get_node_or_null("ResourceView")
@@ -182,6 +180,6 @@ func _redirect_settings_focus() -> void:
 ## STORE_VIEW：交给商店视图自己决定落点（标签页 / 当前列表第一张可见卡片）。
 ## 虚拟化列表的节点会被池回收，不能再按「容器第一项」取节点。
 func _grab_store_first() -> void:
-	var store = get_node_or_null(PathRegistry.STORE_VIEW)
+	var store = GlobalNodes.store_view
 	if store and store.has_method("focus_first"):
 		store.call("focus_first")

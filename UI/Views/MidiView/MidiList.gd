@@ -2,7 +2,7 @@
 ## 显示选中歌曲下的所有MIDI谱面列表
 extends BaseScrollList
 
-class_name MidiView
+class_name MidiList
 
 ## 当前显示的MIDI列表
 var current_midis: Array[MidiData] = []
@@ -12,7 +12,6 @@ var _collapsed: bool = false # 列表是否处于收起状态
 var _prev_scroll: int = 0  # 上帧滚动位置，变化说明有人在动列表
 
 # MidiView
-@onready var midi_view = get_node(PathRegistry.MIDI_VIEW)
 
 func _ready() -> void:
 	work_state = UIStateManager.UIState.MIDI_VIEW
@@ -52,9 +51,9 @@ func get_indicator_color(active: bool) -> Color:
 
 ## 按选中态刷新全部指示点颜色
 func _apply_indicator_colors() -> void:
-	if midi_view.indicators:
-		for i in midi_view.indicators.get_child_count():
-			var point := midi_view.indicators.get_child(i) as ColorRect
+	if GlobalNodes.midi_view.indicators:
+		for i in GlobalNodes.midi_view.indicators.get_child_count():
+			var point := GlobalNodes.midi_view.indicators.get_child(i) as ColorRect
 			if point:
 				point.color = get_indicator_color(i == selected_item)
 
@@ -132,7 +131,7 @@ func _clear_list() -> void:
 	clear_items()
 
 	# 清空指示器
-	for child in midi_view.indicators.get_children():
+	for child in GlobalNodes.midi_view.indicators.get_children():
 		child.free() # 因为初始化指示器时根据索引位置来设置颜色的，所以得立即清除
 
 	selected_item = -1
@@ -170,8 +169,8 @@ func _show_midi_list(_index: int = -1) -> void:
 			item.set_expanded(true)
 		need_snap = true
 		# 指示器移到选中项
-		if midi_view.indicators and selected_item != -1:
-			AniMGR.create_managed_tween(self).tween_property(midi_view.indicators, "offset_transform_position:y", _compute_indicator_offset(selected_item), 0.35)
+		if GlobalNodes.midi_view.indicators and selected_item != -1:
+			AniMGR.create_managed_tween(self).tween_property(GlobalNodes.midi_view.indicators, "offset_transform_position:y", _compute_indicator_offset(selected_item), 0.35)
 
 func _previous() -> void:
 	if current_midis.size() != 1:
@@ -184,7 +183,7 @@ func _next() -> void:
 ## 计算指示器偏移
 func _compute_indicator_offset(index: int) -> float:
 	var pitch: int = 29
-	var count: int = midi_view.indicators.get_child_count()
+	var count: int = GlobalNodes.midi_view.indicators.get_child_count()
 	if count <= 1:
 		return 0.0
 	@warning_ignore("integer_division")
@@ -210,7 +209,7 @@ func _refresh_display() -> void:
 			point.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			point.color = get_indicator_color(false)
 
-			midi_view.indicators.add_child(point)
+			GlobalNodes.midi_view.indicators.add_child(point)
 
 			item.setup_with_midi(self, midi, counter, bg)
 			counter += 1
@@ -235,5 +234,5 @@ func remove_selected_midi():
 	select_item(target)
 	for item in list_items:
 		item.set_expanded(true)
-	midi_view.indicators.offset_transform_position.y = _compute_indicator_offset(selected_item)
+	GlobalNodes.midi_view.indicators.offset_transform_position.y = _compute_indicator_offset(selected_item)
 	need_snap = true

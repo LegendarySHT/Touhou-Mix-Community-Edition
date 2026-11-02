@@ -299,9 +299,9 @@ func _copy_default_resources_async() -> void:
 ## 返回值：{overlay, tip, bar} 字典，调用方在循环中推进 "bar".value 即可
 func show_progress_ui(text: String, max_value: int) -> Dictionary:
 	var ui := {
-		"overlay": get_node_or_null(PathRegistry.POPUP_WINDOW_SHADER) as Control,
-		"tip": get_node_or_null(PathRegistry.PROCESS_TIP) as Label,
-		"bar": get_node_or_null(PathRegistry.PROCESS_PROGRESS) as ProgressBar,
+		"overlay": GlobalNodes.popup_window_shader,
+		"tip": GlobalNodes.process_tip,
+		"bar": GlobalNodes.process_progress,
 	}
 	var overlay: Control = ui["overlay"]
 	var tip: Label = ui["tip"]
@@ -325,7 +325,7 @@ func show_progress_ui(text: String, max_value: int) -> Dictionary:
 ## 专供"界面仍可操作但后台在跑"的场景（启动后的缓存校验、DelView 删除后的重扫），
 ## 解决"看不到进度、界面内容突然刷新"的观感问题
 func _task_progress_begin(total: int) -> void:
-	var bar := get_node_or_null(PathRegistry.TASK_PROGRESS) as ProgressBar
+	var bar := GlobalNodes.task_progress
 	if bar == null:
 		return
 	bar.min_value = 0
@@ -335,14 +335,14 @@ func _task_progress_begin(total: int) -> void:
 
 ## 推进顶部细条进度（已处理项 / 总数由 begin 时给定）
 func _task_progress_set(done: int) -> void:
-	var bar := get_node_or_null(PathRegistry.TASK_PROGRESS) as ProgressBar
+	var bar := GlobalNodes.task_progress
 	if bar == null:
 		return
 	bar.value = clampi(done, 0, int(bar.max_value))
 
 ## 收尾：走满后隐藏（避免残留一条空进度条常驻顶部）
 func _task_progress_end() -> void:
-	var bar := get_node_or_null(PathRegistry.TASK_PROGRESS) as ProgressBar
+	var bar := GlobalNodes.task_progress
 	if bar == null:
 		return
 	bar.value = bar.max_value
@@ -350,9 +350,9 @@ func _task_progress_end() -> void:
 
 ## 隐藏统一进度 UI 并复位提示文案
 func hide_progress_ui() -> void:
-	var overlay: Control = get_node_or_null(PathRegistry.POPUP_WINDOW_SHADER)
-	var tip: Label = get_node_or_null(PathRegistry.PROCESS_TIP)
-	var bar: ProgressBar = get_node_or_null(PathRegistry.PROCESS_PROGRESS)
+	var overlay: Control = GlobalNodes.popup_window_shader
+	var tip: Label = GlobalNodes.process_tip
+	var bar: ProgressBar = GlobalNodes.process_progress
 	if bar:
 		bar.visible = false
 	if tip:

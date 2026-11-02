@@ -741,7 +741,7 @@ func _popup_storage_location_adjust() -> void:
 	# 内存里的配置不一致（热切换会让主题/布局等已构建的状态打架），只能重启生效；
 	# 目标没有配置时配置原样搬过去，可以原地热切换
 	var inherited_config := bool(mig.get("inherited_config", false))
-	var main := get_node_or_null(PathRegistry.MAIN)
+	var main := GlobalNodes.main
 	var can_hot_switch := not inherited_config \
 			and main != null and main.has_method("reinitialize_after_storage_migration")
 	if can_hot_switch:

@@ -1,5 +1,7 @@
 extends ViewBase
 
+class_name CharaView
+
 ## CharaListItem 场景（用于动态构建角色列表）
 const CHARA_ITEM_SCENE := preload("res://UI/Views/CharaView/CharaListItem.tscn")
 

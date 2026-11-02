@@ -98,7 +98,7 @@ func _disconnect_stats_refreshed() -> void:
 
 ## 获取 PlayerInfoContent 节点（可能在不同路径下）
 func _get_player_info_content() -> PlayerInfoContent:
-	var node = get_node_or_null(PathRegistry.PLAYER_INFO_TAB_C)
+	var node = GlobalNodes.player_info_tabs
 	if node:
 		return node as PlayerInfoContent
 	return null
