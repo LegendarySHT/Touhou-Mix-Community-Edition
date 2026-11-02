@@ -170,6 +170,7 @@ layout_mode = 2
 theme_override_constants/separation = 18
 
 [node name="CoverWrap" type="Panel" parent="Margin/HBox" unique_id=952050055]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(218, 218)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -178,6 +179,7 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_cover")
 
 [node name="Cover" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=1045383062]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -191,6 +193,7 @@ script = ExtResource("3_round")
 corner_radius = 14.0
 
 [node name="Placeholder" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=381031407]
+unique_name_in_owner = true
 modulate = Color(1, 1, 1, 0.4)
 custom_minimum_size = Vector2(86, 86)
 layout_mode = 1
@@ -211,6 +214,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="Duration" type="Label" parent="Margin/HBox/CoverWrap" unique_id=246903659]
+unique_name_in_owner = true
 visible = false
 layout_mode = 0
 offset_left = 12.0
@@ -231,6 +235,7 @@ size_flags_vertical = 4
 theme_override_constants/separation = 3
 
 [node name="Title" type="Label" parent="Margin/HBox/Info" unique_id=710123146]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 34
@@ -240,6 +245,7 @@ script = ExtResource("2_scroll")
 end_padding = 0.0
 
 [node name="Author" type="Label" parent="Margin/HBox/Info" unique_id=1593620122]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 23
@@ -250,6 +256,7 @@ theme_color_key = "text_secondary"
 end_padding = 0.0
 
 [node name="SongLine" type="Label" parent="Margin/HBox/Info" unique_id=1966012806]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 21
@@ -266,11 +273,13 @@ size_flags_vertical = 3
 mouse_filter = 2
 
 [node name="Stats" type="HBoxContainer" parent="Margin/HBox/Info" unique_id=1303345984]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 16
 
 [node name="Downloads" type="HBoxContainer" parent="Margin/HBox/Info/Stats" unique_id=1253298490]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
@@ -284,12 +293,14 @@ texture = SubResource("Atlas_downloads")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Count" type="Label" parent="Margin/HBox/Info/Stats/Downloads" unique_id=570498012]
+[node name="DownloadsCount" type="Label" parent="Margin/HBox/Info/Stats/Downloads" unique_id=570498012]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "0"
 
 [node name="Plays" type="HBoxContainer" parent="Margin/HBox/Info/Stats" unique_id=909176750]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
@@ -303,12 +314,14 @@ texture = SubResource("Atlas_plays")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Count" type="Label" parent="Margin/HBox/Info/Stats/Plays" unique_id=1273419331]
+[node name="PlaysCount" type="Label" parent="Margin/HBox/Info/Stats/Plays" unique_id=1273419331]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "0"
 
 [node name="Likes" type="HBoxContainer" parent="Margin/HBox/Info/Stats" unique_id=41642359]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
@@ -322,12 +335,14 @@ texture = SubResource("Atlas_likes")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Count" type="Label" parent="Margin/HBox/Info/Stats/Likes" unique_id=1032969063]
+[node name="LikesCount" type="Label" parent="Margin/HBox/Info/Stats/Likes" unique_id=1032969063]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "0"
 
 [node name="Uploader" type="Label" parent="Margin/HBox/Info" unique_id=157239218]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 20
@@ -345,6 +360,7 @@ theme_override_constants/separation = 8
 alignment = 1
 
 [node name="DownloadBtn" type="Button" parent="Margin/HBox/RightCol" unique_id=176756795]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(94, 94)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -359,6 +375,7 @@ icon_alignment = 1
 expand_icon = true
 
 [node name="StateLabel" type="Label" parent="Margin/HBox/RightCol" unique_id=2108821367]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(106, 0)
 layout_mode = 2
 size_flags_horizontal = 4

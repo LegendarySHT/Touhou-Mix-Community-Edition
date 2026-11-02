@@ -7,16 +7,6 @@ class_name FallingAdjust
 ## 右侧设置区配置下落模式、时间、速度倍率、缓动函数/相位
 
 # ===== 节点引用 =====
-@onready var _preview_panel: Panel = $FallingPreview
-@onready var _preview_block: TextureRect = $FallingPreview/block
-@onready var _judge_line: PanelContainer = $FallingPreview/Line
-@onready var _mode_option: OptionButton = $VBoxC/OptionButton
-@onready var _fall_duration_edit: LineEdit = $VBoxC/OtherOptions/FallDuration/LineEdit
-@onready var _fall_func_btn: OptionButton = $VBoxC/OtherOptions/FallFunc
-@onready var _fall_phase_btn: OptionButton = $VBoxC/OtherOptions/FallPhase
-@onready var _fall_speed_edit: LineEdit = $VBoxC/OtherOptions/FallSpeed/LineEdit
-@onready var _fall_func2_btn: OptionButton = $VBoxC/OtherOptions/FallFunc2
-@onready var _fall_phase2_btn: OptionButton = $VBoxC/OtherOptions/FallPhase2
 
 # ===== 预览动画状态 =====
 var _preview_tween: Tween = null
@@ -51,13 +41,13 @@ func init_adjust() -> void:
 	var after_phase := ConfigManager.instance.get_string("note_fall_easing_after_phase", "IN")
 
 	# 同步到 UI
-	_mode_option.select(clampi(fall_mode, 0, 2))
-	_fall_duration_edit.text = str(fall_time)
-	_fall_speed_edit.text = str(fall_speed_mult)
-	_select_func(_fall_func_btn, before_func)
-	_select_phase(_fall_phase_btn, before_phase)
-	_select_func(_fall_func2_btn, after_func)
-	_select_phase(_fall_phase2_btn, after_phase)
+	%FallModeOption.select(clampi(fall_mode, 0, 2))
+	%FallDurationEdit.text = str(fall_time)
+	%FallSpeedEdit.text = str(fall_speed_mult)
+	_select_func(%FallFunc, before_func)
+	_select_phase(%FallPhase, before_phase)
+	_select_func(%FallFunc2, after_func)
+	_select_phase(%FallPhase2, after_phase)
 
 	# 应用当前皮肤到预览 block
 	_apply_current_skin_to_preview()
@@ -96,13 +86,13 @@ func save_config() -> void:
 ## 返回当前编辑结果（供 PopupWindow.show_falling_adjust 返回给 SettingList）
 func get_result() -> Dictionary:
 	return {
-		"note_fall_mode": _mode_option.selected,
+		"note_fall_mode": %FallModeOption.selected,
 		"note_fall_time": _get_current_fall_time(),
 		"note_fall_speed_after_judge_multiplier": _get_current_fall_speed_mult(),
-		"note_fall_easing_before_func": _FUNC_NAMES[_fall_func_btn.selected] if _fall_func_btn.selected >= 0 else "LINEAR",
-		"note_fall_easing_before_phase": _PHASE_NAMES[_fall_phase_btn.selected] if _fall_phase_btn.selected >= 0 else "IN",
-		"note_fall_easing_after_func": _FUNC_NAMES[_fall_func2_btn.selected] if _fall_func2_btn.selected >= 0 else "LINEAR",
-		"note_fall_easing_after_phase": _PHASE_NAMES[_fall_phase2_btn.selected] if _fall_phase2_btn.selected >= 0 else "IN",
+		"note_fall_easing_before_func": _FUNC_NAMES[%FallFunc.selected] if %FallFunc.selected >= 0 else "LINEAR",
+		"note_fall_easing_before_phase": _PHASE_NAMES[%FallPhase.selected] if %FallPhase.selected >= 0 else "IN",
+		"note_fall_easing_after_func": _FUNC_NAMES[%FallFunc2.selected] if %FallFunc2.selected >= 0 else "LINEAR",
+		"note_fall_easing_after_phase": _PHASE_NAMES[%FallPhase2.selected] if %FallPhase2.selected >= 0 else "IN",
 	}
 
 # ===== 内部实现 =====
@@ -120,8 +110,8 @@ func _apply_current_skin_to_preview() -> void:
 	var skin_name := ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	var skin_textures := SkinMGR.get_skin_textures(skin_name)
 	var transparent := _create_transparent_texture()
-	_preview_block.texture = skin_textures.get("short", transparent)
-	_preview_block.get_node("core").texture = skin_textures.get("short_core", transparent)
+	%FallingBlock.texture = skin_textures.get("short", transparent)
+	%FallingBlock.get_node("Core").texture = skin_textures.get("short_core", transparent)
 
 func _create_transparent_texture(width: int = 64, height: int = 64) -> Texture2D:
 	var image = Image.create(width, height, false, Image.FORMAT_RGBA8)
@@ -131,19 +121,19 @@ func _create_transparent_texture(width: int = 64, height: int = 64) -> Texture2D
 ## 仅自定义模式 (mode=2) 时启用缓动选项；匀速/加速下落使用预设值
 ## 匀速/加速模式：同步把 4 个按钮的选中项设为预设值，让用户能直观看到预定义的缓动参数
 func _update_easing_controls_state() -> void:
-	var mode := _mode_option.selected
-	var is_custom := mode == 2
-	_fall_func_btn.disabled = not is_custom
-	_fall_phase_btn.disabled = not is_custom
-	_fall_func2_btn.disabled = not is_custom
-	_fall_phase2_btn.disabled = not is_custom
+	var mode = %FallModeOption.selected
+	var is_custom = mode == 2
+	%FallFunc.disabled = not is_custom
+	%FallPhase.disabled = not is_custom
+	%FallFunc2.disabled = not is_custom
+	%FallPhase2.disabled = not is_custom
 	# 匀速/加速模式：把按钮选中项同步到预设值（不触发信号，避免递归）
 	if not is_custom:
 		var preset := EasingMapper.get_preset_config(mode)
-		_select_func(_fall_func_btn, preset["before_func"])
-		_select_phase(_fall_phase_btn, preset["before_phase"])
-		_select_func(_fall_func2_btn, preset["after_func"])
-		_select_phase(_fall_phase2_btn, preset["after_phase"])
+		_select_func(%FallFunc, preset["before_func"])
+		_select_phase(%FallPhase, preset["before_phase"])
+		_select_func(%FallFunc2, preset["after_func"])
+		_select_phase(%FallPhase2, preset["after_phase"])
 
 func _on_setting_changed(_v) -> void:
 	if not _is_initialized:
@@ -154,45 +144,45 @@ func _on_setting_changed(_v) -> void:
 # ===== 缓动参数解析（根据模式选择预设或自定义值）=====
 
 func _get_current_trans_before() -> int:
-	match _mode_option.selected:
+	match %FallModeOption.selected:
 		0: return EasingMapper.string_to_trans(EasingMapper.get_preset_config(0)["before_func"])
 		1: return EasingMapper.string_to_trans(EasingMapper.get_preset_config(1)["before_func"])
 		_:
-			var idx := _fall_func_btn.selected if _fall_func_btn.selected >= 0 else 0
+			var idx = %FallFunc.selected if %FallFunc.selected >= 0 else 0
 			return EasingMapper.string_to_trans(_FUNC_NAMES[idx])
 
 func _get_current_ease_before() -> int:
-	match _mode_option.selected:
+	match %FallModeOption.selected:
 		0: return EasingMapper.string_to_ease(EasingMapper.get_preset_config(0)["before_phase"])
 		1: return EasingMapper.string_to_ease(EasingMapper.get_preset_config(1)["before_phase"])
 		_:
-			var idx := _fall_phase_btn.selected if _fall_phase_btn.selected >= 0 else 0
+			var idx = %FallPhase.selected if %FallPhase.selected >= 0 else 0
 			return EasingMapper.string_to_ease(_PHASE_NAMES[idx])
 
 func _get_current_trans_after() -> int:
-	match _mode_option.selected:
+	match %FallModeOption.selected:
 		0: return EasingMapper.string_to_trans(EasingMapper.get_preset_config(0)["after_func"])
 		1: return EasingMapper.string_to_trans(EasingMapper.get_preset_config(1)["after_func"])
 		_:
-			var idx := _fall_func2_btn.selected if _fall_func2_btn.selected >= 0 else 0
+			var idx = %FallFunc2.selected if %FallFunc2.selected >= 0 else 0
 			return EasingMapper.string_to_trans(_FUNC_NAMES[idx])
 
 func _get_current_ease_after() -> int:
-	match _mode_option.selected:
+	match %FallModeOption.selected:
 		0: return EasingMapper.string_to_ease(EasingMapper.get_preset_config(0)["after_phase"])
 		1: return EasingMapper.string_to_ease(EasingMapper.get_preset_config(1)["after_phase"])
 		_:
-			var idx := _fall_phase2_btn.selected if _fall_phase2_btn.selected >= 0 else 0
+			var idx = %FallPhase2.selected if %FallPhase2.selected >= 0 else 0
 			return EasingMapper.string_to_ease(_PHASE_NAMES[idx])
 
 func _get_current_fall_time() -> float:
-	var text := _fall_duration_edit.text.strip_edges()
+	var text = %FallDurationEdit.text.strip_edges()
 	if text.is_valid_float():
 		return clampf(text.to_float(), _FALL_TIME_MIN, _FALL_TIME_MAX)
 	return 1.0
 
 func _get_current_fall_speed_mult() -> float:
-	var text := _fall_speed_edit.text.strip_edges()
+	var text = %FallSpeedEdit.text.strip_edges()
 	if text.is_valid_float():
 		return clampf(text.to_float(), _SPEED_MULT_MIN, _SPEED_MULT_MAX)
 	return 1.0
@@ -213,52 +203,52 @@ func _start_preview_loop() -> void:
 	var speed_mult := _get_current_fall_speed_mult()
 
 	# 读取 block 和判定线的布局参数
-	var block_height := _preview_block.size.y
-	var block_initial_y := _preview_block.position.y  # 由 anchor+offset 决定的基础位置（顶部锚定）
-	var block_initial_center_y := block_initial_y + block_height * 0.5
+	var block_height = %FallingBlock.size.y
+	var block_initial_y = %FallingBlock.position.y  # 由 anchor+offset 决定的基础位置（顶部锚定）
+	var block_initial_center_y = block_initial_y + block_height * 0.5
 
-	var line_y := _judge_line.position.y
-	var line_height := _judge_line.size.y
-	var line_center_y := line_y + line_height * 0.5
+	var line_y = %FallingLine.position.y
+	var line_height = %FallingLine.size.y
+	var line_center_y = line_y + line_height * 0.5
 
-	var preview_height := _preview_panel.size.y
+	var preview_height = %FallingPreview.size.y
 
 	# block 中心的目标 y 坐标（相对 FallingPreview）
-	var start_center_y := block_initial_center_y  # 初始位置（顶部之外）
-	var line_center_target := line_center_y       # 判定线位置
-	var end_center_y := preview_height + block_height * 0.5  # 底部之外
+	var start_center_y = block_initial_center_y  # 初始位置（顶部之外）
+	var line_center_target = line_center_y       # 判定线位置
+	var end_center_y = preview_height + block_height * 0.5  # 底部之外
 
 	# 转换为 offset_transform_position.y 偏移量
 	# block 中心 y = block_initial_center_y + offset_transform_position.y
 	# 所以 offset = target_center_y - block_initial_center_y
-	var start_offset := start_center_y - block_initial_center_y  # = 0
-	var line_offset := line_center_target - block_initial_center_y
-	var end_offset := end_center_y - block_initial_center_y
+	var start_offset = start_center_y - block_initial_center_y  # = 0
+	var line_offset = line_center_target - block_initial_center_y
+	var end_offset = end_center_y - block_initial_center_y
 
 	# 计算过线后时间
 	# 判定线前速度 = distance_before / fall_time
 	# 判定线后速度 = speed * speed_mult
 	# 判定线后时间 = distance_after / (speed * speed_mult)
-	var distance_before := line_offset - start_offset
-	var distance_after := end_offset - line_offset
+	var distance_before = line_offset - start_offset
+	var distance_after = end_offset - line_offset
 	var speed = distance_before / max(0.001, fall_time)
 	var after_time = distance_after / max(0.001, speed * speed_mult)
 
 	# 设置初始位置
-	_preview_block.offset_transform_position.y = start_offset
+	%FallingBlock.offset_transform_position.y = start_offset
 
 	_preview_tween = AniMGR.create_managed_tween(self)
 	_preview_tween.set_loops()
 	# 第一段：从顶部下落到判定线（判定线前缓动）
-	_preview_tween.tween_property(_preview_block, "offset_transform_position:y", line_offset, fall_time) \
+	_preview_tween.tween_property(%FallingBlock, "offset_transform_position:y", line_offset, fall_time) \
 		.set_trans(trans_before).set_ease(ease_before)
 	# 第二段：从判定线继续下落到底部之外（判定线后缓动）
-	_preview_tween.tween_property(_preview_block, "offset_transform_position:y", end_offset, after_time) \
+	_preview_tween.tween_property(%FallingBlock, "offset_transform_position:y", end_offset, after_time) \
 		.set_trans(trans_after).set_ease(ease_after)
 	# 短暂停顿
 	_preview_tween.tween_interval(0.3)
 	# 瞬间重置回起始位置，避免 set_loops 时第一段从底部反向回到判定线
-	_preview_tween.tween_callback(func() -> void: _preview_block.offset_transform_position.y = start_offset)
+	_preview_tween.tween_callback(func() -> void: %FallingBlock.offset_transform_position.y = start_offset)
 
 func _stop_preview() -> void:
 	if _preview_tween and _preview_tween.is_valid():

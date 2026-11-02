@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://ca1rxwt3t1wel" path="res://UI/Views/TrackView/TrackView.gd" id="1_7vp1s"]
 [ext_resource type="Script" uid="uid://bnt65j78d2po7" path="res://UI/Views/TrackView/noteDisplayer.gd" id="2_8bk0u"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="3_3id1m"]
+[ext_resource type="Script" uid="uid://b7vogqpkrg617" path="res://UI/Views/TrackView/TrackViewRoot.gd" id="4_root"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_31lmn"]
 bg_color = Color(0.0941, 0.1176, 0.1686, 1)
@@ -200,8 +201,20 @@ region = Rect2(0, 160, 80, 80)
 atlas = ExtResource("3_3id1m")
 region = Rect2(0, 240, 80, 80)
 
-[node name="TrackView" type="ScrollContainer" unique_id=1056782616]
+[node name="TrackView" type="Control" unique_id=1344153362]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("4_root")
+view_layer = 0
+
+[node name="PageContent" type="ScrollContainer" parent="." unique_id=1056782616]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(1500, 1120)
+layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -219,19 +232,20 @@ script = ExtResource("1_7vp1s")
 container_path = NodePath("VBox")
 list_item_class = "res://UI/Views/TrackView/midiTrack.tscn"
 
-[node name="VBox" type="VBoxContainer" parent="." unique_id=628426335]
+[node name="VBox" type="VBoxContainer" parent="PageContent" unique_id=628426335]
 custom_minimum_size = Vector2(1600, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 29
 
-[node name="TotalView" type="Panel" parent="VBox" unique_id=1479010735]
+[node name="TotalView" type="Panel" parent="PageContent/VBox" unique_id=1479010735]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(1600, 350)
 layout_mode = 2
 mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_31lmn")
 
-[node name="VBoxC" type="VBoxContainer" parent="VBox/TotalView" unique_id=699392840]
+[node name="VBoxC" type="VBoxContainer" parent="PageContent/VBox/TotalView" unique_id=699392840]
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -245,14 +259,15 @@ grow_vertical = 2
 theme_override_constants/separation = 13
 alignment = 1
 
-[node name="flowArea" type="HBoxContainer" parent="VBox/TotalView/VBoxC" unique_id=376640490]
+[node name="MasterNoteDisplayer" type="HBoxContainer" parent="PageContent/VBox/TotalView/VBoxC" unique_id=376640490]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 270)
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 0
 script = ExtResource("2_8bk0u")
 
-[node name="noteFlowArea" type="Panel" parent="VBox/TotalView/VBoxC/flowArea" unique_id=759561544]
+[node name="NoteFlowArea" type="Panel" parent="PageContent/VBox/TotalView/VBoxC/MasterNoteDisplayer" unique_id=759561544]
 custom_minimum_size = Vector2(1250, 270)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -260,7 +275,8 @@ size_flags_stretch_ratio = 10.08
 mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_3id1m")
 
-[node name="canvas" type="Panel" parent="VBox/TotalView/VBoxC/flowArea/noteFlowArea" unique_id=1164057364]
+[node name="NoteCanvas" type="Panel" parent="PageContent/VBox/TotalView/VBoxC/MasterNoteDisplayer/NoteFlowArea" unique_id=1164057364]
+unique_name_in_owner = true
 clip_children = 1
 layout_mode = 1
 anchors_preset = 15
@@ -269,7 +285,8 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Button" type="Button" parent="VBox/TotalView/VBoxC/flowArea/noteFlowArea" unique_id=69255031]
+[node name="ExpandBtn" type="Button" parent="PageContent/VBox/TotalView/VBoxC/MasterNoteDisplayer/NoteFlowArea" unique_id=69255031]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -283,13 +300,15 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_8bk0u")
 theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_8bk0u")
 toggle_mode = true
 
-[node name="noteTotal" type="Panel" parent="VBox/TotalView/VBoxC/flowArea" unique_id=892610285]
+[node name="NoteCounterPanel" type="Panel" parent="PageContent/VBox/TotalView/VBoxC/MasterNoteDisplayer" unique_id=892610285]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
 mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_xcqgn")
 
-[node name="passedNote" type="Label" parent="VBox/TotalView/VBoxC/flowArea/noteTotal" unique_id=1298249897]
+[node name="NotePassed" type="Label" parent="PageContent/VBox/TotalView/VBoxC/MasterNoteDisplayer/NoteCounterPanel" unique_id=1298249897]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_top = 0.5
@@ -305,7 +324,8 @@ text = "999"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="HSeparator" type="HSeparator" parent="VBox/TotalView/VBoxC/flowArea/noteTotal" unique_id=942598841]
+[node name="NoteCounterSeparator" type="HSeparator" parent="PageContent/VBox/TotalView/VBoxC/MasterNoteDisplayer/NoteCounterPanel" unique_id=942598841]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -323,7 +343,8 @@ offset_transform_rotation = -0.17453292
 mouse_filter = 2
 theme_override_styles/separator = SubResource("StyleBoxLine_3id1m")
 
-[node name="totalNote" type="Label" parent="VBox/TotalView/VBoxC/flowArea/noteTotal" unique_id=1058508456]
+[node name="NoteTotal" type="Label" parent="PageContent/VBox/TotalView/VBoxC/MasterNoteDisplayer/NoteCounterPanel" unique_id=1058508456]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 1
 anchors_preset = -1
@@ -338,13 +359,14 @@ theme_override_font_sizes/font_size = 48
 text = "9999"
 vertical_alignment = 1
 
-[node name="playArea" type="HBoxContainer" parent="VBox/TotalView/VBoxC" unique_id=698025016]
+[node name="PlayArea" type="HBoxContainer" parent="PageContent/VBox/TotalView/VBoxC" unique_id=698025016]
 custom_minimum_size = Vector2(1500, 40)
 layout_mode = 2
 theme_override_constants/separation = 15
 alignment = 1
 
-[node name="currentTime" type="Label" parent="VBox/TotalView/VBoxC/playArea" unique_id=2027984373]
+[node name="CurrentTime" type="Label" parent="PageContent/VBox/TotalView/VBoxC/PlayArea" unique_id=2027984373]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
@@ -352,13 +374,15 @@ text = "00:00:00"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="progressBar" type="HSlider" parent="VBox/TotalView/VBoxC/playArea" unique_id=734273531]
+[node name="ProgressBar" type="HSlider" parent="PageContent/VBox/TotalView/VBoxC/PlayArea" unique_id=734273531]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 
-[node name="totalTime" type="Label" parent="VBox/TotalView/VBoxC/playArea" unique_id=1622121250]
+[node name="TotalTime" type="Label" parent="PageContent/VBox/TotalView/VBoxC/PlayArea" unique_id=1622121250]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
@@ -366,13 +390,13 @@ text = "99:60:60"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="VolumeView" type="Panel" parent="VBox" unique_id=1305853142]
+[node name="VolumeView" type="Panel" parent="PageContent/VBox" unique_id=1305853142]
 custom_minimum_size = Vector2(1600, 200)
 layout_mode = 2
 mouse_filter = 1
 theme_override_styles/panel = SubResource("StyleBoxFlat_31lmn")
 
-[node name="HBoxC" type="HBoxContainer" parent="VBox/VolumeView" unique_id=557361818]
+[node name="HBoxC" type="HBoxContainer" parent="PageContent/VBox/VolumeView" unique_id=557361818]
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -383,14 +407,15 @@ grow_horizontal = 2
 grow_vertical = 2
 alignment = 1
 
-[node name="VBoxC2" type="VBoxContainer" parent="VBox/VolumeView/HBoxC" unique_id=346501179]
+[node name="VBoxC2" type="VBoxContainer" parent="PageContent/VBox/VolumeView/HBoxC" unique_id=346501179]
 custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_constants/separation = 15
 alignment = 1
 
-[node name="VocalImportBtn" type="TextureButton" parent="VBox/VolumeView/HBoxC/VBoxC2" unique_id=1082562773]
+[node name="VocalImportBtn" type="TextureButton" parent="PageContent/VBox/VolumeView/HBoxC/VBoxC2" unique_id=1082562773]
+unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(150, 150)
 layout_mode = 2
@@ -398,7 +423,8 @@ texture_normal = SubResource("AtlasTexture_kpleu")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="VocalEnableBtn" type="Button" parent="VBox/VolumeView/HBoxC/VBoxC2" unique_id=328857307]
+[node name="VocalEnableBtn" type="Button" parent="PageContent/VBox/VolumeView/HBoxC/VBoxC2" unique_id=328857307]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(225, 120)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -411,23 +437,25 @@ theme_override_styles/hover_pressed = SubResource("StyleBoxFlat_mxrqf")
 toggle_mode = true
 text = "人声已启用"
 
-[node name="HBoxC" type="HBoxContainer" parent="VBox/VolumeView/HBoxC/VBoxC2" unique_id=308563010]
+[node name="VocalLatencyRow" type="HBoxContainer" parent="PageContent/VBox/VolumeView/HBoxC/VBoxC2" unique_id=308563010]
+unique_name_in_owner = true
 layout_mode = 2
 alignment = 1
 
-[node name="Latency" type="LineEdit" parent="VBox/VolumeView/HBoxC/VBoxC2/HBoxC" unique_id=2145421351]
+[node name="VocalLatencyEdit" type="LineEdit" parent="PageContent/VBox/VolumeView/HBoxC/VBoxC2/VocalLatencyRow" unique_id=2145421351]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 alignment = 1
 keep_editing_on_text_submit = true
 emoji_menu_enabled = false
 
-[node name="Label" type="Label" parent="VBox/VolumeView/HBoxC/VBoxC2/HBoxC" unique_id=377052159]
+[node name="Label" type="Label" parent="PageContent/VBox/VolumeView/HBoxC/VBoxC2/VocalLatencyRow" unique_id=377052159]
 layout_mode = 2
 theme_override_font_sizes/font_size = 27
 text = "ms"
 
-[node name="GridC" type="GridContainer" parent="VBox/VolumeView/HBoxC" unique_id=497056556]
+[node name="GridC" type="GridContainer" parent="PageContent/VBox/VolumeView/HBoxC" unique_id=497056556]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
@@ -436,7 +464,8 @@ theme_override_constants/h_separation = 20
 theme_override_constants/v_separation = 15
 columns = 3
 
-[node name="midiVolIcon" type="TextureButton" parent="VBox/VolumeView/HBoxC/GridC" unique_id=1519618403]
+[node name="MidiVolIconBtn" type="TextureButton" parent="PageContent/VBox/VolumeView/HBoxC/GridC" unique_id=1519618403]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(70, 70)
 layout_mode = 2
 toggle_mode = true
@@ -445,7 +474,8 @@ texture_pressed = SubResource("AtlasTexture_r0ui6")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="midiVolSlider" type="HSlider" parent="VBox/VolumeView/HBoxC/GridC" unique_id=1938928655]
+[node name="MidiVolSlider" type="HSlider" parent="PageContent/VBox/VolumeView/HBoxC/GridC" unique_id=1938928655]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(600, 40)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -453,14 +483,16 @@ size_flags_vertical = 4
 max_value = 1.0
 step = 0.01
 
-[node name="midiVolLabel" type="Label" parent="VBox/VolumeView/HBoxC/GridC" unique_id=835564543]
+[node name="MidiVolText" type="Label" parent="PageContent/VBox/VolumeView/HBoxC/GridC" unique_id=835564543]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 30
 text = "-1.99 dB"
 vertical_alignment = 1
 
-[node name="vocalVolIcon" type="TextureButton" parent="VBox/VolumeView/HBoxC/GridC" unique_id=436473023]
+[node name="VocalVolIconBtn" type="TextureButton" parent="PageContent/VBox/VolumeView/HBoxC/GridC" unique_id=436473023]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(70, 70)
 layout_mode = 2
 toggle_mode = true
@@ -469,7 +501,8 @@ texture_pressed = SubResource("AtlasTexture_3id1m")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="vocalVolSlider" type="HSlider" parent="VBox/VolumeView/HBoxC/GridC" unique_id=1345948155]
+[node name="VocalVolSlider" type="HSlider" parent="PageContent/VBox/VolumeView/HBoxC/GridC" unique_id=1345948155]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(600, 40)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -477,19 +510,20 @@ size_flags_vertical = 4
 max_value = 1.0
 step = 0.01
 
-[node name="vocalVolLabel" type="Label" parent="VBox/VolumeView/HBoxC/GridC" unique_id=1145066087]
+[node name="VocalVolText" type="Label" parent="PageContent/VBox/VolumeView/HBoxC/GridC" unique_id=1145066087]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 30
 text = "-1.99 dB"
 vertical_alignment = 1
 
-[connection signal="toggled" from="VBox/TotalView/VBoxC/flowArea/noteFlowArea/Button" to="." method="_on_expand_master_area_btn_toggled"]
-[connection signal="drag_ended" from="VBox/TotalView/VBoxC/playArea/progressBar" to="." method="_on_progress_bar_drag_ended"]
-[connection signal="drag_started" from="VBox/TotalView/VBoxC/playArea/progressBar" to="." method="_on_progress_bar_drag_started"]
-[connection signal="value_changed" from="VBox/TotalView/VBoxC/playArea/progressBar" to="." method="_on_progress_bar_value_changed"]
-[connection signal="pressed" from="VBox/VolumeView/HBoxC/VBoxC2/VocalImportBtn" to="." method="_on_vocal_import_btn_pressed"]
-[connection signal="toggled" from="VBox/VolumeView/HBoxC/VBoxC2/VocalEnableBtn" to="." method="_on_vocal_enable_btn_toggled"]
-[connection signal="text_changed" from="VBox/VolumeView/HBoxC/VBoxC2/HBoxC/Latency" to="." method="_on_latency_changed"]
-[connection signal="value_changed" from="VBox/VolumeView/HBoxC/GridC/midiVolSlider" to="." method="_on_midi_volume_changed"]
-[connection signal="value_changed" from="VBox/VolumeView/HBoxC/GridC/vocalVolSlider" to="." method="_on_vocal_volume_changed"]
+[connection signal="toggled" from="PageContent/VBox/TotalView/VBoxC/MasterNoteDisplayer/NoteFlowArea/ExpandBtn" to="PageContent" method="_on_expand_master_area_btn_toggled"]
+[connection signal="drag_ended" from="PageContent/VBox/TotalView/VBoxC/PlayArea/ProgressBar" to="PageContent" method="_on_progress_bar_drag_ended"]
+[connection signal="drag_started" from="PageContent/VBox/TotalView/VBoxC/PlayArea/ProgressBar" to="PageContent" method="_on_progress_bar_drag_started"]
+[connection signal="value_changed" from="PageContent/VBox/TotalView/VBoxC/PlayArea/ProgressBar" to="PageContent" method="_on_progress_bar_value_changed"]
+[connection signal="pressed" from="PageContent/VBox/VolumeView/HBoxC/VBoxC2/VocalImportBtn" to="PageContent" method="_on_vocal_import_btn_pressed"]
+[connection signal="toggled" from="PageContent/VBox/VolumeView/HBoxC/VBoxC2/VocalEnableBtn" to="PageContent" method="_on_vocal_enable_btn_toggled"]
+[connection signal="text_changed" from="PageContent/VBox/VolumeView/HBoxC/VBoxC2/VocalLatencyRow/VocalLatencyEdit" to="PageContent" method="_on_latency_changed"]
+[connection signal="value_changed" from="PageContent/VBox/VolumeView/HBoxC/GridC/MidiVolSlider" to="PageContent" method="_on_midi_volume_changed"]
+[connection signal="value_changed" from="PageContent/VBox/VolumeView/HBoxC/GridC/VocalVolSlider" to="PageContent" method="_on_vocal_volume_changed"]

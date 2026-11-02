@@ -27,8 +27,8 @@ func _ready() -> void:
 	_current_label = $CurrentLabel
 	_path_line_edit = $PathHBox/LineEdit
 	_browse_btn = $PathHBox/BrowseBtn
-	_cancel_btn = $Btns/Cancel
-	_confirm_btn = $Btns/Confirm
+	_cancel_btn = $Btns/CancelBtn
+	_confirm_btn = $Btns/ConfirmBtn
 
 	_browse_btn.pressed.connect(_on_browse_pressed)
 	_cancel_btn.pressed.connect(_on_cancel_pressed)

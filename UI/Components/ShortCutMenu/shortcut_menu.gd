@@ -1,47 +1,32 @@
 extends VBoxContainer
+class_name Shortcut_Menu
 
-@onready var ui : UIStateManager = UiStatMGR
-@onready var se = SortEngine
-@onready var ani: AnimationManager = AniMGR
+static var instance:Shortcut_Menu
 
-@onready var sort_button = $Btns/Search
-@onready var favor_list_button = $Btns/FavorList
-
-@onready var page_container = $Panel # 页面背景
-@onready var page = $Panel/Clip/Page # 页面内容
-
-@onready var search_lineedit: LineEdit = $Panel/Clip/Page/SortPage/SearchBox/TextEdit
-
-# 收藏夹相关节点
-@onready var favor_list_container: VBoxContainer = $Panel/Clip/Page/FavorPage/FavorList/VBoxC
-@onready var favor_list: ScrollContainer = $Panel/Clip/Page/FavorPage/FavorList
-@onready var create_list: VBoxContainer = $Panel/Clip/Page/FavorPage/CreateList
-@onready var add_btn: Button = $Panel/Clip/Page/FavorPage/CreateList/AddBtn
-@onready var favor_page: VBoxContainer = $Panel/Clip/Page/FavorPage
+# 外部引用
+@onready var shortcut_panel: Panel = %ShortcutPanel
 
 # 收藏夹列表项场景
 const FAVOR_ITEM_SCENE := preload("res://UI/Components/ShortCutMenu/favorListItem.tscn")
-const FAVOR_LIST_DEFAULT_HEIGHT := 530
-const FAVOR_LIST_CREATE_HEIGHT := 470
 
 # 新建收藏夹状态
 var _is_creating: bool = false
-var _create_edit: LineEdit = null
 
 func _ready() -> void:
+	instance = self
 	# 连接按钮点击事件
-	sort_button.toggled.connect(_on_menu_tab_btn_toggled.bind(sort_button))
-	favor_list_button.toggled.connect(_on_menu_tab_btn_toggled.bind(favor_list_button))
+	%SortTabBtn.toggled.connect(_on_menu_tab_btn_toggled.bind(%SortTabBtn))
+	%FavorListTabBtn.toggled.connect(_on_menu_tab_btn_toggled.bind(%FavorListTabBtn))
 
 	# 按键退出事件
-	ui.state_changed.connect(_on_state_changed)
+	UiStatMGR.state_changed.connect(_on_state_changed)
 
 	# 按钮聚焦事件
-	sort_button.focus_entered.connect(_on_focus_enter.bind(sort_button))
-	favor_list_button.focus_entered.connect(_on_focus_enter.bind(favor_list_button))
+	%SortTabBtn.focus_entered.connect(_on_focus_enter.bind(%SortTabBtn))
+	%FavorListTabBtn.focus_entered.connect(_on_focus_enter.bind(%FavorListTabBtn))
 
 	# 收藏夹相关
-	add_btn.pressed.connect(_on_add_btn_pressed)
+	%AddBtn.pressed.connect(_on_add_btn_pressed)
 	EvtBus.favorites_loaded.connect(_refresh_favor_list)
 	EvtBus.favorites_updated.connect(_refresh_favor_list)
 	EvtBus.favorite_list_created.connect(_refresh_favor_list)
@@ -64,18 +49,18 @@ func _on_focus_enter(btn: Button):
 func _on_state_changed(old_state: UIStateManager.UIState, new_state: UIStateManager.UIState) -> void:
 	var valid_state = [UIStateManager.UIState.ALBUM_VIEW, UIStateManager.UIState.SONG_VIEW]
 	if new_state != UIStateManager.UIState.SORTED_VIEW and not (old_state in valid_state and new_state in valid_state):
-		sort_button.button_pressed = false
-		favor_list_button.button_pressed = false
+		%SortTabBtn.button_pressed = false
+		%FavorListTabBtn.button_pressed = false
 	# 仅进入排序筛选页（SORTED_VIEW）清空搜索词；其余导航（含进出 MidiView）保留就地搜索
 	if new_state == UIStateManager.UIState.SORTED_VIEW:
-		search_lineedit.text = ""
+		%SearchEdit.text = ""
 		if EvtBus.current_search_query != "":
 			EvtBus.current_search_query = ""
 			EvtBus.search_query_changed.emit("")
 	# 从 MidiView 返回 SongView 仍保留就地搜索词时，自动展开快捷菜单以显示当前筛选状态
 	if old_state == UIStateManager.UIState.MIDI_VIEW and new_state == UIStateManager.UIState.SONG_VIEW:
-		if EvtBus.current_search_query != "" and not sort_button.button_pressed:
-			sort_button.button_pressed = true
+		if EvtBus.current_search_query != "" and not %SortTabBtn.button_pressed:
+			%SortTabBtn.button_pressed = true
 
 func _on_menu_tab_btn_toggled(toggled_on: bool, btn: Button):
 	var tween = AniMGR.create_managed_tween(self)
@@ -87,22 +72,22 @@ func _on_menu_tab_btn_toggled(toggled_on: bool, btn: Button):
 
 	if _is_all_off():
 		# 缩小:开启 visual_only,让 offset_transform 不进入布局/输入矩阵,避免 scale=0 触发 affine_inverse 报错
-		page_container.set_offset_transform_visual_only(true)
-		tween.tween_property(page_container, "offset_transform_scale:y", 0.0, 0.5)
-		ani.animate_fade_out(page_container, 0.6, "menu_fade")
+		%ShortcutPanel.set_offset_transform_visual_only(true)
+		tween.tween_property(%ShortcutPanel, "offset_transform_scale:y", 0.0, 0.5)
+		AniMGR.animate_fade_out(%ShortcutPanel, 0.6, "menu_fade")
 	else:
 		# 变大:关闭 visual_only;若起始 scale 为 0,先设为极小值避免 scale=0 + visual_only=false 触发报错
-		page_container.set_offset_transform_visual_only(false)
-		if page_container.offset_transform_scale.y == 0.0:
-			page_container.set_offset_transform_scale(Vector2(page_container.offset_transform_scale.x, 0.001))
-		tween.tween_property(page_container, "offset_transform_scale:y", 1.0, 0.5)
-		ani.animate_fade_in(page_container, 0, "menu_fade")
+		%ShortcutPanel.set_offset_transform_visual_only(false)
+		if %ShortcutPanel.offset_transform_scale.y == 0.0:
+			%ShortcutPanel.set_offset_transform_scale(Vector2(%ShortcutPanel.offset_transform_scale.x, 0.001))
+		tween.tween_property(%ShortcutPanel, "offset_transform_scale:y", 1.0, 0.5)
+		AniMGR.animate_fade_in(%ShortcutPanel, 0, "menu_fade")
 
 	if toggled_on:
-		tween.tween_property(page, "offset_transform_position:x", (-655 if btn == favor_list_button else 0), 0.5)
+		tween.tween_property(%PageContent, "offset_transform_position:x", (-655 if btn == %FavorListTabBtn else 0), 0.5)
 
 func _is_all_off() -> bool:
-	if sort_button.button_pressed or favor_list_button.button_pressed:
+	if %SortTabBtn.button_pressed or %FavorListTabBtn.button_pressed:
 		return false
 	return true
 
@@ -117,7 +102,7 @@ const _TAN15 := tan(deg_to_rad(15))
 func play_transition_animation(exit: bool) -> Tween:
 	var target_offset := Vector2(500 * _TAN15, -500)
 	if exit:
-		var t := ani.animate_offset_to(self, target_offset, 0.25, "MenuBarPosition")
+		var t := AniMGR.animate_offset_to(self, target_offset, 0.25, "MenuBarPosition")
 		t.finished.connect(func() -> void:
 			visible = false
 		)
@@ -125,22 +110,20 @@ func play_transition_animation(exit: bool) -> Tween:
 	# 入场：从偏移位置移回原位
 	visible = true
 	offset_transform_position = target_offset
-	return ani.animate_offset_back(self, 0.25, "MenuBarPosition")
+	return AniMGR.animate_offset_back(self, 0.25, "MenuBarPosition")
 
 ## 收起已展开的快捷面板（排序/收藏页），供 PlayerInfo 展开等外部场景调用
 ## 通过复位 toggle 按钮触发 _on_menu_tab_btn_toggled 的既有收起动画
 func collapse_panel() -> void:
-	if sort_button.button_pressed:
-		sort_button.button_pressed = false
-	if favor_list_button.button_pressed:
-		favor_list_button.button_pressed = false
+	if %SortTabBtn.button_pressed:
+		%SortTabBtn.button_pressed = false
+	if %FavorListTabBtn.button_pressed:
+		%FavorListTabBtn.button_pressed = false
 
 # 筛选按钮部分
 var sortByStatus: SortEngine.SortStatField = SortEngine.SortStatField.ALL
 var sortByData: SortEngine.SortDataField = SortEngine.SortDataField.DOWNLOAD_COUNT
 var sortDirection: SortEngine.SortDirection = SortEngine.SortDirection.ASCENDING
-
-@onready var sort_btns = $Panel/Clip/Page/SortPage/SortButton
 
 # icon_set2.png 各筛选图标 region（80x80）：第三行状态 / 第四行升降序 / 第五行数据
 const _STATUS_REGION := {
@@ -168,44 +151,44 @@ var _data_fields: Array = [
 
 func _on_status_pressed() -> void:
 	# 未进入 SortedMidiView：本此点击仅进入视图并应用当前筛选状态，不切换字段
-	if ui.current_state != ui.UIState.SORTED_VIEW:
-		se.set_sort_mode(sortByStatus, sortByData, sortDirection)
-		ui.change_state(ui.UIState.SORTED_VIEW)
+	if UiStatMGR.current_state != UiStatMGR.UIState.SORTED_VIEW:
+		SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
+		UiStatMGR.change_state(UiStatMGR.UIState.SORTED_VIEW)
 		return
 	# 已进入：Midi状态循环切换（第三行图标）
 	sortByStatus=(sortByStatus+1)%5 as SortEngine.SortStatField
-	(sort_btns.get_node("Status").icon as AtlasTexture).region = _STATUS_REGION[sortByStatus]
-	se.set_sort_mode(sortByStatus, sortByData, sortDirection)
+	(%StateBtn.icon as AtlasTexture).region = _STATUS_REGION[sortByStatus]
+	SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
 
 # 数据筛选（第五行图标循环）
 func _on_data_pressed() -> void:
 	# 未进入 SortedMidiView：本此点击仅进入视图并应用当前筛选状态，不切换字段
-	if ui.current_state != ui.UIState.SORTED_VIEW:
-		se.set_sort_mode(sortByStatus, sortByData, sortDirection)
-		ui.change_state(ui.UIState.SORTED_VIEW)
+	if UiStatMGR.current_state != UiStatMGR.UIState.SORTED_VIEW:
+		SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
+		UiStatMGR.change_state(UiStatMGR.UIState.SORTED_VIEW)
 		return
 	# 已进入：在当前可用字段内循环
 	var cur := _data_fields.find(int(sortByData))
 	var next := (cur + 1) % _data_fields.size() if cur >= 0 else 0
 	sortByData = _data_fields[next] as SortEngine.SortDataField
 
-	(sort_btns.get_node("Data").icon as AtlasTexture).region = _DATA_REGION[sortByData]
-	se.set_sort_mode(sortByStatus, sortByData, sortDirection)
+	(%DataBtn.icon as AtlasTexture).region = _DATA_REGION[sortByData]
+	SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
 
 func _on_ordering_pressed() -> void:
 	# 未进入 SortedMidiView：本此点击仅进入视图并应用当前筛选状态，不切换字段
-	if ui.current_state != ui.UIState.SORTED_VIEW:
-		se.set_sort_mode(sortByStatus, sortByData, sortDirection)
-		ui.change_state(ui.UIState.SORTED_VIEW)
+	if UiStatMGR.current_state != UiStatMGR.UIState.SORTED_VIEW:
+		SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
+		UiStatMGR.change_state(UiStatMGR.UIState.SORTED_VIEW)
 		return
 	# 已进入：升序/降序循环切换（第四行图标）
 	sortDirection = (sortDirection + 1) % 2 as SortEngine.SortDirection
-	(sort_btns.get_node("Ordering").icon as AtlasTexture).region = _ASC_REGION if sortDirection == SortEngine.SortDirection.ASCENDING else _DESC_REGION
-	se.set_sort_mode(sortByStatus, sortByData, sortDirection)
+	(%OrderingBtn.icon as AtlasTexture).region = _ASC_REGION if sortDirection == SortEngine.SortDirection.ASCENDING else _DESC_REGION
+	SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
 
 
 func _on_search_query(query: String = "") -> void:
-	var q := query if query else search_lineedit.text
+	var q: String = query if query else %SearchEdit.text
 	EvtBus.current_search_query = q
 	EvtBus.search_query_changed.emit(q)
 
@@ -218,18 +201,18 @@ func _refresh_favor_list(_arg1 = null, _arg2 = null, _arg3 = null) -> void:
 		return
 	# 记住当前聚焦项：重建会销毁节点，重建后恢复焦点（如重命名完成后的场景）
 	var focused_id := ""
-	for child in favor_list_container.get_children():
+	for child in %FavorList.get_children():
 		if child is FavorListItem and child.has_focus():
 			focused_id = child.favorite_id
 			break
 	# 清空现有列表项
-	for child in favor_list_container.get_children():
+	for child in %FavorList.get_children():
 		child.queue_free()
 	# 重新填充
 	var target_item: FavorListItem = null
 	for fav in FavoriteManager.instance.favorites:
 		var item = FAVOR_ITEM_SCENE.instantiate()
-		favor_list_container.add_child(item)
+		%FavorList.add_child(item)
 		item.setup(fav, FavorListItem.Mode.BROWSE)
 		item.favor_item_clicked.connect(_on_favor_item_clicked)
 		if fav.id == focused_id:
@@ -250,33 +233,22 @@ func _on_add_btn_pressed() -> void:
 ## 进入新建模式：显示文本框，切换图标为 confirm
 func _enter_create_mode() -> void:
 	_is_creating = true
-	# 缩小 FavorList 高度为 LineEdit 腾出空间
-	favor_list.custom_minimum_size.y = FAVOR_LIST_CREATE_HEIGHT
-	_create_edit = LineEdit.new()
-	_create_edit.placeholder_text = "输入收藏夹名称"
-	_create_edit.custom_minimum_size = Vector2(400, 60)
-	_create_edit.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_create_edit.text_submitted.connect(func(_t): _confirm_create())
-	# 插入到 CreateList 内部 AddBtn 上方
-	create_list.add_child(_create_edit)
-	create_list.move_child(_create_edit, 0)
+	%NameEdit.text = ""
+	%NameEdit.visible = true
 	# 切换 AddBtn 图标为 confirm
-	add_btn.icon.region = Rect2(0, 80, 80, 80)
-	_create_edit.grab_focus()
+	%AddBtn.icon.region = Rect2(0, 80, 80, 80)
+	%NameEdit.grab_focus()
 
 
 ## 确认创建：读取文本，创建收藏夹，恢复 AddBtn 图标
-func _confirm_create() -> void:
-	if not _is_creating or not _create_edit:
+func _confirm_create(_new_text: String = "") -> void:
+	if not _is_creating:
 		return
-	var fav_name := _create_edit.text.strip_edges()
+	var fav_name: String = %NameEdit.text.strip_edges()
+	%NameEdit.visible = false
 	_is_creating = false
-	_create_edit.queue_free()
-	_create_edit = null
-	# 恢复 FavorList 高度
-	favor_list.custom_minimum_size.y = FAVOR_LIST_DEFAULT_HEIGHT
 	# 切换 AddBtn 图标回 add
-	add_btn.icon.region = Rect2(160, 80, 80, 80)
+	%AddBtn.icon.region = Rect2(160, 80, 80, 80)
 	# 创建收藏夹
 	if not fav_name.is_empty():
 		FavoriteManager.instance.create_favorite(fav_name)
@@ -287,8 +259,6 @@ func _on_favor_item_clicked(fav_id: String) -> void:
 	if fav_id.is_empty():
 		return
 	EvtBus.favorite_selected_for_browse.emit(fav_id)
-	if ui.current_state != ui.UIState.SORTED_VIEW:
-		ui.change_state(ui.UIState.SORTED_VIEW)
-	favor_list_button.button_pressed = false
-
-## 重命名/删除由 FavorListItem 组件自行落盘，宿主不再转发（三个复用点抄同一段就会漏）
+	if UiStatMGR.current_state != UiStatMGR.UIState.SORTED_VIEW:
+		UiStatMGR.change_state(UiStatMGR.UIState.SORTED_VIEW)
+	%FavorListTabBtn.button_pressed = false

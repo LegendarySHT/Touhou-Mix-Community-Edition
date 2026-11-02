@@ -2,10 +2,7 @@ extends Panel
 
 class_name FlowArea
 
-# 判定线
-@onready var jl: HSeparator = $JudgeLine
-@onready var ui: UIStateManager = UiStatMGR
-@onready var _particle_drawer: ParticleBatchDrawer = $ParticleBatchDrawer
+@onready var _particle_drawer: ParticleBatchDrawer = %ParticleBatchDrawer
 
 ########## 配置参数 #############
 var auto_mode: bool = false
@@ -130,7 +127,7 @@ var _notes_by_lane: Dictionary = {}  # 按轨道分组索引：{lane: Array[int]
 
 
 # Block/Slide/Long 音符批量绘制器（PlayView.tscn 场景节点，Node2D _draw 替代 N 个 Control 节点）
-@onready var _note_drawer: NoteBatchDrawer = $NoteBatchDrawer
+@onready var _note_drawer: NoteBatchDrawer = %NoteBatchDrawer
 
 # 手动触发音符的 NoteOff 调度器（演奏模式，按播放位置驱动）
 var _manual_off_scheduler = ManualNoteOffScheduler.new()
@@ -393,9 +390,8 @@ func init_flow_area():
 	# 同时初始化 _cached_viewport_height：避免首帧 _process 之前若被其他路径调用 _spawn_note
 	# 读到默认 0.0 导致 after_distance 计算错误
 	_cached_viewport_height = get_viewport().get_visible_rect().size.y
-	if _note_drawer:
-		_note_drawer.set_cull_margins(_note_cull_margin_top, _note_cull_margin_bottom)
-		_note_drawer.set_viewport_height(_cached_viewport_height)
+	_note_drawer.set_cull_margins(_note_cull_margin_top, _note_cull_margin_bottom)
+	_note_drawer.set_viewport_height(_cached_viewport_height)
 
 	# 预计算下落距离和速度
 	_recompute_fall_constants()
@@ -403,17 +399,17 @@ func init_flow_area():
 func _apply_judge_line_position() -> void:
 	var viewport_height: float = get_viewport().get_visible_rect().size.y
 	var offset: int = parent_node.judge_line_offset_y if parent_node else 200
-	jl.position.y = viewport_height - max(0, offset)
-	_judge_line_y = jl.position.y
+	%JudgeLine.position.y = viewport_height - max(0, offset)
+	_judge_line_y = %JudgeLine.position.y
 	_recompute_fall_constants()
 
 func _apply_judge_line_thickness() -> void:
 	var thickness : int = max(1, ConfigManager.instance.get_int("judge_line_thickness", 2))
-	var base_style: StyleBox = jl.get_theme_stylebox("separator")
+	var base_style: StyleBox = %JudgeLine.get_theme_stylebox("separator")
 	if base_style is StyleBoxLine:
 		var line_style: StyleBoxLine = (base_style as StyleBoxLine).duplicate() as StyleBoxLine
 		line_style.thickness = thickness
-		jl.add_theme_stylebox_override("separator", line_style)
+		%JudgeLine.add_theme_stylebox_override("separator", line_style)
 
 func _apply_note_fall_config_from_settings() -> void:
 	# 不写内联回退：config.ini 是默认值的权威来源，且 ConfigManager.merge_with_defaults
@@ -521,8 +517,6 @@ func _recalculate_note_dimensions() -> void:
 
 ## 应用音符绘制顺序设置（长条置底 / 长条置顶）到批量绘制器
 func _apply_note_draw_order() -> void:
-	if _note_drawer == null:
-		return
 	var long_on_top = ConfigManager.instance.get_int("note_draw_order", 0) == 1
 	_note_drawer.set_draw_type_order(long_on_top)
 	GLogger.info("Note draw order applied: long_on_top=%s" % str(long_on_top), "FlowArea")
@@ -530,22 +524,21 @@ func _apply_note_draw_order() -> void:
 # 修改音符皮肤 数组顺序[短块图片，短块上色区图片，滑块。。。，长条（从头到尾）]
 func set_note_texture(texture_array: Array):
 	# 直接同步到批量绘制器（drawer 为场景节点始终存在；缺失贴图由 drawer 内部回退透明纹理）
-	if _note_drawer:
-		_note_drawer.set_textures(texture_array[0] if texture_array.size() > 0 else null,
-			texture_array[1] if texture_array.size() > 1 else null,
-			texture_array[2] if texture_array.size() > 2 else null,
-			texture_array[3] if texture_array.size() > 3 else null)
-		_note_drawer.set_long_textures(texture_array[4] if texture_array.size() > 4 else null,
-			texture_array[5] if texture_array.size() > 5 else null,
-			texture_array[6] if texture_array.size() > 6 else null,
-			texture_array[7] if texture_array.size() > 7 else null,
-			texture_array[8] if texture_array.size() > 8 else null,
-			texture_array[9] if texture_array.size() > 9 else null)
-		_note_drawer.set_long_body_mode(_long_f_mode)
-		_note_drawer.set_long_stretch_mode(_long_stretch_mode)
-		# 贴图变化会重算各类型半高：同步刷新最大全高，保证 _note_fall_distance/速度在换肤后不过期
-		_note_max_size_y = _note_drawer.get_max_half_height() * 2.0
-		_recompute_fall_constants()
+	_note_drawer.set_textures(texture_array[0] if texture_array.size() > 0 else null,
+		texture_array[1] if texture_array.size() > 1 else null,
+		texture_array[2] if texture_array.size() > 2 else null,
+		texture_array[3] if texture_array.size() > 3 else null)
+	_note_drawer.set_long_textures(texture_array[4] if texture_array.size() > 4 else null,
+		texture_array[5] if texture_array.size() > 5 else null,
+		texture_array[6] if texture_array.size() > 6 else null,
+		texture_array[7] if texture_array.size() > 7 else null,
+		texture_array[8] if texture_array.size() > 8 else null,
+		texture_array[9] if texture_array.size() > 9 else null)
+	_note_drawer.set_long_body_mode(_long_f_mode)
+	_note_drawer.set_long_stretch_mode(_long_stretch_mode)
+	# 贴图变化会重算各类型半高：同步刷新最大全高，保证 _note_fall_distance/速度在换肤后不过期
+	_note_max_size_y = _note_drawer.get_max_half_height() * 2.0
+	_recompute_fall_constants()
 
 # 加载并应用指定皮肤的贴图
 func load_note_skin(skin_name: String = SkinManager.DEFAULT_SKIN_PRESET) -> void:
@@ -589,8 +582,7 @@ func load_note_skin(skin_name: String = SkinManager.DEFAULT_SKIN_PRESET) -> void
 	_resolve_note_colors()
 
 	# 同步光效开关到 drawer（Long 与 Block/Slide 同走批量绘制，无需重建对象池）
-	if _note_drawer:
-		_note_drawer.set_glow_enabled(_is_glow_enabled)
+	_note_drawer.set_glow_enabled(_is_glow_enabled)
 
 	GLogger.info("Loaded note skin: %s, glow=%s, connect_mode=%s" % [skin_name, _is_glow_enabled, _long_connect_mode], "FlowArea")
 
@@ -617,34 +609,29 @@ func refresh_note_colors() -> void:
 				var new_color: Color = _get_note_color(_st_type[idx], _st_lane[idx])
 				if new_color != _rt_color[idx]:
 					_move_note_to_bucket(idx, new_color)
-	if _note_drawer:
-		_note_drawer.request_redraw()
+	_note_drawer.request_redraw()
 
 # 根据皮肤配置设置 long-f 中部贴图的应用方式
 # repeat → 水平拉伸+垂直重复（drawer 分条绘制）；stretch → 固定比例映射（映射方式见 long_stretch_mode）
 # 模式值由 load_note_skin 经 SkinMGR.get_long_settings 读入并缓存，此处只负责同步到批量绘制器
 func _apply_long_f_mode() -> void:
 	# 同步到批量绘制器（皮肤热切换时实时更新）
-	if _note_drawer:
-		_note_drawer.set_long_body_mode(_long_f_mode)
-		_note_drawer.set_long_stretch_mode(_long_stretch_mode)
+	_note_drawer.set_long_body_mode(_long_f_mode)
+	_note_drawer.set_long_stretch_mode(_long_stretch_mode)
 
 # 修改音符宽度
 func set_note_width(wid: float):
 	# 模板 Control 已移除：宽度同步给 drawer，由 drawer 按纹理比例派生各类型半高
-	if _note_drawer:
-		_note_drawer.set_note_width(wid)
-		# 最大音符全高（下落距离用，保证音符在屏幕外生成/消失）
-		_note_max_size_y = _note_drawer.get_max_half_height() * 2.0
+	_note_drawer.set_note_width(wid)
+	# 最大音符全高（下落距离用，保证音符在屏幕外生成/消失）
+	_note_max_size_y = _note_drawer.get_max_half_height() * 2.0
 
 func clear_flow_area():
 	# 清空运行态分桶/索引/手势/平行数组（静态数据 _st_* 由 build_seq_data 重建，此处随数组一并清空）
-	if _note_drawer:
-		_note_drawer.clear()
+	_note_drawer.clear()
 
 	# 清空批绘粒子的活跃列表
-	if _particle_drawer:
-		_particle_drawer.clear()
+	_particle_drawer.clear()
 
 	for type_key in _TYPE_ORDER:
 		_note_buckets[type_key].clear()
@@ -673,7 +660,7 @@ var _note_fall_speed: float = 0
 var _note_fall_distance: float = 0
 
 # 性能优化缓存：每帧热点路径避免重复读取节点属性 / 调用缓动计算
-var _judge_line_y: float = 0.0  # jl.position.y 缓存（_apply_judge_line_position 维护）
+var _judge_line_y: float = 0.0  # %JudgeLine.position.y 缓存（_apply_judge_line_position 维护）
 var _note_fall_pre_ms: float = 1000.0  # _note_fall_time_seconds*1000（clamp 后），下落窗口时长
 var _after_speed_px_per_ms_inv: float = 0.0  # 判定线后下落速度的倒数 = 1.0 / (_note_fall_speed * 倍率)
 const _CURVE_LUT_SIZE: int = 1024  # 缓动曲线查表分辨率（对 BACK/ELASTIC 等振荡曲线足够平滑）
@@ -710,9 +697,8 @@ func _spawn_note(note_index: int) -> void:
 	# 计算音符位置（轨道几何由 LaneEffect 提供：左缘 x + 光柱宽度）
 	# 音符始终以轨道中心为基准居中：margin 可为负（音符宽于光柱时两端对称溢出），
 	# 保证音符中心恒等于光柱中心/轨道中心（否则音符宽于光柱时左对齐会导致光效相对偏左）
-	var lane_area = parent_node.lane_area
-	var beam_margin : float= (lane_area.get_lane_width() - note_visual_width) / 2.0
-	var start_x : float = lane_area.get_lane_x(lane) + beam_margin
+	var beam_margin : float= (%LaneEffect.get_lane_width() - note_visual_width) / 2.0
+	var start_x : float = %LaneEffect.get_lane_x(lane) + beam_margin
 
 	_rt_x[note_index] = start_x
 	_rt_cx[note_index] = start_x + note_visual_width * 0.5
@@ -985,8 +971,7 @@ func set_glow_params(intensity: float, size_val: float) -> void:
 	glow_intensity = clampf(intensity, 0.0, 2.0)
 	glow_size = clampf(size_val, 1.0, 30.0)
 	# 同步到 drawer（Block/Slide 光效由 drawer 管理）
-	if _note_drawer:
-		_note_drawer.set_glow_params(glow_intensity, glow_size)
+	_note_drawer.set_glow_params(glow_intensity, glow_size)
 
 func _init_note_pool() -> void:
 	"""初始化 NoteBatchDrawer（PlayView.tscn 场景节点，此处仅同步运行状态）"""
@@ -1001,8 +986,7 @@ func _remove_note(note_index: int) -> void:
 		return
 	_rt_flags[note_index] |= F_REMOVED
 	# 分桶模型：drawer 遍历的就是 _note_buckets（同引用），此处只触发重绘立即清除画面；按 F_REMOVED 跳过绘制
-	if _note_drawer:
-		_note_drawer.request_redraw()
+	_note_drawer.request_redraw()
 	_active_note_count -= 1  # F_REMOVED 守卫后重复调用不会二次递减（幂等）
 	# 从颜色桶/轨道索引的移除推迟到帧末执行（见 _sweep_removed_from_buckets）
 	_needs_bucket_sweep = true
@@ -1103,7 +1087,7 @@ func _gui_input(event: InputEvent) -> void:
 
 func _input(event: InputEvent) -> void:
 
-	if ui.current_state == ui.UIState.PLAY_VIEW and event is InputEventKey:
+	if UiStatMGR.current_state == UiStatMGR.UIState.PLAY_VIEW and event is InputEventKey:
 		# 有 GUI 控件持有键盘焦点时（HUD 编辑器的数值/文本输入框）不抢按键：
 		# 这里无条件 accept_event() 会让输入框一个字符都收不到。
 		# 正常打歌时焦点恒为 null（FocusManager 在 PLAY_VIEW 不接管），行为不变。
@@ -1128,7 +1112,7 @@ func _input(event: InputEvent) -> void:
 					if _st_type[bn] == FlowNote.NoteType.Long:
 						_hold_long_note(event.keycode, bn)
 				else:
-					parent_node.lane_area.light_lane(idx)
+					%LaneEffect.light_lane(idx)
 			else:
 				pressed_keys.erase(event.keycode)
 				var released_lane = parent_node.key_map.find(event.keycode)
@@ -1264,8 +1248,7 @@ func _handle_touch_drag(touch_id: int, pos: Vector2) -> void:
 	# 批量绘制版：平移 cached_x（相对 spawn 基准偏移），drawer 在 _draw 中读取
 	_rt_x[note_index] = _rt_x_base[note_index] + (pos.x - _rt_hold_press_x[note_index])
 	_rt_cx[note_index] = _rt_x[note_index] + note_visual_width * 0.5
-	if _note_drawer:
-		_note_drawer.request_redraw()
+	_note_drawer.request_redraw()
 
 # 按住长条音符
 # 注意：调用方负责在调用此函数之前已通过 _judge_note() 完成判定
@@ -1364,8 +1347,7 @@ func _finger_lanes(x: float) -> Array:
 
 ## 轨道 lane 内音符的统一中心 X（与 cached_center_x 公式一致；音符始终以轨道中心为基准居中）
 func _note_center_x_for_lane(lane: int) -> float:
-	var lane_area = parent_node.lane_area
-	return lane_area.get_lane_x(lane) + (lane_area.get_lane_width() - note_visual_width) / 2.0 + note_visual_width * 0.5
+	return %LaneEffect.get_lane_x(lane) + (%LaneEffect.get_lane_width() - note_visual_width) / 2.0 + note_visual_width * 0.5
 
 ## 滑键到达判定线的瞬间回调（rule 2 hold-catch）：手指/键盘键覆盖其轨道即接住
 ## 返回是否被判定。由 _update_block_note_fall 过线分支调用，每音符仅触发一次
@@ -1606,7 +1588,7 @@ func _judge_note(note_index: int, trigger_vibration: bool = false, input_time_ms
 		_remove_note(note_index)
 
 	# 特效（轨道光束颜色与音符一致：交替轨道颜色开启时按轨道色点亮）
-	get_parent().lane_area.light_lane(_st_lane[note_index], _rt_color[note_index])
+	%LaneEffect.light_lane(_st_lane[note_index], _rt_color[note_index])
 
 	var preset = spark_presets.get(result, "")
 	var emitter = spark_emitters.get(result, "")
@@ -1640,8 +1622,9 @@ func _notification(what: int) -> void:
 	# 视口尺寸变化时更新缓存（全屏锚定，size == 视口大小），_process 不再每帧查询
 	if what == NOTIFICATION_RESIZED:
 		_cached_viewport_height = size.y
-		if _note_drawer:
-			_note_drawer.set_viewport_height(_cached_viewport_height)
+		# 这里不能读 @onready 的 _note_drawer：RESIZED 在 enter_tree 阶段就会触发，早于 _ready，
+		# 那时 @onready 变量还是 null；子节点在实例化时已注册 unique name，按 % 现查即可。
+		(%NoteBatchDrawer as NoteBatchDrawer).set_viewport_height(_cached_viewport_height)
 
 func _exit_tree() -> void:
 	_stop_vib_thread()
@@ -1709,7 +1692,7 @@ func _process(delta: float) -> void:
 			_update_long_note_fall(note_index, _synced_current_time, _render_time_ms)
 
 	# 位置已更新，通知 Node2D 批量绘制器重绘
-	if _note_drawer and has_active_notes():
+	if has_active_notes():
 		_note_drawer.request_redraw()
 
 	# 帧末清理已移除音符（延迟到遍历结束后，避免遍历中 mutate 数组）

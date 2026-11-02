@@ -22,6 +22,7 @@ mouse_filter = 2
 theme_override_constants/separation = 8
 
 [node name="DragBtn" type="Button" parent="HBox" unique_id=725974266]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(35, 0)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -29,7 +30,8 @@ size_flags_vertical = 4
 theme_override_font_sizes/font_size = 32
 text = "≡"
 
-[node name="Title" type="Label" parent="HBox" unique_id=880093056]
+[node name="TitleText" type="Label" parent="HBox" unique_id=880093056]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 text = "歌名"
@@ -38,6 +40,7 @@ clip_text = true
 script = ExtResource("2_3hfq4")
 
 [node name="RemoveBtn" type="Button" parent="HBox" unique_id=2014382139]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(40, 0)
 layout_mode = 2
 size_flags_vertical = 4

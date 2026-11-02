@@ -17,10 +17,6 @@ var item: Dictionary = {}
 var _press_pos := Vector2.INF
 var _has_ready := false
 
-@onready var _status_icon: TextureRect = $Margin/HBox/StatusIcon
-@onready var _name: Label = $Margin/HBox/Name
-@onready var _status: Label = $Margin/HBox/Status
-
 
 func _ready() -> void:
 	_has_ready = true
@@ -44,7 +40,7 @@ func set_entry(p_item: Dictionary, state: int, stage: int = -1, percent: float =
 
 
 func _apply() -> void:
-	_name.set_scroll_text(str(item.get("title", "未命名")))
+	%Name.set_scroll_text(str(item.get("title", "未命名")))
 	var state := int(item.get("_row_state", STATE_QUEUED))
 	var stage := int(item.get("_row_stage", -1))
 	var percent := float(item.get("_row_percent", -1.0))
@@ -75,10 +71,10 @@ func _apply() -> void:
 			status_icon_tex = StoreIconsLib.close()
 		_:
 			status_text = "—"
-	_status.text = status_text
-	_status.add_theme_color_override("font_color", color)
-	_status_icon.texture = status_icon_tex
-	_status_icon.modulate = color
+	%Status.text = status_text
+	%Status.add_theme_color_override("font_color", color)
+	%StatusIcon.texture = status_icon_tex
+	%StatusIcon.modulate = color
 
 
 func _stage_text(stage: int) -> String:

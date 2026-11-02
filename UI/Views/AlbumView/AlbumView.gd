@@ -78,11 +78,17 @@ func _ready() -> void:
 		apply_theme()
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
-## 内联样式跨列表项共享，通过主题句柄定位并上色即可同步全部列表项
 func apply_theme() -> void:
-	var handle := get_theme_handle()
-	if handle:
-		ThemeMGR._style_album_instance(handle, ThemeMGR.get_color("primary_light"))
+	_apply_item_accent()
+
+## 把主题强调色写入列表项暴露的计数标签颜色属性
+## 计数标签的内联 StyleBox 由同类列表项共享，改首项即同步全部列表项与 SelectedAlbum 头部卡片
+func _apply_item_accent() -> void:
+	if list_items.is_empty():
+		return
+	var album_item := list_items[0] as AlbumListItem
+	if is_instance_valid(album_item):
+		album_item.song_count_accent = ThemeMGR.get_color("primary_light")
 
 func _exit_tree() -> void:
 	if ThemeMGR:
@@ -136,17 +142,15 @@ func _on_config_changed(key: String, _value: Variant) -> void:
 ## generation 守卫与复用逻辑保持不变（避免 clear_items 全清重建造成的闪烁 + 封面重载）
 func _refresh_display_async(my_generation: int) -> void:
 	var is_active := UiStatMGR.current_state == UIStateManager.UIState.ALBUM_VIEW
-	var no_items := get_node_or_null(PathRegistry.NO_ITEMS)
-
+	
 	if current_albums.is_empty():
 		clear_items()
-		if no_items and is_active:
-			no_items.visible = true
+		if %NoItems and is_active:
+			%NoItems.visible = true
 		return
 
 	# 列表非空，隐藏空提示
-	if no_items:
-		no_items.visible = false
+	%NoItems.visible = false
 
 	var had_items: bool = not list_items.is_empty()
 
@@ -196,6 +200,8 @@ func _refresh_display_async(my_generation: int) -> void:
 				if my_generation != _load_generation:
 					return
 		item.bind_with_dict(self, album, counter, _album_build_bg)
+		if counter == 0:
+			_apply_item_accent()
 		counter += 1
 
 	# ===== Phase B：异步分批填充显示 =====

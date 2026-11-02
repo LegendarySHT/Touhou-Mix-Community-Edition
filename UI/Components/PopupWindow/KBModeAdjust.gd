@@ -22,19 +22,8 @@ const BLACKLISTED_KEYS: Array[Key] = [
 const KEY_ITEM_SCENE := preload("res://UI/Components/PopupWindow/KeySequenceItem.tscn")
 
 # 节点引用
-@onready var _hbox: HFlowContainer = $KeySequence/VFlowC
-@onready var _insert_place: Panel = $KeySequence/VFlowC/InsertPlace
-@onready var _key_name_label: Label = $HBox/Center/KeyName
-@onready var _display_name_edit: LineEdit = $HBox/Center/KeyDisplayName/LineEdit
-@onready var _key_config_btn: Button = $HBox/Center/KeyConfig/Button
 # 键盘模式开关 + 左右间距 + 轨道分隔线（HBox 左列）
-@onready var _kb_mode_cb: CheckBox = $HBox/Left/EnableMode
-@onready var _gap_edit: LineEdit = $HBox/Left/EnableKBMode/LineEdit
-@onready var _lane_sep_cb: CheckBox = $HBox/Left/SeperateLine
 # 交替轨道颜色（HBox 右列）
-@onready var _alt_color_cb: CheckBox = $HBox/Right/CheckBox
-@onready var _alt_count_edit: LineEdit = $HBox/Right/ColorCount/LineEdit
-@onready var _color_seq: HBoxContainer = $HBox/Center/ColorSeq
 
 # 交替颜色序列按钮颜色（按索引保存，重建时保留）
 var _alt_colors_state: Array[Color] = []
@@ -51,7 +40,7 @@ var _last_drop_index: int = -1  # 最近一次 drag_over 计算出的插入位�
 # 共享 ButtonGroup（确保所有 KeySequenceItem 互斥单选）
 var _shared_button_group: ButtonGroup = ButtonGroup.new()
 
-# 标记 _display_name_edit 的文本由程序设置（避免触发 text_changed 死循环）
+# 标记 %KeyDisplayNameEdit 的文本由程序设置（避免触发 text_changed 死循环）
 var _suppress_display_name_signal: bool = false
 
 ## 由 PopupWindow.show_kb_mode_adjust 调用：解析配置字符串并重建 UI
@@ -63,7 +52,7 @@ func init_adjust(current_keys: String, current_display_names: String,
 		alt_colors: String = "#ff0000,#0000ff", gap: Variant = 0, lane_sep: Variant = 0) -> void:
 	_cancel_recording()
 	# 显式重置按钮文本（_cancel_recording 在 _recording_key=false 时不设置文本）
-	_key_config_btn.text = "输入按键"
+	%KeyConfigBtn.text = "输入按键"
 	_items.clear()
 	_selected_index = -1
 
@@ -78,20 +67,20 @@ func init_adjust(current_keys: String, current_display_names: String,
 
 	_rebuild_items()
 	_refresh_detail_panel()
-	_key_name_label.text = "当前按键： -"
+	%KeyName.text = "当前按键： -"
 
 	# 键盘模式开关
-	_kb_mode_cb.button_pressed = bool(kb_mode)
+	%EnableMode.button_pressed = bool(kb_mode)
 	# 左右间距（最低 0）
 	var safe_gap: int = max(0, int(gap))
-	_gap_edit.text = str(safe_gap)
+	%KBModeGapEdit.text = str(safe_gap)
 	# 轨道分隔线（仅键盘模式生效）
-	_lane_sep_cb.button_pressed = bool(lane_sep)
+	%SeperateLine.button_pressed = bool(lane_sep)
 
 	# 交替轨道颜色：数量最低 1，颜色序列按数量补齐
-	_alt_color_cb.button_pressed = bool(alt_color)
+	%AltColorCheck.button_pressed = bool(alt_color)
 	var safe_count: int = max(1, int(alt_count))
-	_alt_count_edit.text = str(safe_count)
+	%AltColorCountEdit.text = str(safe_count)
 	var colors: Array[Color] = _parse_alt_colors(alt_colors)
 	while colors.size() < safe_count:
 		colors.append(Color.WHITE)
@@ -113,9 +102,9 @@ func get_result() -> Dictionary:
 		valid_names.append(String(item.get("display_name", "")).strip_edges())
 
 	# 交替轨道颜色：数量最低 1（空/非法文本兜底为 1），颜色补齐到数量
-	var alt_count: int = max(1, _alt_count_edit.text.to_int())
+	var alt_count: int = max(1, %AltColorCountEdit.text.to_int())
 	var colors: Array[String] = []
-	for btn in _color_seq.get_children():
+	for btn in %ColorSeq.get_children():
 		if btn is ColorPickerButton:
 			colors.append("#" + (btn as ColorPickerButton).color.to_html())
 	while colors.size() < alt_count:
@@ -125,12 +114,12 @@ func get_result() -> Dictionary:
 	return {
 		"keys": ",".join(valid_keys),
 		"display_names": ",".join(valid_names),
-		"keyboard_mode": 1 if _kb_mode_cb.button_pressed else 0,
-		"keyboard_mode_gap": max(0, _gap_edit.text.to_int()),
-		"alt_color": 1 if _alt_color_cb.button_pressed else 0,
+		"keyboard_mode": 1 if %EnableMode.button_pressed else 0,
+		"keyboard_mode_gap": max(0, %KBModeGapEdit.text.to_int()),
+		"alt_color": 1 if %AltColorCheck.button_pressed else 0,
 		"alt_count": alt_count,
 		"alt_colors": ",".join(colors),
-		"lane_separator": 1 if _lane_sep_cb.button_pressed else 0,
+		"lane_separator": 1 if %SeperateLine.button_pressed else 0,
 	}
 
 
@@ -143,9 +132,9 @@ func _rebuild_color_buttons(count: int, colors: Array = []) -> void:
 	if not colors.is_empty():
 		existing = colors
 	# 移除所有 ColorPickerButton（保留「颜色序列」Label）
-	for btn in _color_seq.get_children():
+	for btn in %ColorSeq.get_children():
 		if btn is ColorPickerButton:
-			_color_seq.remove_child(btn)
+			%ColorSeq.remove_child(btn)
 			btn.queue_free()
 	# 生成 count 个按钮（先设色再连信号，避免程序设色触发 color_changed 越界）
 	_alt_colors_state.clear()
@@ -159,7 +148,7 @@ func _rebuild_color_buttons(count: int, colors: Array = []) -> void:
 		# 输入框会把「颜色序列」这一行彻底挤爆，手机上也点不动。
 		ThemeMGR.setup_color_picker(btn, false)
 		btn.color_changed.connect(_on_alt_color_changed.bind(i))
-		_color_seq.add_child(btn)
+		%ColorSeq.add_child(btn)
 		_alt_colors_state.append(btn.color)
 
 
@@ -196,16 +185,16 @@ func _parse_alt_colors(colors_str: String) -> Array[Color]:
 ## 同步执行：立即 free 旧节点，避免 await 引发的时序问题
 func _rebuild_items() -> void:
 	# 立即释放所有现有的 KeySequenceItem
-	for child in _hbox.get_children():
+	for child in %KeySequenceFlow.get_children():
 		if child is KeySequenceItem:
-			_hbox.remove_child(child)
+			%KeySequenceFlow.remove_child(child)
 			child.free()
 
 	# 实例化新的 KeySequenceItem
 	for i in _items.size():
 		var item: KeySequenceItem = KEY_ITEM_SCENE.instantiate()
-		_hbox.add_child(item)
-		_hbox.move_child(item, i)  # 插入到 InsertPlace 之前
+		%KeySequenceFlow.add_child(item)
+		%KeySequenceFlow.move_child(item, i)  # 插入到 InsertPlace 之前
 		item.button_group = _shared_button_group
 		var item_data: Dictionary = _items[i]
 		item.set_data(item_data.get("key", Key.KEY_NONE), item_data.get("display_name", ""), i)
@@ -218,9 +207,9 @@ func _rebuild_items() -> void:
 
 	# 确保 InsertPlace 在所有 item 之后、AddBtn 之前
 	var insert_idx := _items.size()
-	if _insert_place.get_parent() == _hbox:
-		_hbox.move_child(_insert_place, insert_idx)
-	_insert_place.visible = false
+	if %InsertPlace.get_parent() == %KeySequenceFlow:
+		%KeySequenceFlow.move_child(%InsertPlace, insert_idx)
+	%InsertPlace.visible = false
 
 
 ## 将 Key 枚举转为可被 ConfigParser.parse_keyboard_keys 解析的字符串
@@ -238,16 +227,16 @@ func _on_item_selected(item: KeySequenceItem) -> void:
 
 func _refresh_detail_panel() -> void:
 	if _selected_index < 0 or _selected_index >= _items.size():
-		_key_name_label.text = "当前按键： -"
+		%KeyName.text = "当前按键： -"
 		_suppress_display_name_signal = true
-		_display_name_edit.text = ""
+		%KeyDisplayNameEdit.text = ""
 		_suppress_display_name_signal = false
 		return
 	var item: Dictionary = _items[_selected_index]
 	var k: Key = item.get("key", Key.KEY_NONE)
-	_key_name_label.text = "当前按键： " + ("未设置" if k == Key.KEY_NONE else OS.get_keycode_string(k))
+	%KeyName.text = "当前按键： " + ("未设置" if k == Key.KEY_NONE else OS.get_keycode_string(k))
 	_suppress_display_name_signal = true
-	_display_name_edit.text = item.get("display_name", "")
+	%KeyDisplayNameEdit.text = item.get("display_name", "")
 	_suppress_display_name_signal = false
 
 
@@ -263,9 +252,9 @@ func _on_add_btn_pressed() -> void:
 
 
 func _select_item_by_index(idx: int) -> void:
-	if idx < 0 or idx >= _hbox.get_child_count():
+	if idx < 0 or idx >= %KeySequenceFlow.get_child_count():
 		return
-	for child in _hbox.get_children():
+	for child in %KeySequenceFlow.get_children():
 		if child is KeySequenceItem and (child as KeySequenceItem).item_index == idx:
 			(child as KeySequenceItem).set_pressed(true)
 			_on_item_selected(child as KeySequenceItem)
@@ -277,11 +266,11 @@ func _select_item_by_index(idx: int) -> void:
 func _on_key_config_btn_pressed() -> void:
 	if _selected_index < 0:
 		# 禁用按钮避免 await 期间重入产生多个 timer
-		_key_config_btn.disabled = true
-		_key_config_btn.text = "先选按键"
+		%KeyConfigBtn.disabled = true
+		%KeyConfigBtn.text = "先选按键"
 		await get_tree().create_timer(1.0).timeout
-		_key_config_btn.text = "输入按键"
-		_key_config_btn.disabled = false
+		%KeyConfigBtn.text = "输入按键"
+		%KeyConfigBtn.disabled = false
 		return
 	if _recording_key:
 		_cancel_recording()
@@ -291,16 +280,16 @@ func _on_key_config_btn_pressed() -> void:
 
 func _start_recording() -> void:
 	_recording_key = true
-	_key_config_btn.text = "按键中..."
+	%KeyConfigBtn.text = "按键中..."
 	# 释放 LineEdit 焦点，避免按键被吞
-	_display_name_edit.release_focus()
+	%KeyDisplayNameEdit.release_focus()
 
 
 func _cancel_recording() -> void:
 	if not _recording_key:
 		return
 	_recording_key = false
-	_key_config_btn.text = "输入按键"
+	%KeyConfigBtn.text = "输入按键"
 
 
 # ===== 显示名编辑 =====
@@ -319,7 +308,7 @@ func _on_display_name_changed(new_text: String) -> void:
 
 
 func _find_item_node_by_index(idx: int) -> KeySequenceItem:
-	for child in _hbox.get_children():
+	for child in %KeySequenceFlow.get_children():
 		if child is KeySequenceItem and (child as KeySequenceItem).item_index == idx:
 			return child as KeySequenceItem
 	return null
@@ -345,7 +334,7 @@ func _input(event: InputEvent) -> void:
 			return
 		# 黑名单键 → 警告，保持录入状态
 		if key_event.keycode in BLACKLISTED_KEYS:
-			_key_name_label.text = "不可用： " + OS.get_keycode_string(key_event.keycode)
+			%KeyName.text = "不可用： " + OS.get_keycode_string(key_event.keycode)
 			GLogger.warning("Key '%s' is blacklisted" % OS.get_keycode_string(key_event.keycode), "KBModeAdjust")
 			return
 		# 录入有效按键
@@ -353,11 +342,11 @@ func _input(event: InputEvent) -> void:
 		return
 
 	# 非录入模式：LineEdit 有焦点时不拦截（让用户正常编辑文本）
-	if _display_name_edit.has_focus() or _alt_count_edit.has_focus():
+	if %KeyDisplayNameEdit.has_focus() or %AltColorCountEdit.has_focus():
 		return
 
 	# 颜色选择器弹窗打开时不拦截（避免其中按 Backspace/Delete 误删按键）
-	for btn in _color_seq.get_children():
+	for btn in %ColorSeq.get_children():
 		if btn is ColorPickerButton:
 			var pp := (btn as ColorPickerButton).get_popup()
 			if pp and pp.visible:
@@ -380,7 +369,7 @@ func _apply_recorded_key(k: Key) -> void:
 		if i == _selected_index:
 			continue
 		if _items[i].get("key", Key.KEY_NONE) == k:
-			_key_name_label.text = "已绑定到第 %d 个按键" % (i + 1)
+			%KeyName.text = "已绑定到第 %d 个按键" % (i + 1)
 			GLogger.warning("Key '%s' is already bound to item %d" % [OS.get_keycode_string(k), i], "KBModeAdjust")
 			_cancel_recording()
 			return
@@ -390,10 +379,10 @@ func _apply_recorded_key(k: Key) -> void:
 		var default_name := OS.get_keycode_string(k)
 		_items[_selected_index]["display_name"] = default_name
 		_suppress_display_name_signal = true
-		_display_name_edit.text = default_name
+		%KeyDisplayNameEdit.text = default_name
 		_suppress_display_name_signal = false
 	# 刷新 UI
-	_key_name_label.text = "当前按键： " + OS.get_keycode_string(k)
+	%KeyName.text = "当前按键： " + OS.get_keycode_string(k)
 	var item_node := _find_item_node_by_index(_selected_index)
 	if item_node:
 		item_node.key_code = k
@@ -411,7 +400,7 @@ func _delete_selected() -> void:
 	_selected_index = -1
 	_rebuild_items()
 	_refresh_detail_panel()
-	_key_name_label.text = "当前按键： -"
+	%KeyName.text = "当前按键： -"
 
 
 # ===== 拖拽 =====
@@ -420,7 +409,7 @@ func _on_item_drag_started(item: KeySequenceItem) -> void:
 	_dragged_item = item
 	# 重置为 -1 表示尚未确定插入位置，确保首次 drag_over 能正确 move_child
 	_last_drop_index = -1
-	_insert_place.visible = true
+	%InsertPlace.visible = true
 
 
 func _on_item_drag_over(target: KeySequenceItem, at_pos: Vector2) -> void:
@@ -439,8 +428,8 @@ func _on_item_drag_over(target: KeySequenceItem, at_pos: Vector2) -> void:
 	# VFlowC 子节点顺序：[item_0, ..., item_{N-1}, InsertPlace, AddBtn]
 	# InsertPlace 应在 item_{insert_idx - 1} 之后、item_{insert_idx} 之前
 	# 即 InsertPlace 的 child index 应为 insert_idx
-	if _insert_place.get_parent() == _hbox:
-		_hbox.move_child(_insert_place, insert_idx)
+	if %InsertPlace.get_parent() == %KeySequenceFlow:
+		%KeySequenceFlow.move_child(%InsertPlace, insert_idx)
 
 
 func _on_item_drop_received(_target: KeySequenceItem, dragged: KeySequenceItem) -> void:
@@ -464,11 +453,11 @@ func _on_item_drop_received(_target: KeySequenceItem, dragged: KeySequenceItem) 
 	_items.insert(insert_idx, item_data)
 	_selected_index = insert_idx
 	# 先把 InsertPlace 移到末尾（所有 item 之后），确保 move_child 索引正确
-	if _insert_place.get_parent() == _hbox:
-		_hbox.move_child(_insert_place, _items.size())
+	if %InsertPlace.get_parent() == %KeySequenceFlow:
+		%KeySequenceFlow.move_child(%InsertPlace, _items.size())
 	# 直接移动被拖拽的节点到目标位置，避免 free locked object
 	# （_drop_data 调用栈中被拖拽节点处于锁定状态，无法 free）
-	_hbox.move_child(dragged, insert_idx)
+	%KeySequenceFlow.move_child(dragged, insert_idx)
 	# 更新所有节点的 item_index
 	_refresh_item_indices()
 	_hide_insert_place()
@@ -479,7 +468,7 @@ func _on_item_drop_received(_target: KeySequenceItem, dragged: KeySequenceItem) 
 ## 遍历 HBoxC 子节点，按顺序刷新每个 KeySequenceItem 的 item_index
 func _refresh_item_indices() -> void:
 	var idx := 0
-	for child in _hbox.get_children():
+	for child in %KeySequenceFlow.get_children():
 		if child is KeySequenceItem:
 			(child as KeySequenceItem).item_index = idx
 			idx += 1
@@ -491,5 +480,5 @@ func _on_item_drag_ended(_source: KeySequenceItem) -> void:
 
 
 func _hide_insert_place() -> void:
-	_insert_place.visible = false
+	%InsertPlace.visible = false
 	_last_drop_index = -1

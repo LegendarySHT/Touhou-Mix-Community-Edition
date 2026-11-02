@@ -11,10 +11,6 @@ var last_selection:int = -1 # 上一次选中的节点
 var _collapsed: bool = false # 列表是否处于收起状态
 var _prev_scroll: int = 0  # 上帧滚动位置，变化说明有人在动列表
 
-@onready var indicator = get_node(PathRegistry.MIDI_VIEW_INDICATOR)
-@onready var  previ_btn = get_node(PathRegistry.MIDI_VIEW_PREVI_BTN)
-@onready var info_btn = get_node(PathRegistry.MIDI_VIEW_INFO_BTN)
-
 # MidiView
 @onready var midi_view = get_node(PathRegistry.MIDI_VIEW)
 
@@ -56,12 +52,11 @@ func get_indicator_color(active: bool) -> Color:
 
 ## 按选中态刷新全部指示点颜色
 func _apply_indicator_colors() -> void:
-	if not is_instance_valid(indicator):
-		return
-	for i in indicator.get_child_count():
-		var point := indicator.get_child(i) as ColorRect
-		if point:
-			point.color = get_indicator_color(i == selected_item)
+	if midi_view.indicators:
+		for i in midi_view.indicators.get_child_count():
+			var point := midi_view.indicators.get_child(i) as ColorRect
+			if point:
+				point.color = get_indicator_color(i == selected_item)
 
 # 加载midi
 ## preferred_id 非空时（导航恢复预选），构建完成后选中对应 midi；找不到或为空则默认选中第一项
@@ -90,8 +85,8 @@ func _setup_focus_neighbor():
 	if container == null:
 		return
 
-	var left_node_path = previ_btn.get_path()
-	var right_node_path = info_btn.get_path()
+	var left_node_path = %PreviBtn.get_path()
+	var right_node_path = %InfoBtn.get_path()
 	
 	var ln = container.get_child(-1).button
 	var cn
@@ -137,9 +132,8 @@ func _clear_list() -> void:
 	clear_items()
 
 	# 清空指示器
-	if indicator:
-		for child in indicator.get_children():
-			child.free() # 因为初始化指示器时根据索引位置来设置颜色的，所以得立即清除
+	for child in midi_view.indicators.get_children():
+		child.free() # 因为初始化指示器时根据索引位置来设置颜色的，所以得立即清除
 
 	selected_item = -1
 
@@ -176,8 +170,8 @@ func _show_midi_list(_index: int = -1) -> void:
 			item.set_expanded(true)
 		need_snap = true
 		# 指示器移到选中项
-		if indicator and selected_item != -1:
-			AniMGR.create_managed_tween(self).tween_property(indicator, "offset_transform_position:y", _compute_indicator_offset(selected_item), 0.35)
+		if midi_view.indicators and selected_item != -1:
+			AniMGR.create_managed_tween(self).tween_property(midi_view.indicators, "offset_transform_position:y", _compute_indicator_offset(selected_item), 0.35)
 
 func _previous() -> void:
 	if current_midis.size() != 1:
@@ -190,7 +184,7 @@ func _next() -> void:
 ## 计算指示器偏移
 func _compute_indicator_offset(index: int) -> float:
 	var pitch: int = 29
-	var count: int = indicator.get_child_count()
+	var count: int = midi_view.indicators.get_child_count()
 	if count <= 1:
 		return 0.0
 	@warning_ignore("integer_division")
@@ -216,7 +210,7 @@ func _refresh_display() -> void:
 			point.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			point.color = get_indicator_color(false)
 
-			indicator.add_child(point)
+			midi_view.indicators.add_child(point)
 
 			item.setup_with_midi(self, midi, counter, bg)
 			counter += 1
@@ -241,6 +235,5 @@ func remove_selected_midi():
 	select_item(target)
 	for item in list_items:
 		item.set_expanded(true)
-	if indicator:
-		indicator.offset_transform_position.y = _compute_indicator_offset(selected_item)
+	midi_view.indicators.offset_transform_position.y = _compute_indicator_offset(selected_item)
 	need_snap = true

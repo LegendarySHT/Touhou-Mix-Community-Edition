@@ -40,14 +40,6 @@ func _bootstrap_post_managers() -> void:
 	]
 	_bootstrap_managers(specs)
 
-# UI组件路径
-@export var midi_view_path: String
-@export var store_view_path: String
-@export var track_view_path: String
-@export var play_view_path: String
-@export var score_view_path: String
-@export var setting_view_path: String
-
 func _ready():
 	# Android 平台：仅在日志中记录（不再启动时固定请求存储权限——
 	# 默认路径位于应用私有目录，无需任何权限；权限改为玩家把存储路径改到
@@ -104,30 +96,22 @@ func _unhandled_input(event: InputEvent) -> void:
 func _handle_back_request() -> void:
 	# 主界面 → 显示退出确认
 	if state_manager.current_state == UIStateManager.UIState.ALBUM_VIEW:
-		var popup = PopupWindow.instance
-		if popup and await popup.show_message("确定要退出游戏吗？", true):
+		if await PopupWindow.instance.show_message("确定要退出游戏吗？", true):
 			get_tree().quit()
 
 	# 打歌界面 → 交由 PlayView 处理（准备阶段切暂停菜单/暂停后继续等逻辑都在其中）
 	elif state_manager.current_state == UIStateManager.UIState.PLAY_VIEW:
-		var play_view = get_node_or_null("PlayView")
-		if play_view:
-			play_view.show_or_hide_menu()
+		get_node_or_null("PlayView").show_or_hide_menu()
 
 	# 商店页：详情弹窗打开时先关弹窗，不再直接退出商店
 	elif state_manager.current_state == UIStateManager.UIState.STORE_VIEW:
-		var store_view = state_manager.get_loaded_view(UIStateManager.UIState.STORE_VIEW)
-		if store_view and store_view.has_method("handle_back_request"):
-			if store_view.handle_back_request():
-				return
+		if state_manager.get_loaded_view(UIStateManager.UIState.STORE_VIEW).handle_back_request():
+			return
 		state_manager.go_back()
 
 	# 设置页内部子页面（ResourceView / About）→ 先切回设置主页，而非直接退出设置
 	elif state_manager.current_state == UIStateManager.UIState.SETTINGS_VIEW:
-		var setting_view = state_manager.get_loaded_view(UIStateManager.UIState.SETTINGS_VIEW)
-		if setting_view and setting_view.has_method("handle_back_request"):
-			setting_view.handle_back_request()
-
+		state_manager.get_loaded_view(UIStateManager.UIState.SETTINGS_VIEW).handle_back_request()
 	# 其他层级 → 返回上一级
 	else:
 		state_manager.go_back()
@@ -137,9 +121,7 @@ func _initialize_core_systems() -> void:
 	GLogger.info("Initializing Core Systems", "Main")
 
 	# 启动阶段显示通用加载提示（ProcessTip 默认可见，「加载中，请稍后」；数据就绪后由 _on_data_loaded 隐藏）
-	var process_tip := get_node_or_null("ProcessTip")
-	if process_tip:
-		process_tip.visible = true
+	%ProcessTip.visible = true
 
 	# 1. 初始化日志系统（单例，已自动管理）
 	logger = GLogger
@@ -152,27 +134,24 @@ func _initialize_core_systems() -> void:
 	storage_manager.name = "StorageManager"
 	add_child(storage_manager)
 	var storage_resolve: Dictionary = storage_manager.recover_and_resolve()
-	if logger:
-		logger.info("Storage root resolved: %s (note=%s, full_rescan=%s, restored=%s)" % [
-			PathHelper.get_storage_root(),
-			str(storage_resolve.get("note", "")),
-			str(storage_resolve.get("needs_full_rescan", false)),
-			str(storage_resolve.get("restored", false))], "Main")
+	logger.info("Storage root resolved: %s (note=%s, full_rescan=%s, restored=%s)" % [
+		PathHelper.get_storage_root(),
+		str(storage_resolve.get("note", "")),
+		str(storage_resolve.get("needs_full_rescan", false)),
+		str(storage_resolve.get("restored", false))], "Main")
 	# 自定义存储根生效后刷新日志路径（日志目录 Logs/ 随存储根迁移）
 	if PathHelper.get_storage_root() != PathHelper.get_boot_dir():
 		GLogger.refresh_log_path()
 
 	# 2. 初始化配置管理器（单例，已自动管理）
 	config_loader = ConfigManager.instance
-	if logger:
-		logger.info("ConfigManager initialized", "Main")
+	logger.info("ConfigManager initialized", "Main")
 
 	# 2.5. **关键**：立即加载并设置当前配置，以便后续 Manager 初始化时能读取配置
 	# 必须在其他 Manager 初始化之前调用；settings.ini 位于存储根下（override 已生效）
 	config_loader.clear_cache()
 	config_loader.load_and_set_current()
-	if logger:
-		logger.info("Configuration pre-loaded before Manager initialization", "Main")
+	logger.info("Configuration pre-loaded before Manager initialization", "Main")
 	# 2.5.1 默认值自检：config.ini 是默认值的唯一来源，映射表漏写键会在这里暴露，
 	#       而不是让代码里 get_xxx 的兜底值静默生效（失败不中断启动）
 	config_loader.validate_defaults()
@@ -182,8 +161,7 @@ func _initialize_core_systems() -> void:
 	if bool(storage_resolve.get("needs_config_commit", false)):
 		config_loader.set_value("custom_storage_path", str(storage_resolve.get("pending_root", "")))
 		config_loader.save_config(ConfigManager.USER_CONFIG_PATH, config_loader.get_current_config())
-		if logger:
-			logger.info("Storage config committed to settings.ini", "Main")
+		logger.info("Storage config committed to settings.ini", "Main")
 
 	# 2.75. ThemeManager 已通过 autoload 自动实例化（首次加载在其 _ready 里完成）
 	#
@@ -205,16 +183,14 @@ func _initialize_core_systems() -> void:
 		# 扫完即把日志里的重扫标记落盘：之后即使旧根清理失败（cleanup_pending 残留），
 		# 下次启动也不会再白扫一遍全量索引
 		filesystem_manager.resources_ready.connect(storage_manager.mark_rescan_done, CONNECT_ONE_SHOT)
-	if logger:
-		logger.info("FileSystemManager initialized", "Main")
+	logger.info("FileSystemManager initialized", "Main")
 
 	# 3.1 外部文件导入管理器（打开方式 / 拖入窗口）
 	# 启动期导入由 FileSystemManager 在扫描前串行调用，运行期到达的文件即时处理
 	import_manager = ImportManager.new()
 	import_manager.name = "ImportManager"
 	add_child(import_manager)
-	if logger:
-		logger.info("ImportManager initialized", "Main")
+	logger.info("ImportManager initialized", "Main")
 	
 	# 初始化目录结构（异步：复制默认资源 → 导入外部文件 → 扫描并更新 DB 缓存）
 	# 注意：initialize_directory_structure 是异步协程，其内部扫描可能同步执行，
@@ -228,8 +204,7 @@ func _initialize_core_systems() -> void:
 		var db_path := files_dir.path_join("charts.ldb")
 		var old_cache_path := ProjectSettings.globalize_path(PathHelper.get_base_dir()).path_join(".charts_scan_cache.json")
 		ChartDB.OpenDb(db_path, old_cache_path)
-		if logger:
-			logger.info("ChartDB opened (db: %s)" % db_path, "Main")
+		logger.info("ChartDB opened (db: %s)" % db_path, "Main")
 
 	# 初始化目录结构（扫描此时 DB 已就绪）
 	filesystem_manager.initialize_directory_structure()
@@ -318,15 +293,15 @@ func _bootstrap_managers(specs: Array) -> void:
 		var mgr = mgr_type.new()
 		mgr.name = mgr_name
 		add_child(mgr)
-		if logger:
-			logger.info("%s initialized" % mgr_name, "Main")
+		
+		logger.info("%s initialized" % mgr_name, "Main")
 		# NetManager 创建后立即按配置启动连接（必须早于 Auth/Community 的 _ready 访问）
 		if mgr is NetManager:
 			net_manager = mgr
 			var online_mode := ConfigManager.instance.get_int("online_mode", 0)
 			net_manager.set_online_mode(online_mode == 1)
-			if logger:
-				logger.info("NetManager online_mode=%d" % online_mode, "Main")
+			
+			logger.info("NetManager online_mode=%d" % online_mode, "Main")
 		elif mgr is MemoryGC:
 			memory_gc = mgr
 
@@ -346,32 +321,23 @@ func apply_theme() -> void:
 	var surface := ThemeMGR.get_color("surface")
 
 	# LT_Btn / RB_Btn — 强调色渐变导航按钮
-	var lt := get_node_or_null("LT_Btn") as Button
-	if lt:
-		ThemeMGR._modify_button_states_color(lt, "primary")
-	var rb := get_node_or_null("RB_Btn") as Button
-	if rb:
-		ThemeMGR._modify_button_states_color(rb, "primary")
+	ThemeMGR._modify_button_states_color(get_node_or_null("LTBtn"), "primary")
+	ThemeMGR._modify_button_states_color(get_node_or_null("RBBtn"), "primary")
 	# ShortCutMenu 面板 — 中性凸起面 + 强调色细描边
-	var sc_panel := get_node_or_null("skew/C/ShortCutMenu/Panel") as Panel
-	if sc_panel:
-		var sc_sb := sc_panel.get_theme_stylebox("panel")
-		if sc_sb is StyleBoxFlat:
-			sc_sb.bg_color = ThemeMGR.get_color("surface_high")
-			sc_sb.border_color = Color(primary.r, primary.g, primary.b, 0.55)
+	var sc_sb: StyleBoxFlat = %ShortCutMenu.shortcut_panel.get_theme_stylebox("panel")
+	sc_sb.bg_color = ThemeMGR.get_color("surface_high")
+	sc_sb.border_color = Color(primary.r, primary.g, primary.b, 0.55)
+
 	# PlayerInfo 面板按钮 — 展开后兼作 ProfileView 的页面底色，用较深的中性面（内容面板在其上更亮，形成层次）
-	var info_btn := get_node_or_null("PlayerInfo/InfoPanelBtn") as Button
-	if info_btn:
-		for state in ["normal", "pressed", "hover"]:
-			var sb := info_btn.get_theme_stylebox(state)
-			if sb is StyleBoxFlat:
-				sb.bg_color = surface
-				sb.border_color = Color(primary.r, primary.g, primary.b, 0.7)
+	for state in ["normal", "pressed", "hover"]:
+		var sb: StyleBoxFlat = %PlayerInfo.info_panel_btn.get_theme_stylebox(state)
+		sb.bg_color = surface
+		sb.border_color = Color(primary.r, primary.g, primary.b, 0.7)
 
 ## 左上(LT_Btn)/右下(RB_Btn)导航按钮入场动画
 func _play_corner_buttons_entrance() -> void:
-	var lt := get_node_or_null("LT_Btn") as Control
-	var rb := get_node_or_null("RB_Btn") as Control
+	var lt := get_node_or_null("LTBtn") as Control
+	var rb := get_node_or_null("RBBtn") as Control
 	if lt == null or rb == null:
 		return
 	# 离屏起点需与 Main.tscn 中设置的 offset_transform_position 保持一致
@@ -691,8 +657,7 @@ func reinitialize_after_storage_migration(new_root: String) -> Dictionary:
 		FavoriteManager.instance.reload_from_disk()
 
 	# 3. 日志目录随根切换
-	if logger:
-		logger.refresh_log_path()
+	logger.refresh_log_path()
 
 	# 4. 主题与背景（theme.ini 位于存储根；背景图缓存里的纹理来自旧根路径）
 	# 先清缓存再重载：load_theme 内部会 apply_preset → save_theme + refresh_theme_only

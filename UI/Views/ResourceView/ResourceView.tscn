@@ -188,7 +188,8 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_rv")
 
-[node name="TopBar" type="Panel" parent="." unique_id=1643836484]
+[node name="TopBarPanel" type="Panel" parent="." unique_id=1643836484]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 118)
 layout_mode = 1
 anchors_preset = -1
@@ -197,7 +198,7 @@ offset_bottom = 118.0
 grow_horizontal = 2
 theme_override_styles/panel = SubResource("SB_topbar")
 
-[node name="HeaderMargin" type="MarginContainer" parent="TopBar" unique_id=340030881]
+[node name="HeaderMargin" type="MarginContainer" parent="TopBarPanel" unique_id=340030881]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -210,18 +211,19 @@ theme_override_constants/margin_top = 16
 theme_override_constants/margin_right = 40
 theme_override_constants/margin_bottom = 12
 
-[node name="Row" type="HBoxContainer" parent="TopBar/HeaderMargin" unique_id=1430675885]
+[node name="Row" type="HBoxContainer" parent="TopBarPanel/HeaderMargin" unique_id=1430675885]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 22
 
-[node name="Toolbar" type="HBoxContainer" parent="TopBar/HeaderMargin/Row" unique_id=1663146635]
+[node name="Toolbar" type="HBoxContainer" parent="TopBarPanel/HeaderMargin/Row" unique_id=1663146635]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 16
 
-[node name="SearchEdit" type="LineEdit" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=1584912614]
+[node name="SearchEdit" type="LineEdit" parent="TopBarPanel/HeaderMargin/Row/Toolbar" unique_id=1584912614]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(260, 76)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -230,7 +232,8 @@ theme_override_styles/normal = SubResource("SB_search")
 theme_override_styles/focus = SubResource("SB_search_focus")
 placeholder_text = "搜索歌曲 / 作者 / 专辑"
 
-[node name="SearchIcon" type="TextureRect" parent="TopBar/HeaderMargin/Row/Toolbar/SearchEdit" unique_id=244108115]
+[node name="SearchIcon" type="TextureRect" parent="TopBarPanel/HeaderMargin/Row/Toolbar/SearchEdit" unique_id=244108115]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
@@ -246,7 +249,8 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="CountLabel" type="Label" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=2016685244]
+[node name="CountText" type="Label" parent="TopBarPanel/HeaderMargin/Row/Toolbar" unique_id=2016685244]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
@@ -254,12 +258,13 @@ text = "0 首"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="TabBar" type="HBoxContainer" parent="TopBar/HeaderMargin/Row" unique_id=166038746]
+[node name="TabBar" type="HBoxContainer" parent="TopBarPanel/HeaderMargin/Row" unique_id=166038746]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 6
 
-[node name="TabSong" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=2146251849]
+[node name="SongsTabBtn" type="Button" parent="TopBarPanel/HeaderMargin/Row/TabBar" unique_id=2146251849]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -276,7 +281,8 @@ button_pressed = true
 button_group = SubResource("ButtonGroup_8w0rt")
 text = "歌曲"
 
-[node name="TabSkin" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1318609674]
+[node name="SkinsTabBtn" type="Button" parent="TopBarPanel/HeaderMargin/Row/TabBar" unique_id=1318609674]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -292,7 +298,8 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_8w0rt")
 text = "皮肤"
 
-[node name="TabEffect" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=19408384]
+[node name="EffectsTabBtn" type="Button" parent="TopBarPanel/HeaderMargin/Row/TabBar" unique_id=19408384]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -308,7 +315,8 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_8w0rt")
 text = "特效"
 
-[node name="TabSoundfont" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=301803233]
+[node name="SoundfontsTabBtn" type="Button" parent="TopBarPanel/HeaderMargin/Row/TabBar" unique_id=301803233]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -324,7 +332,8 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_8w0rt")
 text = "音源"
 
-[node name="TabBackground" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=195846473]
+[node name="BackgroundsTabBtn" type="Button" parent="TopBarPanel/HeaderMargin/Row/TabBar" unique_id=195846473]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -340,7 +349,8 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_8w0rt")
 text = "背景"
 
-[node name="TabUnderline" type="Panel" parent="TopBar" unique_id=416198582]
+[node name="TabUnderlinePanel" type="Panel" parent="TopBarPanel" unique_id=416198582]
+unique_name_in_owner = true
 layout_mode = 0
 offset_top = 114.0
 offset_right = 160.0
@@ -359,6 +369,7 @@ grow_vertical = 2
 mouse_filter = 1
 
 [node name="SongsPage" type="Control" parent="Pages" unique_id=1484209302]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -367,7 +378,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="List" type="ScrollContainer" parent="Pages/SongsPage" unique_id=1861431328]
+[node name="SongsScroll" type="ScrollContainer" parent="Pages/SongsPage" unique_id=1861431328]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -382,13 +394,15 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="ListContent" type="Control" parent="Pages/SongsPage/List" unique_id=994280109]
+[node name="SongsList" type="Control" parent="Pages/SongsPage/SongsScroll" unique_id=994280109]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Empty" type="Label" parent="Pages/SongsPage" unique_id=270067810]
+[node name="SongsEmpty" type="Label" parent="Pages/SongsPage" unique_id=270067810]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -404,6 +418,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="SkinsPage" type="Control" parent="Pages" unique_id=97868925]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -413,7 +428,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="List" type="ScrollContainer" parent="Pages/SkinsPage" unique_id=1028743251]
+[node name="SkinsScroll" type="ScrollContainer" parent="Pages/SkinsPage" unique_id=1028743251]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -428,13 +444,15 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="ListContent" type="Control" parent="Pages/SkinsPage/List" unique_id=481324942]
+[node name="SkinsList" type="Control" parent="Pages/SkinsPage/SkinsScroll" unique_id=481324942]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Empty" type="Label" parent="Pages/SkinsPage" unique_id=467974543]
+[node name="SkinsEmpty" type="Label" parent="Pages/SkinsPage" unique_id=467974543]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -450,6 +468,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="EffectsPage" type="Control" parent="Pages" unique_id=1150521760]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -459,7 +478,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="List" type="ScrollContainer" parent="Pages/EffectsPage" unique_id=1406050895]
+[node name="EffectsScroll" type="ScrollContainer" parent="Pages/EffectsPage" unique_id=1406050895]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -474,13 +494,15 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="ListContent" type="Control" parent="Pages/EffectsPage/List" unique_id=1879402258]
+[node name="EffectsList" type="Control" parent="Pages/EffectsPage/EffectsScroll" unique_id=1879402258]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Empty" type="Label" parent="Pages/EffectsPage" unique_id=784655272]
+[node name="EffectsEmpty" type="Label" parent="Pages/EffectsPage" unique_id=784655272]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -496,6 +518,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="SoundfontsPage" type="Control" parent="Pages" unique_id=977409030]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -505,7 +528,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="List" type="ScrollContainer" parent="Pages/SoundfontsPage" unique_id=546997873]
+[node name="SoundfontsScroll" type="ScrollContainer" parent="Pages/SoundfontsPage" unique_id=546997873]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -520,13 +544,15 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="ListContent" type="Control" parent="Pages/SoundfontsPage/List" unique_id=320675779]
+[node name="SoundfontsList" type="Control" parent="Pages/SoundfontsPage/SoundfontsScroll" unique_id=320675779]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Empty" type="Label" parent="Pages/SoundfontsPage" unique_id=267249749]
+[node name="SoundfontsEmpty" type="Label" parent="Pages/SoundfontsPage" unique_id=267249749]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -542,6 +568,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="BackgroundsPage" type="Control" parent="Pages" unique_id=1157181630]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -551,7 +578,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="List" type="ScrollContainer" parent="Pages/BackgroundsPage" unique_id=122239224]
+[node name="BackgroundsScroll" type="ScrollContainer" parent="Pages/BackgroundsPage" unique_id=122239224]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -566,13 +594,15 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="ListContent" type="Control" parent="Pages/BackgroundsPage/List" unique_id=2110800972]
+[node name="BackgroundsList" type="Control" parent="Pages/BackgroundsPage/BackgroundsScroll" unique_id=2110800972]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Empty" type="Label" parent="Pages/BackgroundsPage" unique_id=2023600641]
+[node name="BackgroundsEmpty" type="Label" parent="Pages/BackgroundsPage" unique_id=2023600641]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -587,7 +617,8 @@ text = "没有背景图"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="PendingBar" type="PanelContainer" parent="." unique_id=2005426629]
+[node name="PendingBarPanel" type="PanelContainer" parent="." unique_id=2005426629]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 150)
 layout_mode = 1
 anchors_preset = -1
@@ -602,33 +633,36 @@ grow_horizontal = 2
 grow_vertical = 0
 theme_override_styles/panel = SubResource("SB_pending")
 
-[node name="VBox" type="VBoxContainer" parent="PendingBar" unique_id=1815856423]
+[node name="VBox" type="VBoxContainer" parent="PendingBarPanel" unique_id=1815856423]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 8
 
-[node name="Head" type="HBoxContainer" parent="PendingBar/VBox" unique_id=1297564776]
+[node name="Head" type="HBoxContainer" parent="PendingBarPanel/VBox" unique_id=1297564776]
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 12
 
-[node name="PendingTitle" type="Label" parent="PendingBar/VBox/Head" unique_id=119035879]
+[node name="PendingTitle" type="Label" parent="PendingBarPanel/VBox/Head" unique_id=119035879]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 23
 text = "待操作列表"
 
-[node name="PendingCount" type="Label" parent="PendingBar/VBox/Head" unique_id=1358209129]
+[node name="PendingCount" type="Label" parent="PendingBarPanel/VBox/Head" unique_id=1358209129]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "0 首"
 
-[node name="Spacer" type="Control" parent="PendingBar/VBox/Head" unique_id=205828363]
+[node name="Spacer" type="Control" parent="PendingBarPanel/VBox/Head" unique_id=205828363]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="SelectAllBtn" type="Button" parent="PendingBar/VBox/Head" unique_id=1304486890]
+[node name="SelectAllBtn" type="Button" parent="PendingBarPanel/VBox/Head" unique_id=1304486890]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 40)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -639,7 +673,8 @@ theme_override_styles/hover = SubResource("SB_btn_hover")
 theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "全选"
 
-[node name="ExpandBtn" type="Button" parent="PendingBar/VBox/Head" unique_id=757407267]
+[node name="ExpandBtn" type="Button" parent="PendingBarPanel/VBox/Head" unique_id=757407267]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 40)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -650,27 +685,30 @@ theme_override_styles/hover = SubResource("SB_btn_hover")
 theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "展开"
 
-[node name="PendingScroll" type="ScrollContainer" parent="PendingBar/VBox" unique_id=1399726686]
+[node name="PendingScroll" type="ScrollContainer" parent="PendingBarPanel/VBox" unique_id=1399726686]
+unique_name_in_owner = true
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("SB_list_empty")
 horizontal_scroll_mode = 0
 
-[node name="PendingList" type="Control" parent="PendingBar/VBox/PendingScroll" unique_id=532055259]
+[node name="PendingList" type="Control" parent="PendingBarPanel/VBox/PendingScroll" unique_id=532055259]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Actions" type="HBoxContainer" parent="PendingBar/VBox" unique_id=1294660907]
+[node name="Actions" type="HBoxContainer" parent="PendingBarPanel/VBox" unique_id=1294660907]
 custom_minimum_size = Vector2(0, 54)
 layout_mode = 2
 size_flags_vertical = 8
 mouse_filter = 2
 theme_override_constants/separation = 10
 
-[node name="DeleteVocalBtn" type="Button" parent="PendingBar/VBox/Actions" unique_id=1728154826]
+[node name="DeleteVocalBtn" type="Button" parent="PendingBarPanel/VBox/Actions" unique_id=1728154826]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
@@ -681,7 +719,8 @@ theme_override_styles/hover = SubResource("SB_btn_hover")
 theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "删除人声"
 
-[node name="DeleteSongBtn" type="Button" parent="PendingBar/VBox/Actions" unique_id=784537265]
+[node name="DeleteSongBtn" type="Button" parent="PendingBarPanel/VBox/Actions" unique_id=784537265]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
@@ -692,7 +731,8 @@ theme_override_styles/hover = SubResource("SB_btn_hover")
 theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "删除歌曲"
 
-[node name="ResetBtn" type="Button" parent="PendingBar/VBox/Actions" unique_id=1593740382]
+[node name="ResetBtn" type="Button" parent="PendingBarPanel/VBox/Actions" unique_id=1593740382]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
@@ -703,7 +743,8 @@ theme_override_styles/hover = SubResource("SB_btn_hover")
 theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "重置歌曲"
 
-[node name="FavBtn" type="Button" parent="PendingBar/VBox/Actions" unique_id=365407809]
+[node name="FavBtn" type="Button" parent="PendingBarPanel/VBox/Actions" unique_id=365407809]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
@@ -714,7 +755,8 @@ theme_override_styles/hover = SubResource("SB_btn_hover")
 theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "加入收藏夹"
 
-[node name="ClearBtn" type="Button" parent="PendingBar/VBox/Actions" unique_id=1929352891]
+[node name="ClearBtn" type="Button" parent="PendingBarPanel/VBox/Actions" unique_id=1929352891]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
@@ -725,7 +767,8 @@ theme_override_styles/hover = SubResource("SB_btn_hover")
 theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "清空列表"
 
-[node name="PendingEmpty" type="Label" parent="PendingBar" unique_id=434566769]
+[node name="PendingEmpty" type="Label" parent="PendingBarPanel" unique_id=434566769]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "还没有待操作的歌曲，点击上方卡片加入"

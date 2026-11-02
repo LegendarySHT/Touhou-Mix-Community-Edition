@@ -4,32 +4,6 @@ class_name NoteSkinAdjust
 
 const NOTE_GLOW_SHADER: Shader = preload("res://UI/Components/PopupWindow/NoteGlow.gdshader")
 
-@onready var _note_preview_hboxc: HBoxContainer = $NotePreview/HBoxC
-@onready var _note_block_node: TextureRect = $NotePreview/HBoxC/VBoxC/block
-@onready var _note_slide_node: TextureRect = $NotePreview/HBoxC/VBoxC/slide
-@onready var _note_long_node: Control = $NotePreview/HBoxC/long
-# 长条预览用与实战相同的绘制器（NoteBatchDrawer），不再依赖节点布局拼接
-@onready var _long_drawer: NoteBatchDrawer = $NotePreview/HBoxC/long/NoteDrawer
-@onready var _long_glow_tail: Control = $NotePreview/HBoxC/long/GlowTail
-@onready var _long_glow_head: Control = $NotePreview/HBoxC/long/GlowHead
-@onready var _skin_option_btn: TouchScrollOptionButton = $VBoxC/OptionButton
-
-# 新增设置项控件
-@onready var _l_conn_mode_btn: TouchScrollOptionButton = $VBoxC/OtherOptions/LConnMode
-@onready var _l_repeat_mode_btn: TouchScrollOptionButton = $VBoxC/OtherOptions/LRepeatMode
-@onready var _l_stretch_mode_btn: TouchScrollOptionButton = $VBoxC/OtherOptions/LStretchMode
-@onready var _enable_glow_cb: CheckBox = $VBoxC/OtherOptions/EnableLightEffect
-@onready var _custom_color_cb: CheckBox = $VBoxC/OtherOptions/CustomColor
-@onready var _block_color_cb: CheckBox = $VBoxC/OtherOptions/BlockColor/CheckBox
-@onready var _block_color_picker: ColorPickerButton = $VBoxC/OtherOptions/BlockColor/ColorPickerButton
-@onready var _random_block_cb: CheckBox = $VBoxC/OtherOptions/RandomBlockColor
-@onready var _slide_color_cb: CheckBox = $VBoxC/OtherOptions/SlideColor/CheckBox
-@onready var _slide_color_picker: ColorPickerButton = $VBoxC/OtherOptions/SlideColor/ColorPickerButton
-@onready var _random_slide_cb: CheckBox = $VBoxC/OtherOptions/RandomSlideColor
-@onready var _long_color_cb: CheckBox = $VBoxC/OtherOptions/LongColor/CheckBox
-@onready var _long_color_picker: ColorPickerButton = $VBoxC/OtherOptions/LongColor/ColorPickerButton
-@onready var _random_long_cb: CheckBox = $VBoxC/OtherOptions/RandomLongColor
-
 # 长条三项模式：UI 选项索引 ↔ 工作副本配置值 的映射（顺序与 PopupWindow.tscn 中各
 # OptionButton 的 popup item 顺序一致，是索引/值对应关系的唯一来源）。
 #   long_connect_mode: 0=边缘连接(edge)    1=中心连接(center)
@@ -52,31 +26,31 @@ func _ready() -> void:
 	# 连 item_confirmed 而非 item_selected：拖动选项列表滚动时 TouchScrollOptionButton 会
 	# 回退选中并丢弃本次选中，但 item_selected 已经发出去了，会造成"没切换却重播一遍
 	# 皮肤切换动画"并重复下发 block_skin_preset
-	_skin_option_btn.item_confirmed.connect(_on_skin_option_selected)
+	%NoteSkinOption.item_confirmed.connect(_on_skin_option_selected)
 	# 新增控件信号 — 任意变化都触发：读 UI → 更新工作副本 → 刷新预览
-	_l_conn_mode_btn.item_confirmed.connect(_on_setting_changed)
-	_l_repeat_mode_btn.item_confirmed.connect(_on_setting_changed)
-	_l_stretch_mode_btn.item_confirmed.connect(_on_setting_changed)
+	%NoteConnMode.item_confirmed.connect(_on_setting_changed)
+	%NoteRepeatMode.item_confirmed.connect(_on_setting_changed)
+	%NoteStretchMode.item_confirmed.connect(_on_setting_changed)
 	# 预览长条容器尺寸/可见性变化：按新尺寸重算身体区域与头尾矩形后重绘
-	_note_long_node.resized.connect(_refresh_long_preview)
-	_note_long_node.visibility_changed.connect(_refresh_long_preview)
-	_enable_glow_cb.toggled.connect(_on_setting_changed)
+	%NoteLong.resized.connect(_refresh_long_preview)
+	%NoteLong.visibility_changed.connect(_refresh_long_preview)
+	%NoteEnableGlow.toggled.connect(_on_setting_changed)
 	# 三个音符取色器统一配置（无透明度、无预设/吸管），并升级成设置页那套「输入框 + 色块」
-	for picker in [_block_color_picker, _slide_color_picker, _long_color_picker]:
+	for picker in [%NoteBlockColorPicker, %NoteSlideColorPicker, %NoteLongColorPicker]:
 		ThemeMGR.setup_color_picker(picker, false)
 		ThemeMGR.attach_hex_edit(picker, false)
 	# 自定义颜色总开关：单独处理，联动启用/禁用后续颜色子项
-	_custom_color_cb.toggled.connect(_on_custom_color_toggled)
-	_block_color_cb.toggled.connect(_on_setting_changed)
-	_block_color_picker.color_changed.connect(_on_setting_changed)
+	%NoteCustomColor.toggled.connect(_on_custom_color_toggled)
+	%NoteBlockColorCheck.toggled.connect(_on_setting_changed)
+	%NoteBlockColorPicker.color_changed.connect(_on_setting_changed)
 	# 随机颜色：勾选时若对应音符颜色未勾选，自动勾选
-	_random_block_cb.toggled.connect(_on_random_color_toggled.bind(_block_color_cb))
-	_slide_color_cb.toggled.connect(_on_setting_changed)
-	_slide_color_picker.color_changed.connect(_on_setting_changed)
-	_random_slide_cb.toggled.connect(_on_random_color_toggled.bind(_slide_color_cb))
-	_long_color_cb.toggled.connect(_on_setting_changed)
-	_long_color_picker.color_changed.connect(_on_setting_changed)
-	_random_long_cb.toggled.connect(_on_random_color_toggled.bind(_long_color_cb))
+	%NoteRandomBlockColor.toggled.connect(_on_random_color_toggled.bind(%NoteBlockColorCheck))
+	%NoteSlideColorCheck.toggled.connect(_on_setting_changed)
+	%NoteSlideColorPicker.color_changed.connect(_on_setting_changed)
+	%NoteRandomSlideColor.toggled.connect(_on_random_color_toggled.bind(%NoteSlideColorCheck))
+	%NoteLongColorCheck.toggled.connect(_on_setting_changed)
+	%NoteLongColorPicker.color_changed.connect(_on_setting_changed)
+	%NoteRandomLongColor.toggled.connect(_on_random_color_toggled.bind(%NoteLongColorCheck))
 
 ## 程序赋值同色时 color_changed 不触发，输入框需要手动补一次
 func _refresh_picker_hex(picker: ColorPickerButton) -> void:
@@ -97,16 +71,16 @@ func _on_random_color_toggled(pressed: bool, enable_cb: CheckBox) -> void:
 
 ## 根据 CustomColor 勾选状态启用/禁用所有颜色子项（保持布局稳定，仅灰显）
 func _update_color_controls_state() -> void:
-	var enabled: bool = _custom_color_cb.button_pressed
-	_block_color_cb.disabled = not enabled
-	_block_color_picker.disabled = not enabled
-	_random_block_cb.disabled = not enabled
-	_slide_color_cb.disabled = not enabled
-	_slide_color_picker.disabled = not enabled
-	_random_slide_cb.disabled = not enabled
-	_long_color_cb.disabled = not enabled
-	_long_color_picker.disabled = not enabled
-	_random_long_cb.disabled = not enabled
+	var enabled: bool = %NoteCustomColor.button_pressed
+	%NoteBlockColorCheck.disabled = not enabled
+	%NoteBlockColorPicker.disabled = not enabled
+	%NoteRandomBlockColor.disabled = not enabled
+	%NoteSlideColorCheck.disabled = not enabled
+	%NoteSlideColorPicker.disabled = not enabled
+	%NoteRandomSlideColor.disabled = not enabled
+	%NoteLongColorCheck.disabled = not enabled
+	%NoteLongColorPicker.disabled = not enabled
+	%NoteRandomLongColor.disabled = not enabled
 
 ## 由 PopupWindow.show_note_skin_adjust 调用：刷新选项 + 应用当前皮肤到预览 + 加载工作副本
 func init_adjust() -> void:
@@ -120,15 +94,15 @@ func init_adjust() -> void:
 		_working_config = _build_default_working_config()
 	_sync_ui_from_config()
 	# 重置预览容器位置和透明度（防止上次切换动画残留）
-	_note_preview_hboxc.offset_transform_position = Vector2.ZERO
-	_note_preview_hboxc.modulate.a = 1.0
+	%NotePreviewRow.offset_transform_position = Vector2.ZERO
+	%NotePreviewRow.modulate.a = 1.0
 	# 等一帧让布局稳定后应用预览（长条 head/tail 尺寸才能正确读取）
 	await get_tree().process_frame
 	_apply_preview_from_config()
 
 ## 返回当前选中的皮肤名（供 PopupWindow.show_note_skin_adjust 返回）
 func get_selected_skin() -> String:
-	return _skin_option_btn.get_item_text(_skin_option_btn.selected)
+	return %NoteSkinOption.get_item_text(%NoteSkinOption.selected)
 
 ## 持久化工作副本到 skin.ini 并触发 FlowArea 重载
 ## 由 PopupWindow 在 window_close 后调用
@@ -158,26 +132,26 @@ func _build_default_working_config() -> Dictionary:
 ## 将 _working_config 同步到所有 UI 控件（不触发信号）
 func _sync_ui_from_config() -> void:
 	var gen: Dictionary = _working_config.get("general", {})
-	_set_checkbox_no_signal(_enable_glow_cb, bool(gen.get("enable_glow", false)))
-	_set_checkbox_no_signal(_custom_color_cb, bool(gen.get("custom_color", false)))
+	_set_checkbox_no_signal(%NoteEnableGlow, bool(gen.get("enable_glow", false)))
+	_set_checkbox_no_signal(%NoteCustomColor, bool(gen.get("custom_color", false)))
 
 	var short_sec: Dictionary = _working_config.get("short", {})
-	_set_checkbox_no_signal(_block_color_cb, bool(short_sec.get("enable_color", false)))
-	_block_color_picker.color = short_sec.get("color", Color.WHITE)
-	_refresh_picker_hex(_block_color_picker)
-	_set_checkbox_no_signal(_random_block_cb, bool(short_sec.get("random_color", false)))
+	_set_checkbox_no_signal(%NoteBlockColorCheck, bool(short_sec.get("enable_color", false)))
+	%NoteBlockColorPicker.color = short_sec.get("color", Color.WHITE)
+	_refresh_picker_hex(%NoteBlockColorPicker)
+	_set_checkbox_no_signal(%NoteRandomBlockColor, bool(short_sec.get("random_color", false)))
 
 	var instant_sec: Dictionary = _working_config.get("instant", {})
-	_set_checkbox_no_signal(_slide_color_cb, bool(instant_sec.get("enable_color", false)))
-	_slide_color_picker.color = instant_sec.get("color", Color.WHITE)
-	_refresh_picker_hex(_slide_color_picker)
-	_set_checkbox_no_signal(_random_slide_cb, bool(instant_sec.get("random_color", false)))
+	_set_checkbox_no_signal(%NoteSlideColorCheck, bool(instant_sec.get("enable_color", false)))
+	%NoteSlideColorPicker.color = instant_sec.get("color", Color.WHITE)
+	_refresh_picker_hex(%NoteSlideColorPicker)
+	_set_checkbox_no_signal(%NoteRandomSlideColor, bool(instant_sec.get("random_color", false)))
 
 	var long_sec: Dictionary = _working_config.get("long", {})
-	_set_checkbox_no_signal(_long_color_cb, bool(long_sec.get("enable_color", false)))
-	_long_color_picker.color = long_sec.get("color", Color.WHITE)
-	_refresh_picker_hex(_long_color_picker)
-	_set_checkbox_no_signal(_random_long_cb, bool(long_sec.get("random_color", false)))
+	_set_checkbox_no_signal(%NoteLongColorCheck, bool(long_sec.get("enable_color", false)))
+	%NoteLongColorPicker.color = long_sec.get("color", Color.WHITE)
+	_refresh_picker_hex(%NoteLongColorPicker)
+	_set_checkbox_no_signal(%NoteRandomLongColor, bool(long_sec.get("random_color", false)))
 
 	# 长条三项模式（连接/延伸/缩放基准）：经统一映射表同步，不在各处手写索引对应关系
 	_sync_long_modes_from_config()
@@ -190,12 +164,12 @@ func _sync_ui_from_config() -> void:
 func _read_ui_to_config() -> void:
 	if not _working_config.has("general"):
 		_working_config["general"] = {}
-	_working_config["general"]["enable_glow"] = _enable_glow_cb.button_pressed
-	_working_config["general"]["custom_color"] = _custom_color_cb.button_pressed
+	_working_config["general"]["enable_glow"] = %NoteEnableGlow.button_pressed
+	_working_config["general"]["custom_color"] = %NoteCustomColor.button_pressed
 
-	_read_note_section_to_config("short", _block_color_cb, _block_color_picker, _random_block_cb)
-	_read_note_section_to_config("instant", _slide_color_cb, _slide_color_picker, _random_slide_cb)
-	_read_note_section_to_config("long", _long_color_cb, _long_color_picker, _random_long_cb)
+	_read_note_section_to_config("short", %NoteBlockColorCheck, %NoteBlockColorPicker, %NoteRandomBlockColor)
+	_read_note_section_to_config("instant", %NoteSlideColorCheck, %NoteSlideColorPicker, %NoteRandomSlideColor)
+	_read_note_section_to_config("long", %NoteLongColorCheck, %NoteLongColorPicker, %NoteRandomLongColor)
 	# 长条三项模式（连接/延伸/缩放基准）：经统一映射表读回，不在各处手写索引对应关系
 	_read_long_modes_to_config()
 
@@ -209,9 +183,9 @@ func _read_note_section_to_config(key: String, enable_cb: CheckBox, picker: Colo
 ## 长条模式配置键 → 对应 OptionButton
 func _long_mode_btn(key: String) -> OptionButton:
 	match key:
-		"long_connect_mode": return _l_conn_mode_btn
-		"long_f_mode": return _l_repeat_mode_btn
-		"long_stretch_mode": return _l_stretch_mode_btn
+		"long_connect_mode": return %NoteConnMode
+		"long_f_mode": return %NoteRepeatMode
+		"long_stretch_mode": return %NoteStretchMode
 	return null
 
 ## 工作副本中的长条三项模式（缺失键兜底为 SkinManager 默认值，默认值唯一来源）
@@ -262,9 +236,9 @@ func _apply_preview_from_config() -> void:
 	var slide_color := Color.WHITE
 	var long_color := Color.WHITE
 	if custom_color_on:
-		block_color = _resolve_preview_color("short", _block_color_cb, _block_color_picker, _random_block_cb)
-		slide_color = _resolve_preview_color("instant", _slide_color_cb, _slide_color_picker, _random_slide_cb)
-		long_color = _resolve_preview_color("long", _long_color_cb, _long_color_picker, _random_long_cb)
+		block_color = _resolve_preview_color("short", %NoteBlockColorCheck, %NoteBlockColorPicker, %NoteRandomBlockColor)
+		slide_color = _resolve_preview_color("instant", %NoteSlideColorCheck, %NoteSlideColorPicker, %NoteRandomSlideColor)
+		long_color = _resolve_preview_color("long", %NoteLongColorCheck, %NoteLongColorPicker, %NoteRandomLongColor)
 	else:
 		# 预览无键盘模式语境，按非键盘模式解析（实战常见情形）
 		var resolved: Dictionary = SkinManager.resolve_note_colors(
@@ -272,8 +246,8 @@ func _apply_preview_from_config() -> void:
 		block_color = resolved.get("short", Color.WHITE)
 		slide_color = resolved.get("instant", Color.WHITE)
 		long_color = resolved.get("long", Color.WHITE)
-	_note_block_node.get_node("core").modulate = block_color
-	_note_slide_node.get_node("core").modulate = slide_color
+	%NoteBlockCore.modulate = block_color
+	%NoteSlideCore.modulate = slide_color
 	_long_preview_color = long_color
 
 	# 2. 光效：enable_glow=true 时挂 shader 并设颜色；false 时清除 material
@@ -282,11 +256,11 @@ func _apply_preview_from_config() -> void:
 		ConfigManager.instance.get_float("note_glow_intensity", 0.5), 0.0, 2.0)
 	var glow_size: float = clampf(
 		ConfigManager.instance.get_float("note_glow_size", 5.0), 1.0, 30.0)
-	_apply_preview_glow(_note_block_node, block_color, enable_glow, glow_intensity, glow_size)
-	_apply_preview_glow(_note_slide_node, slide_color, enable_glow, glow_intensity, glow_size)
+	_apply_preview_glow(%NoteBlockGlow, %NoteBlock, block_color, enable_glow, glow_intensity, glow_size)
+	_apply_preview_glow(%NoteSlideGlow, %NoteSlide, slide_color, enable_glow, glow_intensity, glow_size)
 	# 只给 head/tail 挂光效：与运行时 GlowLayer 一致（长条 body 不画光效）
-	_apply_glow_material(_long_glow_tail, long_color, enable_glow, glow_intensity, glow_size)
-	_apply_glow_material(_long_glow_head, long_color, enable_glow, glow_intensity, glow_size)
+	_apply_glow_material(%NoteLongGlowTail, long_color, enable_glow, glow_intensity, glow_size)
+	_apply_glow_material(%NoteLongGlowHead, long_color, enable_glow, glow_intensity, glow_size)
 
 	# 3. 长条：连接模式 / 延伸模式 / 颜色全部交给绘制器，
 	#    几何与绘制顺序与实战同源（不再依赖节点布局拼接，也就不会出现预览独有的缝隙）
@@ -319,13 +293,10 @@ func _preview_global_random_colors() -> Dictionary:
 		"long": Color.from_hsv(0.85, saturation, value),
 	}
 
-## 给预览节点的 _glow 子节点应用或清除 NoteGlow shader
+## 给预览音符的光效节点应用或清除 NoteGlow shader，并让光晕跟随音符节点尺寸
 ## glow_intensity / glow_size 取自全局外观设置（与运行时光效同一来源），使预览与实战观感一致
-func _apply_preview_glow(note_root: Node, glow_color: Color, enable_glow: bool,
+func _apply_preview_glow(glow: CanvasItem, note_root: Node, glow_color: Color, enable_glow: bool,
 		glow_intensity: float, glow_size: float) -> void:
-	var glow = note_root.get_node_or_null("_glow")
-	if glow == null:
-		return
 	if not _apply_glow_material(glow, glow_color, enable_glow, glow_intensity, glow_size):
 		return
 	_bind_glow_fit(glow, note_root)
@@ -354,7 +325,7 @@ func _apply_glow_material(glow: CanvasItem, glow_color: Color, enable_glow: bool
 	mat.set_shader_parameter("note_uv_half", Vector2(1.0 / 6.0, 1.0 / 6.0))
 	return true
 
-## 让 _glow 的方形 quad 跟随 note_root 尺寸重算（连接 resized，只绑一次）。
+## 让光效节点的方形 quad 跟随 note_root 尺寸重算（连接 resized，只绑一次）。
 ## 不能只在应用预览时拟合一次：弹窗首次打开时 init_adjust() 早于 popup()，
 ## 预览容器还没完成布局，节点 size 为 0 / 上一次的值，_fit_glow_quad 会直接返回，
 ## 于是沿用场景里 -1..2（各轴 3 倍节点尺寸）的默认锚点 —— 扁 cap（BarSolid / BarFade
@@ -372,7 +343,7 @@ func _bind_glow_fit(glow: Node, note_root: Node) -> void:
 		root_ctrl.visibility_changed.connect(_fit_glow_quad.bind(glow, note_root))
 	_fit_glow_quad(glow, note_root)
 
-## 把 _glow 摆成与运行时 GlowLayer 相同的方形 quad：边长 = max(节点宽, 高) * GLOW_QUAD_SCALE，
+## 把光效节点摆成与运行时 GlowLayer 相同的方形 quad：边长 = max(节点宽, 高) * GLOW_QUAD_SCALE，
 ## 中心与节点重合。必须用正方形，不能用「固定 3 倍节点尺寸」：
 ## 细长 cap（BarSolid / BarFade 的头尾）在短边方向只有几十像素，3 倍仍远小于光晕
 ## 半径，光晕会在矩形上下边被硬切；正方形且边长与运行时一致时，光晕到矩形边缘已
@@ -398,30 +369,28 @@ func _fit_glow_quad(glow: Node, note_root: Node) -> void:
 ## 长条预览：几何与绘制全部交给 NoteBatchDrawer（与实战同一套函数），
 ## 这里只决定身体区域大小、连接模式与颜色，避免节点布局拼接产生的缝隙
 func _refresh_long_preview() -> void:
-	if _note_long_node == null or _long_drawer == null or not is_instance_valid(_long_drawer):
-		return
-	var sz: Vector2 = _note_long_node.size
+	var sz: Vector2 = %NoteLong.size
 	if sz.x <= 0.0 or sz.y <= 0.0:
 		return
-	_long_drawer.set_note_width(sz.x)
+	%NoteLongDrawer.set_note_width(sz.x)
 	var modes := _working_long_modes()
 	var center: bool = modes.get("long_connect_mode", SkinManager.LONG_CONNECT_MODE_EDGE) == SkinManager.LONG_CONNECT_MODE_CENTER
-	_long_drawer.set_long_body_mode(modes.get("long_f_mode", SkinManager.LONG_F_MODE_REPEAT))
-	_long_drawer.set_long_stretch_mode(modes.get("long_stretch_mode", SkinManager.LONG_STRETCH_MODE_LENGTH))
+	%NoteLongDrawer.set_long_body_mode(modes.get("long_f_mode", SkinManager.LONG_F_MODE_REPEAT))
+	%NoteLongDrawer.set_long_stretch_mode(modes.get("long_stretch_mode", SkinManager.LONG_STRETCH_MODE_LENGTH))
 	# 头尾各按贴图宽高比缩放；edge 连接时头尾整体在身体外，center 连接时各向身体内嵌半高
-	var tail_half: float = _long_drawer.get_long_tail_half_height()
-	var head_half: float = _long_drawer.get_long_head_half_height()
+	var tail_half: float = %NoteLongDrawer.get_long_tail_half_height()
+	var head_half: float = %NoteLongDrawer.get_long_head_half_height()
 	var vis_h: float = (tail_half + head_half) if center else (tail_half + head_half) * 2.0
 	var body_h: float = maxf(sz.y - vis_h, 1.0)
 	var body_top: float = (sz.y - (body_h + vis_h)) * 0.5 + (tail_half if center else tail_half * 2.0)
-	_long_drawer.set_long_preview(Rect2(0.0, body_top, sz.x, body_h), center, _long_preview_color, sz.y)
+	%NoteLongDrawer.set_long_preview(Rect2(0.0, body_top, sz.x, body_h), center, _long_preview_color, sz.y)
 	_place_long_glow()
 
 ## 按绘制器给出的头尾矩形摆放长条光效（节点只负责光晕，本体由绘制器画）
 func _place_long_glow() -> void:
-	var rects: Dictionary = _long_drawer.get_long_preview_rects()
-	_place_preview_glow(_long_glow_tail, rects["tail"])
-	_place_preview_glow(_long_glow_head, rects["head"])
+	var rects: Dictionary = %NoteLongDrawer.get_long_preview_rects()
+	_place_preview_glow(%NoteLongGlowTail, rects["tail"])
+	_place_preview_glow(%NoteLongGlowHead, rects["head"])
 
 ## 把光效摆成与运行时 GlowLayer 一致的方形 quad，中心与对应部件中心重合：
 ## 正方形而非按节点矩形铺开，扁 cap 的光晕才不会被矩形短边硬切
@@ -473,16 +442,16 @@ func _apply_skin_to_preview(skin_name: String) -> void:
 	]
 
 	# block
-	_note_block_node.texture = tex_arr[0] if tex_arr[0] else _transparent
-	_note_block_node.get_node("core").texture = tex_arr[1] if tex_arr[1] else _transparent
+	%NoteBlock.texture = tex_arr[0] if tex_arr[0] else _transparent
+	%NoteBlockCore.texture = tex_arr[1] if tex_arr[1] else _transparent
 
 	# slide
-	_note_slide_node.texture = tex_arr[2] if tex_arr[2] else _transparent
-	_note_slide_node.get_node("core").texture = tex_arr[3] if tex_arr[3] else _transparent
+	%NoteSlide.texture = tex_arr[2] if tex_arr[2] else _transparent
+	%NoteSlideCore.texture = tex_arr[3] if tex_arr[3] else _transparent
 
 	# long: 交给与实战同源的绘制器（head / body / tail 的原图直接传入，
 	# 缺层保持 null，由绘制器按同一规则回退/取参考尺寸）
-	_long_drawer.set_long_textures(tex_arr[4], tex_arr[5], tex_arr[6], tex_arr[7], tex_arr[8], tex_arr[9])
+	%NoteLongDrawer.set_long_textures(tex_arr[4], tex_arr[5], tex_arr[6], tex_arr[7], tex_arr[8], tex_arr[9])
 
 # 填充皮肤选项列表，选中当前配置的皮肤
 func _refresh_skin_options() -> void:
@@ -490,27 +459,27 @@ func _refresh_skin_options() -> void:
 	if skin_list.is_empty():
 		skin_list = [SkinManager.DEFAULT_SKIN_PRESET]
 	var current := ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
-	_skin_option_btn.clear()
+	%NoteSkinOption.clear()
 	for skin in skin_list:
-		_skin_option_btn.add_item(skin)
+		%NoteSkinOption.add_item(skin)
 	var idx := skin_list.find(current)
-	_skin_option_btn.select(maxi(0, idx))
+	%NoteSkinOption.select(maxi(0, idx))
 
 # 选项切换：播放上移+淡出→换皮肤→从下方上移+淡入动画，并即时应用皮肤到 PlayView
 # 注意：不能用 animate_fade_out/in，因为它们会设置 visible=false（fade_out 完成后）
 # 和 modulate.a=0（fade_in 开头），会导致第二段动画期间节点不可见。
 # 改用 create_sequence + tween_property 直接 tween modulate:a，避免 visible 副作用。
 func _on_skin_option_selected(_index: int) -> void:
-	var skin_name: String = _skin_option_btn.get_item_text(_skin_option_btn.selected)
+	var skin_name: String = %NoteSkinOption.get_item_text(%NoteSkinOption.selected)
 	# 若有动画在跑，先 kill
 	AniMGR.stop_tween("popup_skin_switch_up")
 	AniMGR.stop_tween("popup_skin_switch_down")
 	AniMGR.stop_tween("popup_skin_switch_fade_out")
 	AniMGR.stop_tween("popup_skin_switch_fade_in")
 	# 第一段：上移 + 淡出（并行）
-	var move_up := AniMGR.animate_offset_to(_note_preview_hboxc, Vector2(0, -80), 0.25, "popup_skin_switch_up")
+	var move_up := AniMGR.animate_offset_to(%NotePreviewRow, Vector2(0, -80), 0.25, "popup_skin_switch_up")
 	var fade_out := AniMGR.create_sequence("popup_skin_switch_fade_out")
-	fade_out.tween_property(_note_preview_hboxc, "modulate:a", 0.0, 0.25)
+	fade_out.tween_property(%NotePreviewRow, "modulate:a", 0.0, 0.25)
 	await move_up.finished
 	# 应用新皮肤到预览节点
 	_apply_skin_to_preview(skin_name)
@@ -524,11 +493,11 @@ func _on_skin_option_selected(_index: int) -> void:
 	# （相当于把设置保存时进行的皮肤应用提前到这里）
 	ConfigManager.instance.set_value_and_notify("block_skin_preset", skin_name)
 	# 重置到下方位置（瞬间）
-	_note_preview_hboxc.offset_transform_position = Vector2(0, 80)
+	%NotePreviewRow.offset_transform_position = Vector2(0, 80)
 	# 第二段：从下方上移 + 淡入（并行）
-	AniMGR.animate_offset_to(_note_preview_hboxc, Vector2.ZERO, 0.25, "popup_skin_switch_down")
+	AniMGR.animate_offset_to(%NotePreviewRow, Vector2.ZERO, 0.25, "popup_skin_switch_down")
 	var fade_in := AniMGR.create_sequence("popup_skin_switch_fade_in")
-	fade_in.tween_property(_note_preview_hboxc, "modulate:a", 1.0, 0.25)
+	fade_in.tween_property(%NotePreviewRow, "modulate:a", 1.0, 0.25)
 	# 等一帧让布局稳定后应用预览（颜色/光效/长条模式）
 	await get_tree().process_frame
 	_apply_preview_from_config()

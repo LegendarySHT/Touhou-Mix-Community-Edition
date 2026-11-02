@@ -2,21 +2,6 @@ extends HBoxContainer
 
 class_name ParticleAdjust
 
-@onready var _particle_preview: Panel = $ParticlePreview
-@onready var _title_label: Label = $VBoxC/Title
-@onready var _basic_particle_btn: TouchScrollOptionButton = $VBoxC/Options/BasicParticle
-@onready var _emitter_btn: TouchScrollOptionButton = $VBoxC/Options/ParticleEmitter
-@onready var _total_scale_edit: LineEdit = $VBoxC/Options/TotalScale/LineEdit
-@onready var _total_alpha_edit: LineEdit = $VBoxC/Options/TotalAlpha/LineEdit
-@onready var _emitter_scale_edit: LineEdit = $VBoxC/Options/EmitterScale/LineEdit
-## 四种判定类型的切换按钮（与 _judge_type 一一对应）
-@onready var _judge_btns: Array[Button] = [
-	$VBoxC/JudgeSwitch/Perfect,
-	$VBoxC/JudgeSwitch/Great,
-	$VBoxC/JudgeSwitch/Good,
-	$VBoxC/JudgeSwitch/Bad,
-]
-
 # ===== 粒子设置页 =====
 ## 支持的判定类型（与配置键 {j}_spark_* 及 FlowArea spark 判定名一一对应）
 const JUDGE_TYPES: Array[String] = ["Perfect", "Great", "Good", "Bad"]
@@ -43,17 +28,18 @@ var _judge_type: String = "Perfect"
 
 func _ready() -> void:
 	# item_confirmed：拖拽滚动时不会误触发（item_selected 在拖拽时仍会发出）
-	_basic_particle_btn.item_confirmed.connect(_on_preset_changed)
-	_emitter_btn.item_confirmed.connect(_on_preset_changed)
-	_total_scale_edit.text_changed.connect(_on_value_changed)
-	_total_alpha_edit.text_changed.connect(_on_value_changed)
-	_emitter_scale_edit.text_changed.connect(_on_value_changed)
+	%BasicParticle.item_confirmed.connect(_on_preset_changed)
+	%ParticleEmitter.item_confirmed.connect(_on_preset_changed)
+	%TotalScaleEdit.text_changed.connect(_on_value_changed)
+	%TotalAlphaEdit.text_changed.connect(_on_value_changed)
+	%EmitterScaleEdit.text_changed.connect(_on_value_changed)
 	# 判定类型切换按钮（同一 ButtonGroup，点击后切到对应判定类型）
+	var judge_btns := [%Perfect, %Great, %Good, %Bad]
 	for i in JUDGE_TYPES.size():
-		_judge_btns[i].pressed.connect(_on_judge_pressed.bind(JUDGE_TYPES[i]))
+		judge_btns[i].pressed.connect(_on_judge_pressed.bind(JUDGE_TYPES[i]))
 	# 常驻单个批绘节点，预览粒子由它统一绘制
 	_particle_drawer = _particle_scene.instantiate()
-	_particle_preview.add_child(_particle_drawer)
+	%ParticlePreview.add_child(_particle_drawer)
 	_init_particle_preview()
 	_init_value_debounce()
 
@@ -76,7 +62,7 @@ func _init_particle_preview() -> void:
 ## judge_type: 初始选中的判定类型（Perfect / Great / Good / Bad），弹窗内可随时切换
 func init_adjust(judge_type: String = "Perfect") -> void:
 	_judge_type = judge_type
-	_title_label.text = "%s 特效设定" % judge_type
+	%ParticleTitle.text = "%s 特效设定" % judge_type
 	# 刷新粒子样式选项（动态从 ParticleMGR 读取，支持外部导入的粒子包）
 	_refresh_presets()
 	_update_switch_buttons()
@@ -94,29 +80,30 @@ func _on_judge_pressed(judge_type: String) -> void:
 
 ## 更新切换按钮的选中态与窗口标题（与 _judge_type 一致）
 func _update_switch_buttons() -> void:
+	var judge_btns := [%Perfect, %Great, %Good, %Bad]
 	for i in JUDGE_TYPES.size():
-		_judge_btns[i].button_pressed = (JUDGE_TYPES[i] == _judge_type)
-	_title_label.text = "%s 特效设定" % _judge_type
+		judge_btns[i].button_pressed = (JUDGE_TYPES[i] == _judge_type)
+	%ParticleTitle.text = "%s 特效设定" % _judge_type
 
 ## 从配置读取当前判定类型的数值填充到控件（临时断开信号避免回环）
 func _load_current_values() -> void:
 	var jl := _judge_type.to_lower()
 	# 基础粒子 preset（配置存粒子包名字，找不到回退 None=索引0）
 	var preset_name: String = ConfigManager.instance.get_string(jl + "_spark_preset", "")
-	_basic_particle_btn.selected = _preset_index_of(preset_name, _base_presets)
+	%BasicParticle.selected = _preset_index_of(preset_name, _base_presets)
 	# 散射粒子 preset
 	var emitter_name: String = ConfigManager.instance.get_string(jl + "_spark_emitter", "")
-	_emitter_btn.selected = _preset_index_of(emitter_name, _emitter_presets)
+	%ParticleEmitter.selected = _preset_index_of(emitter_name, _emitter_presets)
 	# 三个数值（临时断开信号避免回环）
-	_total_scale_edit.text_changed.disconnect(_on_value_changed)
-	_total_scale_edit.text = str(ConfigManager.instance.get_int(jl + "_spark_scaling", 100))
-	_total_scale_edit.text_changed.connect(_on_value_changed)
-	_total_alpha_edit.text_changed.disconnect(_on_value_changed)
-	_total_alpha_edit.text = str(ConfigManager.instance.get_int(jl + "_spark_alpha", 100))
-	_total_alpha_edit.text_changed.connect(_on_value_changed)
-	_emitter_scale_edit.text_changed.disconnect(_on_value_changed)
-	_emitter_scale_edit.text = str(ConfigManager.instance.get_int(jl + "_spark_emitter_scaling", 150))
-	_emitter_scale_edit.text_changed.connect(_on_value_changed)
+	%TotalScaleEdit.text_changed.disconnect(_on_value_changed)
+	%TotalScaleEdit.text = str(ConfigManager.instance.get_int(jl + "_spark_scaling", 100))
+	%TotalScaleEdit.text_changed.connect(_on_value_changed)
+	%TotalAlphaEdit.text_changed.disconnect(_on_value_changed)
+	%TotalAlphaEdit.text = str(ConfigManager.instance.get_int(jl + "_spark_alpha", 100))
+	%TotalAlphaEdit.text_changed.connect(_on_value_changed)
+	%EmitterScaleEdit.text_changed.disconnect(_on_value_changed)
+	%EmitterScaleEdit.text = str(ConfigManager.instance.get_int(jl + "_spark_emitter_scaling", 150))
+	%EmitterScaleEdit.text_changed.connect(_on_value_changed)
 
 ## 刷新粒子包选项列表（索引 0=None，1 起按 ParticleMGR 扫描顺序）
 ## 基础下拉只列声明了 [base] 的包，散射下拉只列声明了 [emitter] 的包；
@@ -128,8 +115,8 @@ func _refresh_presets() -> void:
 		_base_presets.append(pack_key)
 	for pack_key in ParticleMGR.get_particle_list_for_role(ParticleMGR.ROLE_EMITTER):
 		_emitter_presets.append(pack_key)
-	_fill_btn(_basic_particle_btn, _base_presets)
-	_fill_btn(_emitter_btn, _emitter_presets)
+	_fill_btn(%BasicParticle, _base_presets)
+	_fill_btn(%ParticleEmitter, _emitter_presets)
 
 ## 用指定选项列表填充一个 OptionButton
 func _fill_btn(btn: OptionButton, list: Array) -> void:
@@ -155,19 +142,19 @@ func _play_preview_particle() -> void:
 	if not is_visible_in_tree():
 		return
 	# base 与 emitter 都为 None 时不播放
-	var base_idx: int = _basic_particle_btn.selected
-	var emitter_idx: int = _emitter_btn.selected
+	var base_idx: int = %BasicParticle.selected
+	var emitter_idx: int = %ParticleEmitter.selected
 	if base_idx == 0 and emitter_idx == 0:
 		return
 	var base_key: String = _base_presets[base_idx] if base_idx > 0 else ""
 	var emitter_key: String = _emitter_presets[emitter_idx] if emitter_idx > 0 else ""
 	# 数值预换算为倍率/不透明度再传 spawn（spawn 内部不再除 100）
-	var scale_mult := float(_read_pct(_total_scale_edit, 100)) / 100.0
-	var alpha := clampf(float(_read_pct(_total_alpha_edit, 100)) / 100.0, 0.0, 1.0)
-	var emitter_scale_mult := float(_read_pct(_emitter_scale_edit, 150)) / 100.0
+	var scale_mult := float(_read_pct(%TotalScaleEdit, 100)) / 100.0
+	var alpha := clampf(float(_read_pct(%TotalAlphaEdit, 100)) / 100.0, 0.0, 1.0)
+	var emitter_scale_mult := float(_read_pct(%EmitterScaleEdit, 150)) / 100.0
 	# 单节点批绘：直接 spawn，粒子由内部 _process/_draw 统一推进绘制
 	# Node2D 在 Control 下的 position 以左上角为原点，Panel size=500x500 → 中心 250,250
-	_particle_drawer.spawn(base_key, emitter_key, _particle_preview.size / 2.0,
+	_particle_drawer.spawn(base_key, emitter_key, %ParticlePreview.size / 2.0,
 		scale_mult, alpha, emitter_scale_mult)
 
 ## 启动粒子预览循环
@@ -188,11 +175,11 @@ func stop_preview() -> void:
 ## 将当前所有控件值写入对应判定类型的配置字段（set_value_and_notify 即时应用 + 热更新）
 func _save_current() -> void:
 	var jl := _judge_type.to_lower()
-	ConfigManager.instance.set_value_and_notify(jl + "_spark_preset", _base_presets[_basic_particle_btn.selected])
-	ConfigManager.instance.set_value_and_notify(jl + "_spark_emitter", _emitter_presets[_emitter_btn.selected])
-	ConfigManager.instance.set_value_and_notify(jl + "_spark_scaling", _read_pct(_total_scale_edit, 100))
-	ConfigManager.instance.set_value_and_notify(jl + "_spark_alpha", _read_pct(_total_alpha_edit, 100))
-	ConfigManager.instance.set_value_and_notify(jl + "_spark_emitter_scaling", _read_pct(_emitter_scale_edit, 150))
+	ConfigManager.instance.set_value_and_notify(jl + "_spark_preset", _base_presets[%BasicParticle.selected])
+	ConfigManager.instance.set_value_and_notify(jl + "_spark_emitter", _emitter_presets[%ParticleEmitter.selected])
+	ConfigManager.instance.set_value_and_notify(jl + "_spark_scaling", _read_pct(%TotalScaleEdit, 100))
+	ConfigManager.instance.set_value_and_notify(jl + "_spark_alpha", _read_pct(%TotalAlphaEdit, 100))
+	ConfigManager.instance.set_value_and_notify(jl + "_spark_emitter_scaling", _read_pct(%EmitterScaleEdit, 150))
 
 ## 切换基础/散射粒子下拉：即时保存到对应判定类型的配置字段并播放一次预览
 func _on_preset_changed(_index: int) -> void:

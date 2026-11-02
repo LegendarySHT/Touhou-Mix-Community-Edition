@@ -3,9 +3,9 @@ extends HBoxContainer
 class_name NoteDisplayer
 
 # canvas 在 midiTrack.tscn 里是 Control、在 TrackView.tscn 里是 Panel，统一按基类 Control 取
-@onready var flow_area: Control = $noteFlowArea/canvas
-@onready var note_count_passed: Label = $noteTotal/passedNote
-@onready var note_count_total: Label = $noteTotal/totalNote
+@onready var flow_area: Control = %NoteCanvas
+@onready var note_count_passed: Label = %NotePassed
+@onready var note_count_total: Label = %NoteTotal
 
 var area_height: float = 160
 var area_width: float = 0

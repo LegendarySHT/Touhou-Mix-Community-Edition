@@ -5,7 +5,7 @@ extends CoverListItemBase
 class_name SortedMidiListItem
 
 ## 引用节点
-@onready var status_label: Label = $MidiName/status
+@onready var status_label: Label = $MidiName/Status
 @onready var midi_name_label: Label = $MidiName
 @onready var author_label: Label = $MidiName/Author
 # cover_texture 继承自 CoverListItemBase，在 _ready() 中赋值
@@ -30,7 +30,7 @@ signal _init_fin
 var _has_ready: bool = false
 
 func _ready() -> void:
-	cover_texture = $C/cover
+	cover_texture = $C/Cover
 	await _init_fin
 	# 先置位 _has_ready 再刷新：_refresh_display 里据此走"复用"分支（含播放入场动画），
 	# 否则首次构建恒跳过动画（必须在 _play_refresh_slide_in / switch_cover_data 判断之前置位）

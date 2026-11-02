@@ -1,0 +1,351 @@
+[gd_scene format=3 uid="uid://xuehp3n3elk3"]
+
+[ext_resource type="Script" uid="uid://cohp1v184ht7q" path="res://UI/Components/ShortCutMenu/shortcut_menu.gd" id="1_x2paq"]
+[ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="2_f1ssv"]
+[ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="3_r2107"]
+[ext_resource type="PackedScene" uid="uid://xgcfhg1x2v6p" path="res://UI/Components/ShortCutMenu/favorListItem.tscn" id="4_jgupe"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_5mvff"]
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.36, 0.55, 1, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="ButtonGroup" id="ButtonGroup_3b0ty"]
+allow_unpress = true
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_phpps"]
+atlas = ExtResource("2_f1ssv")
+region = Rect2(320, 240, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hri7i"]
+draw_center = false
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+shadow_color = Color(0, 0, 0, 0.25)
+shadow_size = 8
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_7rc5s"]
+atlas = ExtResource("2_f1ssv")
+region = Rect2(240, 0, 80, 80)
+margin = Rect2(2, 0, 0, 0)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sqvbp"]
+bg_color = Color(0.0941, 0.1176, 0.1686, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+expand_margin_top = 125.0
+shadow_color = Color(0, 0, 0, 0.45)
+shadow_size = 24
+shadow_offset = Vector2(0, 8)
+
+[sub_resource type="Gradient" id="Gradient_2gh4u"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_devvj"]
+gradient = SubResource("Gradient_2gh4u")
+
+[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_2gh4u"]
+texture = SubResource("GradientTexture2D_devvj")
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_ck4ec"]
+atlas = ExtResource("2_f1ssv")
+region = Rect2(320, 240, 80, 80)
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_iygje"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_j02sm"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_2xvos"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_u2pgb"]
+atlas = ExtResource("3_r2107")
+region = Rect2(0, 160, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_jttwt"]
+atlas = ExtResource("3_r2107")
+region = Rect2(0, 320, 80, 80)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_4ycmv"]
+atlas = ExtResource("3_r2107")
+region = Rect2(0, 240, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2gh4u"]
+draw_center = false
+border_width_top = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_5h6qm"]
+atlas = ExtResource("3_r2107")
+region = Rect2(160, 80, 80, 80)
+
+[node name="ShortCutMenu" type="VBoxContainer" unique_id=1142631087]
+visible = false
+z_index = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -580.0
+offset_top = 75.0
+offset_right = 20.0
+offset_bottom = 899.0
+grow_horizontal = 0
+size_flags_horizontal = 4
+offset_transform_enabled = true
+offset_transform_position = Vector2(134, -500)
+mouse_filter = 2
+script = ExtResource("1_x2paq")
+
+[node name="Btns" type="HBoxContainer" parent="." unique_id=860122983]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 50
+alignment = 1
+
+[node name="SortTabBtn" type="Button" parent="Btns" unique_id=530591440]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+focus_neighbor_left = NodePath("../../..")
+focus_neighbor_right = NodePath("../FavorListTabBtn")
+focus_next = NodePath("../FavorListTabBtn")
+theme_override_styles/focus = SubResource("StyleBoxFlat_5mvff")
+toggle_mode = true
+button_group = SubResource("ButtonGroup_3b0ty")
+icon = SubResource("AtlasTexture_phpps")
+icon_alignment = 1
+
+[node name="Border" type="PanelContainer" parent="Btns/SortTabBtn" unique_id=1866117928]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hri7i")
+
+[node name="FavorListTabBtn" type="Button" parent="Btns" unique_id=407527580]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+focus_neighbor_left = NodePath("../SortTabBtn")
+focus_neighbor_bottom = NodePath("../../ShortcutPanel/Clip/PageContent/FavorPage/FavorList/FavorList/FavorListItem")
+focus_next = NodePath("../SortTabBtn")
+theme_override_constants/icon_max_width = 95
+theme_override_styles/focus = SubResource("StyleBoxFlat_5mvff")
+toggle_mode = true
+button_group = SubResource("ButtonGroup_3b0ty")
+icon = SubResource("AtlasTexture_7rc5s")
+icon_alignment = 1
+expand_icon = true
+
+[node name="Border" type="PanelContainer" parent="Btns/FavorListTabBtn" unique_id=1318359806]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hri7i")
+
+[node name="ShortcutPanel" type="Panel" parent="." unique_id=497125838]
+unique_name_in_owner = true
+visible = false
+z_index = -1
+custom_minimum_size = Vector2(600, 700)
+layout_mode = 2
+offset_transform_enabled = true
+offset_transform_scale = Vector2(1, 0.001)
+offset_transform_pivot_ratio = Vector2(0.5, -0.17)
+offset_transform_visual_only = false
+theme_override_styles/panel = SubResource("StyleBoxFlat_sqvbp")
+
+[node name="Clip" type="Panel" parent="ShortcutPanel" unique_id=939233239]
+clip_children = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxTexture_2gh4u")
+
+[node name="PageContent" type="HBoxContainer" parent="ShortcutPanel/Clip" unique_id=526624858]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 40.0
+offset_top = 50.0
+offset_right = 1340.0
+offset_bottom = 750.0
+scale = Vector2(0.9, 0.9)
+offset_transform_enabled = true
+offset_transform_position = Vector2(-655, 0)
+offset_transform_visual_only = false
+mouse_filter = 2
+theme_override_constants/separation = 100
+
+[node name="SortPage" type="VBoxContainer" parent="ShortcutPanel/Clip/PageContent" unique_id=798471166]
+custom_minimum_size = Vector2(600, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 15
+
+[node name="SearchBox" type="HBoxContainer" parent="ShortcutPanel/Clip/PageContent/SortPage" unique_id=571799682]
+layout_mode = 2
+
+[node name="SearchEdit" type="LineEdit" parent="ShortcutPanel/Clip/PageContent/SortPage/SearchBox" unique_id=1738815832]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(440, 100)
+layout_mode = 2
+focus_neighbor_left = NodePath("../../../../../../Btns/SortTabBtn")
+focus_next = NodePath("../../../../../../Btns/FavorListTabBtn")
+theme_override_font_sizes/font_size = 35
+placeholder_text = "please enter..."
+alignment = 1
+caret_blink = true
+
+[node name="SearchBtn" type="Button" parent="ShortcutPanel/Clip/PageContent/SortPage/SearchBox" unique_id=1804139590]
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+focus_next = NodePath("../../../../../../Btns/FavorListTabBtn")
+icon = SubResource("AtlasTexture_ck4ec")
+icon_alignment = 1
+expand_icon = true
+
+[node name="Line" type="ColorRect" parent="ShortcutPanel/Clip/PageContent/SortPage" unique_id=743645458]
+custom_minimum_size = Vector2(600, 5)
+layout_mode = 2
+size_flags_horizontal = 4
+color = Color(0.1686, 0.2039, 0.2745, 1)
+
+[node name="SortButtons" type="HBoxContainer" parent="ShortcutPanel/Clip/PageContent/SortPage" unique_id=1282252243]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_constants/separation = 40
+
+[node name="StateBtn" type="Button" parent="ShortcutPanel/Clip/PageContent/SortPage/SortButtons" unique_id=1661688723]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+focus_neighbor_left = NodePath("../../../../../../Btns/SortTabBtn")
+focus_neighbor_right = NodePath("../DataBtn")
+focus_next = NodePath("../../../../../../Btns/FavorListTabBtn")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_iygje")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_j02sm")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_2xvos")
+icon = SubResource("AtlasTexture_u2pgb")
+icon_alignment = 1
+expand_icon = true
+
+[node name="DataBtn" type="Button" parent="ShortcutPanel/Clip/PageContent/SortPage/SortButtons" unique_id=2011376639]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+focus_neighbor_left = NodePath("../StateBtn")
+focus_neighbor_right = NodePath("../OrderingBtn")
+focus_next = NodePath("../../../../../../Btns/FavorListTabBtn")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_iygje")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_j02sm")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_2xvos")
+icon = SubResource("AtlasTexture_jttwt")
+icon_alignment = 1
+expand_icon = true
+
+[node name="OrderingBtn" type="Button" parent="ShortcutPanel/Clip/PageContent/SortPage/SortButtons" unique_id=983542420]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(100, 100)
+layout_mode = 2
+focus_neighbor_left = NodePath("../DataBtn")
+focus_neighbor_right = NodePath("../../SearchBox/SearchBtn")
+focus_next = NodePath("../../../../../../Btns/FavorListTabBtn")
+theme_override_styles/normal = SubResource("StyleBoxEmpty_iygje")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_j02sm")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_2xvos")
+icon = SubResource("AtlasTexture_4ycmv")
+icon_alignment = 1
+expand_icon = true
+
+[node name="MarginContainer" type="MarginContainer" parent="ShortcutPanel/Clip/PageContent/SortPage/SortButtons" unique_id=552608647]
+layout_mode = 2
+theme_override_constants/margin_right = 20
+
+[node name="FavorPage" type="VBoxContainer" parent="ShortcutPanel/Clip/PageContent" unique_id=150447382]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 20
+
+[node name="FavorList" type="ScrollContainer" parent="ShortcutPanel/Clip/PageContent/FavorPage" unique_id=336093673]
+custom_minimum_size = Vector2(500, 530)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_2gh4u")
+follow_focus = true
+horizontal_scroll_mode = 3
+vertical_scroll_mode = 3
+
+[node name="FavorList" type="VBoxContainer" parent="ShortcutPanel/Clip/PageContent/FavorPage/FavorList" unique_id=633131692]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="FavorListItem" parent="ShortcutPanel/Clip/PageContent/FavorPage/FavorList/FavorList" unique_id=250478025 instance=ExtResource("4_jgupe")]
+layout_mode = 2
+
+[node name="CreateList" type="VBoxContainer" parent="ShortcutPanel/Clip/PageContent/FavorPage" unique_id=958460579]
+layout_mode = 2
+alignment = 1
+
+[node name="NameEdit" type="LineEdit" parent="ShortcutPanel/Clip/PageContent/FavorPage/CreateList" unique_id=519195992]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(400, 60)
+layout_mode = 2
+size_flags_horizontal = 4
+placeholder_text = "请输入收藏夹名称"
+
+[node name="AddBtn" type="Button" parent="ShortcutPanel/Clip/PageContent/FavorPage/CreateList" unique_id=211965057]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 80)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 8
+icon = SubResource("AtlasTexture_5h6qm")
+icon_alignment = 1
+expand_icon = true
+
+[connection signal="text_submitted" from="ShortcutPanel/Clip/PageContent/SortPage/SearchBox/SearchEdit" to="." method="_on_search_query"]
+[connection signal="pressed" from="ShortcutPanel/Clip/PageContent/SortPage/SearchBox/SearchBtn" to="." method="_on_search_query"]
+[connection signal="pressed" from="ShortcutPanel/Clip/PageContent/SortPage/SortButtons/StateBtn" to="." method="_on_status_pressed"]
+[connection signal="pressed" from="ShortcutPanel/Clip/PageContent/SortPage/SortButtons/DataBtn" to="." method="_on_data_pressed"]
+[connection signal="pressed" from="ShortcutPanel/Clip/PageContent/SortPage/SortButtons/OrderingBtn" to="." method="_on_ordering_pressed"]
+[connection signal="text_submitted" from="ShortcutPanel/Clip/PageContent/FavorPage/CreateList/NameEdit" to="." method="_confirm_create"]

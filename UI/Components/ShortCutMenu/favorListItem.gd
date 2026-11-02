@@ -23,9 +23,9 @@ var favorite_id: String = ""
 var current_midi: MidiData = null
 
 @onready var cover: TextureRect = $HBox/Cover
-@onready var name_label: Label = $HBox/Detail/name
-@onready var midi_count_label: Label = $HBox/Detail/midiCount
-@onready var name_edit: LineEdit = $HBox/Detail/nameEdit
+@onready var name_label: Label = $HBox/Detail/Name
+@onready var midi_count_label: Label = $HBox/Detail/MidiCount
+@onready var name_edit: LineEdit = $HBox/Detail/NameEdit
 @onready var action_icon_wrap: Control = $HBox/Cover/ActionIconWrap
 @onready var action_icon: TextureRect = $HBox/Cover/ActionIconWrap/ActionIcon
 @onready var delete_btn: Button = $HBox/DeleteBtn

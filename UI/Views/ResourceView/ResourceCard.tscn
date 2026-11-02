@@ -105,6 +105,7 @@ theme_override_styles/focus = SubResource("SB_focus")
 script = ExtResource("1_card")
 
 [node name="SelectedBorder" type="Panel" parent="." unique_id=1396353131]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -133,6 +134,7 @@ layout_mode = 2
 theme_override_constants/separation = 14
 
 [node name="CoverWrap" type="Panel" parent="Margin/HBox" unique_id=1966632862]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(126, 126)
 layout_mode = 2
 size_flags_vertical = 4
@@ -140,6 +142,7 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_cover")
 
 [node name="Cover" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=244121348]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -153,6 +156,7 @@ script = ExtResource("3_round")
 corner_radius = 12.0
 
 [node name="Placeholder" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=17705918]
+unique_name_in_owner = true
 modulate = Color(1, 1, 1, 0.45)
 custom_minimum_size = Vector2(58, 58)
 layout_mode = 1
@@ -172,6 +176,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="NotePreview" type="Control" parent="Margin/HBox/CoverWrap"]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -189,6 +194,7 @@ size_flags_vertical = 4
 theme_override_constants/separation = 3
 
 [node name="Title" type="Label" parent="Margin/HBox/Info" unique_id=1195004096]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 26
@@ -198,6 +204,7 @@ script = ExtResource("2_scroll")
 end_padding = 0.0
 
 [node name="Sub" type="Label" parent="Margin/HBox/Info" unique_id=552491381]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 19
@@ -208,6 +215,7 @@ theme_color_key = "text_secondary"
 end_padding = 0.0
 
 [node name="Meta" type="Label" parent="Margin/HBox/Info" unique_id=1066406590]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 18
@@ -225,6 +233,7 @@ theme_override_constants/separation = 8
 alignment = 1
 
 [node name="Badge" type="Label" parent="Margin/HBox/Right" unique_id=587554651]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 16
@@ -234,6 +243,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="SelectedMark" type="TextureRect" parent="Margin/HBox/Right" unique_id=1410729079]
+unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2

@@ -9,22 +9,18 @@ const FAVOR_ITEM_SCENE := preload("res://UI/Components/ShortCutMenu/favorListIte
 ## 选中收藏夹的 id；取消选择时为空串
 signal picked(fav_id: String)
 
-@onready var _list: VBoxContainer = $FpColumn/FpScroll/FpList
-@onready var _empty: Label = $FpColumn/FpScroll/FpList/FpEmpty
-@onready var _shader: ColorRect = $"../PopupWindowShader"
-
 ## 打开弹层。pending 为 true 时表示"待加入"，标题不同
 func open(pending: bool) -> void:
-	$FpColumn/FpTitle.text = "选择收藏夹" if pending else "选择歌单"
+	%FpTitle.text = "选择收藏夹" if pending else "选择歌单"
 	visible = true
 	TextScrollMGR.resume_page(self)
-	_shader.visible = true
+	%PopupWindowShader.visible = true
 	_rebuild()
 
 func close() -> void:
 	visible = false
 	TextScrollMGR.suspend_page(self)
-	_shader.visible = false
+	%PopupWindowShader.visible = false
 
 func _ready() -> void:
 	EvtBus.favorites_loaded.connect(_rebuild)
@@ -38,17 +34,17 @@ func _ready() -> void:
 func _rebuild() -> void:
 	if not visible:
 		return
-	for c in _list.get_children():
-		if c != _empty:
+	for c in %FpList.get_children():
+		if c != %FpEmpty:
 			c.queue_free()
 	var fav_mgr := FavoriteManager.instance
 	if fav_mgr == null or fav_mgr.favorites.is_empty():
-		_empty.visible = true
+		%FpEmpty.visible = true
 		return
-	_empty.visible = false
+	%FpEmpty.visible = false
 	for f in fav_mgr.favorites:
 		var item := FAVOR_ITEM_SCENE.instantiate()
-		_list.add_child(item)
+		%FpList.add_child(item)
 		item.setup(f, item.Mode.BROWSE)
 		item.favor_item_clicked.connect(_on_item_clicked)
 

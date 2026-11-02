@@ -1,47 +1,6 @@
-extends Control
+extends ViewBase
 
 class_name ScoreView
-
-# 数据区
-@onready var c: Control = $Bottom/skew/C
-@onready var data_box: VBoxContainer = $Bottom/skew/C/Data
-
-# 歌曲信息区
-@onready var cover: TextureRect = $Bottom/skew/C/SongInfo/PanelContainer/TextureRect
-@onready var album_label: Label = $Bottom/skew/C/SongInfo/Info/album
-@onready var song_label: Label = $Bottom/skew/C/SongInfo/Info/song
-@onready var midi_name_label: Label = $Bottom/skew/C/SongInfo/Info/midiName
-@onready var midi_author_label: Label = $Bottom/skew/C/SongInfo/Info/midiAuthor
-
-# 标志区
-@onready var auto_mode_flag: Label = $Bottom/skew/C/Flags/AutoMode
-@onready var all_perfect_flag: Label = $Bottom/skew/C/Flags/AllPerfect
-@onready var full_combo_flag: Label = $Bottom/skew/C/Flags/FullCombo
-
-@onready var rank: Label = $Rank
-@onready var accuracy: Label = $Accuracy
-@onready var score: Label = $Score/score
-@onready var pp: Label = $Score/score/pp
-
-# 个人信息区
-@onready var avator: TextureRect = $LevelingProgress/Panel/TextureRect
-@onready var name_label: Label = $LevelingProgress/Data/name
-@onready var lvl_label: Label = $LevelingProgress/Data/level
-@onready var pp_label: Label = $LevelingProgress/Data/level/pp
-@onready var lvl_exp_progress: ProgressBar = $LevelingProgress/Data/ProgressBar
-
-# 图片
-@onready var bg: TextureRect = $BackGround
-@onready var chara: TextureRect = $Chara
-
-# 动画相关
-@onready var bottom: Panel = $Bottom
-@onready var info: Panel = $LevelingProgress
-@onready var score_panel: Panel = $Score
-
-# 成绩上传状态
-@onready var upload_state: Label = $UploadState
-@onready var retry_btn: Button = $UploadState/RetryBtn
 
 # 待上传/重试的成绩数据
 var _upload_midi: MidiData = null
@@ -95,20 +54,16 @@ class ScoreData:
 	func get_pp() -> String:
 		return "%0.2fpp" % performance_point
 
-func _ready() -> void:
+func _on_view_ready() -> void:
 	UiStatMGR.state_changed.connect(_on_state_changed)
-	animate(false)
+	_play_exit()  # 实例化即复位为未入场态
 
 	# 监听 PlayerInfoContent 统计刷新信号，成绩上传后自动同步玩家信息
 	_connect_stats_refreshed()
 
 	# 手动上传模式下点击提示触发上传
-	upload_state.mouse_filter = Control.MOUSE_FILTER_STOP
-	upload_state.gui_input.connect(_on_upload_state_gui_input)
-
-	if ThemeMGR:
-		ThemeMGR.register_theme_applier(self)
-		apply_theme()
+	%UploadState.mouse_filter = Control.MOUSE_FILTER_STOP
+	%UploadState.gui_input.connect(_on_upload_state_gui_input)
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
 func apply_theme() -> void:
@@ -116,22 +71,17 @@ func apply_theme() -> void:
 	var surface := ThemeMGR.get_color("surface")
 	var surface_high := ThemeMGR.get_color("surface_high")
 	# 底部信息条 — 中性凸起面（保留 tscn 预设的 alpha/圆角）
-	ThemeMGR._style_panel_set_bg_color(bottom, surface_high)
+	ThemeMGR._style_panel_set_bg_color(%BottomPanel, surface_high)
 	# 歌曲信息卡
-	var song_pc := get_node_or_null("Bottom/skew/C/SongInfo/PanelContainer") as PanelContainer
-	if song_pc:
-		ThemeMGR._style_panel_set_bg_color(song_pc, surface)
+	ThemeMGR._style_panel_set_bg_color(%SongInfoPanel, surface)
 	# 等级进度 / 头像面板
-	ThemeMGR._style_panel_set_bg_color(info, surface_high)
+	ThemeMGR._style_panel_set_bg_color(%LevelingProgressPanel, surface_high)
 	# 分数区是一层「上深下透明」的渐隐纹理，无法靠调色变浅：
 	# 浅色模式下直接隐去该深色渐隐，让浅色背景透出、深色分数文字自然可读；深色模式保持原样。
-	if score_panel:
-		score_panel.self_modulate = Color(1, 1, 1, 0) if light else Color.WHITE
+	%ScorePanel.self_modulate = Color(1, 1, 1, 0) if light else Color.WHITE
 	# 文字/图标颜色一律保持 .tscn 原样，不做任何随模式改写（用户要求：该白的还是白的）
 
-func _exit_tree() -> void:
-	if ThemeMGR:
-		ThemeMGR.unregister_theme_applier(self)
+func _on_view_exit() -> void:
 	_disconnect_stats_refreshed()
 
 ## 连接 PlayerInfoContent 的 stats_refreshed 信号
@@ -172,20 +122,20 @@ func _cleanup() -> void:
 
 func set_display(result: ScoreData, midi: MidiData = null, is_auto: bool = false):
 	# 判定数据
-	data_box.get_node("Hbox/PerfectCtn").text = str(result.count.Perfect)
-	data_box.get_node("Hbox/GreatCtn").text = str(result.count.Great)
-	data_box.get_node("Hbox/GoodCtn").text = str(result.count.Good)
-	data_box.get_node("Hbox/BadCtn").text = str(result.count.Bad)
-	data_box.get_node("Hbox/MissCtn").text = str(result.count.Miss)
+	%PerfectCtn.text = str(result.count.Perfect)
+	%GreatCtn.text = str(result.count.Great)
+	%GoodCtn.text = str(result.count.Good)
+	%BadCtn.text = str(result.count.Bad)
+	%MissCtn.text = str(result.count.Miss)
 
-	data_box.get_node("HBox1/EarlyCtn").text = str(result.early_count)
-	data_box.get_node("HBox1/LateCtn").text = str(result.late_count)
-	data_box.get_node("HBox1/MaxCombo").text = "%d/%d" % [result.max_combo, result.total_notes]
+	%EarlyCtn.text = str(result.early_count)
+	%LateCtn.text = str(result.late_count)
+	%MaxCombo.text = "%d/%d" % [result.max_combo, result.total_notes]
 
-	rank.text = result.get_rank()
-	accuracy.text = result.get_accuracy()
-	score.text = result.get_formated_score()
-	pp.text = result.get_pp()
+	%RankText.text = result.get_rank()
+	%AccuracyText.text = result.get_accuracy()
+	%ScoreText.text = result.get_formated_score()
+	%PpText.text = result.get_pp()
 
 	# 立绘：按评级切换人物表情
 	_update_chara_art(result.get_rank())
@@ -202,7 +152,7 @@ func set_display(result: ScoreData, midi: MidiData = null, is_auto: bool = false
 	_update_player_info()
 
 	# 自动模式不尝试上传成绩，隐藏上传状态提示
-	upload_state.visible = not is_auto
+	%UploadState.visible = not is_auto
 	# 新的一局，重置玩家等级面板弹出标志与入场动画状态
 	_level_panel_shown = false
 	_entry_animation_done = false
@@ -215,27 +165,27 @@ func _update_chara_art(rank_str: String) -> void:
 		return
 	var tex := CharaMGR.get_current_portrait_by_rank(rank_str)
 	if tex:
-		chara.texture = tex
+		%Chara.texture = tex
 
 ## 填充歌曲信息（来自本次游玩的 MidiData，与 PlayView 信息面板保持一致）
 func _update_song_info(midi: MidiData) -> void:
 	if midi == null:
 		return
-	cover.texture = FileSystemManager.instance.get_cover_by_midiData(midi)
-	album_label.set_scroll_text(midi.album_name if not midi.album_name.is_empty() else midi.artist_name)
-	song_label.set_scroll_text(midi.song_name)
-	midi_name_label.set_scroll_text(midi.name)
-	midi_author_label.set_scroll_text(midi.artist_name)
+	%SongCover.texture = FileSystemManager.instance.get_cover_by_midiData(midi)
+	%Album.set_scroll_text(midi.album_name if not midi.album_name.is_empty() else midi.artist_name)
+	%Song.set_scroll_text(midi.song_name)
+	%MidiName.set_scroll_text(midi.name)
+	%MidiAuthor.set_scroll_text(midi.artist_name)
 
 ## 根据 AP / FC / AUTO 设置旗帜节点可见性
 func _update_flags(result: ScoreData, is_auto: bool) -> void:
-	auto_mode_flag.visible = is_auto
+	%AutoMode.visible = is_auto
 	# AP：所有音符均为 Perfect（其余判定计数为零）
 	var is_all_perfect : bool = result.count.Great == 0 and result.count.Good == 0 \
 		and result.count.Bad == 0 and result.count.Miss == 0
-	all_perfect_flag.visible = is_all_perfect
+	%AllPerfect.visible = is_all_perfect
 	# FC：无 Miss（连击无断）
-	full_combo_flag.visible = result.count.Miss == 0
+	%FullCombo.visible = result.count.Miss == 0
 
 ## 从 PlayerInfoContent 同步玩家信息（头像、名称、等级、进度条）
 ## 在 set_display 后调用，确保结算界面显示最新玩家状态
@@ -245,10 +195,10 @@ func _update_player_info() -> void:
 	if _pic == null:
 		return
 	# 头像
-	avator.texture = _pic.mini_avatar_rect.texture
+	%Avatar.texture = _pic.mini_avatar_rect.texture
 	# 名称
 	var player_data: Dictionary = _pic.get_player_data()
-	name_label.text = player_data.display_name if not player_data.display_name.is_empty() else player_data.name
+	%Name.text = player_data.display_name if not player_data.display_name.is_empty() else player_data.name
 	# PP 上涨动画：进度条/等级/PP 标签随数值变化实时更新
 	_animate_pp_to(player_data.pp)
 
@@ -319,9 +269,9 @@ func _set_pp_display(current_pp: float) -> void:
 	if _pic:
 		lvl = _pic.calc_level(current_pp)
 		lvl_progress = _pic.calc_level_progress(current_pp, lvl) * 100.0
-	lvl_label.text = "Lv%d" % lvl
-	lvl_exp_progress.value = lvl_progress
-	pp_label.text = "%.2fpp" % current_pp
+	%Level.text = "Lv%d" % lvl
+	%LevelExpBar.value = lvl_progress
+	%LevelPp.text = "%.2fpp" % current_pp
 
 func _play_loop_ani():
 	_kill_loop_ani()
@@ -331,18 +281,24 @@ func _play_loop_ani():
 	_loop_ani_chara.set_loops()
 	_loop_ani_rank.set_loops()
 
-	_loop_ani_rank.tween_property(rank, "offset_transform_scale", Vector2.ONE*0.99, 1)
-	_loop_ani_rank.tween_property(rank, "offset_transform_scale", Vector2.ONE*1.01, 1)
+	_loop_ani_rank.tween_property(%RankText, "offset_transform_scale", Vector2.ONE*0.99, 1)
+	_loop_ani_rank.tween_property(%RankText, "offset_transform_scale", Vector2.ONE*1.01, 1)
 
-	_loop_ani_chara.tween_property(chara, "position:y", chara.position.y + 10, 1.5)
-	_loop_ani_chara.tween_property(chara, "position:y", chara.position.y - 10, 1.5)
+	_loop_ani_chara.tween_property(%Chara, "position:y", %Chara.position.y + 10, 1.5)
+	_loop_ani_chara.tween_property(%Chara, "position:y", %Chara.position.y - 10, 1.5)
 
-func animate(ani_in: bool = true):
-	if not ani_in:
-		# 整页缩放淡出
-		_kill_loop_ani()
-		return ani.animate_fade_scale_out(self, Vector2.ONE * 0.8, 0.2, "sv_exit")
+## 整页缩放淡出
+func _play_exit() -> Tween:
+	_kill_loop_ani()
+	return ani.animate_fade_scale_out(self, Vector2.ONE * 0.8, 0.2, "sv_exit")
 
+## 分阶段入场。三段 await 无法用单个 Tween 表达，故返回 null（自管时序）。
+func _play_enter() -> Tween:
+	if not _entry_animation_done:
+		_play_enter_stages()
+	return null
+
+func _play_enter_stages() -> void:
 	if _entry_animation_done:
 		return
 
@@ -354,30 +310,30 @@ func animate(ani_in: bool = true):
 	offset_transform_scale = Vector2.ONE
 	# LevelingProgress 不在进入结算时弹出（上传成功后由 _show_level_panel_on_upload_success 触发）
 	if not _level_panel_shown:
-		info.visible = false
-		info.offset_transform_position = Vector2(-info.size.x, 0)
+		%LevelingProgressPanel.visible = false
+		%LevelingProgressPanel.offset_transform_position = Vector2(-%LevelingProgressPanel.size.x, 0)
 
 	# 前置隐藏并放置到各自起始偏移，避免轮到它们之前已在目标位置显示
-	_place_staged_node(bg, Vector2.ZERO, Vector2.ONE * 0.8)
-	_place_staged_node(score_panel, Vector2(-100, 0), Vector2.ONE)
-	_place_staged_node(bottom, Vector2(0, 150), Vector2.ONE)
-	_place_staged_node(rank, Vector2(0, 150), Vector2.ONE)
-	_place_staged_node(accuracy, Vector2(0, 100), Vector2.ONE)
-	_place_staged_node(chara, Vector2(0, 150), Vector2.ONE)
+	_place_staged_node(%Background, Vector2.ZERO, Vector2.ONE * 0.8)
+	_place_staged_node(%ScorePanel, Vector2(-100, 0), Vector2.ONE)
+	_place_staged_node(%BottomPanel, Vector2(0, 150), Vector2.ONE)
+	_place_staged_node(%RankText, Vector2(0, 150), Vector2.ONE)
+	_place_staged_node(%AccuracyText, Vector2(0, 100), Vector2.ONE)
+	_place_staged_node(%Chara, Vector2(0, 150), Vector2.ONE)
 
 	# 第 1 阶段：背景从 0.8 原地缩放淡入（外围按钮入场沿用原有逻辑）
-	ani.animate_fade_scale_in(bg, Vector2.ONE * 0.8, 0.35, "sv_bg")
+	ani.animate_fade_scale_in(%Background, Vector2.ONE * 0.8, 0.35, "sv_bg")
 	await get_tree().create_timer(0.35).timeout
 
 	# 第 2 阶段：Score 左滑、Bottom 上滑淡入
-	ani.animate_fade_slide_in(score_panel, Vector2(-100, 0), 0.4, "sv_score")
-	ani.animate_fade_slide_in(bottom, Vector2(0, 150), 0.4, "sv_bottom")
+	ani.animate_fade_slide_in(%ScorePanel, Vector2(-100, 0), 0.4, "sv_score")
+	ani.animate_fade_slide_in(%BottomPanel, Vector2(0, 150), 0.4, "sv_bottom")
 	await get_tree().create_timer(0.4).timeout
 
 	# 第 3 阶段：Rank / Accuracy / Chara 上滑淡入（Accuracy 时长略短）
-	ani.animate_fade_slide_in(rank, Vector2(0, 150), 0.55, "sv_rank")
-	ani.animate_fade_slide_in(chara, Vector2(0, 150), 0.4, "sv_chara")
-	ani.animate_fade_slide_in(accuracy, Vector2(0, 100), 0.3, "sv_acc")
+	ani.animate_fade_slide_in(%RankText, Vector2(0, 150), 0.55, "sv_rank")
+	ani.animate_fade_slide_in(%Chara, Vector2(0, 150), 0.4, "sv_chara")
+	ani.animate_fade_slide_in(%AccuracyText, Vector2(0, 100), 0.3, "sv_acc")
 	await get_tree().create_timer(0.4).timeout
 
 	_entry_animation_done = true
@@ -402,10 +358,10 @@ func request_upload(midi: MidiData, snapshot: Dictionary) -> void:
 		if NetManager.instance != null and NetManager.instance.connect_state != NetManager.ConnectState.OFFLINE_MODE:
 			_manual_pending = true
 			_show_upload_slide()
-			upload_state.text = "点击此处上传成绩"
-			retry_btn.visible = false
+			%UploadState.text = "点击此处上传成绩"
+			%RetryBtn.visible = false
 		else:
-			upload_state.visible = false
+			%UploadState.visible = false
 
 ## 是否自动上传成绩（读配置，默认开启）
 func _is_auto_upload_enabled() -> bool:
@@ -428,17 +384,17 @@ func _on_upload_state_gui_input(event: InputEvent) -> void:
 
 ## 展示上传状态并从右侧 100px 滑入淡入
 func _show_upload_slide() -> void:
-	upload_state.visible = true
+	%UploadState.visible = true
 	if _upload_tween:
 		_upload_tween.kill()
 		_upload_tween = null
-	_upload_tween = ani.animate_fade_slide_in(upload_state, Vector2(100, 0), 0.3, "sv_upload_state")
+	_upload_tween = ani.animate_fade_slide_in(%UploadState, Vector2(100, 0), 0.3, "sv_upload_state")
 
 ## 服务端没有该 MIDI 时属于正常的在线不收录场景，不向玩家展示失败状态。
 func _hide_upload_state() -> void:
 	_manual_pending = false
-	retry_btn.visible = false
-	upload_state.visible = false
+	%RetryBtn.visible = false
+	%UploadState.visible = false
 	if _upload_tween:
 		_upload_tween.kill()
 		_upload_tween = null
@@ -449,7 +405,7 @@ func _do_upload_score() -> void:
 	var midi := _upload_midi
 	if midi == null or midi.file_hash.is_empty():
 		# 无有效成绩，不展示上传状态
-		upload_state.visible = false
+		%UploadState.visible = false
 		return
 	# 本地成绩记录（无论上传成败都保留）
 	if ScoreManager.instance:
@@ -457,16 +413,16 @@ func _do_upload_score() -> void:
 	# 仅在线模式关闭时才不展示/不尝试上传
 	# （连接失败也尝试上传，从而展示失败提示与重试按钮）
 	if NetManager.instance == null or NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE:
-		upload_state.visible = false
+		%UploadState.visible = false
 		return
 	if ScoreManager.instance == null:
 		_show_upload_slide()
-		upload_state.text = "成绩上传失败"
-		retry_btn.visible = true
+		%UploadState.text = "成绩上传失败"
+		%RetryBtn.visible = true
 		return
 	_show_upload_slide()
-	upload_state.text = "正在上传成绩..."
-	retry_btn.visible = false
+	%UploadState.text = "正在上传成绩..."
+	%RetryBtn.visible = false
 	var gen := _upload_generation
 	var result = await ScoreManager.instance.upload_score(midi, _upload_snapshot)
 	# 期间离开本页或已进入新一局，丢弃本次结果
@@ -475,24 +431,24 @@ func _do_upload_score() -> void:
 	if result.get("ok", false):
 		# 通知个人信息页刷新统计
 		EvtBus.score_uploaded.emit(midi.file_hash)
-		upload_state.text = "成绩上传成功"
-		retry_btn.visible = false
+		%UploadState.text = "成绩上传成功"
+		%RetryBtn.visible = false
 		# 上传成功后再弹出玩家等级面板
 		_show_level_panel_on_upload_success()
 	elif result.get("skipped", false):
 		GLogger.info("Score upload skipped: chart not found on server (midi=%s)" % midi.file_hash, "ScoreView")
 		# 谱面不在服务端收录范围，属于正常不收录，但仍给出提示避免手动上传时无声反馈
-		upload_state.text = "成绩上传失败：服务端未收录该谱面"
-		retry_btn.visible = false
+		%UploadState.text = "成绩上传失败：服务端未收录该谱面"
+		%RetryBtn.visible = false
 	else:
 		var err := str(result.get("error", "上传异常"))
 		if err == "not_logged_in":
-			upload_state.text = "登录已断开，请重新登录后再上传成绩"
+			%UploadState.text = "登录已断开，请重新登录后再上传成绩"
 		elif err == "token_refresh_failed":
-			upload_state.text = "登录已过期，请重新登录后再上传成绩"
+			%UploadState.text = "登录已过期，请重新登录后再上传成绩"
 		else:
-			upload_state.text = "成绩上传失败：%s" % err
-		retry_btn.visible = true
+			%UploadState.text = "成绩上传失败：%s" % err
+		%RetryBtn.visible = true
 
 func _on_score_sync_retry_btn_pressed() -> void:
 	_show_upload_slide()
@@ -509,6 +465,6 @@ func _show_level_panel_on_upload_success() -> void:
 			await get_tree().process_frame
 			if not is_inside_tree():
 				return
-	info.visible = true
-	ani.animate_fade_slide_in(info, Vector2(-100, 0), 0.3, "sv_info")
+	%LevelingProgressPanel.visible = true
+	ani.animate_fade_slide_in(%LevelingProgressPanel, Vector2(-100, 0), 0.3, "sv_info")
 	_update_player_info()

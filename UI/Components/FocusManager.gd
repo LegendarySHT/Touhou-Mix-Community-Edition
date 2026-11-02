@@ -2,9 +2,6 @@ extends Control
 
 class_name FocusManager
 
-@onready var ui: UIStateManager = UiStatMGR
-@onready var ani: AnimationManager = AniMGR
-
 var _last_input_was_keyboard := false
 var _skew_c: Control = null
 
@@ -52,7 +49,7 @@ func _handle_key_navigation(event: InputEventKey) -> void:
 		return
 	# 打歌界面：无聚焦控件（焦点为 null），方向键/Enter/Tab 由 FlowArea 等自行处理，
 	# 这里直接放行，避免 set_input_as_handled 吞掉按键
-	if ui.current_state == ui.UIState.PLAY_VIEW:
+	if UiStatMGR.current_state == UiStatMGR.UIState.PLAY_VIEW:
 		return
 
 	# 弹窗场景：焦点不在弹窗内则移入弹窗，并记录来源以便关闭时恢复
@@ -125,18 +122,18 @@ func _on_focus_change(node: Control):
 ## 按当前 UI 状态把焦点转发到本页合法项（列表选中项 / 设置导航 / 商店首项）
 ## 由按键接管触发（_handle_key_navigation）与 _on_focus_change 兜底共用
 func _redirect_focus_by_state() -> void:
-	match ui.current_state:
-		ui.UIState.ALBUM_VIEW:
+	match UiStatMGR.current_state:
+		UiStatMGR.UIState.ALBUM_VIEW:
 			_grab_list_selected(PathRegistry.ALBUM_LIST)
-		ui.UIState.SONG_VIEW:
+		UiStatMGR.UIState.SONG_VIEW:
 			_grab_list_selected(PathRegistry.SONG_LIST)
-		ui.UIState.SORTED_VIEW:
+		UiStatMGR.UIState.SORTED_VIEW:
 			_grab_list_selected(PathRegistry.SORTED_MIDIS_LIST)
-		ui.UIState.MIDI_VIEW:
+		UiStatMGR.UIState.MIDI_VIEW:
 			_grab_list_selected(PathRegistry.MIDI_LIST)
-		ui.UIState.STORE_VIEW:
+		UiStatMGR.UIState.STORE_VIEW:
 			_grab_store_first()
-		ui.UIState.SETTINGS_VIEW:
+		UiStatMGR.UIState.SETTINGS_VIEW:
 			_redirect_settings_focus()
 
 ## 让列表的选中项获得焦点：无选中项时选首项兜底；列表为空则不做动作
@@ -170,17 +167,17 @@ func _redirect_settings_focus() -> void:
 		if resource_view.has_method("focus_first_tab"):
 			resource_view.focus_first_tab()
 		return
-	if sv.short_cut_btn:
+	if sv.short_cut_btns:
 		# 聚焦当前按下的快捷按钮（对应设置项所在区域），而非容器本身
 		var pressed: Button = null
-		for b in sv.short_cut_btn.get_children():
+		for b in sv.short_cut_btns.get_children():
 			if b is Button and b.button_pressed:
 				pressed = b
 				break
 		if pressed:
 			pressed.grab_focus()
 		else:
-			sv.short_cut_btn.grab_focus()
+			sv.short_cut_btns.grab_focus()
 
 ## STORE_VIEW：交给商店视图自己决定落点（标签页 / 当前列表第一张可见卡片）。
 ## 虚拟化列表的节点会被池回收，不能再按「容器第一项」取节点。

@@ -1,10 +1,10 @@
 extends TabContainer
 class_name PlayerInfoContent
 
-## PlayerInfo 的内容容器，管理 MiniInfo / LogIn / Summary 三个 tab；
+## PlayerInfo 的内容容器，管理 MiniInfo / LogInPage / Summary 三个 tab；
 ## 全屏的 ProfileView 是 Main 下的独立视图，不在此处。
 ## 负责表单交互、个人信息填充等页面内逻辑；
-## 状态切换、面板几何动画由 PlayerInfo.gd 处理。
+## 状态切换、面板几何动画由 PlayerInfoPanel 处理。
 
 signal login_submitted()
 signal logout_submitted()
@@ -35,39 +35,10 @@ var _player_data := {
 func get_player_data() -> Dictionary:
 	return _player_data.duplicate()
 
-# MiniInfo（收起状态）
-@onready var tip: Control = $MiniInfo/Tip
-@onready var tip_label: Label = $MiniInfo/Tip/Label
-@onready var avatar: Panel = $MiniInfo/Avatar
-@onready var mini_avatar_rect: TextureRect = $MiniInfo/Avatar/TextureRect
-@onready var profile_avatar_rect: TextureRect = $Summary/Header/AvatarBig/TextureRect
-# 大小头像的外圈细边框（draw_center=false 的空心描边，只刷 border_color）。
-# PlayerInfoContent.tscn 里这两个 Panel 共用同一个 StyleBoxFlat，改一次即同步两处。
-@onready var profile_avatar_border: Panel = $Summary/Header/AvatarBig
-@onready var data: VBoxContainer = $MiniInfo/Data
-@onready var mini_name: Label = $MiniInfo/Data/name
-@onready var mini_level: Label = $MiniInfo/Data/level
-@onready var mini_pp: Label = $MiniInfo/Data/pp
-@onready var mini_progress: ProgressBar = $MiniInfo/Data/ProgressBar
-# LogIn（登录表单）
-@onready var account_edit: LineEdit = $C/Skew/LogIn/AccountLineEdit
-@onready var pwd_edit: LineEdit = $C/Skew/LogIn/PwdLineEdit
-@onready var submit_btn: Button = $C/Skew/LogIn/SubmitBtn
-@onready var register_btn: Button = $C/Skew/LogIn/RegisterBtn
-@onready var error_msg: Label = $C/Skew/LogIn/ErrorMsg
-# Summary（个人信息概要，半展开状态）
-@onready var profile_name: Label = $Summary/Header/NameLevelVBox/NameLabel
-@onready var profile_level: Label = $Summary/Header/NameLevelVBox/HBox/VBox/HBox/LevelLabel
-@onready var profile_pp: Label = $Summary/Header/NameLevelVBox/HBox/VBox/HBox/PPLabel
-@onready var profile_rank: Label = $Summary/Header/NameLevelVBox/HBox/RankLabel
-@onready var profile_desc: Label = $Summary/Header/NameLevelVBox/HBox/VBox/Desc
-@onready var level_progress: ProgressBar = $Summary/LevelProgressBar
-@onready var total_plays_label: Label = $Summary/StatsGrid/TotalPlaysLabel
-@onready var accuracy_label: Label = $Summary/StatsGrid/AccuracyLabel
-@onready var max_combo_label: Label = $Summary/StatsGrid/MaxComboLabel
-@onready var play_time_label: Label = $Summary/StatsGrid/PlayTimeLabel
-@onready var expand_btn: Button = $Summary/ExpandBtn
-@onready var logout_btn: Button = $Summary/LogoutBtn
+# 被外部引用
+@onready var tip: Control = %MiniTip
+@onready var mini_avatar_rect: TextureRect = %MiniAvatarTexture
+
 # ProfileView（Main 下的独立全屏详情视图，懒加载：首次进入详情页才实例化）
 var profile_view: ProfileView = null
 ## 当前头像纹理（懒加载的 ProfileView 创建后据此回填）
@@ -134,29 +105,25 @@ func _bind_profile_view() -> void:
 func apply_theme() -> void:
 	var ring: Color = ThemeMGR.get_color("primary") \
 		if ThemeMGR.get_appearance() == "light" else ThemeMGR.get_color("primary_light")
-	_set_border_keep_alpha(avatar, ring)
-	_set_border_keep_alpha(profile_avatar_border, ring)
+	_set_border_keep_alpha(%MiniAvatar, ring)
+	_set_border_keep_alpha(%ProfileAvatarPanel, ring)
 	_apply_register_link_theme()
 
 ## 「前往网页注册」链接按钮的字色：浅色底用 primary_dark（深一档），
 ## 深色底用 primary_light；hover/pressed 在此基础上做明暗反馈。
 func _apply_register_link_theme() -> void:
-	if not register_btn:
-		return
 	var is_light := ThemeMGR.get_appearance() == "light"
 	var base: Color = ThemeMGR.get_color("primary_dark") \
 		if is_light else ThemeMGR.get_color("primary_light")
 	var hover: Color = base.darkened(0.18) if is_light else base.lightened(0.22)
 	var pressed: Color = base.darkened(0.32) if is_light else base.darkened(0.08)
-	register_btn.add_theme_color_override("font_color", base)
-	register_btn.add_theme_color_override("font_hover_color", hover)
-	register_btn.add_theme_color_override("font_pressed_color", pressed)
-	register_btn.add_theme_color_override("font_focus_color", hover)
+	%RegisterBtn.add_theme_color_override("font_color", base)
+	%RegisterBtn.add_theme_color_override("font_hover_color", hover)
+	%RegisterBtn.add_theme_color_override("font_pressed_color", pressed)
+	%RegisterBtn.add_theme_color_override("font_focus_color", hover)
 
 ## 改 panel 描边色，保留原 alpha（tscn 里是 0.9，是刻意调过的，不能被冲掉）
 func _set_border_keep_alpha(node: Control, border: Color) -> void:
-	if not node:
-		return
 	var sb := node.get_theme_stylebox("panel")
 	if sb is StyleBoxFlat:
 		sb.border_color = Color(border.r, border.g, border.b, sb.border_color.a)
@@ -164,10 +131,8 @@ func _set_border_keep_alpha(node: Control, border: Color) -> void:
 ## 头像上屏：MiniInfo / Summary，以及已加载的 ProfileView
 func _apply_avatar_texture(tex: Texture2D) -> void:
 	_avatar_texture = tex
-	if mini_avatar_rect:
-		mini_avatar_rect.texture = tex
-	if profile_avatar_rect:
-		profile_avatar_rect.texture = tex
+	mini_avatar_rect.texture = tex
+	%ProfileAvatar.texture = tex
 	if profile_view:
 		profile_view.set_avatar_texture(tex)
 
@@ -386,15 +351,15 @@ func _group_grades(raw_dist: Variant) -> Dictionary:
 
 ## 收起状态切换 MiniInfo 内部可见性
 func apply_mini_visibility(show_tip: bool) -> void:
-	tip_label.visible = show_tip
-	avatar.visible = not show_tip
-	data.visible = not show_tip
+	%TipText.visible = show_tip
+	%MiniAvatar.visible = not show_tip
+	%MiniData.visible = not show_tip
 
 ## 概要页切换（tab 2）：full 仅用于切换按钮文案，
 ## 全屏详情由 Main 下的 ProfileView 独立承担。
 func apply_profile_visibility(full: bool) -> void:
 	current_tab = 2
-	expand_btn.text = "收起详情" if full else "展开详情"
+	%ExpandBtn.text = "收起详情" if full else "展开详情"
 
 # ========== 登录表单 ==========
 # 注册已下线到网页（2026-10-30）：服务端的注册接口强制 Cloudflare Turnstile 人机验证，
@@ -404,7 +369,7 @@ func apply_profile_visibility(full: bool) -> void:
 ## 站点地址与注册页。服务端有 /register 路由，会直接展开注册弹窗。
 const WEBSITE_URL := "https://thmixce.org"
 const REGISTER_URL := WEBSITE_URL + "/register"
-## ErrorMsg 兼作提示条：错误为红（场景里定义），提示为蓝。
+## ErrorText 兼作提示条：错误为红（场景里定义），提示为蓝。
 const HINT_COLOR := Color(0.45, 0.75, 1.0, 1.0)
 
 ## 「前往网页注册」：打开系统浏览器，登录表单保持原样。
@@ -417,13 +382,13 @@ func _on_register_btn_pressed() -> void:
 	_show_hint("已在浏览器打开注册页，注册完成后回到这里登录即可", false)
 
 func _reset_login_form() -> void:
-	submit_btn.text = "登录"
+	%SubmitBtn.text = "登录"
 	_show_hint("", false)
 
-## 统一写 ErrorMsg：红色表示失败，蓝色表示提示。两处都不是"错误"的场景别再各写一套。
+## 统一写 ErrorText：红色表示失败，蓝色表示提示。两处都不是"错误"的场景别再各写一套。
 func _show_hint(text: String, is_error: bool) -> void:
-	error_msg.text = text
-	error_msg.add_theme_color_override("font_color", HINT_COLOR if not is_error else Color(1, 0.3, 0.3, 1.0))
+	%ErrorText.text = text
+	%ErrorText.add_theme_color_override("font_color", HINT_COLOR if not is_error else Color(1, 0.3, 0.3, 1.0))
 
 func _on_submit_btn_pressed() -> void:
 	if _submitting:
@@ -434,21 +399,21 @@ func _on_submit_btn_pressed() -> void:
 	if NetManager.instance == null or not NetManager.instance.is_online:
 		_show_hint("未连接服务器", true)
 		return
-	var account := account_edit.text.strip_edges()
-	var pwd := pwd_edit.text
+	var account: String = %AccountEdit.text.strip_edges()
+	var pwd: String = %PwdEdit.text
 	if account.is_empty() or pwd.is_empty():
 		_show_hint("帐号和密码不能为空", true)
 		return
 
 	_submitting = true
-	submit_btn.disabled = true
+	%SubmitBtn.disabled = true
 	_show_hint("处理中...", false)
 
 	var result: Dictionary = await AuthManager.instance.login(account, pwd)
 	var ok: bool = result.ok
 
 	_submitting = false
-	submit_btn.disabled = false
+	%SubmitBtn.disabled = false
 
 	if ok:
 		_clear_login_form()
@@ -486,43 +451,43 @@ func _format_error(err: String) -> String:
 			return "操作失败: %s" % err if not err.is_empty() else "操作失败"
 
 func _clear_login_form() -> void:
-	account_edit.text = ""
-	pwd_edit.text = ""
-	error_msg.text = ""
+	%AccountEdit.text = ""
+	%PwdEdit.text = ""
+	%ErrorText.text = ""
 
 # ========== 个人信息页面 ==========
 
 ## 从 _player_data 填充 Summary 的所有 label
 func populate_profile() -> void:
-	profile_name.text = _player_data.display_name if not _player_data.display_name.is_empty() else _player_data.name
+	%ProfileName.text = _player_data.display_name if not _player_data.display_name.is_empty() else _player_data.name
 	# 等级 = floor(sqrt(pp))，升级进度 = (pp - level²) / ((level+1)² - level²)
 	var lvl := calc_level(_player_data.pp)
 	var lvl_progress := calc_level_progress(_player_data.pp, lvl)
 	_player_data.level = lvl
 	_player_data.level_progress = lvl_progress
-	profile_level.text = "Level %d" % lvl
-	profile_pp.text = "%.2f pp" % _player_data.pp
+	%ProfileLevel.text = "Level %d" % lvl
+	%ProfilePp.text = "%.2f pp" % _player_data.pp
 	if _player_data.rank > 0:
-		profile_rank.text = "Global Rank: #%d" % _player_data.rank
+		%ProfileRank.text = "Global Rank: #%d" % _player_data.rank
 	else:
-		profile_rank.text = "Unranked"
-	level_progress.value = lvl_progress * 100.0
+		%ProfileRank.text = "Unranked"
+	%ProfileProgress.value = lvl_progress * 100.0
 	# 个人简介
-	profile_desc.text = _player_data.bio if not _player_data.bio.is_empty() else "还没有填写简介..."
-	total_plays_label.text = "Total Plays: %d" % _player_data.total_plays
-	accuracy_label.text = "Accuracy: %.2f%%" % _player_data.accuracy
-	max_combo_label.text = "Max Combo: %d" % _player_data.max_combo
-	play_time_label.text = "Play Time: %s" % _format_play_time(_player_data.play_duration_ms)
+	%ProfileBio.text = _player_data.bio if not _player_data.bio.is_empty() else "还没有填写简介..."
+	%TotalPlaysLabel.text = "Total Plays: %d" % _player_data.total_plays
+	%AccuracyLabel.text = "Accuracy: %.2f%%" % _player_data.accuracy
+	%MaxComboLabel.text = "Max Combo: %d" % _player_data.max_combo
+	%PlayTimeLabel.text = "Play Time: %s" % _format_play_time(_player_data.play_duration_ms)
 
-## 从 _player_data 填充 MiniInfo/Data 的 label（收起状态显示）
+## 从 _player_data 填充 MiniData 的 label（收起状态显示）
 func populate_mini_info() -> void:
-	mini_name.text = _player_data.display_name if not _player_data.display_name.is_empty() else _player_data.name
+	%MiniName.text = _player_data.display_name if not _player_data.display_name.is_empty() else _player_data.name
 	# 等级与进度条同步
 	var lvl := calc_level(_player_data.pp)
 	var lvl_progress := calc_level_progress(_player_data.pp, lvl)
-	mini_level.text = "Lv%d" % lvl
-	mini_pp.text = "%.2f pp" % _player_data.pp
-	mini_progress.value = lvl_progress * 100.0
+	%MiniLevel.text = "Lv%d" % lvl
+	%MiniPp.text = "%.2f pp" % _player_data.pp
+	%MiniProgress.value = lvl_progress * 100.0
 
 ## 计算等级：level = floor(sqrt(pp))
 func calc_level(pp: float) -> int:

@@ -67,8 +67,10 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_uj6qe")
+view_layer = 1
 
 [node name="Background" type="TextureRect" parent="." unique_id=1298054889]
+unique_name_in_owner = true
 modulate = Color(1, 1, 1, 1)
 texture_filter = 4
 layout_mode = 1
@@ -82,7 +84,8 @@ script = ExtResource("6_bgctrl")
 view_name = "play"
 use_dim = true
 
-[node name="Lane" type="Control" parent="." unique_id=2025598350]
+[node name="LaneEffect" type="Control" parent="." unique_id=2025598350]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -94,6 +97,7 @@ mouse_filter = 2
 script = ExtResource("3_kvdpo")
 
 [node name="FlowArea" type="Panel" parent="." unique_id=14663010]
+unique_name_in_owner = true
 self_modulate = Color(1, 1, 1, 0)
 z_index = 1
 layout_mode = 1
@@ -106,6 +110,7 @@ theme_override_styles/panel = SubResource("StyleBoxEmpty_50kwk")
 script = ExtResource("2_jlvmc")
 
 [node name="JudgeLine" type="HSeparator" parent="FlowArea" unique_id=1743550222]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -118,17 +123,21 @@ mouse_filter = 2
 theme_override_styles/separator = SubResource("StyleBoxLine_uj6qe")
 
 [node name="NoteBatchDrawer" type="Node2D" parent="FlowArea" unique_id=1935847162]
+unique_name_in_owner = true
 script = ExtResource("4_8x7c2")
 
 [node name="GlowLayer" type="Node2D" parent="FlowArea/NoteBatchDrawer" unique_id=1886617382]
+unique_name_in_owner = true
 visible = false
 z_index = -1
 material = SubResource("CanvasItemMaterial_glow")
 script = ExtResource("8_glow")
 
 [node name="ParticleBatchDrawer" parent="FlowArea" unique_id=-936790854 instance=ExtResource("5_ptcl")]
+unique_name_in_owner = true
 
 [node name="AutoLabel" type="Label" parent="." unique_id=1190176837]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -150,7 +159,8 @@ text = "AUTO"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Layer" type="Control" parent="." unique_id=601778136]
+[node name="Hud" type="Control" parent="." unique_id=601778136]
+unique_name_in_owner = true
 z_index = 2
 layout_mode = 1
 anchor_right = 1.0
@@ -162,7 +172,8 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("7_hud")
 
-[node name="DebugInfo" type="Label" parent="Layer" unique_id=2091083272]
+[node name="DebugInfo" type="Label" parent="Hud" unique_id=2091083272]
+unique_name_in_owner = true
 visible = false
 layout_mode = 0
 offset_left = 16.0
@@ -173,7 +184,8 @@ theme_override_constants/outline_size = 2
 theme_override_font_sizes/font_size = 20
 text = "调试信息"
 
-[node name="TopProgressBar" type="ProgressBar" parent="Layer" unique_id=975580623]
+[node name="TopProgressBar" type="ProgressBar" parent="Hud" unique_id=975580623]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -184,7 +196,8 @@ theme_override_styles/fill = SubResource("StyleBoxEmpty_50kwk")
 value = 40.0
 show_percentage = false
 
-[node name="CenterBackGround" type="ColorRect" parent="." unique_id=1184293941]
+[node name="CenterBackground" type="ColorRect" parent="." unique_id=1184293941]
+unique_name_in_owner = true
 visible = false
 z_index = 2
 layout_mode = 1
@@ -196,7 +209,7 @@ grow_vertical = 2
 mouse_filter = 2
 color = Color(0, 0, 0, 0.72)
 
-[node name="VBox" type="VBoxContainer" parent="CenterBackGround" unique_id=322506335]
+[node name="VBox" type="VBoxContainer" parent="CenterBackground" unique_id=322506335]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -205,38 +218,41 @@ grow_horizontal = 2
 grow_vertical = 2
 alignment = 1
 
-[node name="SongInfo" type="HBoxContainer" parent="CenterBackGround/VBox" unique_id=1904785845]
+[node name="SongInfo" type="HBoxContainer" parent="CenterBackground/VBox" unique_id=1904785845]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(1000, 600)
 layout_mode = 2
 theme_override_constants/separation = 100
 alignment = 1
 
-[node name="PanelContainer" type="PanelContainer" parent="CenterBackGround/VBox/SongInfo" unique_id=1305550429]
+[node name="CoverPanel" type="PanelContainer" parent="CenterBackground/VBox/SongInfo" unique_id=1305550429]
 custom_minimum_size = Vector2(400, 400)
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_styles/panel = SubResource("StyleBoxFlat_jlvmc")
 
-[node name="TextureRect" type="TextureRect" parent="CenterBackGround/VBox/SongInfo/PanelContainer" unique_id=1401711672]
+[node name="Cover" type="TextureRect" parent="CenterBackground/VBox/SongInfo/CoverPanel" unique_id=1401711672]
+unique_name_in_owner = true
 layout_mode = 2
 texture = ExtResource("11_q4lmo")
 expand_mode = 5
 stretch_mode = 6
 
-[node name="GridContainer" type="GridContainer" parent="CenterBackGround/VBox/SongInfo" unique_id=536004679]
+[node name="GridContainer" type="GridContainer" parent="CenterBackground/VBox/SongInfo" unique_id=536004679]
 custom_minimum_size = Vector2(490, 0)
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_constants/h_separation = 15
 columns = 2
 
-[node name="Label1" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1262238620]
+[node name="Label1" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1262238620]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "专辑"
 vertical_alignment = 1
 
-[node name="album" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1982615706]
+[node name="Album" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1982615706]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -248,13 +264,14 @@ script = ExtResource("11_i1we6")
 outline_size = 2
 end_padding = 0.0
 
-[node name="Label2" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1638560578]
+[node name="Label2" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1638560578]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "歌名"
 vertical_alignment = 1
 
-[node name="song" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=862163164]
+[node name="Song" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=862163164]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -266,13 +283,14 @@ script = ExtResource("11_i1we6")
 outline_size = 2
 end_padding = 0.0
 
-[node name="Label3" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=377821397]
+[node name="Label3" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=377821397]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "作曲"
 vertical_alignment = 1
 
-[node name="artist" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1333504800]
+[node name="Artist" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1333504800]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -284,22 +302,23 @@ script = ExtResource("11_i1we6")
 outline_size = 2
 end_padding = 0.0
 
-[node name="HSeparator" type="HSeparator" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=2008031952]
+[node name="HSeparator" type="HSeparator" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=2008031952]
 modulate = Color(1, 1, 1, 0)
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 
-[node name="HSeparator2" type="HSeparator" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1466739661]
+[node name="HSeparator2" type="HSeparator" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1466739661]
 modulate = Color(1, 1, 1, 0)
 layout_mode = 2
 
-[node name="Label4" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1483964143]
+[node name="Label4" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1483964143]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "Midi名"
 vertical_alignment = 1
 
-[node name="midiName" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1098768823]
+[node name="MidiName" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1098768823]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -311,13 +330,14 @@ script = ExtResource("11_i1we6")
 outline_size = 2
 end_padding = 0.0
 
-[node name="Label5" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=272814813]
+[node name="Label5" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=272814813]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "作者"
 vertical_alignment = 1
 
-[node name="midiAuthor" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1088727112]
+[node name="MidiAuthor" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1088727112]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -329,13 +349,14 @@ script = ExtResource("11_i1we6")
 outline_size = 2
 end_padding = 0.0
 
-[node name="Label6" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1558778960]
+[node name="Label6" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1558778960]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "时长"
 vertical_alignment = 1
 
-[node name="midiDuration" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1102601957]
+[node name="MidiDuration" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1102601957]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -344,13 +365,14 @@ text = "99:61:000"
 vertical_alignment = 1
 autowrap_mode = 3
 
-[node name="Label7" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=900148067]
+[node name="Label7" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=900148067]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "难度"
 vertical_alignment = 1
 
-[node name="difficulty" type="Label" parent="CenterBackGround/VBox/SongInfo/GridContainer" unique_id=1021145344]
+[node name="Difficulty" type="Label" parent="CenterBackground/VBox/SongInfo/GridContainer" unique_id=1021145344]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -359,7 +381,8 @@ text = "Lunatic"
 vertical_alignment = 1
 autowrap_mode = 3
 
-[node name="Menu" type="HBoxContainer" parent="CenterBackGround/VBox" unique_id=920842605]
+[node name="PauseMenu" type="HBoxContainer" parent="CenterBackground/VBox" unique_id=920842605]
+unique_name_in_owner = true
 visible = false
 modulate = Color(1, 1, 1, 0.8117647)
 custom_minimum_size = Vector2(1500, 150)
@@ -368,7 +391,8 @@ theme = ExtResource("10_q4lmo")
 theme_override_constants/separation = 60
 alignment = 1
 
-[node name="retry" type="Button" parent="CenterBackGround/VBox/Menu" unique_id=1162302948]
+[node name="Retry" type="Button" parent="CenterBackground/VBox/PauseMenu" unique_id=1162302948]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(250, 120)
 layout_mode = 2
 size_flags_vertical = 4
@@ -377,7 +401,7 @@ theme_override_font_sizes/font_size = 72
 icon = SubResource("AtlasTexture_3y6u5")
 icon_alignment = 1
 
-[node name="continue" type="Button" parent="CenterBackGround/VBox/Menu" unique_id=1413325283]
+[node name="Continue" type="Button" parent="CenterBackground/VBox/PauseMenu" unique_id=1413325283]
 custom_minimum_size = Vector2(250, 120)
 layout_mode = 2
 size_flags_vertical = 4
@@ -386,7 +410,7 @@ theme_override_font_sizes/font_size = 72
 icon = SubResource("AtlasTexture_q71vh")
 icon_alignment = 1
 
-[node name="quit" type="Button" parent="CenterBackGround/VBox/Menu" unique_id=1209230804]
+[node name="Quit" type="Button" parent="CenterBackground/VBox/PauseMenu" unique_id=1209230804]
 custom_minimum_size = Vector2(250, 120)
 layout_mode = 2
 size_flags_vertical = 4
@@ -395,6 +419,6 @@ theme_override_font_sizes/font_size = 72
 icon = SubResource("AtlasTexture_p7r7c")
 icon_alignment = 1
 
-[connection signal="value_changed" from="Layer/TopProgressBar" to="Layer" method="_on_progress_bar_value_changed"]
-[connection signal="pressed" from="CenterBackGround/VBox/Menu/continue" to="." method="show_or_hide_menu"]
-[connection signal="pressed" from="CenterBackGround/VBox/Menu/quit" to="." method="_on_quit_pressed"]
+[connection signal="value_changed" from="Hud/TopProgressBar" to="Hud" method="_on_progress_bar_value_changed"]
+[connection signal="pressed" from="CenterBackground/VBox/PauseMenu/Continue" to="." method="show_or_hide_menu"]
+[connection signal="pressed" from="CenterBackground/VBox/PauseMenu/Quit" to="." method="_on_quit_pressed"]

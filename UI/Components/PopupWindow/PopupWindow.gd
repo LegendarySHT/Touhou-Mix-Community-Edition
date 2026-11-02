@@ -4,26 +4,6 @@ class_name PopupWindow
 
 static var instance: PopupWindow
 
-@onready var _window_bg_shader: ColorRect = get_parent().get_node_or_null("PopupWindowShader")
-@onready var _tab_c: TabContainer = $TabC
-@onready var _ani: AnimationManager = AniMGR
-
-# 默认页
-@onready var _message: Label = $TabC/Default/Content/Label
-@onready var _cancel_btn: Button = $TabC/Default/Btns/Cancel
-@onready var _confirm_btn: Button = $TabC/Default/Btns/Confirm
-@onready var _option_btn: OptionButton = $TabC/Default/Content/OptionButton
-
-# 各功能页子脚本引用
-@onready var _delay_adjust: DelayAdjust = $TabC/DelayAdjust
-@onready var _note_skin_adjust: NoteSkinAdjust = $TabC/NoteSkinAdjust
-@onready var _particle_adjust: ParticleAdjust = $TabC/ParticleAdjust
-@onready var _image_adjust: ImageAdjust = $TabC/ImageAdjust
-@onready var _kb_mode_adjust: KBModeAdjust = $TabC/KBModeAdjust
-@onready var _falling_adjust: FallingAdjust = $TabC/FallingAdjust
-@onready var _storage_location_adjust: StorageLocationAdjust = $TabC/StorageLocationAdjust
-@onready var _storage_conflict_adjust: StorageConflictAdjust = $TabC/StorageConflictAdjust
-
 signal window_close
 
 var _confirm: bool = false
@@ -38,7 +18,7 @@ func _pop_up_window(page: int) -> void:
 	# 信号没等到），复位语句就永远不执行，之后所有弹窗点外部都关不掉 = 玩家没法中止操作。
 	# 这里按"打开即恢复可取消"兜底，force 页在 popup 前再置 true。
 	exclusive = false
-	_tab_c.current_tab = page
+	%Tabs.current_tab = page
 	match page:
 		1:
 			size = Vector2(850, 600)
@@ -64,14 +44,14 @@ func _pop_up_window(page: int) -> void:
 func _ready() -> void:
 	instance = self
 	# 默认窗口按钮
-	_cancel_btn.pressed.connect(_on_cancel_pressed)
-	_confirm_btn.pressed.connect(_on_confirm_pressed)
+	%MessageCancelBtn.pressed.connect(_on_cancel_pressed)
+	%MessageConfirmBtn.pressed.connect(_on_confirm_pressed)
 	# DelayAdjust 校准完成 → 隐藏窗口（→ popup_hide → 退出动画 → window_close）
-	_delay_adjust.finish_requested.connect(hide)
+	%DelayAdjust.finish_requested.connect(hide)
 	# StorageLocationAdjust 确认/取消 → 隐藏窗口（必须关闭整个弹窗，不能只隐藏 tab 页）
-	_storage_location_adjust.finish_requested.connect(hide)
+	%StorageLocationAdjust.finish_requested.connect(hide)
 	# StorageConflictAdjust 选择 → 隐藏窗口
-	_storage_conflict_adjust.finish_requested.connect(hide)
+	%StorageConflictAdjust.finish_requested.connect(hide)
 
 	# 监听内置 popup 生命周期信号
 	about_to_popup.connect(func() -> void: _window_popup_animate(true))
@@ -79,10 +59,10 @@ func _ready() -> void:
 	popup_hide.connect(func() -> void:
 		# 任何关闭路径都把模态解除（force 提示的协程可能已被丢弃，不能指望它复位）
 		exclusive = false
-		_delay_adjust.stop_calibration()
-		_particle_adjust.stop_preview()
-		_kb_mode_adjust._cancel_recording()
-		_falling_adjust.stop_preview()
+		%DelayAdjust.stop_calibration()
+		%ParticleAdjust.stop_preview()
+		%KBModeAdjust._cancel_recording()
+		%FallingAdjust.stop_preview()
 		_window_popup_animate(false)
 	)
 
@@ -94,32 +74,24 @@ func _ready() -> void:
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
 func apply_theme() -> void:
 	# WindowBG — 中性凸起面（保留 tscn 预设的圆角/边框）
-	var window_bg := get_node_or_null("WindowBG") as PanelContainer
-	if window_bg:
-		var sb := window_bg.get_theme_stylebox("panel")
-		if sb is StyleBoxFlat:
-			var sh := ThemeMGR.get_color("surface_high")
-			sb.bg_color = Color(sh.r, sh.g, sh.b, 0.98)
+	var sb := ($WindowBG as PanelContainer).get_theme_stylebox("panel")
+	if sb is StyleBoxFlat:
+		var sh := ThemeMGR.get_color("surface_high")
+		sb.bg_color = Color(sh.r, sh.g, sh.b, 0.98)
 	# KBModeAdjust/AddBtn — 强调色主按钮；该按钮在 tscn 里有自己的 normal/pressed/hover 样式框，
 	# 因此可就地改色而不影响共享的 R12NoBorder 主题
-	var kb_add_btn := get_node_or_null("TabC/KBModeAdjust/KeySequence/VFlowC/AddBtn") as Button
-	if kb_add_btn:
-		ThemeMGR._style_button_set_bg_color(kb_add_btn, ThemeMGR.get_color("primary"))
+	ThemeMGR._style_button_set_bg_color(%KBModeAdjustAddBtn, ThemeMGR.get_color("primary"))
 	# 默认页 取消/确认按钮：tscn 内写死了深色/蓝色底板与近白文字，浅色模式下会残留深色块 + 浅底浅字
 	var text_primary := ThemeMGR.get_color("text_primary")
-	if _cancel_btn:
-		ThemeMGR._style_button_set_bg_color(_cancel_btn, ThemeMGR.get_color("surface_high"))
-		_cancel_btn.add_theme_color_override("font_color", text_primary)
-	if _confirm_btn:
-		ThemeMGR._style_button_set_bg_color(_confirm_btn, ThemeMGR.get_color("primary"))
-		_confirm_btn.add_theme_color_override("font_color", text_primary)
+	ThemeMGR._style_button_set_bg_color(%MessageCancelBtn, ThemeMGR.get_color("surface_high"))
+	%MessageCancelBtn.add_theme_color_override("font_color", text_primary)
+	ThemeMGR._style_button_set_bg_color(%MessageConfirmBtn, ThemeMGR.get_color("primary"))
+	%MessageConfirmBtn.add_theme_color_override("font_color", text_primary)
 	_style_default_option_button()
 
 ## 默认弹窗里的选项按钮/下拉菜单：tscn 内写死了深色 hover/pressed，
 ## 浅色模式下会变成一块很黑/纯黑；这里按主题重刷按钮态与菜单底色。
 func _style_default_option_button() -> void:
-	if _option_btn == null:
-		return
 	var text_primary := ThemeMGR.get_color("text_primary")
 	var surface_low := ThemeMGR.get_color("surface_low")
 	var surface_hover := ThemeMGR.get_color("surface_hover")
@@ -133,36 +105,35 @@ func _style_default_option_button() -> void:
 		["hover", surface_hover, primary],
 		["pressed", primary, primary],
 	]:
-		if not ThemeMGR.has_local_stylebox(_option_btn, spec[0]):
+		if not ThemeMGR.has_local_stylebox(%MessageOption, spec[0]):
 			continue
-		var sb := _option_btn.get_theme_stylebox(spec[0]) as StyleBoxFlat
+		var sb := %MessageOption.get_theme_stylebox(spec[0]) as StyleBoxFlat
 		if sb:
 			sb.draw_center = true
 			sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], sb.bg_color.a if sb.bg_color.a > 0.0 else 0.95)
 			sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.85)
-	_option_btn.add_theme_color_override("font_color", text_primary)
-	_option_btn.add_theme_color_override("font_hover_color", text_primary)
-	_option_btn.add_theme_color_override("font_pressed_color", pressed_text)
-	_option_btn.add_theme_color_override("font_hover_pressed_color", pressed_text)
-	_option_btn.add_theme_color_override("font_focus_color", text_primary)
-	_option_btn.add_theme_color_override("icon_normal_color", text_primary if is_light else text_primary)
-	_option_btn.add_theme_color_override("icon_hover_color", primary)
-	_option_btn.add_theme_color_override("icon_pressed_color", pressed_text)
+	%MessageOption.add_theme_color_override("font_color", text_primary)
+	%MessageOption.add_theme_color_override("font_hover_color", text_primary)
+	%MessageOption.add_theme_color_override("font_pressed_color", pressed_text)
+	%MessageOption.add_theme_color_override("font_hover_pressed_color", pressed_text)
+	%MessageOption.add_theme_color_override("font_focus_color", text_primary)
+	%MessageOption.add_theme_color_override("icon_normal_color", text_primary if is_light else text_primary)
+	%MessageOption.add_theme_color_override("icon_hover_color", primary)
+	%MessageOption.add_theme_color_override("icon_pressed_color", pressed_text)
 
-	var menu := _option_btn.get_popup()
-	if menu:
-		var panel := StyleBoxFlat.new()
-		panel.bg_color = ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("surface_high"), 0.98)
-		panel.border_color = border
-		panel.set_border_width_all(1)
-		panel.set_corner_radius_all(10)
-		menu.add_theme_stylebox_override("panel", panel)
-		var hover := StyleBoxFlat.new()
-		hover.bg_color = ThemeMGR._tint_keep_alpha(primary, 0.18 if is_light else 0.28)
-		hover.set_corner_radius_all(6)
-		menu.add_theme_stylebox_override("hover", hover)
-		menu.add_theme_color_override("font_color", text_primary)
-		menu.add_theme_color_override("font_hover_color", text_primary)
+	var menu: PopupMenu = %MessageOption.get_popup()
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("surface_high"), 0.98)
+	panel.border_color = border
+	panel.set_border_width_all(1)
+	panel.set_corner_radius_all(10)
+	menu.add_theme_stylebox_override("panel", panel)
+	var hover := StyleBoxFlat.new()
+	hover.bg_color = ThemeMGR._tint_keep_alpha(primary, 0.18 if is_light else 0.28)
+	hover.set_corner_radius_all(6)
+	menu.add_theme_stylebox_override("hover", hover)
+	menu.add_theme_color_override("font_color", text_primary)
+	menu.add_theme_color_override("font_hover_color", text_primary)
 
 
 func _exit_tree() -> void:
@@ -185,36 +156,36 @@ func _window_popup_animate(is_popup: bool) -> Tween:
 		for nd in get_children():
 			if nd is Control:
 				nd.offset_transform_scale = Vector2.ZERO if is_popup else Vector2.ONE
-				_ani.animate_offset_scale(nd, Vector2.ZERO if not is_popup else Vector2.ONE, 0.4, "popup_%s_scale" % nd.name)
+				AniMGR.animate_offset_scale(nd, Vector2.ZERO if not is_popup else Vector2.ONE, 0.4, "popup_%s_scale" % nd.name)
 
 		# 背景
-		popup_tween = _ani.animate_fade_in(_window_bg_shader, 0.3, "popup_bg_fade")
+		popup_tween = AniMGR.animate_fade_in(%PopupWindowShader, 0.3, "popup_bg_fade")
 	else:
-		popup_tween = _ani.animate_fade_out(_window_bg_shader, 0.3, "popup_bg_fade")
+		popup_tween = AniMGR.animate_fade_out(%PopupWindowShader, 0.3, "popup_bg_fade")
 		popup_tween.finished.connect(func() -> void: window_close.emit())
 	return popup_tween
 
 func _set_option(options: Array):
-	_option_btn.clear()
+	%MessageOption.clear()
 	var idx: int = 0
 	for i in options:
-		_option_btn.add_item(i, idx)
+		%MessageOption.add_item(i, idx)
 		idx += 1
 
-	_option_btn.visible = true if idx else false
+	%MessageOption.visible = true if idx else false
 
 # ===== 公共 API =====
 
 # 设置默认窗口的选项
 func get_selected() -> String:
-	return _option_btn.get_item_text(_option_btn.get_selected_id())
+	return %MessageOption.get_item_text(%MessageOption.get_selected_id())
 
 # 用默认窗口显示消息，要获取确认状态需await
 ## force=true 时弹窗为强制模态（exclusive）：无法点击外部关闭，只能通过按钮/返回键处理，
 ## 用于"迁移后必须重启"等不可跳过的提示
 func show_message(message: String, cancel_visible: bool = false, options: Array = [], force: bool = false) -> bool:
-	_message.text = message
-	_cancel_btn.modulate.a = 0 if not cancel_visible else 1
+	%MessageText.text = message
+	%MessageCancelBtn.modulate.a = 0 if not cancel_visible else 1
 	_set_option(options)
 
 	_pop_up_window(0)
@@ -228,47 +199,47 @@ func show_message(message: String, cancel_visible: bool = false, options: Array 
 # 弹出延迟校准窗口
 # 返回 Dictionary: {"delay": 校准/输入的延迟值(ms), "bt_auto_off_performing": 蓝牙自动关闭弹奏模式开关(0/1)}
 func show_delay_adjust(current_delay: int = 0) -> Dictionary:
-	_delay_adjust.start_calibration(current_delay)
+	%DelayAdjust.start_calibration(current_delay)
 
 	_pop_up_window(1)
 	await window_close
 	# 兜底停止（popup_hide 已会调用，此处再保险一次）
-	_delay_adjust.stop_calibration()
-	return _delay_adjust.get_result()
+	%DelayAdjust.stop_calibration()
+	return %DelayAdjust.get_result()
 
 # 弹出皮肤修改窗口
 func show_note_skin_adjust() -> String:
-	_note_skin_adjust.init_adjust()
+	%NoteSkinAdjust.init_adjust()
 	
 	_pop_up_window(2)
 	await window_close
 	# 关闭时持久化皮肤配置（颜色/光效/长条模式等）并触发 FlowArea 重载
-	_note_skin_adjust.save_config()
-	return _note_skin_adjust.get_selected_skin()
+	%NoteSkinAdjust.save_config()
+	return %NoteSkinAdjust.get_selected_skin()
 
 # 弹出粒子设置窗口
 # judge_type: Perfect / Great / Good / Bad，决定编辑哪个判定类型的特效
 # 返回 Dictionary 字段见 ParticleAdjust.get_result
 func show_particle_adjust(judge_type: String = "Perfect") -> Dictionary:
-	_particle_adjust.init_adjust(judge_type)
+	%ParticleAdjust.init_adjust(judge_type)
 	
 	_pop_up_window(3)
 	await get_tree().create_timer(_POPUP_ANIM_DURATION).timeout
-	_particle_adjust.start_preview()
+	%ParticleAdjust.start_preview()
 	await window_close
-	_particle_adjust.stop_preview()
-	return _particle_adjust.get_result()
+	%ParticleAdjust.stop_preview()
+	return %ParticleAdjust.get_result()
 
 # 弹出图片设置窗口
 ## view_name: 视图名称（main/store/score/play/track/midi/setting），用于从 ThemeManager 读取当前配置初始化控件
 ## allow_cover: 是否允许选择"封面"类型（仅 play 视图为 true）
 ## 返回 Dictionary 字段见 ImageAdjust.get_result
 func show_image_adjust(view_name: String = "", allow_cover: bool = false) -> Dictionary:
-	_image_adjust.init_adjust(view_name, allow_cover)
+	%ImageAdjust.init_adjust(view_name, allow_cover)
 	
 	_pop_up_window(4)
 	await window_close
-	return _image_adjust.get_result()
+	return %ImageAdjust.get_result()
 
 # 弹出键位设置窗口
 ## current_keys / current_display_names：由调用方从 pending 配置传入，未传则回退到配置文件
@@ -288,13 +259,13 @@ func show_kb_mode_adjust(current_keys: String = "", current_display_names: Strin
 		ConfigManager.instance.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;")
 	var names_str := current_display_names if not current_display_names.is_empty() else \
 		ConfigManager.instance.get_string("keyboard_mode_display_names", "")
-	_kb_mode_adjust.init_adjust(keys_str, names_str, current_kb_mode, current_alt_color, current_alt_count, current_alt_colors, current_gap, current_lane_sep)
+	%KBModeAdjust.init_adjust(keys_str, names_str, current_kb_mode, current_alt_color, current_alt_count, current_alt_colors, current_gap, current_lane_sep)
 	
 	_pop_up_window(5)
 	await window_close
 	# 兜底取消录入状态（popup_hide 已调用，此处再保险一次）
-	_kb_mode_adjust._cancel_recording()
-	return _kb_mode_adjust.get_result()
+	%KBModeAdjust._cancel_recording()
+	return %KBModeAdjust.get_result()
 
 # 弹出下落模式设置窗口
 ## 关闭时由 FallingAdjust 内部 save_config 即时写入 ConfigManager 并触发 config_changed
@@ -303,31 +274,31 @@ func show_falling_adjust() -> Dictionary:
 	# 等 _pop_up_window 内部 popup() 完成（弹窗可见）后再初始化并启动下落预览：
 	# init_adjust 末尾会 await 一帧后调用 _start_preview_loop，其依赖 is_visible_in_tree() 为真
 	await _pop_up_window(6)
-	_falling_adjust.init_adjust()
+	%FallingAdjust.init_adjust()
 	await window_close
 	# 兜底停止预览（popup_hide 已调用，此处再保险一次）
-	_falling_adjust.stop_preview()
+	%FallingAdjust.stop_preview()
 	# 关闭时持久化下落参数并触发 FlowArea 热重载
-	_falling_adjust.save_config()
-	return _falling_adjust.get_result()
+	%FallingAdjust.save_config()
+	return %FallingAdjust.get_result()
 
 # 弹出存储位置设置窗口
 ## current_path：当前存储路径（为空时弹窗显示 PathHelper.get_storage_root()）
 ## 返回 Dictionary: {"action": "confirmed"|"cancelled", "path": String}
 ## 确认后由调用方（SettingList）执行路径校验与迁移
 func show_storage_location_adjust(current_path: String = "") -> Dictionary:
-	_storage_location_adjust.init_adjust(current_path)
+	%StorageLocationAdjust.init_adjust(current_path)
 
 	_pop_up_window(7)
 	await window_close
-	return _storage_location_adjust.get_result()
+	return %StorageLocationAdjust.get_result()
 
 # 弹出存储迁移冲突处理窗口（目标目录已存在游戏数据时，决定听哪一侧）
 ## merge_dirs: 目标已存在的资源目录；conflict_files: 目标已存在的顶层文件
 ## 返回 int（StorageConflictAdjust.Choice）：-1=未选择/取消，0=保留目标（合并补缺），1=覆盖目标
 func show_storage_conflict_adjust(merge_dirs: Array, conflict_files: Array) -> int:
-	_storage_conflict_adjust.init_adjust(merge_dirs, conflict_files)
+	%StorageConflictAdjust.init_adjust(merge_dirs, conflict_files)
 
 	_pop_up_window(8)
 	await window_close
-	return _storage_conflict_adjust.get_result()
+	return %StorageConflictAdjust.get_result()

@@ -2,20 +2,20 @@ extends ListItemBase
 
 class_name MidiTrack
 
-@onready var note_display: NoteDisplayer = $HBoxC/MC/flowArea
+@onready var note_display: NoteDisplayer = %NoteDisplay
 
-@onready var track_num: Label = $TR/TrackNum
-@onready var channel_num: Label = $CH/ChannelNum
+@onready var track_num: Label = %TrackNum
+@onready var channel_num: Label = %ChannelNum
 # 切换轨道启用状态的按钮
-@onready var enable_btn: Button = $HBoxC/enableBtn
+@onready var enable_btn: Button = %EnableBtn
 
-@onready var mute_btn: TextureButton = $HBoxC/MC/ControlPanel/GridC/MuteBtn
-@onready var solo_btn: TextureButton = $HBoxC/MC/ControlPanel/GridC/SoloBtn
-@onready var reset_btn: TextureButton = $HBoxC/MC/ControlPanel/GridC/ResetBtn
-@onready var volume_slider: HSlider = $HBoxC/MC/ControlPanel/GridC/Volume/Slider
-@onready var volume_label: Label = $HBoxC/MC/ControlPanel/GridC/Volume/Label
+@onready var mute_btn: TextureButton = %MuteBtn
+@onready var solo_btn: TextureButton = %SoloBtn
+@onready var reset_btn: TextureButton = %ResetBtn
+@onready var volume_slider: HSlider = %VolumeSlider
+@onready var volume_label: Label = %VolumeText
 # 乐器两级选择菜单：大类(MenuButton) → 具体乐器(子菜单)
-@onready var instruments_btn: MenuButton = $HBoxC/MC/ControlPanel/GridC/InstrumentBtn
+@onready var instruments_btn: MenuButton = %InstrumentBtn
 
 # category(int) -> Array[String] 该类下的乐器 display_name（由 instrument_options 分组）
 var _category_items: Dictionary = {}
@@ -39,10 +39,9 @@ var _submenu_open := false          # 是否有任一子菜单打开
 const _SUBMENU_AUTOCLOSE_DELAY_MS := 200
 
 # 初始化时需要调节颜色的节点 除下面的之外还有self和enable_btn
-@onready var track_panel: Panel = $TR
-@onready var channel_panel: Panel = $CH
-@onready var note_panel: Panel = $HBoxC/MC/flowArea/noteTotal
-@onready var separator_line: HSeparator = $HBoxC/MC/flowArea/noteTotal/HSeparator
+@onready var track_panel: Panel = %TrackPanel
+@onready var channel_panel: Panel = %ChannelPanel
+@onready var note_panel: Panel = %NoteCounterPanel
 
 # 轨道属性
 var track_index: int = 2

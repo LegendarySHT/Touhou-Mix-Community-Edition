@@ -14,8 +14,8 @@ offset_right = 900.0
 offset_bottom = 140.0
 size_flags_horizontal = 0
 size_flags_vertical = 0
-focus_neighbor_right = NodePath("/root/Main/skew/C/ShortCutMenu/Btns/Search")
-focus_next = NodePath("/root/Main/skew/C/ShortCutMenu/Btns/Search")
+focus_neighbor_right = NodePath("/root/Main/Skew/C/ShortCutMenu/Btns/SortTabBtn")
+focus_next = NodePath("/root/Main/Skew/C/ShortCutMenu/Btns/SortTabBtn")
 mouse_filter = 1
 theme = ExtResource("1_krpnw")
 toggle_mode = true
@@ -42,7 +42,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="cover" type="TextureRect" parent="HBoxC/C" unique_id=1928751118]
+[node name="Cover" type="TextureRect" parent="HBoxC/C" unique_id=1928751118]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -88,6 +88,7 @@ grow_horizontal = 2
 mouse_filter = 2
 
 [node name="SongCount" type="Label" parent="HBoxC" unique_id=1861393487]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(160, 0)
 custom_maximum_size = Vector2(-1, 140)
 propagate_maximum_size = true

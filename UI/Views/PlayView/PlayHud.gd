@@ -16,9 +16,7 @@ signal flash_requested
 ## 组件请求（当前只有暂停按钮）转发给 PlayView
 signal pause_requested
 
-@onready var ani: AnimationManager = AniMGR
-@onready var progress_bar: ProgressBar = $TopProgressBar
-@onready var debug_info_label: Label = $DebugInfo
+@onready var progress_bar: ProgressBar = %TopProgressBar
 
 const PROGRESS_BAR_IDLE_COLOR: Color = Color.BLACK
 
@@ -102,7 +100,7 @@ func _process(delta: float) -> void:
 				_trigger_preview_judgment()
 		return
 
-	if show_debug_info and debug_info_label and debug_info_label.visible:
+	if show_debug_info and %DebugInfo and %DebugInfo.visible:
 		debug_info_elapsed += delta
 		if debug_info_elapsed >= debug_info_refresh_interval:
 			debug_info_elapsed = 0.0
@@ -316,9 +314,7 @@ func set_progress(value: float) -> void:
 
 func set_debug_enabled(debug_visible: bool) -> void:
 	show_debug_info = debug_visible
-	if debug_info_label == null:
-		return
-	debug_info_label.visible = debug_visible
+	%DebugInfo.visible = debug_visible
 	debug_info_elapsed = debug_info_refresh_interval
 	if visible:
 		_update_debug_overlay()
@@ -464,8 +460,6 @@ func _set_progress_bar_color(cl: Color) -> void:
 # ==================== 调试悬浮 ====================
 
 func _update_debug_overlay() -> void:
-	if debug_info_label == null:
-		return
 	var fps = Engine.get_frames_per_second()
 	var frame_ms = (1000.0 / max(1.0, float(fps)))
 	var draw_calls = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
@@ -473,7 +467,7 @@ func _update_debug_overlay() -> void:
 	var memory_static_mb = float(Performance.get_monitor(Performance.MEMORY_STATIC)) / (1024.0 * 1024.0)
 	var memory_static_max_mb = float(Performance.get_monitor(Performance.MEMORY_STATIC_MAX)) / (1024.0 * 1024.0)
 
-	debug_info_label.text = "FPS: %d (%.2f ms)\n渲染: DrawCalls %d | Objects %d\n内存: %.1f MB / 峰值 %.1f MB" % [
+	%DebugInfo.text = "FPS: %d (%.2f ms)\n渲染: DrawCalls %d | Objects %d\n内存: %.1f MB / 峰值 %.1f MB" % [
 		fps,
 		frame_ms,
 		draw_calls,
@@ -493,8 +487,7 @@ func set_edit_mode(on: bool) -> void:
 		(c as HudComponent).editing = on
 		(c as HudComponent).refresh_visible()
 	progress_bar.visible = not on
-	if debug_info_label != null:
-		debug_info_label.visible = (not on) and show_debug_info
+	%DebugInfo.visible = (not on) and show_debug_info
 	if on:
 		_fill_preview_state()
 		_preview_timer = 0.0

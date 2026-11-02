@@ -299,6 +299,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_store")
+view_layer = 2
 
 [node name="Background" type="TextureRect" parent="." unique_id=2116602166]
 custom_minimum_size = Vector2(1921, 1080)
@@ -316,6 +317,7 @@ script = ExtResource("8_vbg")
 view_name = "store"
 
 [node name="TopBar" type="Panel" parent="." unique_id=686402809]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 118)
 layout_mode = 1
 anchors_preset = 10
@@ -349,6 +351,7 @@ mouse_filter = 2
 theme_override_constants/separation = 12
 
 [node name="SearchEdit" type="LineEdit" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=1192628260]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(260, 76)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -359,6 +362,7 @@ theme_override_styles/focus = SubResource("SB_search_focus")
 placeholder_text = "搜索谱面 / 作者 / 专辑"
 
 [node name="SearchIcon" type="TextureRect" parent="TopBar/HeaderMargin/Row/Toolbar/SearchEdit" unique_id=985218826]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
@@ -376,6 +380,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="FilterDataBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=423131846]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(76, 76)
 layout_mode = 2
 tooltip_text = "排序字段：下载数"
@@ -389,6 +394,7 @@ icon = SubResource("Atlas_data_download")
 icon_alignment = 1
 
 [node name="SortOrderBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=799784552]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(76, 76)
 layout_mode = 2
 tooltip_text = "切换升序 / 降序"
@@ -402,6 +408,7 @@ icon = SubResource("Atlas_desc")
 icon_alignment = 1
 
 [node name="BatchDownloadBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=1330030490]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 76)
 layout_mode = 2
 tooltip_text = "下载当前页所有未下载的谱面"
@@ -417,6 +424,7 @@ text = "批量下载"
 icon = SubResource("Atlas_cloud")
 
 [node name="VocalBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=825044778]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 76)
 layout_mode = 2
 tooltip_text = "开启后，下载谱面时一并下载人声"
@@ -438,7 +446,8 @@ layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 6
 
-[node name="TabSong" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=689949741]
+[node name="TabSongBtn" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=689949741]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -456,7 +465,8 @@ button_group = SubResource("BG_tabs")
 text = "歌曲"
 icon = SubResource("Atlas_tab_song")
 
-[node name="TabSkin" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=746944903]
+[node name="TabSkinBtn" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=746944903]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -473,7 +483,8 @@ button_group = SubResource("BG_tabs")
 text = "皮肤"
 icon = SubResource("Atlas_tab_skin")
 
-[node name="TabEffect" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=618875605]
+[node name="TabEffectBtn" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=618875605]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -490,7 +501,8 @@ button_group = SubResource("BG_tabs")
 text = "特效"
 icon = SubResource("Atlas_tab_effect")
 
-[node name="TabSoundfont" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1466761850]
+[node name="TabSoundfontBtn" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1466761850]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -507,7 +519,8 @@ button_group = SubResource("BG_tabs")
 text = "音源"
 icon = SubResource("Atlas_tab_sf")
 
-[node name="TabDownload" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1840244665]
+[node name="TabDownloadBtn" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1840244665]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -524,7 +537,8 @@ button_group = SubResource("BG_tabs")
 text = "下载管理"
 icon = SubResource("Atlas_cloud")
 
-[node name="TabUnderline" type="Panel" parent="TopBar" unique_id=2043727194]
+[node name="TabUnderlinePanel" type="Panel" parent="TopBar" unique_id=2043727194]
+unique_name_in_owner = true
 layout_mode = 0
 offset_top = 114.0
 offset_right = 180.0
@@ -543,6 +557,7 @@ grow_vertical = 2
 mouse_filter = 1
 
 [node name="SongsPage" type="Control" parent="Pages" unique_id=461393091]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -551,7 +566,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="List" type="ScrollContainer" parent="Pages/SongsPage" unique_id=1576611662]
+[node name="SongsScroll" type="ScrollContainer" parent="Pages/SongsPage" unique_id=1576611662]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -566,13 +582,15 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="ListContent" type="Control" parent="Pages/SongsPage/List" unique_id=2105553316]
+[node name="SongsListContent" type="Control" parent="Pages/SongsPage/SongsScroll" unique_id=2105553316]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Empty" type="Label" parent="Pages/SongsPage" unique_id=848771213]
+[node name="SongsEmpty" type="Label" parent="Pages/SongsPage" unique_id=848771213]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -587,6 +605,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="SkinsPage" type="Control" parent="Pages" unique_id=248845126]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -596,7 +615,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="List" type="ScrollContainer" parent="Pages/SkinsPage" unique_id=324994638]
+[node name="SkinsScroll" type="ScrollContainer" parent="Pages/SkinsPage" unique_id=324994638]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -611,13 +631,15 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="ListContent" type="Control" parent="Pages/SkinsPage/List" unique_id=1524149009]
+[node name="SkinsListContent" type="Control" parent="Pages/SkinsPage/SkinsScroll" unique_id=1524149009]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Empty" type="Label" parent="Pages/SkinsPage" unique_id=2059499396]
+[node name="SkinsEmpty" type="Label" parent="Pages/SkinsPage" unique_id=2059499396]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -632,6 +654,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="EffectsPage" type="Control" parent="Pages" unique_id=2071108405]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -641,7 +664,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="List" type="ScrollContainer" parent="Pages/EffectsPage" unique_id=1088512918]
+[node name="EffectsScroll" type="ScrollContainer" parent="Pages/EffectsPage" unique_id=1088512918]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -656,13 +680,15 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="ListContent" type="Control" parent="Pages/EffectsPage/List" unique_id=279928611]
+[node name="EffectsListContent" type="Control" parent="Pages/EffectsPage/EffectsScroll" unique_id=279928611]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Empty" type="Label" parent="Pages/EffectsPage" unique_id=778589629]
+[node name="EffectsEmpty" type="Label" parent="Pages/EffectsPage" unique_id=778589629]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -677,6 +703,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="SoundfontsPage" type="Control" parent="Pages" unique_id=1474860878]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -686,7 +713,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="List" type="ScrollContainer" parent="Pages/SoundfontsPage" unique_id=1550550384]
+[node name="SoundfontsScroll" type="ScrollContainer" parent="Pages/SoundfontsPage" unique_id=1550550384]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -701,13 +729,15 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="ListContent" type="Control" parent="Pages/SoundfontsPage/List" unique_id=1051727023]
+[node name="SoundfontsListContent" type="Control" parent="Pages/SoundfontsPage/SoundfontsScroll" unique_id=1051727023]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Empty" type="Label" parent="Pages/SoundfontsPage" unique_id=1206908615]
+[node name="SoundfontsEmpty" type="Label" parent="Pages/SoundfontsPage" unique_id=1206908615]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -722,6 +752,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="DownloadsPage" type="Control" parent="Pages" unique_id=926959622]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
 anchors_preset = 15
@@ -731,7 +762,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 1
 
-[node name="Hero" type="Panel" parent="Pages/DownloadsPage" unique_id=2078691219]
+[node name="HeroPanel" type="Panel" parent="Pages/DownloadsPage" unique_id=2078691219]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -743,7 +775,7 @@ grow_horizontal = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_hero")
 
-[node name="HeroMargin" type="MarginContainer" parent="Pages/DownloadsPage/Hero" unique_id=1355749005]
+[node name="HeroMargin" type="MarginContainer" parent="Pages/DownloadsPage/HeroPanel" unique_id=1355749005]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -756,27 +788,31 @@ theme_override_constants/margin_top = 20
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_bottom = 20
 
-[node name="HeroEmpty" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin" unique_id=14532917]
+[node name="HeroEmpty" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin" unique_id=14532917]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "暂无正在下载的任务"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="HeroBody" type="HBoxContainer" parent="Pages/DownloadsPage/Hero/HeroMargin" unique_id=22146838]
+[node name="HeroBody" type="HBoxContainer" parent="Pages/DownloadsPage/HeroPanel/HeroMargin" unique_id=22146838]
+unique_name_in_owner = true
 visible = false
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 20
 
-[node name="CoverWrap" type="Panel" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody" unique_id=1087600478]
+[node name="CoverWrapPanel" type="Panel" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody" unique_id=1087600478]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(162, 162)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_hero_cover")
 
-[node name="Cover" type="TextureRect" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/CoverWrap" unique_id=859794609]
+[node name="CoverImage" type="TextureRect" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/CoverWrapPanel" unique_id=859794609]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -789,7 +825,8 @@ stretch_mode = 6
 script = ExtResource("6_round")
 corner_radius = 12.0
 
-[node name="Placeholder" type="TextureRect" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/CoverWrap" unique_id=701149981]
+[node name="CoverPlaceholder" type="TextureRect" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/CoverWrapPanel" unique_id=701149981]
+unique_name_in_owner = true
 modulate = Color(1, 1, 1, 0.4)
 custom_minimum_size = Vector2(70, 70)
 layout_mode = 1
@@ -809,14 +846,15 @@ texture = SubResource("Atlas_cloud")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Info" type="VBoxContainer" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody" unique_id=915531185]
+[node name="Info" type="VBoxContainer" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody" unique_id=915531185]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 mouse_filter = 2
 theme_override_constants/separation = 6
 
-[node name="Title" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info" unique_id=1553902158]
+[node name="TitleText" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Info" unique_id=1553902158]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 30
@@ -825,19 +863,22 @@ clip_text = true
 script = ExtResource("7_scroll")
 end_padding = 0.0
 
-[node name="Stage" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info" unique_id=1089921538]
+[node name="StageText" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Info" unique_id=1089921538]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 21
 text = "正在下载 MIDI"
 
-[node name="Progress" type="ProgressBar" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info" unique_id=1142858393]
+[node name="HeroProgress" type="ProgressBar" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Info" unique_id=1142858393]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
 mouse_filter = 2
 show_percentage = false
 
-[node name="Meta" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info" unique_id=1169156944]
+[node name="MetaText" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Info" unique_id=1169156944]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 19
@@ -846,27 +887,30 @@ script = ExtResource("7_scroll")
 theme_color_key = "text_secondary"
 end_padding = 0.0
 
-[node name="Right" type="VBoxContainer" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody" unique_id=1179139092]
+[node name="Right" type="VBoxContainer" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody" unique_id=1179139092]
 custom_minimum_size = Vector2(190, 0)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="Percent" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Right" unique_id=1977867687]
+[node name="PercentText" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Right" unique_id=1977867687]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 38
 text = "0%"
 horizontal_alignment = 2
 
-[node name="Detail" type="Label" parent="Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Right" unique_id=735257953]
+[node name="DetailText" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Right" unique_id=735257953]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 19
 text = "123 MB / 456 MB"
 horizontal_alignment = 2
 clip_text = true
 
-[node name="RecentTitle" type="Label" parent="Pages/DownloadsPage" unique_id=287180004]
+[node name="RecentTitleText" type="Label" parent="Pages/DownloadsPage" unique_id=287180004]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -878,7 +922,8 @@ grow_horizontal = 2
 theme_override_font_sizes/font_size = 24
 text = "下载记录"
 
-[node name="List" type="ScrollContainer" parent="Pages/DownloadsPage" unique_id=240579188]
+[node name="DownloadsScroll" type="ScrollContainer" parent="Pages/DownloadsPage" unique_id=240579188]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -893,13 +938,15 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="ListContent" type="Control" parent="Pages/DownloadsPage/List" unique_id=1806885259]
+[node name="DownloadsListContent" type="Control" parent="Pages/DownloadsPage/DownloadsScroll" unique_id=1806885259]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Empty" type="Label" parent="Pages/DownloadsPage" unique_id=696217958]
+[node name="DownloadsEmpty" type="Label" parent="Pages/DownloadsPage" unique_id=696217958]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -914,6 +961,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="Bottom" type="HBoxContainer" parent="." unique_id=1491092639]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -930,7 +978,8 @@ mouse_filter = 2
 theme_override_constants/separation = 14
 alignment = 1
 
-[node name="Previ" type="Button" parent="Bottom" unique_id=849843252]
+[node name="PreviBtn" type="Button" parent="Bottom" unique_id=849843252]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(76, 64)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -941,7 +990,8 @@ theme_override_styles/hover = SubResource("SB_pager_hover")
 icon = SubResource("Atlas_prev")
 icon_alignment = 1
 
-[node name="Indicate" type="Label" parent="Bottom" unique_id=281129194]
+[node name="PagerText" type="Label" parent="Bottom" unique_id=281129194]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 64)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -951,7 +1001,8 @@ text = "—"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Next" type="Button" parent="Bottom" unique_id=1239685035]
+[node name="NextBtn" type="Button" parent="Bottom" unique_id=1239685035]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(76, 64)
 layout_mode = 2
 mouse_default_cursor_shape = 2
@@ -963,4 +1014,5 @@ icon = SubResource("Atlas_next")
 icon_alignment = 1
 
 [node name="DetailLayer" parent="." unique_id=1158746815 instance=ExtResource("2_detail")]
+unique_name_in_owner = true
 layout_mode = 1

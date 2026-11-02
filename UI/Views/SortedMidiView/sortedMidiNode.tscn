@@ -17,8 +17,8 @@ offset_bottom = 10.0
 size_flags_horizontal = 0
 size_flags_vertical = 0
 offset_transform_enabled = true
-focus_neighbor_right = NodePath("/root/Main/skew/C/ShortCutMenu/Btns/Search")
-focus_next = NodePath("/root/Main/skew/C/ShortCutMenu/Btns/Search")
+focus_neighbor_right = NodePath("/root/Main/Skew/C/ShortCutMenu/Btns/SortTabBtn")
+focus_next = NodePath("/root/Main/Skew/C/ShortCutMenu/Btns/SortTabBtn")
 mouse_filter = 1
 theme = ExtResource("1_aaj07")
 toggle_mode = true
@@ -38,7 +38,7 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="cover" type="TextureRect" parent="C" unique_id=547752909]
+[node name="Cover" type="TextureRect" parent="C" unique_id=547752909]
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -116,7 +116,7 @@ theme_override_font_sizes/font_size = 30
 text = "Midi Author"
 vertical_alignment = 2
 
-[node name="status" type="Label" parent="MidiName" unique_id=1694469925]
+[node name="Status" type="Label" parent="MidiName" unique_id=1694469925]
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0

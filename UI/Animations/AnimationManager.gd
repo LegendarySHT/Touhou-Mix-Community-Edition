@@ -102,6 +102,8 @@ func animate_size(target: Control, to_size: Vector2, duration: float = DURATION_
 ## 创建淡入效果
 func animate_fade_in(target: Node, duration: float = DURATION_NORMAL,
 					 tween_id: String = "") -> Tween:
+	if not is_instance_valid(target):
+		return null
 	var tween = _create_tween(tween_id)
 	tween.set_ease(EASING_STANDARD)
 	tween.set_trans(Tween.TRANS_CUBIC)
@@ -116,6 +118,8 @@ func animate_fade_in(target: Node, duration: float = DURATION_NORMAL,
 ## 创建淡出效果
 func animate_fade_out(target: Node, duration: float = DURATION_NORMAL,
 					  tween_id: String = "") -> Tween:
+	if not is_instance_valid(target):
+		return null
 	var tween = _create_tween(tween_id)
 	tween.set_ease(EASING_STANDARD)
 	tween.set_trans(Tween.TRANS_CUBIC)
@@ -565,11 +569,16 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 	GLogger.info("组件退出动画: %s" % ui_name, "AnimationManager")
 	var tween_id = "%s_out" % ui_name
 	var tween : Tween
-	
+
+	var ani_comp = get_comp(ui_name)
+	# 懒加载视图继承 ViewBase 后自管转场（可见性复位、文字滚动挂起都在 play_transition 内），
+	# 这里只保留常驻组件的分支。用类型判断而非 has_method：命名不匹配会被伪装成"没做事"。
+	if ani_comp is ViewBase:
+		return ani_comp.play_transition(false)
+
 	# 播放动画的组件
 	var album_list:AlbumView = get_comp("Album_List")
 	var song_list:SongView = get_comp("Song_List")
-	var ani_comp = get_comp(ui_name)
 
 	match ui_name:
 		"Album_List":
@@ -615,12 +624,6 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 				ani_comp.visible = false
 				TextScrollMGR.suspend_page(ani_comp)
 			)
-		"Midi_Info_View":
-			tween = animate_fade_out(ani_comp, 0.3, tween_id)
-			
-			tween.finished.connect(func() -> void:
-				ani_comp.restore_panel_state()
-			)
 		"Player_Info":
 			var player_info_tween := animate_offset_to(ani_comp, Vector2(ani_comp.size.x * 1.3, ani_comp.offset_transform_position.y), 0.55, "PlayerInfoPosition")
 			player_info_tween.finished.connect(func() -> void:
@@ -639,60 +642,6 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 				if is_instance_valid(ani_comp):
 					TextScrollMGR.suspend_page(ani_comp)
 			)
-		"Store_View":
-			tween = animate_fade_out(ani_comp, 0.35, tween_id)
-		"Track_List":
-			# 整屏滑出：位移用 ratio 表达（ratio 1.0 = 自身高度），与入场对称，
-			# 也避免固定像素在别的分辨率/窗口尺寸下位移不足而看不出来。
-			# 先归零再滑出，保证快速来回切换（入场 tween 被 kill 在半路）时起点干净。
-			ani_comp.offset_transform_enabled = true
-			ani_comp.offset_transform_visual_only = false
-			ani_comp.offset_transform_position_ratio = Vector2.ZERO
-			ani_comp.offset_transform_position = Vector2.ZERO
-			tween = animate_fade_out(ani_comp, 0.3, tween_id)
-			animate_offset_ratio_to(ani_comp, Vector2(0, 1), 0.3, "track_pos")
-		"Play_View":
-			tween = animate_fade_out(ani_comp, 0.45, tween_id)
-		"Setting_View":
-			if ani_comp.has_method("has_pending_changes") and ani_comp.has_pending_changes():
-				_save_settings_on_exit(ani_comp)
-			
-			var btns = ani_comp.get_node("HBoxC/ShortCut")
-			var setting_list = ani_comp.get_node("HBoxC/SettingList")
-			tween = animate_offset_to(btns, Vector2(-500, 0), 0.35, "sv_btns")
-			animate_offset_to(setting_list, Vector2(-1500, 0), 0.25, "sv_info")
-
-			tween = animate_fade_out(ani_comp, 0.35, tween_id)
-			if ani_comp.has_method("switch_page_instant"):
-				ani_comp.switch_page_instant()
-			else:
-				ani_comp.switch_page()
-		"Score_View":
-			tween = ani_comp.animate(false)
-		"Chara_View":
-			if ani_comp == null or not is_instance_valid(ani_comp):
-				return null
-			if ani_comp.has_method("play_exit"):
-				ani_comp.play_exit()
-		"Profile_View":
-			var navi := ani_comp.get_node_or_null("Navi")
-			if navi:
-				animate_offset_to(navi, Vector2(0, navi.size.y), 0.3, "ProfileNaviOut")
-			var content := ani_comp.get_node_or_null("PageContent")
-			if content:
-				tween = animate_fade_out(content, 0.3, tween_id)
-				# 独立视图：退场动画结束后隐藏，避免盖在其它页面上
-				tween.finished.connect(func() -> void:
-					if is_instance_valid(ani_comp) and UiStatMGR.current_state != UIStateManager.UIState.PROFILE_VIEW:
-						ani_comp.visible = false
-				)
-		"Music_Player_View":
-			# 退出动画同样由页面自管（animate(false)）
-			if ani_comp == null or not is_instance_valid(ani_comp):
-				return null
-			ani_comp.call("animate", false)
-			return null
-
 	if tween and tween.is_valid() and is_instance_valid(ani_comp):
 		tween.finished.connect(func() -> void:
 			if is_instance_valid(ani_comp):
@@ -700,30 +649,21 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 		)
 	return tween
 
-## 保存设置配置（在 SettingView 退出时调用）
-## 同步部分（内存态更新）立即执行；磁盘写入与 settings_changed 通知由 SettingView 推迟到下一帧，
-## 避免阻塞退场动画首帧
-func _save_settings_on_exit(setting_view: Control) -> void:
-	if not setting_view or not setting_view.has_method("save_config_to_file"):
-		return
-
-	# 调用 SettingView 的保存方法（其内部已做 soundfont 回退 + 同步应用；落盘/通知异步进行）
-	var success = setting_view.save_config_to_file()
-
-	if success:
-		GLogger.info("Settings applied successfully", "AnimationManager")
-	else:
-		push_warning("[AnimationManager] Failed to apply settings")
+## 保存设置配置已内联到 SettingView._play_exit（原 _save_settings_on_exit）
 
 func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween:
 	GLogger.info("组件进入动画: %s" % ui_name, "AnimationManager")
 	var tween_id = "%s_in" % ui_name
 	var tween : Tween
 
+	var ani_comp = get_comp(ui_name)
+	# 继承 ViewBase 的视图自管转场（含可见性复位与文字滚动恢复）
+	if ani_comp is ViewBase:
+		return ani_comp.play_transition(true)
+
 	# 播放动画的组件
 	var album_list:AlbumView = get_comp("Album_List")
 	var song_list:SongView = get_comp("Song_List")
-	var ani_comp = get_comp(ui_name)
 	if is_instance_valid(ani_comp) and ani_comp is CanvasItem:
 		ani_comp.visible = true
 		ani_comp.modulate.a = 1.0
@@ -777,11 +717,6 @@ func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween
 
 			# 池项是滚动容器的子节点，跟着容器一起滑入（无需单独处理覆盖层）
 			tween = animate_offset_back(ani_comp, 0.25, tween_id)
-		"Midi_Info_View":
-			animate_fade_in(ani_comp, 0.1, "MidiViewFadeIn")
-
-			ani_comp.offset_transform_position = Vector2(0, -500)
-			tween = animate_offset_back(ani_comp, 0.5, tween_id)
 		"Player_Info":
 			# 离线模式下不显示玩家面板（仅检查 online_mode 配置，与 RB_Btn 商店图标一致）
 			if not NetManager.is_online_mode():
@@ -795,60 +730,4 @@ func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween
 			animate_offset_back(ani_comp, 0.35, "CharacterPosition")
 		"Shortcut_Menu":
 			tween = ani_comp.play_transition_animation(false)
-		"Store_View":
-			var top_bar = ani_comp.get_node("TopBar")
-			top_bar.offset_transform_position = Vector2(0, -500)
-			animate_offset_back(top_bar, 0.25, "top_bar_in")
-
-			var bottom = ani_comp.get_node("Bottom")
-			bottom.offset_transform_position = Vector2(0, 500)
-			animate_offset_back(bottom, 0.25, "bottom_in")
-
-			tween = animate_fade_in(ani_comp, 0.45, tween_id)
-		"Track_List":
-			ani_comp.scroll_vertical = 300
-			tween = animate_fade_in(ani_comp, 0.45, tween_id)
-			# 与退出对称：从整屏下方滑回（ratio 1.0 → 0）
-			ani_comp.offset_transform_enabled = true
-			ani_comp.offset_transform_visual_only = false
-			ani_comp.offset_transform_position = Vector2.ZERO
-			ani_comp.offset_transform_position_ratio = Vector2(0, 1)
-			animate_offset_ratio_to(ani_comp, Vector2.ZERO, 0.3, "track_pos")
-		"Play_View":
-			tween = animate_fade_in(ani_comp, 0.45, tween_id)
-		"Setting_View":
-			var btns = ani_comp.get_node("HBoxC/ShortCut")
-			var setting_list = ani_comp.get_node("HBoxC/SettingList")
-			btns.offset_transform_position = Vector2(-500, 0)
-			setting_list.offset_transform_position = Vector2(-1500, 0)
-			tween = animate_offset_back(btns, 0.25, "sv_btns")
-			animate_offset_back(setting_list, 0.35, "sv_info")
-		"Score_View":
-			if ani_comp == null or not is_instance_valid(ani_comp):
-				return null
-			ani_comp.visible = true
-			ani_comp.call("animate")
-		"Chara_View":
-			if ani_comp == null or not is_instance_valid(ani_comp):
-				return null
-			if ani_comp.has_method("play_enter"):
-				ani_comp.play_enter()
-		"Profile_View":
-			# 底栏向上滑入 + 内容区淡入
-			var navi := ani_comp.get_node_or_null("Navi")
-			if navi:
-				navi.offset_transform_position = Vector2(0, navi.size.y)
-				animate_offset_back(navi, 0.3, "ProfileNaviIn")
-			var content := ani_comp.get_node_or_null("PageContent")
-			if content:
-				content.modulate.a = 0.0
-				tween = animate_fade_in(content, 0.35, tween_id)
-		"Music_Player_View":
-			# 入场/出场动画由 MusicPlayerView.animate() 自管（同 ScoreView 模式），
-			# 这里只负责置可见并转发调用。
-			if ani_comp == null or not is_instance_valid(ani_comp):
-				return null
-			ani_comp.visible = true
-			ani_comp.call("animate")
-
 	return tween

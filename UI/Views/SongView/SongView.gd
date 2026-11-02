@@ -76,11 +76,17 @@ func _ready() -> void:
 		apply_theme()
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
-## 内联样式跨列表项共享，通过主题句柄定位并上色即可同步全部列表项
 func apply_theme() -> void:
-	var handle := get_theme_handle()
-	if handle:
-		ThemeMGR._style_song_instance(handle, ThemeMGR.get_color("primary_light"))
+	_apply_item_accent()
+
+## 把主题强调色写入列表项暴露的计数标签颜色属性
+## 计数标签的内联 StyleBox 由同类列表项共享，改首项即同步全部列表项
+func _apply_item_accent() -> void:
+	if list_items.is_empty():
+		return
+	var song_item := list_items[0] as SongListItem
+	if is_instance_valid(song_item):
+		song_item.midi_count_accent = ThemeMGR.get_color("primary_light")
 
 func _exit_tree() -> void:
 	if ThemeMGR:
@@ -132,16 +138,13 @@ func _refresh_display() -> void:
 	clear_items()
 	
 	var is_active := UiStatMGR.current_state == UIStateManager.UIState.SONG_VIEW
-	var no_items := get_node_or_null(PathRegistry.NO_ITEMS)
-	
 	if current_songs.is_empty():
-		if no_items and is_active:
-			no_items.visible = true
+		if %NoItems and is_active:
+			%NoItems.visible = true
 		return
 	
 	# 列表非空，隐藏空提示
-	if no_items:
-		no_items.visible = false
+	%NoItems.visible = false
 	
 	var counter:int = 0
 	var bg = ButtonGroup.new()
@@ -150,6 +153,8 @@ func _refresh_display() -> void:
 		var item = create_and_add_item(String(song.get("id", "")), "song")
 		if item:
 			item.setup_with_dict(self, song, counter, bg)
+			if counter == 0:
+				_apply_item_accent()
 			counter += 1
 	# 列表构建完成，触发未加载项的封面加载
 	trigger_cover_chain()
@@ -204,7 +209,7 @@ func _update_ss_count() -> void:
 	var ss_node = get_node_or_null(PathRegistry.SELECTED_ALBUM)
 	if not is_instance_valid(ss_node):
 		return
-	var count_label = ss_node.get_node_or_null("SongCount")
+	var count_label = ss_node.get_node_or_null("%SongCount")
 	if is_instance_valid(count_label):
 		count_label.text = "%d" % album.get("song_ids", []).size()
 

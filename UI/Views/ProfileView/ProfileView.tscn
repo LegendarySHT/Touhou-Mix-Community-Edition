@@ -377,8 +377,10 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_blhay")
+view_layer = 2
 
 [node name="PageContent" type="TabContainer" parent="." unique_id=1730970720]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -410,82 +412,91 @@ size_flags_stretch_ratio = 3.0
 theme_override_constants/separation = 0
 alignment = 1
 
-[node name="Border" type="PanelContainer" parent="PageContent/Profile/Main/Displayer" unique_id=1414132698]
+[node name="CharaCardBorder" type="PanelContainer" parent="PageContent/Profile/Main/Displayer" unique_id=1414132698]
+unique_name_in_owner = true
 custom_maximum_size = Vector2(425, 550)
 clip_contents = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_i6pqd")
 
-[node name="CharaImg" type="TextureRect" parent="PageContent/Profile/Main/Displayer/Border" unique_id=1545527890]
+[node name="CharaPortrait" type="TextureRect" parent="PageContent/Profile/Main/Displayer/CharaCardBorder" unique_id=1545527890]
+unique_name_in_owner = true
 layout_mode = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="BGImg" type="TextureRect" parent="PageContent/Profile/Main/Displayer/Border" unique_id=1336824707]
+[node name="CharaBackground" type="TextureRect" parent="PageContent/Profile/Main/Displayer/CharaCardBorder" unique_id=1336824707]
+unique_name_in_owner = true
 show_behind_parent = true
 layout_mode = 2
 mouse_filter = 2
 expand_mode = 5
 stretch_mode = 6
 
-[node name="ColorRect" type="ColorRect" parent="PageContent/Profile/Main/Displayer/Border" unique_id=109545152]
+[node name="CharaCardShade" type="ColorRect" parent="PageContent/Profile/Main/Displayer/CharaCardBorder" unique_id=109545152]
 show_behind_parent = true
 layout_mode = 2
 mouse_filter = 2
 color = Color(0, 0, 0, 0.48235294)
 
-[node name="Info" type="PanelContainer" parent="PageContent/Profile/Main/Displayer" unique_id=1109395736]
+[node name="CharaInfoPanel" type="PanelContainer" parent="PageContent/Profile/Main/Displayer" unique_id=1109395736]
+unique_name_in_owner = true
 custom_maximum_size = Vector2(225, 450)
 layout_mode = 2
 offset_transform_enabled = true
 offset_transform_position_ratio = Vector2(0, 0.1)
 theme_override_styles/panel = SubResource("StyleBoxFlat_ft172")
 
-[node name="VBox" type="VBoxContainer" parent="PageContent/Profile/Main/Displayer/Info" unique_id=1012077563]
+[node name="InfoColumn" type="VBoxContainer" parent="PageContent/Profile/Main/Displayer/CharaInfoPanel" unique_id=1012077563]
 layout_mode = 2
 alignment = 1
 
-[node name="Name" type="Label" parent="PageContent/Profile/Main/Displayer/Info/VBox" unique_id=2072238485]
+[node name="CharaInfoName" type="Label" parent="PageContent/Profile/Main/Displayer/CharaInfoPanel/InfoColumn" unique_id=2072238485]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "Chara Name"
 
-[node name="Illustrator" type="Label" parent="PageContent/Profile/Main/Displayer/Info/VBox" unique_id=1693289358]
+[node name="CharaInfoAuthor" type="Label" parent="PageContent/Profile/Main/Displayer/CharaInfoPanel/InfoColumn" unique_id=1693289358]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 2
 theme_override_font_sizes/font_size = 24
 text = "by [author]"
 
-[node name="CollectiontTitle" type="Label" parent="PageContent/Profile/Main/Displayer/Info/VBox" unique_id=1646996614]
+[node name="CollectionTitle" type="Label" parent="PageContent/Profile/Main/Displayer/CharaInfoPanel/InfoColumn" unique_id=1646996614]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "已收集角色"
 horizontal_alignment = 1
 
-[node name="CollectProgress" type="Label" parent="PageContent/Profile/Main/Displayer/Info/VBox" unique_id=1116389370]
+[node name="CollectProgress" type="Label" parent="PageContent/Profile/Main/Displayer/CharaInfoPanel/InfoColumn" unique_id=1116389370]
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "1/100"
 horizontal_alignment = 1
 
-[node name="Header" type="PanelContainer" parent="PageContent/Profile/Main" unique_id=1401765387]
+[node name="ProfileHeaderPanel" type="PanelContainer" parent="PageContent/Profile/Main" unique_id=1401765387]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_iygje")
 
-[node name="HBoxContainer" type="HBoxContainer" parent="PageContent/Profile/Main/Header" unique_id=454739147]
+[node name="HeaderRow" type="HBoxContainer" parent="PageContent/Profile/Main/ProfileHeaderPanel" unique_id=454739147]
 layout_mode = 2
 theme_override_constants/separation = 30
 
-[node name="AvatarBig" type="Panel" parent="PageContent/Profile/Main/Header/HBoxContainer" unique_id=21134669]
+[node name="ProfileAvatarBorder" type="Panel" parent="PageContent/Profile/Main/ProfileHeaderPanel/HeaderRow" unique_id=21134669]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 150)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_hhcpw")
 
-[node name="TextureRect" type="TextureRect" parent="PageContent/Profile/Main/Header/HBoxContainer/AvatarBig" unique_id=1821331387]
+[node name="ProfileAvatar" type="TextureRect" parent="PageContent/Profile/Main/ProfileHeaderPanel/HeaderRow/ProfileAvatarBorder" unique_id=1821331387]
+unique_name_in_owner = true
 material = SubResource("ShaderMaterial_yverd")
 layout_mode = 1
 anchors_preset = 15
@@ -498,7 +509,7 @@ texture = ExtResource("3_71xqf")
 expand_mode = 3
 stretch_mode = 5
 
-[node name="NameLevelVBox" type="VBoxContainer" parent="PageContent/Profile/Main/Header/HBoxContainer" unique_id=932786588]
+[node name="NameLevelVBox" type="VBoxContainer" parent="PageContent/Profile/Main/ProfileHeaderPanel/HeaderRow" unique_id=932786588]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
@@ -506,18 +517,20 @@ mouse_filter = 2
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="NameLabel" type="Label" parent="PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox" unique_id=468589443]
+[node name="ProfileNameText" type="Label" parent="PageContent/Profile/Main/ProfileHeaderPanel/HeaderRow/NameLevelVBox" unique_id=468589443]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 size_flags_vertical = 6
 theme_override_font_sizes/font_size = 36
 text = "Anonymous Player"
 
-[node name="Level" type="HBoxContainer" parent="PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox" unique_id=759808391]
+[node name="Level" type="HBoxContainer" parent="PageContent/Profile/Main/ProfileHeaderPanel/HeaderRow/NameLevelVBox" unique_id=759808391]
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="LevelLabel" type="Label" parent="PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox/Level" unique_id=520233425]
+[node name="ProfileLevelText" type="Label" parent="PageContent/Profile/Main/ProfileHeaderPanel/HeaderRow/NameLevelVBox/Level" unique_id=520233425]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 1
@@ -525,7 +538,8 @@ theme_override_font_sizes/font_size = 28
 text = "Level 1"
 vertical_alignment = 2
 
-[node name="PPLabel" type="Label" parent="PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox/Level" unique_id=351044655]
+[node name="ProfilePPText" type="Label" parent="PageContent/Profile/Main/ProfileHeaderPanel/HeaderRow/NameLevelVBox/Level" unique_id=351044655]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 42
@@ -533,7 +547,8 @@ text = "0 pp"
 horizontal_alignment = 2
 vertical_alignment = 2
 
-[node name="LevelProgressBar" type="ProgressBar" parent="PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox" unique_id=990396837]
+[node name="ProfileLevelingBar" type="ProgressBar" parent="PageContent/Profile/Main/ProfileHeaderPanel/HeaderRow/NameLevelVBox" unique_id=990396837]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 mouse_filter = 2
@@ -549,14 +564,14 @@ size_flags_horizontal = 3
 size_flags_stretch_ratio = 3.0
 theme_override_styles/panel = SubResource("StyleBoxEmpty_moh5i")
 
-[node name="VBox" type="VBoxContainer" parent="PageContent/Profile/Data" unique_id=825565539]
+[node name="DataColumn" type="VBoxContainer" parent="PageContent/Profile/Data" unique_id=825565539]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 3.0
 theme_override_constants/separation = 40
 alignment = 1
 
-[node name="Desc" type="HBoxContainer" parent="PageContent/Profile/Data/VBox" unique_id=1273076522]
+[node name="ProfileDescRow" type="HBoxContainer" parent="PageContent/Profile/Data/DataColumn" unique_id=1273076522]
 custom_maximum_size = Vector2(-1, 380)
 layout_mode = 2
 size_flags_vertical = 3
@@ -564,7 +579,8 @@ size_flags_stretch_ratio = 4.0
 theme_override_constants/separation = 20
 alignment = 1
 
-[node name="Label" type="Label" parent="PageContent/Profile/Data/VBox/Desc" unique_id=124274308]
+[node name="ProfileDescription" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow" unique_id=124274308]
+unique_name_in_owner = true
 custom_maximum_size = Vector2(650, -1)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -574,17 +590,18 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_2xvos")
 text = "个人简介"
 autowrap_mode = 2
 
-[node name="Rank" type="VBoxContainer" parent="PageContent/Profile/Data/VBox/Desc" unique_id=707784553]
+[node name="RankColumn" type="VBoxContainer" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow" unique_id=707784553]
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="RankTotal" type="Panel" parent="PageContent/Profile/Data/VBox/Desc/Rank" unique_id=569037342]
+[node name="RankTotal" type="Panel" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn" unique_id=569037342]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_moh5i")
 
-[node name="Title" type="Label" parent="PageContent/Profile/Data/VBox/Desc/Rank/RankTotal" unique_id=5253447]
+[node name="RankTotalCaption" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankTotal" unique_id=5253447]
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 0.6
@@ -594,7 +611,7 @@ text = "Ranking"
 horizontal_alignment = 1
 vertical_alignment = 2
 
-[node name="Rank" type="Label" parent="PageContent/Profile/Data/VBox/Desc/Rank/RankTotal" unique_id=995132753]
+[node name="RankTotalValue" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankTotal" unique_id=995132753]
 layout_mode = 1
 anchors_preset = -1
 anchor_top = 0.5
@@ -604,7 +621,7 @@ theme_override_font_sizes/font_size = 48
 text = "#0"
 horizontal_alignment = 1
 
-[node name="Total" type="Label" parent="PageContent/Profile/Data/VBox/Desc/Rank/RankTotal" unique_id=396939373]
+[node name="RankTotalCount" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankTotal" unique_id=396939373]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.6
@@ -617,12 +634,12 @@ text = "Total"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="RankPast" type="Panel" parent="PageContent/Profile/Data/VBox/Desc/Rank" unique_id=634216873]
+[node name="RankPast" type="Panel" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn" unique_id=634216873]
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_ag846")
 
-[node name="Rank" type="Label" parent="PageContent/Profile/Data/VBox/Desc/Rank/RankPast" unique_id=1103544077]
+[node name="RankPastValue" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast" unique_id=1103544077]
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 0.6
@@ -632,7 +649,7 @@ text = "#1"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Year" type="Label" parent="PageContent/Profile/Data/VBox/Desc/Rank/RankPast" unique_id=76458199]
+[node name="RankPastYear" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast" unique_id=76458199]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.6
@@ -645,12 +662,12 @@ text = "2025"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="RankPast2" type="Panel" parent="PageContent/Profile/Data/VBox/Desc/Rank" unique_id=1465903314]
+[node name="RankPast2" type="Panel" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn" unique_id=1465903314]
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_j7lut")
 
-[node name="Rank" type="Label" parent="PageContent/Profile/Data/VBox/Desc/Rank/RankPast2" unique_id=1428837707]
+[node name="RankPast2Value" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast2" unique_id=1428837707]
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 0.6
@@ -660,7 +677,7 @@ text = "#1"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Year" type="Label" parent="PageContent/Profile/Data/VBox/Desc/Rank/RankPast2" unique_id=2051562825]
+[node name="RankPast2Year" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast2" unique_id=2051562825]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.6
@@ -673,25 +690,26 @@ text = "2024"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="Play" type="PanelContainer" parent="PageContent/Profile/Data/VBox" unique_id=311090071]
+[node name="RecentPlayPanel" type="PanelContainer" parent="PageContent/Profile/Data/DataColumn" unique_id=311090071]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 size_flags_stretch_ratio = 5.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_2xvos")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="PageContent/Profile/Data/VBox/Play" unique_id=1264760350]
+[node name="PlayColumn" type="VBoxContainer" parent="PageContent/Profile/Data/DataColumn/RecentPlayPanel" unique_id=1264760350]
 layout_mode = 2
 
-[node name="Title" type="Label" parent="PageContent/Profile/Data/VBox/Play/VBoxContainer" unique_id=644578656]
+[node name="PlayCaption" type="Label" parent="PageContent/Profile/Data/DataColumn/RecentPlayPanel/PlayColumn" unique_id=644578656]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "最近游玩"
 
-[node name="List" type="ScrollContainer" parent="PageContent/Profile/Data/VBox/Play/VBoxContainer" unique_id=1097666326]
+[node name="List" type="ScrollContainer" parent="PageContent/Profile/Data/DataColumn/RecentPlayPanel/PlayColumn" unique_id=1097666326]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="VBox" type="VBoxContainer" parent="PageContent/Profile/Data/VBox/Play/VBoxContainer/List" unique_id=615279763]
+[node name="PlayRecordList" type="VBoxContainer" parent="PageContent/Profile/Data/DataColumn/RecentPlayPanel/PlayColumn/List" unique_id=615279763]
 layout_mode = 2
 
 [node name="History" type="VBoxContainer" parent="PageContent" unique_id=1290400202]
@@ -699,26 +717,27 @@ visible = false
 layout_mode = 2
 metadata/_tab_index = 1
 
-[node name="PC" type="PanelContainer" parent="PageContent/History" unique_id=415150945]
+[node name="HistoryPanel" type="PanelContainer" parent="PageContent/History" unique_id=415150945]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 125)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_1pkam")
 
-[node name="TopBar" type="HBoxContainer" parent="PageContent/History/PC" unique_id=2039044189]
+[node name="TopBar" type="HBoxContainer" parent="PageContent/History/HistoryPanel" unique_id=2039044189]
 layout_mode = 2
 
-[node name="PC" type="PanelContainer" parent="PageContent/History/PC/TopBar" unique_id=1380606977]
+[node name="HistoryStatsPanel" type="PanelContainer" parent="PageContent/History/HistoryPanel/TopBar" unique_id=1380606977]
 custom_minimum_size = Vector2(770, 0)
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_history_topbar")
 
-[node name="Grid" type="GridContainer" parent="PageContent/History/PC/TopBar/PC" unique_id=2129108957]
+[node name="Grid" type="GridContainer" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel" unique_id=2129108957]
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_constants/h_separation = 20
 columns = 7
 
-[node name="Label" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=1815740216]
+[node name="GradeHeaderCaption" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1815740216]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
@@ -728,7 +747,7 @@ text = "Performace"
 horizontal_alignment = 1
 vertical_alignment = 2
 
-[node name="Rank1" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=2014034047]
+[node name="GradeHeaderS" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=2014034047]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
@@ -737,7 +756,7 @@ text = "S"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Rank2" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=1782805660]
+[node name="GradeHeaderA" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1782805660]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
 theme_override_colors/font_color = Color(0, 0, 0, 1)
@@ -747,7 +766,7 @@ text = "A"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Rank3" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=1825935104]
+[node name="GradeHeaderB" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1825935104]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
 theme_override_colors/font_color = Color(0, 0, 0, 1)
@@ -757,7 +776,7 @@ text = "B"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Rank4" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=1616333252]
+[node name="GradeHeaderC" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1616333252]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
@@ -766,7 +785,7 @@ text = "C"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Rank5" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=1618589507]
+[node name="GradeHeaderD" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1618589507]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
@@ -775,7 +794,7 @@ text = "D"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Rank6" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=1552353533]
+[node name="GradeHeaderF" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1552353533]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
@@ -784,7 +803,8 @@ text = "F"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="pp" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=1041702721]
+[node name="HistoryPp" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1041702721]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
@@ -792,7 +812,8 @@ text = "999999.99 pp"
 horizontal_alignment = 1
 vertical_alignment = 2
 
-[node name="SCount" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=391717684]
+[node name="GradeCountS" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=391717684]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
@@ -800,7 +821,8 @@ text = "9999"
 horizontal_alignment = 1
 vertical_alignment = 2
 
-[node name="ACount" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=1189915291]
+[node name="GradeCountA" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1189915291]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
@@ -808,7 +830,8 @@ text = "9999"
 horizontal_alignment = 1
 vertical_alignment = 2
 
-[node name="BCount" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=39213604]
+[node name="GradeCountB" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=39213604]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
@@ -816,7 +839,8 @@ text = "9999"
 horizontal_alignment = 1
 vertical_alignment = 2
 
-[node name="CCount" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=935287760]
+[node name="GradeCountC" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=935287760]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
@@ -824,7 +848,8 @@ text = "9999"
 horizontal_alignment = 1
 vertical_alignment = 2
 
-[node name="DCount" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=1927077247]
+[node name="GradeCountD" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1927077247]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
@@ -832,7 +857,8 @@ text = "9999"
 horizontal_alignment = 1
 vertical_alignment = 2
 
-[node name="FCount" type="Label" parent="PageContent/History/PC/TopBar/PC/Grid" unique_id=788456564]
+[node name="GradeCountF" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=788456564]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 24
@@ -840,16 +866,17 @@ text = "9999"
 horizontal_alignment = 1
 vertical_alignment = 2
 
-[node name="Spacer" type="Control" parent="PageContent/History/PC/TopBar" unique_id=1811999771]
+[node name="Spacer" type="Control" parent="PageContent/History/HistoryPanel/TopBar" unique_id=1811999771]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="TopBtns" type="HBoxContainer" parent="PageContent/History/PC/TopBar" unique_id=1865873512]
+[node name="TopBtns" type="HBoxContainer" parent="PageContent/History/HistoryPanel/TopBar" unique_id=1865873512]
 layout_mode = 2
 theme_override_constants/separation = 20
 
-[node name="RecentPlay" type="Button" parent="PageContent/History/PC/TopBar/TopBtns" unique_id=1473519099]
+[node name="RecentPlayBtn" type="Button" parent="PageContent/History/HistoryPanel/TopBar/TopBtns" unique_id=1473519099]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
@@ -866,7 +893,8 @@ button_pressed = true
 button_group = SubResource("ButtonGroup_3y6u5")
 text = "最近游玩"
 
-[node name="BestPlay" type="Button" parent="PageContent/History/PC/TopBar/TopBtns" unique_id=477589048]
+[node name="BestPlayBtn" type="Button" parent="PageContent/History/HistoryPanel/TopBar/TopBtns" unique_id=477589048]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
@@ -882,7 +910,8 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_3y6u5")
 text = "最佳记录"
 
-[node name="MostPlay" type="Button" parent="PageContent/History/PC/TopBar/TopBtns" unique_id=343271832]
+[node name="MostPlayBtn" type="Button" parent="PageContent/History/HistoryPanel/TopBar/TopBtns" unique_id=343271832]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
@@ -898,46 +927,50 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_3y6u5")
 text = "最多游玩"
 
-[node name="MarginRight" type="Control" parent="PageContent/History/PC/TopBar" unique_id=288929981]
+[node name="MarginRight" type="Control" parent="PageContent/History/HistoryPanel/TopBar" unique_id=288929981]
 custom_minimum_size = Vector2(40, 0)
 layout_mode = 2
 mouse_filter = 2
 
-[node name="List" type="TabContainer" parent="PageContent/History" unique_id=697349407]
+[node name="HistoryTabs" type="TabContainer" parent="PageContent/History" unique_id=697349407]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxEmpty_7fsko")
 current_tab = 0
 tabs_visible = false
 
-[node name="RecentPlay" type="ScrollContainer" parent="PageContent/History/List" unique_id=81773539]
+[node name="RecentPlay" type="ScrollContainer" parent="PageContent/History/HistoryTabs" unique_id=81773539]
 layout_mode = 2
 size_flags_vertical = 3
 metadata/_tab_index = 0
 
-[node name="VBox" type="VBoxContainer" parent="PageContent/History/List/RecentPlay" unique_id=1646692693]
+[node name="RecentPlayList" type="VBoxContainer" parent="PageContent/History/HistoryTabs/RecentPlay" unique_id=1646692693]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 15
 
-[node name="BestPlay" type="ScrollContainer" parent="PageContent/History/List" unique_id=1054082970]
+[node name="BestPlay" type="ScrollContainer" parent="PageContent/History/HistoryTabs" unique_id=1054082970]
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
 metadata/_tab_index = 1
 
-[node name="VBox" type="VBoxContainer" parent="PageContent/History/List/BestPlay" unique_id=888654210]
+[node name="BestPlayList" type="VBoxContainer" parent="PageContent/History/HistoryTabs/BestPlay" unique_id=888654210]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 15
 
-[node name="MostPlay" type="ScrollContainer" parent="PageContent/History/List" unique_id=1909620862]
+[node name="MostPlay" type="ScrollContainer" parent="PageContent/History/HistoryTabs" unique_id=1909620862]
 visible = false
 layout_mode = 2
 size_flags_vertical = 3
 metadata/_tab_index = 2
 
-[node name="VBox" type="VBoxContainer" parent="PageContent/History/List/MostPlay" unique_id=2052768632]
+[node name="MostPlayList" type="VBoxContainer" parent="PageContent/History/HistoryTabs/MostPlay" unique_id=2052768632]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 15
@@ -948,12 +981,12 @@ layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxEmpty_ng81m")
 metadata/_tab_index = 2
 
-[node name="HBox" type="HBoxContainer" parent="PageContent/Edit" unique_id=828755108]
+[node name="EditRow" type="HBoxContainer" parent="PageContent/Edit" unique_id=828755108]
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_constants/separation = 50
 
-[node name="ProfileEdit" type="VBoxContainer" parent="PageContent/Edit/HBox" unique_id=1597922371]
+[node name="ProfileEditColumn" type="VBoxContainer" parent="PageContent/Edit/EditRow" unique_id=1597922371]
 custom_minimum_size = Vector2(0, 720)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -962,23 +995,25 @@ size_flags_stretch_ratio = 5.0
 theme_override_constants/separation = 20
 alignment = 1
 
-[node name="NicknameTitle" type="Label" parent="PageContent/Edit/HBox/ProfileEdit" unique_id=1934781578]
+[node name="NicknameTitle" type="Label" parent="PageContent/Edit/EditRow/ProfileEditColumn" unique_id=1934781578]
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "昵称"
 
-[node name="Nickname" type="HBoxContainer" parent="PageContent/Edit/HBox/ProfileEdit" unique_id=523899921]
+[node name="Nickname" type="HBoxContainer" parent="PageContent/Edit/EditRow/ProfileEditColumn" unique_id=523899921]
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_constants/separation = 50
 
-[node name="LineEdit" type="LineEdit" parent="PageContent/Edit/HBox/ProfileEdit/Nickname" unique_id=752248277]
+[node name="NicknameEdit" type="LineEdit" parent="PageContent/Edit/EditRow/ProfileEditColumn/Nickname" unique_id=752248277]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 
-[node name="ConfirmBtn" type="Button" parent="PageContent/Edit/HBox/ProfileEdit/Nickname" unique_id=190632065]
+[node name="NicknameConfirmBtn" type="Button" parent="PageContent/Edit/EditRow/ProfileEditColumn/Nickname" unique_id=190632065]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 60)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
@@ -987,26 +1022,28 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_6cgaj")
 theme_override_styles/hover = SubResource("StyleBoxFlat_0xjso")
 text = "保存"
 
-[node name="Control" type="Control" parent="PageContent/Edit/HBox/ProfileEdit" unique_id=1002154331]
+[node name="ProfileEditGap" type="Control" parent="PageContent/Edit/EditRow/ProfileEditColumn" unique_id=1002154331]
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 
-[node name="DescTitle" type="Label" parent="PageContent/Edit/HBox/ProfileEdit" unique_id=1497959047]
+[node name="DescTitle" type="Label" parent="PageContent/Edit/EditRow/ProfileEditColumn" unique_id=1497959047]
 layout_mode = 2
 theme_override_font_sizes/font_size = 42
 text = "简介"
 
-[node name="Desc" type="HBoxContainer" parent="PageContent/Edit/HBox/ProfileEdit" unique_id=1845282896]
+[node name="DescBox" type="HBoxContainer" parent="PageContent/Edit/EditRow/ProfileEditColumn" unique_id=1845282896]
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 theme_override_constants/separation = 50
 
-[node name="LineEdit" type="LineEdit" parent="PageContent/Edit/HBox/ProfileEdit/Desc" unique_id=1121001614]
+[node name="DescEdit" type="LineEdit" parent="PageContent/Edit/EditRow/ProfileEditColumn/DescBox" unique_id=1121001614]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 400)
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="ConfirmBtn" type="Button" parent="PageContent/Edit/HBox/ProfileEdit/Desc" unique_id=2128739761]
+[node name="DescConfirmBtn" type="Button" parent="PageContent/Edit/EditRow/ProfileEditColumn/DescBox" unique_id=2128739761]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 60)
 layout_mode = 2
 size_flags_vertical = 8
@@ -1016,7 +1053,7 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_6cgaj")
 theme_override_styles/hover = SubResource("StyleBoxFlat_0xjso")
 text = "保存"
 
-[node name="OtherEdit" type="VBoxContainer" parent="PageContent/Edit/HBox" unique_id=1977959493]
+[node name="OtherEditColumn" type="VBoxContainer" parent="PageContent/Edit/EditRow" unique_id=1977959493]
 custom_maximum_size = Vector2(-1, 720)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -1024,24 +1061,26 @@ size_flags_stretch_ratio = 4.0
 theme_override_constants/separation = 15
 alignment = 1
 
-[node name="AvatorEdit" type="HBoxContainer" parent="PageContent/Edit/HBox/OtherEdit" unique_id=1186454364]
+[node name="AvatarEdit" type="HBoxContainer" parent="PageContent/Edit/EditRow/OtherEditColumn" unique_id=1186454364]
 layout_mode = 2
 size_flags_vertical = 6
 
-[node name="Border" type="PanelContainer" parent="PageContent/Edit/HBox/OtherEdit/AvatorEdit" unique_id=1644323787]
+[node name="AvatarPreviewBorder" type="PanelContainer" parent="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit" unique_id=1644323787]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(370, 370)
 clip_contents = true
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_3xm0o")
 script = ExtResource("4_sgab8")
 
-[node name="AdjustBtns" type="VBoxContainer" parent="PageContent/Edit/HBox/OtherEdit/AvatorEdit" unique_id=1816755062]
+[node name="AvatarAdjustBar" type="VBoxContainer" parent="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit" unique_id=1816755062]
 layout_mode = 2
 size_flags_horizontal = 6
 theme_override_constants/separation = 15
 alignment = 2
 
-[node name="ScaleSlider" type="HSlider" parent="PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns" unique_id=1118033521]
+[node name="AvatarZoomSlider" type="HSlider" parent="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar" unique_id=1118033521]
+unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(0, 30)
 layout_mode = 2
@@ -1050,7 +1089,7 @@ max_value = 1.5
 step = 0.01
 value = 1.0
 
-[node name="UploadBtn" type="Button" parent="PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns" unique_id=907560232]
+[node name="AvatarUploadBtn" type="Button" parent="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar" unique_id=907560232]
 custom_minimum_size = Vector2(180, 70)
 layout_mode = 2
 size_flags_horizontal = 10
@@ -1061,7 +1100,8 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_6cgaj")
 theme_override_styles/hover = SubResource("StyleBoxFlat_0xjso")
 text = "选取头像"
 
-[node name="SaveBtn" type="Button" parent="PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns" unique_id=228919255]
+[node name="AvatarSaveBtn" type="Button" parent="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar" unique_id=228919255]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(180, 70)
 layout_mode = 2
 size_flags_horizontal = 10
@@ -1072,42 +1112,45 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_6cgaj")
 theme_override_styles/hover = SubResource("StyleBoxFlat_0xjso")
 text = "保存"
 
-[node name="PasswordTitle" type="Label" parent="PageContent/Edit/HBox/OtherEdit" unique_id=704805091]
+[node name="PasswordTitle" type="Label" parent="PageContent/Edit/EditRow/OtherEditColumn" unique_id=704805091]
 layout_mode = 2
 theme_override_font_sizes/font_size = 42
 text = "原密码"
 vertical_alignment = 2
 
-[node name="Password" type="HBoxContainer" parent="PageContent/Edit/HBox/OtherEdit" unique_id=263827390]
+[node name="Password" type="HBoxContainer" parent="PageContent/Edit/EditRow/OtherEditColumn" unique_id=263827390]
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_constants/separation = 50
 
-[node name="LineEdit" type="LineEdit" parent="PageContent/Edit/HBox/OtherEdit/Password" unique_id=195476193]
+[node name="PasswordEdit" type="LineEdit" parent="PageContent/Edit/EditRow/OtherEditColumn/Password" unique_id=195476193]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Space" type="Control" parent="PageContent/Edit/HBox/OtherEdit/Password" unique_id=302538164]
+[node name="PasswordGap" type="Control" parent="PageContent/Edit/EditRow/OtherEditColumn/Password" unique_id=302538164]
 custom_minimum_size = Vector2(120, 60)
 layout_mode = 2
 
-[node name="NewPasswordTitle" type="Label" parent="PageContent/Edit/HBox/OtherEdit" unique_id=1215803896]
+[node name="NewPasswordTitle" type="Label" parent="PageContent/Edit/EditRow/OtherEditColumn" unique_id=1215803896]
 layout_mode = 2
 theme_override_font_sizes/font_size = 42
 text = "新密码"
 vertical_alignment = 2
 
-[node name="NewPassword" type="HBoxContainer" parent="PageContent/Edit/HBox/OtherEdit" unique_id=875889579]
+[node name="NewPassword" type="HBoxContainer" parent="PageContent/Edit/EditRow/OtherEditColumn" unique_id=875889579]
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_constants/separation = 50
 
-[node name="LineEdit" type="LineEdit" parent="PageContent/Edit/HBox/OtherEdit/NewPassword" unique_id=120020574]
+[node name="NewPasswordEdit" type="LineEdit" parent="PageContent/Edit/EditRow/OtherEditColumn/NewPassword" unique_id=120020574]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 5
 
-[node name="ConfirmBtn" type="Button" parent="PageContent/Edit/HBox/OtherEdit/NewPassword" unique_id=1395434135]
+[node name="PasswordConfirmBtn" type="Button" parent="PageContent/Edit/EditRow/OtherEditColumn/NewPassword" unique_id=1395434135]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 60)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
@@ -1117,6 +1160,7 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_0xjso")
 text = "保存"
 
 [node name="Navi" type="PanelContainer" parent="." unique_id=2000610427]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 150)
 layout_mode = 1
 anchors_preset = 12
@@ -1133,7 +1177,8 @@ layout_mode = 2
 theme_override_constants/separation = -4
 alignment = 1
 
-[node name="Profile" type="Button" parent="Navi/Btns" unique_id=1802481391]
+[node name="ProfileBtn" type="Button" parent="Navi/Btns" unique_id=1802481391]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_gvb4a")
@@ -1146,7 +1191,8 @@ button_group = SubResource("ButtonGroup_ag846")
 icon = SubResource("AtlasTexture_i1we6")
 icon_alignment = 1
 
-[node name="History" type="Button" parent="Navi/Btns" unique_id=413016997]
+[node name="HistoryBtn" type="Button" parent="Navi/Btns" unique_id=413016997]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_gvb4a")
@@ -1159,7 +1205,8 @@ button_group = SubResource("ButtonGroup_ag846")
 icon = SubResource("AtlasTexture_q71vh")
 icon_alignment = 1
 
-[node name="Edit" type="Button" parent="Navi/Btns" unique_id=328915796]
+[node name="EditBtn" type="Button" parent="Navi/Btns" unique_id=328915796]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 0)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxFlat_gvb4a")
@@ -1172,9 +1219,9 @@ button_group = SubResource("ButtonGroup_ag846")
 icon = SubResource("AtlasTexture_p7r7c")
 icon_alignment = 1
 
-[connection signal="pressed" from="PageContent/Edit/HBox/ProfileEdit/Nickname/ConfirmBtn" to="." method="_on_save_nickname_btn_pressed"]
-[connection signal="pressed" from="PageContent/Edit/HBox/ProfileEdit/Desc/ConfirmBtn" to="." method="_on_save_desc_btn_pressed"]
-[connection signal="value_changed" from="PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/ScaleSlider" to="." method="_on_avatar_scale_changed"]
-[connection signal="pressed" from="PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/UploadBtn" to="." method="_on_upload_avatar_btn_pressed"]
-[connection signal="pressed" from="PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/SaveBtn" to="." method="_on_save_avatar_btn_pressed"]
-[connection signal="pressed" from="PageContent/Edit/HBox/OtherEdit/NewPassword/ConfirmBtn" to="." method="_on_save_pwd_btn_pressed"]
+[connection signal="pressed" from="PageContent/Edit/EditRow/ProfileEditColumn/Nickname/NicknameConfirmBtn" to="." method="_on_save_nickname_btn_pressed"]
+[connection signal="pressed" from="PageContent/Edit/EditRow/ProfileEditColumn/DescBox/DescConfirmBtn" to="." method="_on_save_desc_btn_pressed"]
+[connection signal="value_changed" from="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar/AvatarZoomSlider" to="." method="_on_avatar_zoom_changed"]
+[connection signal="pressed" from="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar/AvatarUploadBtn" to="." method="_on_upload_avatar_btn_pressed"]
+[connection signal="pressed" from="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar/AvatarSaveBtn" to="." method="_on_save_avatar_btn_pressed"]
+[connection signal="pressed" from="PageContent/Edit/EditRow/OtherEditColumn/NewPassword/PasswordConfirmBtn" to="." method="_on_save_pwd_btn_pressed"]

@@ -1,16 +1,28 @@
 ## 歌曲列表项组件
 ## 继承自 CoverListItemBase，显示歌曲信息（含封面视差）
+class_name SongListItem
 extends CoverListItemBase
 
 ## 引用节点（需要根据实际场景结构调整）
 @onready var song_name_label: Label = $HBoxC/C/SongName
-@onready var midi_count_label: Label = $HBoxC/SongCount
-@onready var cover: TextureRect = $HBoxC/C/cover
+@onready var midi_count_label: Label = %SongCount
+@onready var cover: TextureRect = $HBoxC/C/Cover
 
 @onready var animation_manager: AnimationManager = AniMGR
 
 ## 歌曲轻量投影数据（ChartDB.GetSongItemsByAlbum 返回的字典）
 var item_dict: Dictionary = {}
+
+## 谱面计数圆形标签的背景色（列表容器按主题写入）
+## 场景内联 StyleBox 跨实例共享，写任意一个列表项即同步全部歌曲列表项
+var midi_count_accent: Color = Color.WHITE:
+	set(value):
+		midi_count_accent = value
+		if midi_count_label == null:
+			return
+		var sb := midi_count_label.get_theme_stylebox("normal") as StyleBoxFlat
+		if sb:
+			sb.bg_color = value
 
 signal _init_fin
 
@@ -18,7 +30,7 @@ func _ready() -> void:
 	# SongListItem 不使用视差滚动（封面静态显示）
 	_parallax_enabled = false
 	# 给基类 cover_texture 赋值，启用封面加载/释放机制
-	cover_texture = $HBoxC/C/cover
+	cover_texture = $HBoxC/C/Cover
 	await _init_fin
 
 	var name_str: String =" %s" % String(item_dict.get("name", "")) if item_dict.get("name", "") else "Unknown"

@@ -2,23 +2,19 @@
 
 [ext_resource type="Script" uid="uid://dvieqmomxd1k7" path="res://Main.gd" id="1_w3rk5"]
 [ext_resource type="Script" uid="uid://cq7vbk2mxn3dr" path="res://UI/Theme/ViewBackground.gd" id="3_vbg"]
-[ext_resource type="Script" uid="uid://co2lh8xsnaw8m" path="res://UI/Components/PlayerInfo/PlayerInfoPanel.gd" id="2_w3rk5"]
+[ext_resource type="PackedScene" uid="uid://xuehp3n3elk3" path="res://UI/Components/ShortCutMenu/ShortcutMenu.tscn" id="5_kjvhd"]
 [ext_resource type="Script" uid="uid://dhil2784gca17" path="res://UI/Components/RightBottomBtn.gd" id="7_sqvbp"]
 [ext_resource type="Script" uid="uid://d2g2knk0s5svb" path="res://UI/Views/AlbumView/AlbumView.gd" id="7_w3rk5"]
 [ext_resource type="Script" uid="uid://dpn6fchjbt3b8" path="res://UI/Components/SkewArea.gd" id="8_3b0ty"]
 [ext_resource type="Script" uid="uid://cka36xm3jh6b" path="res://UI/Views/SongView/SongView.gd" id="8_w3rk5"]
-[ext_resource type="Script" uid="uid://cohp1v184ht7q" path="res://UI/Components/ShortCutMenu/shortcut_menu.gd" id="11_oye8v"]
 [ext_resource type="Script" uid="uid://cyabeyldoy6yb" path="res://UI/Components/StyleBoxHighlightGradient.gd" id="12_2gh4u"]
 [ext_resource type="Script" uid="uid://c6wk4t2kxbamq" path="res://UI/Components/CharaInteract.gd" id="12_5tuhn"]
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="13_bg4s2"]
+[ext_resource type="PackedScene" uid="uid://75cml12yghyv" path="res://UI/Components/PlayerInfo/PlayerInfoPanel.tscn" id="15_5tuhn"]
 [ext_resource type="PackedScene" uid="uid://cmg2kkhga3yj5" path="res://UI/Views/AlbumView/albumNode.tscn" id="17_5mvff"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="17_xrxkg"]
 [ext_resource type="Script" uid="uid://dbp1i13pg0fxj" path="res://UI/Components/NotificationBanner.gd" id="19_devvj"]
-[ext_resource type="PackedScene" uid="uid://xgcfhg1x2v6p" path="res://UI/Components/ShortCutMenu/favorListItem.tscn" id="20_devvj"]
-[ext_resource type="Script" uid="uid://b5d8tybu8al2f" path="res://UI/Components/PlayerInfo/SkewButton.gd" id="22_5mvff"]
-[ext_resource type="Script" uid="uid://dly3k36hy880k" path="res://UI/Components/PopupWindow/PopupWindow.gd" id="23_bg4s2"]
 [ext_resource type="Script" uid="uid://bb04m122u3fvm" path="res://UI/Components/LeftTopBtn.gd" id="23_mxvw5"]
-[ext_resource type="PackedScene" uid="uid://ck0ou0rxonnto" path="res://UI/Components/PlayerInfo/PlayerInfoContent.tscn" id="23_oye8v"]
 [ext_resource type="Script" uid="uid://darocq4d7rwmu" path="res://UI/Views/SortedMidiView/SortedMidiView.gd" id="26_5mvff"]
 [ext_resource type="Script" uid="uid://c6mxoockmlm1a" path="res://UI/Components/FocusManager.gd" id="26_xrxkg"]
 [ext_resource type="PackedScene" uid="uid://6x22q0274hxw" path="res://UI/Components/PopupWindow/PopupWindow.tscn" id="28_hri7i"]
@@ -46,105 +42,6 @@ corner_radius_top_left = 12
 corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_5mvff"]
-content_margin_left = 8.0
-content_margin_top = 8.0
-content_margin_right = 8.0
-content_margin_bottom = 8.0
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.36, 0.55, 1, 1)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-
-[sub_resource type="ButtonGroup" id="ButtonGroup_3b0ty"]
-allow_unpress = true
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_phpps"]
-atlas = ExtResource("17_xrxkg")
-region = Rect2(320, 240, 80, 80)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hri7i"]
-draw_center = false
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-shadow_color = Color(0, 0, 0, 0.25)
-shadow_size = 8
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_7rc5s"]
-atlas = ExtResource("17_xrxkg")
-region = Rect2(240, 0, 80, 80)
-margin = Rect2(2, 0, 0, 0)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sqvbp"]
-bg_color = Color(0.0941, 0.1176, 0.1686, 0.98)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-expand_margin_top = 125.0
-shadow_color = Color(0, 0, 0, 0.45)
-shadow_size = 24
-shadow_offset = Vector2(0, 8)
-
-[sub_resource type="Gradient" id="Gradient_2gh4u"]
-colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
-
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_devvj"]
-gradient = SubResource("Gradient_2gh4u")
-
-[sub_resource type="StyleBoxTexture" id="StyleBoxTexture_2gh4u"]
-texture = SubResource("GradientTexture2D_devvj")
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_ck4ec"]
-atlas = ExtResource("17_xrxkg")
-region = Rect2(320, 240, 80, 80)
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_iygje"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_j02sm"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_2xvos"]
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_u2pgb"]
-atlas = ExtResource("13_bg4s2")
-region = Rect2(0, 160, 80, 80)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_jttwt"]
-atlas = ExtResource("13_bg4s2")
-region = Rect2(0, 320, 80, 80)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_4ycmv"]
-atlas = ExtResource("13_bg4s2")
-region = Rect2(0, 240, 80, 80)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2gh4u"]
-draw_center = false
-border_width_top = 1
-border_width_bottom = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_5h6qm"]
-atlas = ExtResource("13_bg4s2")
-region = Rect2(160, 80, 80, 80)
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_5tuhn"]
 content_margin_right = 20.0
@@ -240,24 +137,6 @@ region = Rect2(320, 160, 80, 80)
 [sub_resource type="AtlasTexture" id="AtlasTexture_2qp01"]
 atlas = ExtResource("17_xrxkg")
 region = Rect2(240, 160, 80, 80)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3ccbu"]
-skew = Vector2(0.268, 0)
-border_width_left = 2
-border_width_top = 2
-border_color = Color(0.3569, 0.549, 1, 0.7)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vi5kq"]
-skew = Vector2(0.268, 0)
-border_width_left = 2
-border_width_top = 2
-border_color = Color(0.3569, 0.549, 1, 0.7)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_5mkgo"]
-skew = Vector2(0.268, 0)
-border_width_left = 2
-border_width_top = 2
-border_color = Color(0.3569, 0.549, 1, 0.7)
 
 [sub_resource type="StyleBox" id="StyleBox_gvnrf"]
 resource_local_to_scene = false
@@ -357,28 +236,6 @@ corner_detail = 5
 atlas = ExtResource("17_xrxkg")
 region = Rect2(80, 0, 80, 80)
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_6vipk"]
-content_margin_left = 20.0
-content_margin_right = 20.0
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3y6u5"]
-bg_color = Color(0.0941, 0.1176, 0.1686, 0.98)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-corner_radius_top_left = 20
-corner_radius_top_right = 20
-corner_radius_bottom_right = 20
-corner_radius_bottom_left = 20
-corner_detail = 4
-expand_margin_left = 10.0
-expand_margin_right = 10.0
-shadow_color = Color(0, 0, 0, 0.5)
-shadow_size = 24
-shadow_offset = Vector2(0, 10)
-
 [node name="Main" type="Control" unique_id=1879436511]
 clip_contents = true
 layout_mode = 3
@@ -389,12 +246,6 @@ grow_horizontal = 2
 grow_vertical = 2
 size_flags_horizontal = 4
 script = ExtResource("1_w3rk5")
-midi_view_path = "res://UI/Views/MidiView/MidiView.tscn"
-store_view_path = "res://UI/Views/StoreView/MidiStore.tscn"
-track_view_path = "res://UI/Views/TrackView/TrackView.tscn"
-play_view_path = "res://UI/Views/PlayView/PlayView.tscn"
-score_view_path = "res://UI/Views/ScoreView/ScoreView.tscn"
-setting_view_path = "res://UI/Views/SettingView/SettingView.tscn"
 
 [node name="Background" type="TextureRect" parent="." unique_id=1350904646]
 z_index = -2
@@ -407,8 +258,8 @@ grow_vertical = 2
 mouse_filter = 2
 texture = SubResource("GradientTexture2D_xrxkg")
 expand_mode = 3
-metadata/_edit_lock_ = true
 script = ExtResource("3_vbg")
+metadata/_edit_lock_ = true
 
 [node name="Background2" type="TextureRect" parent="." unique_id=1594491345]
 visible = false
@@ -422,8 +273,8 @@ grow_vertical = 2
 mouse_filter = 2
 texture = SubResource("GradientTexture2D_xrxkg")
 expand_mode = 3
-metadata/_edit_lock_ = true
 script = ExtResource("3_vbg")
+metadata/_edit_lock_ = true
 
 [node name="TaskProgress" type="ProgressBar" parent="." unique_id=222059329]
 visible = false
@@ -488,11 +339,11 @@ theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_iygje")
 autowrap_mode = 3
 
-[node name="skew" type="Node2D" parent="." unique_id=761664000]
+[node name="Skew" type="Node2D" parent="." unique_id=761664000]
 editor_description = "用来摆放需要倾斜的组件的"
 skew = 0.2617994
 
-[node name="C" type="Control" parent="skew" unique_id=35177544]
+[node name="C" type="Control" parent="Skew" unique_id=35177544]
 editor_description = "为斜向的项提供锚点定位的区域"
 layout_mode = 3
 anchors_preset = 0
@@ -503,230 +354,11 @@ mouse_filter = 2
 script = ExtResource("8_3b0ty")
 metadata/_edit_lock_ = true
 
-[node name="ShortCutMenu" type="VBoxContainer" parent="skew/C" unique_id=22779074]
-visible = false
-z_index = 1
+[node name="ShortCutMenu" parent="Skew/C" unique_id=1142631087 instance=ExtResource("5_kjvhd")]
+unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = -1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -580.0
-offset_top = 75.0
-offset_right = 20.0
-offset_bottom = 899.0
-grow_horizontal = 0
-size_flags_horizontal = 4
-offset_transform_enabled = true
-offset_transform_position = Vector2(134, -500)
-mouse_filter = 2
-script = ExtResource("11_oye8v")
 
-[node name="Btns" type="HBoxContainer" parent="skew/C/ShortCutMenu" unique_id=403981443]
-custom_minimum_size = Vector2(0, 120)
-layout_mode = 2
-size_flags_horizontal = 4
-theme_override_constants/separation = 50
-alignment = 1
-
-[node name="Search" type="Button" parent="skew/C/ShortCutMenu/Btns" unique_id=1214033665]
-custom_minimum_size = Vector2(120, 120)
-layout_mode = 2
-focus_neighbor_left = NodePath("../../..")
-focus_neighbor_right = NodePath("../FavorList")
-focus_next = NodePath("../FavorList")
-theme_override_styles/focus = SubResource("StyleBoxFlat_5mvff")
-toggle_mode = true
-button_group = SubResource("ButtonGroup_3b0ty")
-icon = SubResource("AtlasTexture_phpps")
-icon_alignment = 1
-
-[node name="Border" type="PanelContainer" parent="skew/C/ShortCutMenu/Btns/Search" unique_id=1530113959]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_hri7i")
-
-[node name="FavorList" type="Button" parent="skew/C/ShortCutMenu/Btns" unique_id=1822879373]
-custom_minimum_size = Vector2(120, 120)
-layout_mode = 2
-focus_neighbor_left = NodePath("../Search")
-focus_neighbor_bottom = NodePath("../../Panel/Clip/Page/FavorPage/FavorList/VBoxC/FavorListItem")
-focus_next = NodePath("../Search")
-theme_override_constants/icon_max_width = 95
-theme_override_styles/focus = SubResource("StyleBoxFlat_5mvff")
-toggle_mode = true
-button_group = SubResource("ButtonGroup_3b0ty")
-icon = SubResource("AtlasTexture_7rc5s")
-icon_alignment = 1
-expand_icon = true
-
-[node name="Border" type="PanelContainer" parent="skew/C/ShortCutMenu/Btns/FavorList" unique_id=794980942]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_hri7i")
-
-[node name="Panel" type="Panel" parent="skew/C/ShortCutMenu" unique_id=1377748302]
-visible = false
-z_index = -1
-custom_minimum_size = Vector2(600, 700)
-layout_mode = 2
-offset_transform_enabled = true
-offset_transform_scale = Vector2(1, 0.001)
-offset_transform_pivot_ratio = Vector2(0.5, -0.17)
-offset_transform_visual_only = false
-theme_override_styles/panel = SubResource("StyleBoxFlat_sqvbp")
-
-[node name="Clip" type="Panel" parent="skew/C/ShortCutMenu/Panel" unique_id=1811362688]
-clip_children = 1
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxTexture_2gh4u")
-
-[node name="Page" type="HBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip" unique_id=2123375734]
-layout_mode = 0
-offset_left = 40.0
-offset_top = 50.0
-offset_right = 1340.0
-offset_bottom = 750.0
-scale = Vector2(0.9, 0.9)
-offset_transform_enabled = true
-offset_transform_position = Vector2(-655, 0)
-offset_transform_visual_only = false
-mouse_filter = 2
-theme_override_constants/separation = 100
-metadata/_edit_lock_ = true
-
-[node name="SortPage" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page" unique_id=1166316195]
-custom_minimum_size = Vector2(600, 0)
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/separation = 15
-
-[node name="SearchBox" type="HBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage" unique_id=928308120]
-layout_mode = 2
-
-[node name="TextEdit" type="LineEdit" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SearchBox" unique_id=637319179]
-custom_minimum_size = Vector2(440, 100)
-layout_mode = 2
-focus_neighbor_left = NodePath("../../../../../../Btns/Search")
-focus_next = NodePath("../../../../../../Btns/FavorList")
-theme_override_font_sizes/font_size = 35
-placeholder_text = "please enter..."
-alignment = 1
-caret_blink = true
-
-[node name="SearchBtn" type="Button" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SearchBox" unique_id=540940752]
-custom_minimum_size = Vector2(100, 100)
-layout_mode = 2
-focus_next = NodePath("../../../../../../Btns/FavorList")
-icon = SubResource("AtlasTexture_ck4ec")
-icon_alignment = 1
-expand_icon = true
-
-[node name="Line" type="ColorRect" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage" unique_id=155937236]
-custom_minimum_size = Vector2(600, 5)
-layout_mode = 2
-size_flags_horizontal = 4
-color = Color(0.1686, 0.2039, 0.2745, 1)
-
-[node name="SortButton" type="HBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage" unique_id=909477443]
-custom_minimum_size = Vector2(0, 100)
-layout_mode = 2
-size_flags_horizontal = 4
-theme_override_constants/separation = 40
-
-[node name="Status" type="Button" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton" unique_id=59956079]
-custom_minimum_size = Vector2(100, 100)
-layout_mode = 2
-focus_neighbor_left = NodePath("../../../../../../Btns/Search")
-focus_neighbor_right = NodePath("../Data")
-focus_next = NodePath("../../../../../../Btns/FavorList")
-theme_override_styles/normal = SubResource("StyleBoxEmpty_iygje")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_j02sm")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_2xvos")
-icon = SubResource("AtlasTexture_u2pgb")
-icon_alignment = 1
-expand_icon = true
-
-[node name="Data" type="Button" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton" unique_id=1988043361]
-custom_minimum_size = Vector2(100, 100)
-layout_mode = 2
-focus_neighbor_left = NodePath("../Status")
-focus_neighbor_right = NodePath("../Ordering")
-focus_next = NodePath("../../../../../../Btns/FavorList")
-theme_override_styles/normal = SubResource("StyleBoxEmpty_iygje")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_j02sm")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_2xvos")
-icon = SubResource("AtlasTexture_jttwt")
-icon_alignment = 1
-expand_icon = true
-
-[node name="Ordering" type="Button" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton" unique_id=1323616722]
-custom_minimum_size = Vector2(100, 100)
-layout_mode = 2
-focus_neighbor_left = NodePath("../Data")
-focus_neighbor_right = NodePath("../../SearchBox/SearchBtn")
-focus_next = NodePath("../../../../../../Btns/FavorList")
-theme_override_styles/normal = SubResource("StyleBoxEmpty_iygje")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_j02sm")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_2xvos")
-icon = SubResource("AtlasTexture_4ycmv")
-icon_alignment = 1
-expand_icon = true
-
-[node name="MarginContainer" type="MarginContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton" unique_id=1037083053]
-layout_mode = 2
-theme_override_constants/margin_right = 20
-
-[node name="FavorPage" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page" unique_id=1714220272]
-layout_mode = 2
-size_flags_vertical = 3
-mouse_filter = 2
-theme_override_constants/separation = 20
-
-[node name="FavorList" type="ScrollContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/FavorPage" unique_id=1954604137]
-custom_minimum_size = Vector2(500, 530)
-layout_mode = 2
-size_flags_vertical = 3
-theme_override_styles/panel = SubResource("StyleBoxFlat_2gh4u")
-follow_focus = true
-horizontal_scroll_mode = 3
-vertical_scroll_mode = 3
-
-[node name="VBoxC" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/FavorPage/FavorList" unique_id=1181947446]
-layout_mode = 2
-theme_override_constants/separation = 20
-
-[node name="FavorListItem" parent="skew/C/ShortCutMenu/Panel/Clip/Page/FavorPage/FavorList/VBoxC" unique_id=1385106200 instance=ExtResource("20_devvj")]
-layout_mode = 2
-
-[node name="CreateList" type="VBoxContainer" parent="skew/C/ShortCutMenu/Panel/Clip/Page/FavorPage" unique_id=659633133]
-layout_mode = 2
-alignment = 1
-
-[node name="AddBtn" type="Button" parent="skew/C/ShortCutMenu/Panel/Clip/Page/FavorPage/CreateList" unique_id=628121933]
-custom_minimum_size = Vector2(80, 80)
-layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 8
-icon = SubResource("AtlasTexture_5h6qm")
-icon_alignment = 1
-expand_icon = true
-
-[node name="AlbumList" type="ScrollContainer" parent="skew/C" unique_id=257977288]
+[node name="AlbumList" type="ScrollContainer" parent="Skew/C" unique_id=257977288]
 physics_interpolation_mode = 1
 visible = false
 clip_contents = false
@@ -742,14 +374,14 @@ container_path = NodePath("VBox/VBox")
 list_item_class = "res://UI/Views/AlbumView/albumNode.tscn"
 metadata/_edit_lock_ = true
 
-[node name="VBox" type="VBoxContainer" parent="skew/C/AlbumList" unique_id=1809549679]
+[node name="VBox" type="VBoxContainer" parent="Skew/C/AlbumList" unique_id=1809549679]
 layout_mode = 2
 
-[node name="MarginTop" type="MarginContainer" parent="skew/C/AlbumList/VBox" unique_id=347624655]
+[node name="MarginTop" type="MarginContainer" parent="Skew/C/AlbumList/VBox" unique_id=347624655]
 layout_mode = 2
 theme_override_constants/margin_top = 250
 
-[node name="VBox" type="VBoxContainer" parent="skew/C/AlbumList/VBox" unique_id=1696024062]
+[node name="VBox" type="VBoxContainer" parent="Skew/C/AlbumList/VBox" unique_id=1696024062]
 custom_minimum_size = Vector2(630, 0)
 layout_mode = 2
 size_flags_horizontal = 2
@@ -757,11 +389,11 @@ mouse_filter = 2
 theme_override_constants/separation = 29
 alignment = 1
 
-[node name="MarginBottom" type="MarginContainer" parent="skew/C/AlbumList/VBox" unique_id=273776046]
+[node name="MarginBottom" type="MarginContainer" parent="Skew/C/AlbumList/VBox" unique_id=273776046]
 layout_mode = 2
 theme_override_constants/margin_bottom = 900
 
-[node name="SongList" type="ScrollContainer" parent="skew/C" unique_id=2135907176]
+[node name="SongList" type="ScrollContainer" parent="Skew/C" unique_id=2135907176]
 physics_interpolation_mode = 1
 visible = false
 custom_minimum_size = Vector2(1014, 725)
@@ -782,13 +414,13 @@ script = ExtResource("8_w3rk5")
 container_path = NodePath("VBox")
 list_item_class = "res://UI/Views/SongView/songNode.tscn"
 
-[node name="VBox" type="VBoxContainer" parent="skew/C/SongList" unique_id=170013894]
+[node name="VBox" type="VBoxContainer" parent="Skew/C/SongList" unique_id=170013894]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 29
 alignment = 1
 
-[node name="SortedMidisList" type="ScrollContainer" parent="skew/C" unique_id=1679713169]
+[node name="SortedMidisList" type="ScrollContainer" parent="Skew/C" unique_id=1679713169]
 physics_interpolation_mode = 1
 visible = false
 layout_mode = 1
@@ -804,13 +436,14 @@ horizontal_scroll_mode = 0
 script = ExtResource("26_5mvff")
 list_item_class = "res://UI/Views/SortedMidiView/sortedMidiNode.tscn"
 
-[node name="ListContent" type="Control" parent="skew/C/SortedMidisList" unique_id=1834154471]
+[node name="ListContent" type="Control" parent="Skew/C/SortedMidisList" unique_id=1834154471]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="NoItems" type="Label" parent="skew/C" unique_id=756567896]
+[node name="NoItems" type="Label" parent="Skew/C" unique_id=756567896]
+unique_name_in_owner = true
 visible = false
 layout_mode = 0
 offset_left = 350.0
@@ -822,7 +455,7 @@ text = "列表为空"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="RandomSelectBtn" type="Button" parent="skew/C" unique_id=80715155 node_paths=PackedStringArray("shortcut_context")]
+[node name="RandomSelectBtn" type="Button" parent="Skew/C" unique_id=80715155 node_paths=PackedStringArray("shortcut_context")]
 visible = false
 custom_minimum_size = Vector2(110, 110)
 layout_mode = 1
@@ -844,7 +477,7 @@ flat = true
 icon_alignment = 1
 expand_icon = true
 
-[node name="SelectedAlbum" parent="skew/C" unique_id=1523238690 instance=ExtResource("17_5mvff")]
+[node name="SelectedAlbum" parent="Skew/C" unique_id=1523238690 instance=ExtResource("17_5mvff")]
 visible = false
 layout_mode = 0
 offset_top = 40.0
@@ -855,7 +488,7 @@ focus_next = NodePath("")
 focus_mode = 0
 button_pressed = true
 
-[node name="LT_Btn" type="Button" parent="." unique_id=427482582]
+[node name="LTBtn" type="Button" parent="." unique_id=427482582]
 layout_mode = 0
 offset_left = 23.999994
 offset_top = -75.999985
@@ -873,7 +506,8 @@ shortcut = SubResource("Shortcut_3b0ty")
 shortcut_in_tooltip = false
 script = ExtResource("23_mxvw5")
 
-[node name="Lag" type="Label" parent="LT_Btn" unique_id=413405156]
+[node name="NetConnLag" type="Label" parent="LTBtn" unique_id=413405156]
+unique_name_in_owner = true
 layout_mode = 0
 offset_left = 100.00001
 offset_top = 260.00003
@@ -885,7 +519,8 @@ theme_override_font_sizes/font_size = 30
 text = "9999
 ms"
 
-[node name="VBoxC" type="VBoxContainer" parent="LT_Btn" unique_id=757212644]
+[node name="LTBtnIcons" type="VBoxContainer" parent="LTBtn" unique_id=757212644]
+unique_name_in_owner = true
 layout_mode = 0
 offset_left = 30.000023
 offset_top = -380.00003
@@ -897,7 +532,7 @@ offset_transform_enabled = true
 mouse_filter = 2
 theme_override_constants/separation = 315
 
-[node name="Retry" type="TextureRect" parent="LT_Btn/VBoxC" unique_id=1400113552]
+[node name="Retry" type="TextureRect" parent="LTBtn/LTBtnIcons" unique_id=1400113552]
 custom_minimum_size = Vector2(140, 140)
 layout_mode = 2
 offset_transform_enabled = true
@@ -906,7 +541,7 @@ mouse_filter = 2
 texture = SubResource("AtlasTexture_s6epo")
 stretch_mode = 5
 
-[node name="Setting" type="TextureRect" parent="LT_Btn/VBoxC" unique_id=1593430758]
+[node name="Setting" type="TextureRect" parent="LTBtn/LTBtnIcons" unique_id=1593430758]
 custom_minimum_size = Vector2(140, 140)
 layout_mode = 2
 offset_transform_enabled = true
@@ -917,7 +552,7 @@ expand_mode = 1
 stretch_mode = 5
 metadata/_edit_lock_ = true
 
-[node name="Res" type="TextureRect" parent="LT_Btn/VBoxC" unique_id=771736228]
+[node name="Res" type="TextureRect" parent="LTBtn/LTBtnIcons" unique_id=771736228]
 custom_minimum_size = Vector2(140, 140)
 layout_mode = 2
 offset_transform_enabled = true
@@ -927,58 +562,12 @@ texture = SubResource("AtlasTexture_2qp01")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="PlayerInfo" type="Control" parent="." unique_id=1824700435]
-visible = false
+[node name="PlayerInfo" parent="." unique_id=1535960465 instance=ExtResource("15_5tuhn")]
+unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-offset_transform_enabled = true
-offset_transform_position = Vector2(900, 200)
-mouse_filter = 2
-script = ExtResource("2_w3rk5")
 
-[node name="ExpandPanelShader" type="ColorRect" parent="PlayerInfo" unique_id=207008174]
-visible = false
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0, 0, 0, 0.72)
-
-[node name="InfoPanelBtn" type="Button" parent="PlayerInfo" unique_id=644521735]
-propagate_maximum_size = true
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 1.0
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -370.0
-offset_top = -200.0
-grow_horizontal = 0
-grow_vertical = 0
-offset_transform_enabled = true
-offset_transform_position = Vector2(55, 0)
-offset_transform_visual_only = false
-focus_mode = 0
-theme_override_styles/normal = SubResource("StyleBoxFlat_3ccbu")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_vi5kq")
-theme_override_styles/hover = SubResource("StyleBoxFlat_5mkgo")
-script = ExtResource("22_5mvff")
-
-[node name="TabC" parent="PlayerInfo/InfoPanelBtn" unique_id=1269850014 instance=ExtResource("23_oye8v")]
-layout_mode = 1
-anchors_preset = -1
-offset_left = 55.0
-offset_top = 10.0
-offset_right = -205.0
-
-[node name="RB_Btn" type="Button" parent="." unique_id=1566254107]
+[node name="RBBtn" type="Button" parent="." unique_id=1566254107]
+unique_name_in_owner = true
 z_index = 99
 clip_contents = true
 layout_mode = 1
@@ -1008,7 +597,8 @@ shortcut_in_tooltip = false
 icon_alignment = 1
 script = ExtResource("7_sqvbp")
 
-[node name="VBoxC" type="VBoxContainer" parent="RB_Btn" unique_id=571032761]
+[node name="RTBtnIcons" type="VBoxContainer" parent="RBBtn" unique_id=571032761]
+unique_name_in_owner = true
 layout_mode = 0
 offset_left = 9.0
 offset_top = 350.0
@@ -1020,7 +610,7 @@ offset_transform_enabled = true
 mouse_filter = 2
 theme_override_constants/separation = 250
 
-[node name="Store" type="TextureRect" parent="RB_Btn/VBoxC" unique_id=449703424]
+[node name="Store" type="TextureRect" parent="RBBtn/RTBtnIcons" unique_id=449703424]
 custom_minimum_size = Vector2(180, 180)
 layout_mode = 2
 offset_transform_enabled = true
@@ -1030,7 +620,7 @@ texture = SubResource("AtlasTexture_pumof")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Back" type="TextureRect" parent="RB_Btn/VBoxC" unique_id=1406446878]
+[node name="Back" type="TextureRect" parent="RBBtn/RTBtnIcons" unique_id=1406446878]
 custom_minimum_size = Vector2(180, 180)
 layout_mode = 2
 offset_transform_enabled = true
@@ -1040,7 +630,7 @@ texture = SubResource("AtlasTexture_d4kk1")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Chara" type="TextureRect" parent="RB_Btn/VBoxC" unique_id=1842346566]
+[node name="Chara" type="TextureRect" parent="RBBtn/RTBtnIcons" unique_id=1842346566]
 custom_minimum_size = Vector2(180, 180)
 layout_mode = 2
 offset_transform_enabled = true
@@ -1062,6 +652,7 @@ mouse_filter = 2
 script = ExtResource("26_xrxkg")
 
 [node name="PopupWindowShader" type="ColorRect" parent="." unique_id=1275441849]
+unique_name_in_owner = true
 visible = false
 z_index = 99
 layout_mode = 1
@@ -1073,6 +664,7 @@ grow_vertical = 2
 color = Color(0, 0, 0, 0.72)
 
 [node name="ProcessTip" type="Label" parent="." unique_id=1974055026]
+unique_name_in_owner = true
 visible = false
 z_index = 99
 layout_mode = 1
@@ -1121,7 +713,8 @@ offset_transform_visual_only = false
 theme_override_styles/panel = SubResource("StyleBoxFlat_ck4ec")
 script = ExtResource("19_devvj")
 
-[node name="btn" type="Button" parent="NotiBanner" unique_id=551650052]
+[node name="NotiBannerBtn" type="Button" parent="NotiBanner" unique_id=551650052]
+unique_name_in_owner = true
 layout_mode = 2
 focus_mode = 0
 mouse_default_cursor_shape = 2
@@ -1130,39 +723,10 @@ theme_override_font_sizes/font_size = 24
 icon = SubResource("AtlasTexture_devvj")
 flat = true
 
-[node name="PopupWindow" type="PopupPanel" parent="." unique_id=1234285949]
-gui_embed_subwindows = true
-oversampling_override = 1.0
-initial_position = 2
-size = Vector2i(850, 600)
-theme_override_styles/panel = SubResource("StyleBoxEmpty_6vipk")
-script = ExtResource("23_bg4s2")
+[node name="PopupWindow" parent="." unique_id=1542807723 instance=ExtResource("28_hri7i")]
+visible = false
 
-[node name="WindowBG" type="PanelContainer" parent="PopupWindow" unique_id=1029489137]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 20.0
-offset_right = -20.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_3y6u5")
-
-[node name="TabC" parent="PopupWindow" unique_id=1542807723 instance=ExtResource("28_hri7i")]
-offset_left = 20.0
-offset_top = 0.0
-offset_right = -20.0
-offset_bottom = 0.0
-offset_transform_enabled = true
-
-[connection signal="text_submitted" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SearchBox/TextEdit" to="skew/C/ShortCutMenu" method="_on_search_query"]
-[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SearchBox/SearchBtn" to="skew/C/ShortCutMenu" method="_on_search_query"]
-[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton/Status" to="skew/C/ShortCutMenu" method="_on_status_pressed"]
-[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton/Data" to="skew/C/ShortCutMenu" method="_on_data_pressed"]
-[connection signal="pressed" from="skew/C/ShortCutMenu/Panel/Clip/Page/SortPage/SortButton/Ordering" to="skew/C/ShortCutMenu" method="_on_ordering_pressed"]
-[connection signal="pressed" from="skew/C/RandomSelectBtn" to="skew/C/AlbumList" method="_on_random_select_btn_pressed"]
-[connection signal="pressed" from="skew/C/SelectedAlbum" to="skew/C/SelectedAlbum" method="_on_selected_album_pressed"]
-[connection signal="pressed" from="LT_Btn" to="LT_Btn" method="_on_button_pressed"]
-[connection signal="gui_input" from="PlayerInfo/ExpandPanelShader" to="PlayerInfo" method="_on_shader_overlay_gui_input"]
-[connection signal="pressed" from="PlayerInfo/InfoPanelBtn" to="PlayerInfo" method="_on_expand_panel_pressed"]
-[connection signal="pressed" from="RB_Btn" to="RB_Btn" method="_on_button_pressed"]
+[connection signal="pressed" from="Skew/C/RandomSelectBtn" to="Skew/C/AlbumList" method="_on_random_select_btn_pressed"]
+[connection signal="pressed" from="Skew/C/SelectedAlbum" to="Skew/C/SelectedAlbum" method="_on_selected_album_pressed"]
+[connection signal="pressed" from="LTBtn" to="LTBtn" method="_on_button_pressed"]
+[connection signal="pressed" from="RBBtn" to="RBBtn" method="_on_button_pressed"]

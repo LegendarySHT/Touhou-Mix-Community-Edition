@@ -610,27 +610,6 @@ func _modify_button_states_color(btn: Button, color_key: String) -> void:
 			continue
 		_apply_color_to_stylebox(sb, spec[1])
 
-# ============ 列表项样式 ============
-
-## 修改 albumNode 列表项上的 SongCount 圆形标签背景色（共享 StyleBox，改一次同步全部列表项）
-## （按钮四态已由共享 theme ListBtn-ColorBorder.tres 统一处理，不再逐实例改色；
-##   数字文字固定白色由 .tscn 的 theme_override_colors 静态设置，见 albumNode.tscn）
-func _style_album_instance(item: Control, pri_light: Color) -> void:
-	var song_count := item.get_node_or_null("SongCount") as Label
-	if song_count:
-		var sb := song_count.get_theme_stylebox("normal")
-		if sb is StyleBoxFlat:
-			sb.bg_color = pri_light
-
-## 修改 songNode 列表项上的 SongCount 圆形标签背景色
-func _style_song_instance(item: Control, pri_light: Color) -> void:
-	var song_count := item.get_node_or_null("HBoxC/SongCount") as Label
-	if song_count:
-		var sb := song_count.get_theme_stylebox("normal")
-		if sb is StyleBoxFlat:
-			sb.bg_color = pri_light
-
-
 ## 统一设置按钮各状态样式（通过 Theme 的 StyleBoxFlat 引用）。
 ## 现代配色：常规态为中性板面 + 细描边，交互态才引入强调色。
 ## 几何参数（圆角/边框宽/边距）由 .tscn 上的 StyleBox 决定，此处只写颜色。
@@ -892,52 +871,6 @@ func _style_button_set_bg_color(btn: Button, color: Color) -> void:
 		var sb := btn.get_theme_stylebox(spec[0])
 		if sb is StyleBoxFlat:
 			sb.bg_color = _tint_keep_alpha(spec[1], sb.bg_color.a)
-
-# ============ MidiView 主题 ============
-
-## 修改 MidiView 中通过 theme_override_styles 单独设置的节点样式
-func _style_midi_individual_nodes(info_ui: Node) -> void:
-	var p := get_color("primary")
-	var surface := get_color("surface")
-	var surface_high := get_color("surface_high")
-	var surface_low := get_color("surface_low")
-
-	# InfoWindow 边框
-	var info_window := info_ui.get_node_or_null("LeftArea/InfoWindow") as PanelContainer
-	_style_panel_set_bg_color(info_window, surface)
-
-	# Fold 面板（与 Center 共享同一 StyleBoxFlat_5h6qm）
-	var fold := info_ui.get_node_or_null("LeftArea/InfoWindow/HBoxC/Left/Fold") as Panel
-	_style_panel_set_bg_color(fold, surface_high)
-
-	# Fold/Btn — 只改 pressed（normal 透明，hover 暗色遮罩保留）
-	var fold_btn := info_ui.get_node_or_null("LeftArea/InfoWindow/HBoxC/Left/Fold/Btn") as Button
-	if fold_btn:
-		var sb := fold_btn.get_theme_stylebox("pressed")
-		if sb is StyleBoxFlat:
-			sb.bg_color = surface_low
-
-	# Description 背景 — 强调色淡底
-	var desc := info_ui.get_node_or_null("LeftArea/InfoWindow/HBoxC/Description") as RichTextLabel
-	if desc:
-		var sb := desc.get_theme_stylebox("normal")
-		if sb is StyleBoxFlat:
-			sb.bg_color = Color(p.r, p.g, p.b, 0.14)
-			sb.border_color = Color(p.r, p.g, p.b, 0.35)
-
-	# PlayBtn — 主操作，强调色填充
-	var play_btn := info_ui.get_node_or_null("LeftArea/MainBtn/PlayBtn") as Button
-	_style_button_set_bg_color(play_btn, p.darkened(0.1))
-
-	# DetailData 的 PC1 面板（亮）/ PC2 面板（暗）
-	var pc1 := info_ui.get_node_or_null("LeftArea/DetailData/PC1") as PanelContainer
-	_style_panel_set_bg_color(pc1, surface_high)
-	var pc2 := info_ui.get_node_or_null("LeftArea/DetailData/PC2") as PanelContainer
-	_style_panel_set_bg_color(pc2, surface_low)
-
-	# OptionPanel 背景
-	var option_panel := info_ui.get_node_or_null("OptionPanel") as PanelContainer
-	_style_panel_set_bg_color(option_panel, surface_low)
 
 # ============ 取色器统一配置 ============
 

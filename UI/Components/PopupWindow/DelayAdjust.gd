@@ -5,17 +5,8 @@ class_name DelayAdjust
 ## 校准完成信号（连续 N 个稳定样本后触发），由 PopupWindow 监听并 hide()
 signal finish_requested
 
-@onready var _delay_indicator: Panel = $DelayIndicator
-@onready var _center_line: PanelContainer = $DelayIndicator/CenterLine
-@onready var _adjust_line: PanelContainer = $DelayIndicator/AdjustLine
-@onready var _shadow_line: PanelContainer = $DelayIndicator/ShadowLine
-@onready var _delay_value: LineEdit = $HBoxC/Value
 @onready var delay_btn: Button = $Button
 # 左右两条校准进度条（子节点挂在 Button 下，纯视觉反馈；fill_mode 已设为对称：L 右→左、R 左→右）
-@onready var _progress_l: ProgressBar = $Progress/ProgressL
-@onready var _progress_r: ProgressBar = $Progress/ProgressR
-@onready var _bt_status: Label = $BtStatus
-@onready var _bt_toggle: CheckButton = $BtToggle
 
 # ===== 延迟校准状态 =====
 ## 校准是否进行中
@@ -32,9 +23,9 @@ var _stable_count: int = 0
 var _last_sample: float = NAN
 ## 上一个有效的延迟输入文本（用于过滤非法字符后回退）
 var _prev_delay_text: String = "0"
-## 程序化设置 _delay_value.text 时的递归守卫标志，避免触发 text_changed 重复更新
+## 程序化设置 %DelayValue.text 时的递归守卫标志，避免触发 text_changed 重复更新
 var _setting_delay_text: bool = false
-## 程序化设置 _bt_toggle.button_pressed 时的递归守卫标志，避免触发 toggled 重复写配置
+## 程序化设置 %BtToggle.button_pressed 时的递归守卫标志，避免触发 toggled 重复写配置
 var _setting_bt_toggle: bool = false
 
 ## AdjustLine 单向运动范围（绝对值，单位：像素）
@@ -76,18 +67,18 @@ func start_calibration(current_delay: int = 0) -> void:
 	_last_sample = NAN
 
 	# 进度条：关掉 indeterminate 动画，最大刻度 = 完成所需连续稳定样本数
-	_progress_l.indeterminate = false
-	_progress_r.indeterminate = false
-	_progress_l.max_value = _CALIB_DONE_STABLE
-	_progress_r.max_value = _CALIB_DONE_STABLE
+	%ProgressL.indeterminate = false
+	%ProgressR.indeterminate = false
+	%ProgressL.max_value = _CALIB_DONE_STABLE
+	%ProgressR.max_value = _CALIB_DONE_STABLE
 	_set_calib_progress(0)
 
 	# 刷新蓝牙输出检测提示与开关初始状态（调用方已强制刷新过检测，此处读缓存）
 	_update_bt_status()
 
-	_delay_value.text = str(current_delay)
-	_prev_delay_text = _delay_value.text
-	_update_center_line(float(_delay_value.text))
+	%DelayValue.text = str(current_delay)
+	_prev_delay_text = %DelayValue.text
+	_update_center_line(float(%DelayValue.text))
 
 	# 确保 SoundFont 已加载到后端合成器（trigger_note_on 依赖 SoundFont）
 	# 设置页打开 DelayAdjust 时未调用 play()，SoundFont 可能尚未懒加载到 synth
@@ -105,18 +96,18 @@ func start_calibration(current_delay: int = 0) -> void:
 		_adjust_line_tween.kill()
 	_adjust_line_tween = AniMGR.create_sequence("popup_adjust_line_loop")
 	_adjust_line_tween.set_loops()
-	_adjust_line.offset_transform_position.x = 0
+	%AdjustLine.offset_transform_position.x = 0
 	_adjust_line_tween.set_trans(Tween.TRANS_LINEAR)
 
 	# 4 拍循环：轻-轻-轻-重
-	_adjust_line_tween.tween_property(_adjust_line, "offset_transform_position:x", -_ADJUST_LINE_RANGE / 2, _BEAT_SEGMENT_SEC)
+	_adjust_line_tween.tween_property(%AdjustLine, "offset_transform_position:x", -_ADJUST_LINE_RANGE / 2, _BEAT_SEGMENT_SEC)
 	_adjust_line_tween.tween_callback(func(): _play_beat_sound(false))
-	_adjust_line_tween.tween_property(_adjust_line, "offset_transform_position:x", - _ADJUST_LINE_RANGE, _BEAT_SEGMENT_SEC)
+	_adjust_line_tween.tween_property(%AdjustLine, "offset_transform_position:x", - _ADJUST_LINE_RANGE, _BEAT_SEGMENT_SEC)
 	_adjust_line_tween.tween_callback(func(): _play_beat_sound(false))
-	_adjust_line_tween.tween_callback(func(): _adjust_line.offset_transform_position.x = _ADJUST_LINE_RANGE)
-	_adjust_line_tween.tween_property(_adjust_line, "offset_transform_position:x", _ADJUST_LINE_RANGE / 2, _BEAT_SEGMENT_SEC)
+	_adjust_line_tween.tween_callback(func(): %AdjustLine.offset_transform_position.x = _ADJUST_LINE_RANGE)
+	_adjust_line_tween.tween_property(%AdjustLine, "offset_transform_position:x", _ADJUST_LINE_RANGE / 2, _BEAT_SEGMENT_SEC)
 	_adjust_line_tween.tween_callback(func(): _play_beat_sound(false))
-	_adjust_line_tween.tween_property(_adjust_line, "offset_transform_position:x", 0, _BEAT_SEGMENT_SEC)
+	_adjust_line_tween.tween_property(%AdjustLine, "offset_transform_position:x", 0, _BEAT_SEGMENT_SEC)
 	_adjust_line_tween.tween_callback(func(): _on_hard_beat_triggered())
 	
 # 停止校准：终止动画 + 停止所有节拍音 + 恢复音量
@@ -131,8 +122,8 @@ func stop_calibration() -> void:
 	if _shadow_tween and _shadow_tween.is_valid():
 		_shadow_tween.kill()
 	_shadow_tween = null
-	_shadow_line.visible = false
-	_shadow_line.modulate.a = 1.0
+	%ShadowLine.visible = false
+	%ShadowLine.modulate.a = 1.0
 	_stop_all_beat_sounds()
 	# 恢复校准前的全局音量，避免污染后续 PlayView 播放
 	if not is_nan(_saved_volume_db):
@@ -178,7 +169,7 @@ func _play_beat_sound(hard: bool = false) -> void:
 ## 获取当前延迟值（用于 PopupWindow.show_delay_adjust 返回）
 # 容错：空文本或非法输入回退为 0，并 clamp 到 ±_MAX_DELAY_MS
 func get_delay_value() -> int:
-	var text := _delay_value.text.strip_edges()
+	var text = %DelayValue.text.strip_edges()
 	if text.is_empty() or text == "-":
 		return 0
 	return clampi(text.to_int(), -int(_MAX_DELAY_MS), int(_MAX_DELAY_MS))
@@ -188,7 +179,7 @@ func get_delay_value() -> int:
 func get_result() -> Dictionary:
 	return {
 		"delay": get_delay_value(),
-		"bt_auto_off_performing": 1 if _bt_toggle.button_pressed else 0,
+		"bt_auto_off_performing": 1 if %BtToggle.button_pressed else 0,
 	}
 
 # ===== 蓝牙输出检测提示与开关 =====
@@ -196,13 +187,13 @@ func get_result() -> Dictionary:
 func _update_bt_status() -> void:
 	var is_bt := AudioBtDetector.is_bluetooth_output()
 	var status := AudioBtDetector.get_status_text()
-	_bt_status.text = "当前音频输出：%s" % status
+	%BtStatus.text = "当前音频输出：%s" % status
 	if is_bt:
-		_bt_status.text += "｜正在校准蓝牙延迟预设"
+		%BtStatus.text += "｜正在校准蓝牙延迟预设"
 	# 开关初始状态从配置读取（默认开启）
 	var auto_off := ConfigManager.instance.get_int("bt_auto_disable_performing_mode") == 1
 	_setting_bt_toggle = true
-	_bt_toggle.button_pressed = auto_off
+	%BtToggle.button_pressed = auto_off
 	_setting_bt_toggle = false
 
 # 蓝牙自动关闭弹奏模式开关切换：即时写回运行时配置（对齐 FallingAdjust 即时应用模式）
@@ -221,7 +212,7 @@ func _on_hard_beat_triggered() -> void:
 func _on_delay_btn_pressed() -> void:
 	if not _calib_active:
 		return
-	var click_x: float = _adjust_line.offset_transform_position.x
+	var click_x: float = %AdjustLine.offset_transform_position.x
 	# 生成残影：直接用 AdjustLine 当前位置，残影直观反映点击时刻 AdjustLine 的位置
 	_spawn_adjust_line_ghost(click_x)
 	# px → ms：取反使 x<0→正值（汇总符号规范：左=正，即音频偏晚=正向补偿）
@@ -261,15 +252,15 @@ func _on_delay_text_changed(new_text: String) -> void:
 	else:
 		# 非法输入，回退到上一个有效文本
 		_setting_delay_text = true
-		_delay_value.text = _prev_delay_text
-		_delay_value.caret_column = _prev_delay_text.length()
+		%DelayValue.text = _prev_delay_text
+		%DelayValue.caret_column = _prev_delay_text.length()
 		_setting_delay_text = false
 
 # text_submitted（回车）：完成编辑，clamp 并格式化
 func _on_delay_text_submitted(_submitted_text: String) -> void:
 	_finalize_delay_text()
 	# 回车后释放焦点，避免 LineEdit 持续拦截 Space 等按键（按钮的快捷键）
-	_delay_value.release_focus()
+	%DelayValue.release_focus()
 
 # focus_exited：失焦时完成编辑
 func _on_delay_focus_exited() -> void:
@@ -277,19 +268,19 @@ func _on_delay_focus_exited() -> void:
 
 # 完成编辑：空值或单独 '-' 置 0，超范围 clamp，重新写回文本与 CenterLine
 func _finalize_delay_text() -> void:
-	var text := _delay_value.text.strip_edges()
+	var text = %DelayValue.text.strip_edges()
 	if text.is_empty() or text == "-":
 		_setting_delay_text = true
-		_delay_value.text = "0"
+		%DelayValue.text = "0"
 		_setting_delay_text = false
 		_prev_delay_text = "0"
 		_update_center_line(0.0)
 		return
 	var val: int = clampi(text.to_int(), -int(_MAX_DELAY_MS), int(_MAX_DELAY_MS))
 	_setting_delay_text = true
-	_delay_value.text = str(val)
+	%DelayValue.text = str(val)
 	_setting_delay_text = false
-	_prev_delay_text = _delay_value.text
+	_prev_delay_text = %DelayValue.text
 	_update_center_line(float(val))
 
 # 在指定位置显示 AdjustLine 残影（点击瞬间的视觉反馈，1秒淡出）
@@ -298,14 +289,14 @@ func _spawn_adjust_line_ghost(pos_x: float) -> void:
 	# 杀掉上一次未完成的残影 tween，避免新旧 tween 同时改 modulate 冲突
 	if _shadow_tween and _shadow_tween.is_valid():
 		_shadow_tween.kill()
-	_shadow_line.offset_transform_position = Vector2(pos_x, 0)
-	_shadow_line.modulate.a = 1.0
-	_shadow_line.visible = true
+	%ShadowLine.offset_transform_position = Vector2(pos_x, 0)
+	%ShadowLine.modulate.a = 1.0
+	%ShadowLine.visible = true
 	_shadow_tween = AniMGR.create_managed_tween(self)
-	_shadow_tween.tween_property(_shadow_line, "modulate:a", 0.0, 1.0)
+	_shadow_tween.tween_property(%ShadowLine, "modulate:a", 0.0, 1.0)
 	_shadow_tween.finished.connect(func() -> void:
-		_shadow_line.visible = false
-		_shadow_line.modulate.a = 1.0
+		%ShadowLine.visible = false
+		%ShadowLine.modulate.a = 1.0
 	)
 
 # 计算当前稳定窗口内样本的平均值（窗口 = _stable_count + 1 个连续稳定样本）
@@ -324,14 +315,14 @@ func _compute_stable_average() -> float:
 func _update_center_line(delay_ms: float) -> void:
 	var clamped: float = clampf(delay_ms, -_MAX_DELAY_MS, _MAX_DELAY_MS)
 	# ms → px：取反使正延迟落在左侧，与 _on_delay_btn_pressed 的"左=正"一致
-	_center_line.offset_transform_position = Vector2(-clamped * _ANIM_SPEED / 1000.0, 0)
+	%CenterLine.offset_transform_position = Vector2(-clamped * _ANIM_SPEED / 1000.0, 0)
 
 # 统一设置延迟值：更新 LineEdit 和 CenterLine（程序化设置，避开 text_changed 重复更新）
 func _set_delay_value(delay_ms: float) -> void:
 	_setting_delay_text = true
-	_delay_value.text = str(roundi(delay_ms))
+	%DelayValue.text = str(roundi(delay_ms))
 	_setting_delay_text = false
-	_prev_delay_text = _delay_value.text
+	_prev_delay_text = %DelayValue.text
 	_update_center_line(delay_ms)
 
 # 同步校准进度到左右两条进度条（纯视觉反馈）。
@@ -340,8 +331,8 @@ func _set_delay_value(delay_ms: float) -> void:
 # 校准完成瞬间 _stable_count 已到阈值 → 进度满格；某次点击失准则 _stable_count 归零 → 进度条回落。
 func _set_calib_progress(stable: int) -> void:
 	var p := clampf(float(stable) / float(_CALIB_DONE_STABLE), 0.0, 1.0)
-	_progress_l.value = p * _progress_l.max_value
-	_progress_r.value = p * _progress_r.max_value
+	%ProgressL.value = p * %ProgressL.max_value
+	%ProgressR.value = p * %ProgressR.max_value
 
 # 手动拖动 DelayIndicator：在面板范围内点击/拖动 → CenterLine 移动到手指位置并更新延迟
 # 注意：TabContainer 切换到本页时本节点 visible=true；PopupWindow hide() 不改子节点 visible，
@@ -354,7 +345,7 @@ func _input(event: InputEvent) -> void:
 	# 忽略松开事件
 	if event is InputEventScreenTouch and not event.pressed:
 		return
-	var rect := _delay_indicator.get_global_rect()
+	var rect = %DelayIndicator.get_global_rect()
 	if not rect.has_point(event.position):
 		return
 	# 计算手指相对于 DelayIndicator 中心的 x 偏移（px，下转 ms）

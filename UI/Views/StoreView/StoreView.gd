@@ -4,7 +4,7 @@
 ##   TopBar    左侧搜索 / 排序 / 批量下载 / 人声开关，右侧五个标签页（歌曲 / 皮肤 / 特效 / 音源 / 下载管理）
 ##   Pages     每个标签页独立的虚拟列表（ScrollContainer → ListContent → VirtualList 池）
 ##   DetailLayer 卡片展开式详情弹窗（StoreDetailPanel）
-##   Bottom    歌曲页分页条（保留 AnimationManager 的进场/退场动画节点名）
+##   Bottom    歌曲页分页条（进场/退场由本脚本的 _play_enter/_play_exit 驱动）
 ##
 ## 数据：
 ##   歌曲来自服务端 ResMGR.get_chart_list（搜索 / 排序 / 分页）
@@ -12,7 +12,7 @@
 ##   下载管理按本会话经商店发起的下载任务 + 当前页已下载谱面构建
 ##
 ## 下载一律串行：ResourceManager 的并行下载信箱是单实例的，同时发起两次会互相踩。
-extends Control
+extends ViewBase
 
 class_name StoreView
 
@@ -97,53 +97,31 @@ var _dl_vlist: VirtualListLib = null
 var _bind_animate: bool = false
 var _dl_last_count: int = -1
 
-@onready var _top_bar: Panel = $TopBar
-@onready var _tab_underline: Panel = $TopBar/TabUnderline
-@onready var _search_edit: LineEdit = $TopBar/HeaderMargin/Row/Toolbar/SearchEdit
-@onready var _search_icon: TextureRect = $TopBar/HeaderMargin/Row/Toolbar/SearchEdit/SearchIcon
-@onready var _filter_btn: Button = $TopBar/HeaderMargin/Row/Toolbar/FilterDataBtn
-@onready var _order_btn: Button = $TopBar/HeaderMargin/Row/Toolbar/SortOrderBtn
-@onready var _batch_btn: Button = $TopBar/HeaderMargin/Row/Toolbar/BatchDownloadBtn
-@onready var _vocal_btn: Button = $TopBar/HeaderMargin/Row/Toolbar/VocalBtn
-@onready var _songs_empty: Label = $Pages/SongsPage/Empty
-@onready var _skins_empty: Label = $Pages/SkinsPage/Empty
-@onready var _effects_empty: Label = $Pages/EffectsPage/Empty
-@onready var _soundfonts_empty: Label = $Pages/SoundfontsPage/Empty
-@onready var _downloads_empty: Label = $Pages/DownloadsPage/Empty
-@onready var _hero: Panel = $Pages/DownloadsPage/Hero
-@onready var _hero_empty: Label = $Pages/DownloadsPage/Hero/HeroMargin/HeroEmpty
-@onready var _hero_body: HBoxContainer = $Pages/DownloadsPage/Hero/HeroMargin/HeroBody
-@onready var _hero_cover: RoundedTextureRect = $Pages/DownloadsPage/Hero/HeroMargin/HeroBody/CoverWrap/Cover
-@onready var _hero_cover_placeholder: TextureRect = $Pages/DownloadsPage/Hero/HeroMargin/HeroBody/CoverWrap/Placeholder
-@onready var _hero_cover_wrap: Panel = $Pages/DownloadsPage/Hero/HeroMargin/HeroBody/CoverWrap
-@onready var _hero_title: Label = $Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info/Title
-@onready var _hero_stage: Label = $Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info/Stage
-@onready var _hero_progress: ProgressBar = $Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info/Progress
-@onready var _hero_meta: Label = $Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Info/Meta
-@onready var _hero_percent: Label = $Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Right/Percent
-@onready var _hero_detail: Label = $Pages/DownloadsPage/Hero/HeroMargin/HeroBody/Right/Detail
-@onready var _downloads_recent_title: Label = $Pages/DownloadsPage/RecentTitle
-@onready var _bottom: HBoxContainer = $Bottom
-@onready var _previ_btn: Button = $Bottom/Previ
-@onready var _next_btn: Button = $Bottom/Next
-@onready var _indicate: Label = $Bottom/Indicate
-@onready var _detail: DetailPanelLib = $DetailLayer
+# 皮肤 / 特效 / 音源页的滚动容器与列表内容，下标与 Tab 一致
+var _category_scrolls: Array[ScrollContainer] = []
+var _category_lists: Array[Control] = []
 
 
-func _ready() -> void:
+func _on_view_ready() -> void:
 	_tab_buttons = [
-		$TopBar/HeaderMargin/Row/TabBar/TabSong,
-		$TopBar/HeaderMargin/Row/TabBar/TabSkin,
-		$TopBar/HeaderMargin/Row/TabBar/TabEffect,
-		$TopBar/HeaderMargin/Row/TabBar/TabSoundfont,
-		$TopBar/HeaderMargin/Row/TabBar/TabDownload,
+		%TabSongBtn,
+		%TabSkinBtn,
+		%TabEffectBtn,
+		%TabSoundfontBtn,
+		%TabDownloadBtn,
 	]
 	_pages = [
-		$Pages/SongsPage,
-		$Pages/SkinsPage,
-		$Pages/EffectsPage,
-		$Pages/SoundfontsPage,
-		$Pages/DownloadsPage,
+		%SongsPage,
+		%SkinsPage,
+		%EffectsPage,
+		%SoundfontsPage,
+		%DownloadsPage,
+	]
+	_category_scrolls = [
+		null, %SkinsScroll, %EffectsScroll, %SoundfontsScroll, null,
+	]
+	_category_lists = [
+		null, %SkinsListContent, %EffectsListContent, %SoundfontsListContent, null,
 	]
 
 	_connect_ui()
@@ -157,17 +135,22 @@ func _ready() -> void:
 	if FileSystemManager.instance:
 		FileSystemManager.instance.resources_ready.connect(_on_resources_ready)
 
-	if ThemeMGR:
-		ThemeMGR.register_theme_applier(self)
-		apply_theme()
-
 	# 标签下划线位置依赖容器布局，等首帧量出按钮位置后再摆放
 	call_deferred("_update_tab_underline", true)
 
+## 出场：整页淡出
+func _play_exit() -> Tween:
+	return AniMGR.animate_fade_out(self, 0.35, "%s_out" % name)
 
-func _exit_tree() -> void:
-	if ThemeMGR:
-		ThemeMGR.unregister_theme_applier(self)
+## 入场：顶栏下滑入、底栏上滑入，整页淡入
+func _play_enter() -> Tween:
+	var top_bar := %TopBar
+	top_bar.offset_transform_position = Vector2(0, -500)
+	AniMGR.animate_offset_back(top_bar, 0.25, "top_bar_in")
+	var bottom := %Bottom
+	bottom.offset_transform_position = Vector2(0, 500)
+	AniMGR.animate_offset_back(bottom, 0.25, "bottom_in")
+	return AniMGR.animate_fade_in(self, 0.45, "%s_in" % name)
 
 
 # ══════════════════════════════════════════════════════
@@ -183,24 +166,24 @@ func _connect_ui() -> void:
 			if i == _current_tab:
 				_update_tab_underline(true)
 		)
-	_search_edit.text_changed.connect(_on_search_changed)
-	_search_edit.text_submitted.connect(_on_search_submitted)
-	_filter_btn.pressed.connect(_on_filter_pressed)
-	_order_btn.pressed.connect(_on_order_pressed)
-	_batch_btn.pressed.connect(_on_batch_download_pressed)
-	_vocal_btn.toggled.connect(_on_vocal_toggled)
-	_previ_btn.pressed.connect(_on_previ_pressed)
-	_next_btn.pressed.connect(_on_next_pressed)
-	_detail.closed.connect(_on_detail_closed)
-	_detail.download_requested.connect(_on_detail_download_requested)
-	_top_bar.resized.connect(func() -> void: _update_tab_underline(true))
+	%SearchEdit.text_changed.connect(_on_search_changed)
+	%SearchEdit.text_submitted.connect(_on_search_submitted)
+	%FilterDataBtn.pressed.connect(_on_filter_pressed)
+	%SortOrderBtn.pressed.connect(_on_order_pressed)
+	%BatchDownloadBtn.pressed.connect(_on_batch_download_pressed)
+	%VocalBtn.toggled.connect(_on_vocal_toggled)
+	%PreviBtn.pressed.connect(_on_previ_pressed)
+	%NextBtn.pressed.connect(_on_next_pressed)
+	%DetailLayer.closed.connect(_on_detail_closed)
+	%DetailLayer.download_requested.connect(_on_detail_download_requested)
+	%TopBar.resized.connect(func() -> void: _update_tab_underline(true))
 
 
 func _init_vocal_toggle() -> void:
 	var enabled := true
 	if ConfigManager.instance != null:
 		enabled = ConfigManager.instance.get_int("download_vocal", 1) == 1
-	_vocal_btn.set_pressed_no_signal(enabled)
+	%VocalBtn.set_pressed_no_signal(enabled)
 	_update_vocal_visual()
 
 
@@ -211,9 +194,9 @@ func _on_vocal_toggled(pressed: bool) -> void:
 
 
 func _update_vocal_visual() -> void:
-	var on := _vocal_btn.button_pressed
-	_vocal_btn.icon = StoreIconsLib.mic() if on else StoreIconsLib.mic_off()
-	_vocal_btn.tooltip_text = "下载谱面时一并下载人声：%s（点击切换）" % ("开" if on else "关")
+	var on: bool = %VocalBtn.button_pressed
+	%VocalBtn.icon = StoreIconsLib.mic() if on else StoreIconsLib.mic_off()
+	%VocalBtn.tooltip_text = "下载谱面时一并下载人声：%s（点击切换）" % ("开" if on else "关")
 
 
 # ══════════════════════════════════════════════════════
@@ -237,8 +220,8 @@ func _select_tab(tab: int, instant: bool) -> void:
 		TextScrollMGR.suspend_page(_pages[old_tab])
 	TextScrollMGR.resume_page(_pages[tab])
 
-	_search_edit.placeholder_text = TAB_PLACEHOLDERS[tab]
-	_bottom.visible = tab == Tab.SONGS
+	%SearchEdit.placeholder_text = TAB_PLACEHOLDERS[tab]
+	%Bottom.visible = tab == Tab.SONGS
 	_apply_toolbar_for_tab()
 	_update_tab_underline(instant)
 
@@ -257,11 +240,11 @@ func _select_tab(tab: int, instant: bool) -> void:
 
 func _apply_toolbar_for_tab() -> void:
 	var is_songs := _current_tab == Tab.SONGS
-	_filter_btn.disabled = not is_songs
-	_filter_btn.tooltip_text = ("排序字段：%s（点击切换）" % SORT_LABELS[_sort_index]) if is_songs \
+	%FilterDataBtn.disabled = not is_songs
+	%FilterDataBtn.tooltip_text = ("排序字段：%s（点击切换）" % SORT_LABELS[_sort_index]) if is_songs \
 		else "排序字段仅对歌曲页生效"
-	_order_btn.disabled = false
-	_order_btn.tooltip_text = "当前%s（点击切换）" % ("升序" if _sort_order == "asc" else "降序")
+	%SortOrderBtn.disabled = false
+	%SortOrderBtn.tooltip_text = "当前%s（点击切换）" % ("升序" if _sort_order == "asc" else "降序")
 
 
 func _update_tab_underline(instant: bool) -> void:
@@ -269,24 +252,24 @@ func _update_tab_underline(instant: bool) -> void:
 		return
 	var index := clampi(_current_tab, 0, _tab_buttons.size() - 1)
 	var btn := _tab_buttons[index]
-	if btn.size.x <= 0.0 or _top_bar.size.y <= 0.0:
+	if btn.size.x <= 0.0 or %TopBar.size.y <= 0.0:
 		return
-	var bar_pos := btn.global_position - _top_bar.global_position
-	var target_pos := Vector2(bar_pos.x + 8.0, _top_bar.size.y - 4.0)
+	var bar_pos: Vector2 = btn.global_position - %TopBar.global_position
+	var target_pos := Vector2(bar_pos.x + 8.0, %TopBar.size.y - 4.0)
 	var target_size := Vector2(maxf(btn.size.x - 16.0, 16.0), 4.0)
 	if instant:
-		_tab_underline.position = target_pos
-		_tab_underline.size = target_size
+		%TabUnderlinePanel.position = target_pos
+		%TabUnderlinePanel.size = target_size
 		return
-	var tw := AniMGR.create_managed_tween(_tab_underline, "store_tab_underline")
+	var tw := AniMGR.create_managed_tween(%TabUnderlinePanel, "store_tab_underline")
 	if tw == null:
-		_tab_underline.position = target_pos
-		_tab_underline.size = target_size
+		%TabUnderlinePanel.position = target_pos
+		%TabUnderlinePanel.size = target_size
 		return
 	tw.set_parallel(true)
-	tw.tween_property(_tab_underline, "position", target_pos, 0.26) \
+	tw.tween_property(%TabUnderlinePanel, "position", target_pos, 0.26) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_property(_tab_underline, "size", target_size, 0.26) \
+	tw.tween_property(%TabUnderlinePanel, "size", target_size, 0.26) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 
@@ -321,7 +304,7 @@ func _setup_song_vlist() -> void:
 	_song_vlist.margin_rows = GRID_MARGIN_ROWS
 	_song_vlist.on_row_ready = _on_card_ready
 	_song_vlist.on_row_bind = _bind_song_card
-	_song_vlist.setup($Pages/SongsPage/List, $Pages/SongsPage/List/ListContent, SONG_CARD_SCENE)
+	_song_vlist.setup(%SongsScroll, %SongsListContent, SONG_CARD_SCENE)
 
 
 func _load_songs() -> void:
@@ -361,8 +344,8 @@ func _load_songs() -> void:
 		if chart is Dictionary:
 			_song_items.append(_make_song_item(chart))
 
-	_songs_empty.visible = _song_items.is_empty()
-	_songs_empty.text = "没有找到谱面"
+	%SongsEmpty.visible = _song_items.is_empty()
+	%SongsEmpty.text = "没有找到谱面"
 	_update_pager()
 	_bind_animate = true
 	_song_vlist.set_total(_song_items.size(), true)
@@ -417,17 +400,15 @@ func _bind_song_card(node, idx: int) -> void:
 
 
 func _on_card_ready(node) -> void:
-	if node.has_signal("detail_requested"):
-		node.detail_requested.connect(_on_detail_requested)
-	if node.has_signal("download_requested"):
-		node.download_requested.connect(_on_card_download_requested)
+	node.detail_requested.connect(_on_detail_requested)
+	node.download_requested.connect(_on_card_download_requested)
 
 
 func _on_detail_requested(item: Dictionary, source_rect: Rect2) -> void:
 	_detail_source_node = _find_bound_node_for_item(item)
 	_detail_source_item = item
 	_hide_nav_buttons()
-	_detail.open(item, source_rect)
+	%DetailLayer.open(item, source_rect)
 
 
 ## 详情是商店内部的模态层，但右下返回键 z_index=99 会压在它上面（还能点），
@@ -518,13 +499,13 @@ func _on_order_pressed() -> void:
 
 
 func _apply_sort_icons() -> void:
-	_filter_btn.icon = [
+	%FilterDataBtn.icon = [
 		StoreIconsLib.downloads(),
 		StoreIconsLib.plays(),
 		StoreIconsLib.likes(),
 		StoreIconsLib.uploaded(),
 	][_sort_index]
-	_order_btn.icon = StoreIconsLib.order_asc() if _sort_order == "asc" else StoreIconsLib.order_desc()
+	%SortOrderBtn.icon = StoreIconsLib.order_asc() if _sort_order == "asc" else StoreIconsLib.order_desc()
 
 
 func _on_previ_pressed() -> void:
@@ -548,13 +529,13 @@ func _total_pages() -> int:
 
 func _update_pager() -> void:
 	if _song_total <= 0:
-		_indicate.text = "—"
-		_previ_btn.disabled = true
-		_next_btn.disabled = true
+		%PagerText.text = "—"
+		%PreviBtn.disabled = true
+		%NextBtn.disabled = true
 		return
-	_indicate.text = "%d / %d" % [_song_page, _total_pages()]
-	_previ_btn.disabled = _song_page <= 1
-	_next_btn.disabled = _song_page >= _total_pages()
+	%PagerText.text = "%d / %d" % [_song_page, _total_pages()]
+	%PreviBtn.disabled = _song_page <= 1
+	%NextBtn.disabled = _song_page >= _total_pages()
 
 
 func _show_songs_message(text: String) -> void:
@@ -562,8 +543,8 @@ func _show_songs_message(text: String) -> void:
 	_song_total = 0
 	if _song_vlist != null:
 		_song_vlist.clear()
-	_songs_empty.visible = true
-	_songs_empty.text = text
+	%SongsEmpty.visible = true
+	%SongsEmpty.text = text
 	_update_pager()
 	_update_batch_button()
 
@@ -582,9 +563,6 @@ func _ensure_category(tab: int) -> void:
 func _ensure_category_vlist(tab: int) -> void:
 	if _category_vlists.has(tab):
 		return
-	var page: Control = _pages[tab]
-	var scroll := page.get_node("List") as ScrollContainer
-	var content := page.get_node("List/ListContent") as Control
 	var vl := VirtualListLib.new()
 	vl.columns = SONG_COLUMNS
 	vl.row_gap = SONG_ROW_GAP
@@ -592,7 +570,7 @@ func _ensure_category_vlist(tab: int) -> void:
 	vl.margin_rows = GRID_MARGIN_ROWS
 	vl.on_row_ready = _on_card_ready
 	vl.on_row_bind = func(node, idx: int) -> void: _bind_category_card(node, idx, tab)
-	vl.setup(scroll, content, CATEGORY_CARD_SCENE)
+	vl.setup(_category_scrolls[tab], _category_lists[tab], CATEGORY_CARD_SCENE)
 	_category_vlists[tab] = vl
 
 
@@ -781,12 +759,12 @@ func _bind_category_card(node, idx: int, tab: int) -> void:
 
 func _empty_for_tab(tab: int) -> Label:
 	match tab:
-		Tab.SONGS: return _songs_empty
-		Tab.SKINS: return _skins_empty
-		Tab.EFFECTS: return _effects_empty
-		Tab.SOUNDFONTS: return _soundfonts_empty
-		Tab.DOWNLOADS: return _downloads_empty
-	return _songs_empty
+		Tab.SONGS: return %SongsEmpty
+		Tab.SKINS: return %SkinsEmpty
+		Tab.EFFECTS: return %EffectsEmpty
+		Tab.SOUNDFONTS: return %SoundfontsEmpty
+		Tab.DOWNLOADS: return %DownloadsEmpty
+	return %SongsEmpty
 
 
 func _on_resources_ready() -> void:
@@ -985,11 +963,10 @@ func _refresh_bound_card(hash_str: String) -> void:
 			if not is_instance_valid(node):
 				continue
 			var node_item = node.get("item")
-			if node_item is Dictionary and str(node_item.get("hash", "")) == hash_str \
-					and node.has_method("refresh_download_state"):
+			if node_item is Dictionary and str(node_item.get("hash", "")) == hash_str:
 				node.call("refresh_download_state")
-	if _detail.is_open():
-		_detail.refresh_download_state()
+	if %DetailLayer.is_open():
+		%DetailLayer.refresh_download_state()
 
 
 func _sync_song_states() -> void:
@@ -1059,8 +1036,8 @@ func _run_batch() -> void:
 
 func _update_batch_button() -> void:
 	var remain := _batch_queue.size() + (0 if _batch_current.is_empty() else 1)
-	_batch_btn.text = "批量下载" if remain <= 0 else "批量下载 (%d)" % remain
-	_batch_btn.disabled = _current_tab != Tab.SONGS or _batch_running or _manual_running \
+	%BatchDownloadBtn.text = "批量下载" if remain <= 0 else "批量下载 (%d)" % remain
+	%BatchDownloadBtn.disabled = _current_tab != Tab.SONGS or _batch_running or _manual_running \
 		or not _active_hashes.is_empty() or not _has_downloadable_songs()
 
 
@@ -1089,13 +1066,11 @@ func _ensure_download_vlist() -> void:
 	_dl_vlist.margin_rows = 2
 	_dl_vlist.on_row_ready = _on_download_row_ready
 	_dl_vlist.on_row_bind = _bind_download_row
-	_dl_vlist.setup($Pages/DownloadsPage/List, $Pages/DownloadsPage/List/ListContent,
-		DOWNLOAD_ROW_SCENE)
+	_dl_vlist.setup(%DownloadsScroll, %DownloadsListContent, DOWNLOAD_ROW_SCENE)
 
 
 func _on_download_row_ready(node) -> void:
-	if node.has_signal("detail_requested"):
-		node.detail_requested.connect(_on_detail_requested)
+	node.detail_requested.connect(_on_detail_requested)
 
 
 func _bind_download_row(node, idx: int) -> void:
@@ -1140,8 +1115,8 @@ func _refresh_downloads_page(reset_scroll: bool) -> void:
 		_dl_vlist.refresh_all()
 
 	_refresh_hero()
-	_downloads_empty.visible = rows.is_empty() and active.is_empty()
-	_downloads_empty.text = "还没有下载记录"
+	%DownloadsEmpty.visible = rows.is_empty() and active.is_empty()
+	%DownloadsEmpty.text = "还没有下载记录"
 	_update_batch_button()
 
 
@@ -1167,12 +1142,12 @@ func _find_active_entry() -> Dictionary:
 func _refresh_hero() -> void:
 	var active := _find_active_entry()
 	if active.is_empty():
-		_hero_body.visible = false
-		_hero_empty.visible = true
+		%HeroBody.visible = false
+		%HeroEmpty.visible = true
 		_hero_hash = ""
 		return
-	_hero_body.visible = true
-	_hero_empty.visible = false
+	%HeroBody.visible = true
+	%HeroEmpty.visible = false
 
 	var item: Dictionary = active.get("item", {})
 	var hash_str := str(active.get("hash", ""))
@@ -1182,10 +1157,10 @@ func _refresh_hero() -> void:
 
 	var percent := float(active.get("percent", -1.0))
 	var stage := int(active.get("stage", -1))
-	_hero_title.set_scroll_text(str(item.get("title", "未命名谱面")))
-	_hero_stage.text = _stage_text(stage) + (" %d%%" % int(round(percent * 100.0)) if percent >= 0.0 else "")
-	_hero_progress.value = clampf(percent * 100.0, 0.0, 100.0) if percent >= 0.0 else 0.0
-	_hero_percent.text = ("%d%%" % int(round(percent * 100.0))) if percent >= 0.0 else "…"
+	%TitleText.set_scroll_text(str(item.get("title", "未命名谱面")))
+	%StageText.text = _stage_text(stage) + (" %d%%" % int(round(percent * 100.0)) if percent >= 0.0 else "")
+	%HeroProgress.value = clampf(percent * 100.0, 0.0, 100.0) if percent >= 0.0 else 0.0
+	%PercentText.text = ("%d%%" % int(round(percent * 100.0))) if percent >= 0.0 else "…"
 	var author := str(item.get("author", ""))
 	var album := str(item.get("album", ""))
 	var size_text := StoreIconsLib.format_size(int(item.get("size_bytes", 0)))
@@ -1194,29 +1169,29 @@ func _refresh_hero() -> void:
 		meta_parts.append(author)
 	if not album.is_empty():
 		meta_parts.append(album)
-	_hero_meta.set_scroll_text("  ·  ".join(meta_parts))
-	_hero_detail.text = "文件 %s" % size_text
+	%MetaText.set_scroll_text("  ·  ".join(meta_parts))
+	%DetailText.text = "文件 %s" % size_text
 
 
 func _load_hero_cover(item: Dictionary) -> void:
 	_hero_cover_version += 1
 	var version := _hero_cover_version
-	_hero_cover.texture = null
-	_hero_cover_placeholder.visible = true
+	%CoverImage.texture = null
+	%CoverPlaceholder.visible = true
 	var local_tex = item.get("cover_tex")
 	if local_tex is Texture2D:
-		_hero_cover.texture = local_tex
-		_hero_cover_placeholder.visible = false
+		%CoverImage.texture = local_tex
+		%CoverPlaceholder.visible = false
 		return
 	var url := str(item.get("cover_url", ""))
 	if url.is_empty():
 		return
 	HttpImageLoader.load(url, self, func(tex: Texture2D) -> void:
-		if not is_instance_valid(self) or version != _hero_cover_version:
+		if version != _hero_cover_version:
 			return
 		if tex:
-			_hero_cover.texture = tex
-			_hero_cover_placeholder.visible = false
+			%CoverImage.texture = tex
+			%CoverPlaceholder.visible = false
 	)
 
 
@@ -1228,7 +1203,7 @@ func _refresh_download_row(hash_str: String) -> void:
 		if str(entry.get("hash", "")) != hash_str:
 			continue
 		var node := _dl_vlist.node_at(i)
-		if node != null and node.has_method("set_entry"):
+		if node != null:
 			node.call("set_entry", entry.get("item", {}), int(entry.get("state", 0)),
 				int(entry.get("stage", -1)), float(entry.get("percent", -1.0)))
 		return
@@ -1255,7 +1230,7 @@ func _on_state_changed(old_state: UIStateManager.UIState,
 		_sync_song_states()
 		if _song_vlist != null:
 			for node in _song_vlist.bound_nodes():
-				if is_instance_valid(node) and node.has_method("refresh_download_state"):
+				if is_instance_valid(node):
 					node.call("refresh_download_state")
 		if _current_tab == Tab.DOWNLOADS:
 			_refresh_downloads_page(false)
@@ -1263,23 +1238,23 @@ func _on_state_changed(old_state: UIStateManager.UIState,
 		TextScrollMGR.resume_page(self)
 	elif old_state == UIStateManager.UIState.STORE_VIEW \
 			and new_state != UIStateManager.UIState.STORE_VIEW:
-		if _detail.is_open():
-			_detail.close()
+		if %DetailLayer.is_open():
+			%DetailLayer.close()
 		TextScrollMGR.suspend_page(self)
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not _detail.is_open():
+	if not %DetailLayer.is_open():
 		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-		_detail.close()
+		%DetailLayer.close()
 		get_viewport().set_input_as_handled()
 
 
 ## Main 的全局返回键调用：详情打开时先关详情，返回 true 表示事件已被消费
 func handle_back_request() -> bool:
-	if _detail.is_open():
-		_detail.close()
+	if %DetailLayer.is_open():
+		%DetailLayer.close()
 		return true
 	return false
 
@@ -1359,25 +1334,25 @@ func apply_theme() -> void:
 	var accent_text := primary_dark if is_light else primary_light
 	var muted_text := text_secondary if is_light else text_dim
 
-	var top_sb := _top_bar.get_theme_stylebox("panel") as StyleBoxFlat
+	var top_sb: StyleBoxFlat = %TopBar.get_theme_stylebox("panel")
 	if top_sb:
 		top_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.97)
 		top_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.55 if is_light else 0.4)
 
-	var search_sb := _search_edit.get_theme_stylebox("normal") as StyleBoxFlat
+	var search_sb: StyleBoxFlat = %SearchEdit.get_theme_stylebox("normal")
 	if search_sb:
 		search_sb.bg_color = surface_low
 		search_sb.border_color = border
-	var search_focus_sb := _search_edit.get_theme_stylebox("focus") as StyleBoxFlat
+	var search_focus_sb: StyleBoxFlat = %SearchEdit.get_theme_stylebox("focus")
 	if search_focus_sb:
 		search_focus_sb.bg_color = surface_low.lightened(0.04)
 		search_focus_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.9)
-	_search_edit.add_theme_color_override("font_color", text_primary)
-	_search_edit.add_theme_color_override("font_placeholder_color", muted_text)
-	_search_edit.add_theme_color_override("caret_color", primary)
-	_search_icon.modulate = text_secondary
+	%SearchEdit.add_theme_color_override("font_color", text_primary)
+	%SearchEdit.add_theme_color_override("font_placeholder_color", muted_text)
+	%SearchEdit.add_theme_color_override("caret_color", primary)
+	%SearchIcon.modulate = text_secondary
 
-	for btn in [_filter_btn, _order_btn, _batch_btn, _vocal_btn]:
+	for btn in [%FilterDataBtn, %SortOrderBtn, %BatchDownloadBtn, %VocalBtn]:
 		var b := btn as Button
 		_style_flat_button(b, surface_high, surface_hover, primary_dark, border, text_secondary, text_primary)
 		# 工具按钮按下时（人声是 toggle）底色是深主题色：浅色模式必须用白字，否则深字压深底
@@ -1413,15 +1388,13 @@ func apply_theme() -> void:
 		if tab_focus:
 			tab_focus.border_color = accent_text
 
-	var underline_sb := _tab_underline.get_theme_stylebox("panel") as StyleBoxFlat
-	if underline_sb:
-		underline_sb.bg_color = primary_dark if is_light else primary_light
-
+	%TabUnderlinePanel.get_theme_stylebox("panel").bg_color = primary_dark if is_light else primary_light
+	
 	# 工具按钮 / 标签按钮的 disabled 样式：MidiStore.tscn 里没给这四个按钮配 disabled，
 	# 落到 MainTheme 的 Button/disabled（透明底 + 浅色下几乎看不见描边），
 	# 于是「排序字段」在人声页被禁用时看起来跟可用态一模一样。这里补齐本地覆盖。
 	var disabled_bg := surface_low.darkened(0.06) if is_light else surface_low
-	for btn in [_filter_btn, _order_btn, _batch_btn, _vocal_btn] + _tab_buttons:
+	for btn in [%FilterDataBtn, %SortOrderBtn, %BatchDownloadBtn, %VocalBtn] + _tab_buttons:
 		var db := (btn as Button).get_theme_stylebox("normal") as StyleBoxFlat
 		if db == null:
 			continue
@@ -1431,39 +1404,33 @@ func apply_theme() -> void:
 		(btn as Button).add_theme_stylebox_override("disabled", d_sb)
 
 	# 分页
-	for btn in [_previ_btn, _next_btn]:
+	for btn in [%PreviBtn, %NextBtn]:
 		var b := btn as Button
 		_style_flat_button(b, surface_high, surface_hover, primary_dark, border, text_secondary, text_primary)
 		b.add_theme_color_override("icon_normal_color", text_secondary)
 		b.add_theme_color_override("icon_hover_color", text_primary)
-	var indicate_sb := _indicate.get_theme_stylebox("normal") as StyleBoxFlat
-	if indicate_sb:
-		indicate_sb.bg_color = surface_low
-	_indicate.add_theme_color_override("font_color", text_secondary)
+	%PagerText.get_theme_stylebox("normal").bg_color = surface_low
+	%PagerText.add_theme_color_override("font_color", text_secondary)
 
 	# 下载管理
-	var hero_sb := _hero.get_theme_stylebox("panel") as StyleBoxFlat
+	var hero_sb: StyleBoxFlat = %HeroPanel.get_theme_stylebox("panel")
 	if hero_sb:
 		hero_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.96)
 		hero_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.45)
-	var hero_cover_sb := _hero_cover_wrap.get_theme_stylebox("panel") as StyleBoxFlat
+	var hero_cover_sb: StyleBoxFlat = %CoverWrapPanel.get_theme_stylebox("panel")
 	if hero_cover_sb:
 		hero_cover_sb.bg_color = surface_high if is_light else surface_low
 		hero_cover_sb.border_color = border
-	var progress_bg := _hero_progress.get_theme_stylebox("background") as StyleBoxFlat
-	if progress_bg:
-		progress_bg.bg_color = surface_low.darkened(0.15)
-	var progress_fill := _hero_progress.get_theme_stylebox("fill") as StyleBoxFlat
-	if progress_fill:
-		progress_fill.bg_color = primary
-	_hero_stage.add_theme_color_override("font_color", accent_text)
-	_hero_percent.add_theme_color_override("font_color", text_primary)
-	_hero_detail.add_theme_color_override("font_color", muted_text)
-	_hero_empty.add_theme_color_override("font_color", muted_text)
-	_hero_cover_placeholder.modulate = muted_text
-	_hero_cover_placeholder.modulate.a = 0.35
-	_downloads_recent_title.add_theme_color_override("font_color", text_secondary)
-	for label in [_songs_empty, _skins_empty, _effects_empty, _soundfonts_empty, _downloads_empty]:
+	%HeroProgress.get_theme_stylebox("background").bg_color = surface_low.darkened(0.15)
+	%HeroProgress.get_theme_stylebox("fill").bg_color = primary
+	%StageText.add_theme_color_override("font_color", accent_text)
+	%PercentText.add_theme_color_override("font_color", text_primary)
+	%DetailText.add_theme_color_override("font_color", muted_text)
+	%HeroEmpty.add_theme_color_override("font_color", muted_text)
+	%CoverPlaceholder.modulate = muted_text
+	%CoverPlaceholder.modulate.a = 0.35
+	%RecentTitleText.add_theme_color_override("font_color", text_secondary)
+	for label in [%SongsEmpty, %SkinsEmpty, %EffectsEmpty, %SoundfontsEmpty, %DownloadsEmpty]:
 		label.add_theme_color_override("font_color", muted_text)
 
 	_refresh_hero()

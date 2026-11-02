@@ -34,24 +34,6 @@ var _dl_hover: StyleBoxFlat
 var _dl_pressed: StyleBoxFlat
 var _dl_focus: StyleBoxFlat
 
-@onready var _cover: RoundedTextureRect = $Margin/HBox/CoverWrap/Cover
-@onready var _cover_placeholder: TextureRect = $Margin/HBox/CoverWrap/Placeholder
-@onready var _cover_wrap: Panel = $Margin/HBox/CoverWrap
-@onready var _duration: Label = $Margin/HBox/CoverWrap/Duration
-@onready var _title: Label = $Margin/HBox/Info/Title
-@onready var _author: Label = $Margin/HBox/Info/Author
-@onready var _song_line: Label = $Margin/HBox/Info/SongLine
-@onready var _uploader: Label = $Margin/HBox/Info/Uploader
-@onready var _stats: HBoxContainer = $Margin/HBox/Info/Stats
-@onready var _stat_downloads: HBoxContainer = $Margin/HBox/Info/Stats/Downloads
-@onready var _stat_downloads_count: Label = $Margin/HBox/Info/Stats/Downloads/Count
-@onready var _stat_plays: HBoxContainer = $Margin/HBox/Info/Stats/Plays
-@onready var _stat_plays_count: Label = $Margin/HBox/Info/Stats/Plays/Count
-@onready var _stat_likes: HBoxContainer = $Margin/HBox/Info/Stats/Likes
-@onready var _stat_likes_count: Label = $Margin/HBox/Info/Stats/Likes/Count
-@onready var _download_btn: Button = $Margin/HBox/RightCol/DownloadBtn
-@onready var _state_label: Label = $Margin/HBox/RightCol/StateLabel
-
 
 func _ready() -> void:
 	_has_ready = true
@@ -61,17 +43,17 @@ func _ready() -> void:
 	_dl_pressed = _duplicate_stylebox("pressed")
 	_dl_focus = _duplicate_stylebox("focus")
 	if _dl_normal:
-		_download_btn.add_theme_stylebox_override("normal", _dl_normal)
+		%DownloadBtn.add_theme_stylebox_override("normal", _dl_normal)
 	if _dl_hover:
-		_download_btn.add_theme_stylebox_override("hover", _dl_hover)
+		%DownloadBtn.add_theme_stylebox_override("hover", _dl_hover)
 	if _dl_pressed:
-		_download_btn.add_theme_stylebox_override("pressed", _dl_pressed)
+		%DownloadBtn.add_theme_stylebox_override("pressed", _dl_pressed)
 	if _dl_focus:
-		_download_btn.add_theme_stylebox_override("focus", _dl_focus)
+		%DownloadBtn.add_theme_stylebox_override("focus", _dl_focus)
 
 	button_down.connect(_on_button_down)
 	pressed.connect(_on_pressed)
-	_download_btn.pressed.connect(_on_download_pressed)
+	%DownloadBtn.pressed.connect(_on_download_pressed)
 
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
@@ -81,7 +63,7 @@ func _ready() -> void:
 
 
 func _duplicate_stylebox(state: String) -> StyleBoxFlat:
-	var sb := _download_btn.get_theme_stylebox(state) as StyleBoxFlat
+	var sb := %DownloadBtn.get_theme_stylebox(state) as StyleBoxFlat
 	return sb.duplicate() as StyleBoxFlat if sb else null
 
 
@@ -109,21 +91,21 @@ func _apply_item(animate_in: bool) -> void:
 	var song := str(item.get("song", ""))
 	var album := str(item.get("album", ""))
 	var uploader := str(item.get("uploader", ""))
-	_title.set_scroll_text(title if not title.is_empty() else "未命名谱面")
-	_author.set_scroll_text(author if not author.is_empty() else "未知作者")
+	%Title.set_scroll_text(title if not title.is_empty() else "未命名谱面")
+	%Author.set_scroll_text(author if not author.is_empty() else "未知作者")
 	var line := ""
 	if not song.is_empty() and not album.is_empty():
 		line = "%s · %s" % [song, album]
 	else:
 		line = song if not song.is_empty() else album
-	_song_line.set_scroll_text(line if not line.is_empty() else "未知专辑")
-	_uploader.set_scroll_text(("由 %s 上传" % uploader) if not uploader.is_empty() else "本地谱面")
+	%SongLine.set_scroll_text(line if not line.is_empty() else "未知专辑")
+	%Uploader.set_scroll_text(("由 %s 上传" % uploader) if not uploader.is_empty() else "本地谱面")
 
 	_apply_duration_label()
 
-	_update_stat(_stat_downloads, _stat_downloads_count, int(item.get("downloads", -1)))
-	_update_stat(_stat_plays, _stat_plays_count, int(item.get("plays", -1)))
-	_update_stat(_stat_likes, _stat_likes_count, int(item.get("likes", -1)))
+	_update_stat(%Downloads, %DownloadsCount, int(item.get("downloads", -1)))
+	_update_stat(%Plays, %PlaysCount, int(item.get("plays", -1)))
+	_update_stat(%Likes, %LikesCount, int(item.get("likes", -1)))
 
 	_load_cover()
 	_apply_download_state()
@@ -144,14 +126,14 @@ func _apply_duration_label() -> void:
 	var has_vocal := bool(item.get("has_vocal", false))
 	var time_text := StoreIconsLib.format_duration(duration_sec)
 	if duration_sec > 0:
-		_duration.text = ("有人声 " + time_text) if has_vocal else time_text
-		_duration.visible = true
+		%Duration.text = ("有人声 " + time_text) if has_vocal else time_text
+		%Duration.visible = true
 	elif has_vocal:
-		_duration.text = "有人声"
-		_duration.visible = true
+		%Duration.text = "有人声"
+		%Duration.visible = true
 	else:
-		_duration.text = ""
-		_duration.visible = false
+		%Duration.text = ""
+		%Duration.visible = false
 
 
 func _update_stat(row: HBoxContainer, label: Label, value: int) -> void:
@@ -163,15 +145,15 @@ func _update_stat(row: HBoxContainer, label: Label, value: int) -> void:
 func _load_cover() -> void:
 	_cover_version += 1
 	var version := _cover_version
-	_cover.texture = null
-	_cover_placeholder.visible = true
-	_cover_placeholder.texture = StoreIconsLib.song()
+	%Cover.texture = null
+	%Placeholder.visible = true
+	%Placeholder.texture = StoreIconsLib.song()
 
 	# 本地分类条目会直接带 Texture（皮肤/粒子预览图），远程谱面走 URL
 	var local_tex = item.get("cover_tex")
 	if local_tex is Texture2D:
-		_cover.texture = local_tex
-		_cover_placeholder.visible = false
+		%Cover.texture = local_tex
+		%Placeholder.visible = false
 		return
 	var url := str(item.get("cover_url", ""))
 	if url.is_empty():
@@ -180,8 +162,8 @@ func _load_cover() -> void:
 		if not is_instance_valid(self) or version != _cover_version:
 			return
 		if tex:
-			_cover.texture = tex
-			_cover_placeholder.visible = false
+			%Cover.texture = tex
+			%Placeholder.visible = false
 	)
 
 
@@ -210,9 +192,9 @@ func _apply_download_state() -> void:
 			icon_tex = StoreIconsLib.close()
 			label_text = "重试"
 			tip = "下载失败，点击重试"
-	_download_btn.icon = icon_tex
-	_download_btn.tooltip_text = tip
-	_state_label.text = label_text
+	%DownloadBtn.icon = icon_tex
+	%DownloadBtn.tooltip_text = tip
+	%StateLabel.text = label_text
 
 	_set_download_colors(base)
 
@@ -231,7 +213,7 @@ func _set_download_colors(base: Color) -> void:
 		var light := ThemeMGR != null and ThemeMGR.get_appearance() == "light"
 		_dl_focus.border_color = base.darkened(0.08) if light else base.lightened(0.5)
 		_dl_focus.shadow_color = Color(base.r, base.g, base.b, 0.4)
-	_state_label.add_theme_color_override("font_color",
+	%StateLabel.add_theme_color_override("font_color",
 		ThemeMGR.get_color("text_secondary") if ThemeMGR else Color(0.7, 0.75, 0.85))
 
 
@@ -291,18 +273,18 @@ func apply_theme() -> void:
 			focus_sb.border_color = ThemeMGR._tint_keep_alpha(focus_color, 0.9)
 			focus_sb.shadow_color = Color(primary.r, primary.g, primary.b, 0.35)
 
-		var cover_sb := _cover_wrap.get_theme_stylebox("panel") as StyleBoxFlat
+		var cover_sb := %CoverWrap.get_theme_stylebox("panel") as StyleBoxFlat
 		if cover_sb:
 			# 浅色模式封面框比卡片略深一档：白底上白色音符/长条的预览才看得见
 			cover_sb.bg_color = ThemeMGR.get_color("surface_high") if is_light else surface_low
 			cover_sb.border_color = border
 
-	for label in [_stat_downloads_count, _stat_plays_count, _stat_likes_count]:
+	for label in [%DownloadsCount, %PlaysCount, %LikesCount]:
 		label.add_theme_color_override("font_color", muted_text)
-	for icon_node in _stats.find_children("*", "TextureRect", true, false):
+	for icon_node in %Stats.find_children("*", "TextureRect", true, false):
 		(icon_node as TextureRect).modulate = muted_text
-	_cover_placeholder.modulate = muted_text
-	_cover_placeholder.modulate.a = 0.4
+	%Placeholder.modulate = muted_text
+	%Placeholder.modulate.a = 0.4
 
 	_apply_download_state()
 

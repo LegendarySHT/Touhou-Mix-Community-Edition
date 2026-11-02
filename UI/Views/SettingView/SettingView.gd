@@ -1,7 +1,7 @@
-extends Control
-@onready var setting_list: SettingList = $HBoxC/SettingList
-@onready var short_cut_btn = $HBoxC/ShortCut
-@onready var about_page: Panel = $HBoxC/AboutPage
+extends ViewBase
+
+# 焦点管理器引用了这个
+@onready var short_cut_btns = %ShortCutBtns
 
 ## 「关于」按钮在 ShortCut 中的下标。
 ## 该按钮不对应任何设置分组——按下它时把列表区整体换成 AboutPage，而非滚动到某个分组。
@@ -27,12 +27,12 @@ static var CONFIG_PATH: String:
 const DEFAULT_CONFIG_PATH = "res://Resources/Config/config.ini"
 
 
-func _ready() -> void:
+func _on_view_ready() -> void:
 	# 面板初始态：设置列表在前，关于页隐藏。两者互斥显示，由 _show_about 统一切换
 	_show_about(false)
 
 	var idx: int = 0
-	for btn:Button in short_cut_btn.get_children():
+	for btn:Button in %ShortCutBtns.get_children():
 		btn.toggled.connect(_on_button_toggled.bind(idx))
 		btn.focus_entered.connect(_btn_focus_entered.bind(btn))
 		idx += 1
@@ -42,21 +42,10 @@ func _ready() -> void:
 	EvtBus.page_right.connect(switch_page.bind(1))
 
 	# 转移焦点至导航按钮
-	short_cut_btn.focus_entered.connect(func():
-		var btn: Button = short_cut_btn.get_child(0)
-		for i in short_cut_btn.get_children():
-			if i is Button and i.button_pressed:
-				break
-		btn.grab_focus()
-	)
+	%ShortCutBtns.get_child(0).grab_focus()
 
 	# 从 ConfigLoader 加载配置
 	_load_config_from_file()
-
-	# 注册主题应用者并首次着色
-	if ThemeMGR:
-		ThemeMGR.register_theme_applier(self)
-		apply_theme()
 
 	# 关于页动态内容绑定（版本号/关于项目/更新历史，版本以 VerMGR / version_history.json 为准）
 	refresh_about_page()
@@ -65,21 +54,41 @@ func _ready() -> void:
 ## SettingList 的 value_button 主题；ShortCut 导航按钮的 focus 直接复用共享 Theme 的 focus StyleBox
 ## （ThemeManager 在 _refresh_theme_colors 里就地改其边框色，不再逐按钮 duplicate 覆盖）
 func apply_theme() -> void:
-	if setting_list:
-		setting_list.apply_button_theme(ThemeMGR.get_color("primary"))
+	%SettingList.apply_button_theme(ThemeMGR.get_color("primary"))
 
 	# 关于页面板：比 TabContainer 内容底(surface)再后退一档——
 	# 暗色模式更深、浅色模式更浅，统一取 surface_low（该 token 在两种模式下都更远离 surface：
 	# 暗色 V 更低、浅色 V 更高）。几何与 alpha 沿用 tscn 的 StyleBoxFlat_xkn3i，仅改 RGB。
-	if about_page and about_page.has_theme_stylebox_override("panel"):
-		var sb := about_page.get_theme_stylebox("panel")
-		if sb is StyleBoxFlat:
-			var c := ThemeMGR.get_color("surface_low")
-			sb.bg_color = Color(c.r, c.g, c.b, sb.bg_color.a)
+	var sb := (%AboutPage as Panel).get_theme_stylebox("panel")
+	if sb is StyleBoxFlat:
+		var c := ThemeMGR.get_color("surface_low")
+		sb.bg_color = Color(c.r, c.g, c.b, sb.bg_color.a)
 
-func _exit_tree() -> void:
-	if ThemeMGR:
-		ThemeMGR.unregister_theme_applier(self)
+## 出场：导航栏/设置列表左滑 + 整页淡出。有未保存改动则先落盘。
+## save_config_to_file 内部已做 soundfont 回退 + 同步应用，磁盘写入与通知推迟到下一帧，
+## 不阻塞退场动画首帧。
+func _play_exit() -> Tween:
+	if has_pending_changes():
+		var ok := save_config_to_file()
+		if ok:
+			GLogger.info("Settings applied successfully", "SettingView")
+		else:
+			push_warning("[SettingView] Failed to apply settings")
+
+	AniMGR.animate_offset_to(%ShortCutBtns, Vector2(-500, 0), 0.35, "sv_btns")
+	AniMGR.animate_offset_to(%SettingList, Vector2(-1500, 0), 0.25, "sv_info")
+	var tw := AniMGR.animate_fade_out(self, 0.35, "%s_out" % name)
+
+	switch_page_instant()
+	return tw
+
+## 入场：导航栏/设置列表从左滑回
+func _play_enter() -> Tween:
+	%ShortCutBtns.offset_transform_position = Vector2(-500, 0)
+	%SettingList.offset_transform_position = Vector2(-1500, 0)
+	var tw := AniMGR.animate_offset_back(%ShortCutBtns, 0.25, "sv_btns")
+	AniMGR.animate_offset_back(%SettingList, 0.35, "sv_info")
+	return tw
 
 func get_all_child_nodes(c: Container):
 	var node_array = []
@@ -94,7 +103,7 @@ func get_nearest_focusable_node(pos_y) -> Control:
 	var min_distance = INF
 	
 	# 获取GridContainer的全局位置
-	var c: Container = setting_list.container
+	var c: Container = %SettingList.container
 	
 	
 	# 遍历GridContainer的所有子节点
@@ -120,7 +129,7 @@ func get_nearest_focusable_node(pos_y) -> Control:
 
 func _btn_focus_entered(btn: Button):
 	if not btn.button_pressed:
-		short_cut_btn.set_meta("snaping", true)
+		%ShortCutBtns.set_meta("snaping", true)
 		btn.button_pressed = true
 	
 	for i in btn.get_parent().get_children():
@@ -141,7 +150,7 @@ func _load_config_from_file() -> void:
 	if ini_config.is_empty():
 		push_error("[SettingView] Failed to load config from: %s" % config_path)
 		# 使用空字典，让 SettingList 使用默认值
-		setting_list.load_settings({})
+		%SettingList.load_settings({})
 		return
 
 	# 检查并迁移配置版本。
@@ -154,7 +163,7 @@ func _load_config_from_file() -> void:
 	var settings_dict = SettingsMapper.ini_to_settings(ini_config)
 
 	# 加载到 SettingList（内部会触发 options_provider 自动填充下拉选项、应用可见性等）
-	setting_list.load_settings(settings_dict)
+	%SettingList.load_settings(settings_dict)
 
 	GLogger.info("Loaded %d settings from: %s" % [settings_dict.size(), config_path], "SettingView")
 
@@ -168,8 +177,8 @@ func save_config_to_file() -> bool:
 	# 1. 构造待写盘配置：基于磁盘已有内容做 diff，仅写变更项（内存计算，load_config 多数为缓存命中）
 	#    value_type 统一字符串化；颜色转 hex（ConfigManager._serialize_ini 对 Color 只会写成 Color(...) 而非 hex，
 	#    故必须在此显式处理，否则改过的配色会写坏）。
-	var pending = setting_list._pending_config
-	var initial = setting_list._initial_config
+	var pending = %SettingList._pending_config
+	var initial = %SettingList._initial_config
 	var base_config = config_manager.load_config(
 		CONFIG_PATH if FileAccess.file_exists(CONFIG_PATH) else DEFAULT_CONFIG_PATH).duplicate(true)
 
@@ -199,7 +208,7 @@ func save_config_to_file() -> bool:
 
 		# soundfont 文件存在性校验，不存在则回退默认
 		if setting_id == "soundfont_select":
-			if not setting_list._verify_soundfont_exists(str(value)):
+			if not %SettingList._verify_soundfont_exists(str(value)):
 				GLogger.warning("Soundfont '%s' not found, falling back to default" % value, "SettingView")
 				value = "GeneralUser-GS"
 				pending[setting_id] = value  # 同步待保存值：通知与写盘须一致
@@ -218,13 +227,9 @@ func save_config_to_file() -> bool:
 	# 版本号同样按键写入（原先写死 [Game] 段，导致 [System] 里的版本号永远不更新）
 	config_manager.set_value("config_version", ConfigManager.CONFIG_VERSION, "System", base_config)
 
-	# 2. 先统一 emit config_changed（运行时即时生效），再写盘。顺序不可颠倒：
-	#    save_config 会把"字符串化"的新值合并进 ConfigManager._current_config，而 set_value_and_notify
-	#    以 str 比较判定"值未变化"；若先写盘，typed 新值（如 int 1）与字符串值（"1"）判等，通知被静默吞掉，
-	#    导致 NetManager(online_mode/server_address) 等依赖 config_changed 的运行时无法即时生效。
-	if setting_list and setting_list.has_method("apply_pending_config_updates"):
-		var applied_count = setting_list.apply_pending_config_updates(false)
-		GLogger.info("Applied %d deferred config updates" % applied_count, "SettingView")
+	# 2. 先统一 emit config_changed（运行时即时生效），再写盘。
+	var applied_count = %SettingList.apply_pending_config_updates(false)
+	GLogger.info("Applied %d deferred config updates" % applied_count, "SettingView")
 
 	# 同步发出 settings_changed：必须在退场动画之前。
 	#    PlaybackDisplay 据此异步重载音源，重载完成回调在 is_playing=false（退场/暂停态）时
@@ -243,8 +248,7 @@ func _persist_config_to_disk(base_config: Dictionary) -> void:
 	var success = config_manager.save_config(CONFIG_PATH, base_config)
 	if success:
 		GLogger.info("Saved config to: %s" % CONFIG_PATH, "SettingView")
-		if setting_list and setting_list.has_method("sync_applied_config_snapshot"):
-			setting_list.sync_applied_config_snapshot()
+		%SettingList.sync_applied_config_snapshot()
 	else:
 		push_error("[SettingView] Failed to save config to: %s" % CONFIG_PATH)
 
@@ -259,7 +263,7 @@ func _on_button_toggled(_toggled_on: bool, idx: int):
 
 	_last_group_btn_idx = idx
 	# 若当前停在关于页，先播退出动画，结束后再揭示目标分组；否则直接显示并吸附
-	if about_page.visible:
+	if %AboutPage.visible:
 		_exit_about(_reveal_group.bind(idx))
 	else:
 		_show_about(false)
@@ -270,17 +274,17 @@ func _reveal_group(idx: int) -> void:
 	var target_idx = idx*2
 	var c_idx = 0
 	
-	for node in setting_list.container.get_children():
+	for node in %SettingList.container.get_children():
 		if node is Separator:
 			if c_idx == target_idx:
 				if _snap_tween:
 					_snap_tween.kill()
 				_snap_tween = AniMGR.create_managed_tween(self)
-				_snap_tween.tween_property(setting_list, "scroll_vertical", node.position.y + node.size.y, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+				_snap_tween.tween_property(%SettingList, "scroll_vertical", node.position.y + node.size.y, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 				_snap_tween.finished.connect(func ():
 					_snap_tween = null
-					short_cut_btn.remove_meta("snaping")
-					var btn = short_cut_btn.get_child(idx)
+					%ShortCutBtns.remove_meta("snaping")
+					var btn = %ShortCutBtns.get_child(idx)
 					var neighbor = get_nearest_focusable_node(btn.get_global_position().y)
 					if neighbor:
 						btn.focus_neighbor_right = neighbor.get_path()
@@ -291,17 +295,15 @@ func _reveal_group(idx: int) -> void:
 ## 两者都是 HBoxC 的直接子节点且都设了 expand，互斥显示即可让 HBoxContainer
 ## 只给可见的那个分配宽度——左侧 ShortCut 按钮栏因此保持原位，不会被挤压。
 func _show_about(is_about: bool) -> void:
-	if setting_list:
-		setting_list.visible = not is_about
-	if about_page:
-		about_page.visible = is_about
+	%SettingList.visible = not is_about
+	%AboutPage.visible = is_about
 
 ## 关于页入场：从右侧滑入 + 淡入；子元素轻微上移错峰增加层次（不改 alpha，避免与整体淡入叠加）
 func _enter_about() -> void:
-	if about_page.visible:
+	if %AboutPage.visible:
 		return
 	_show_about(true)   # setting_list 隐藏、about_page 显示
-	AniMGR.animate_fade_slide_in(about_page, Vector2(1500, 0), AniMGR.DURATION_NORMAL, "about_enter")
+	AniMGR.animate_fade_slide_in(%AboutPage, Vector2(1500, 0), AniMGR.DURATION_NORMAL, "about_enter")
 	_stagger_about_children()
 
 ## 关于页子元素错峰入场（仅位移，不改 alpha）
@@ -310,7 +312,7 @@ func _stagger_about_children() -> void:
 	var child_names := ["Project", "Line", "TabContainer"]
 	var i := 0
 	for child_name in child_names:
-		var node := about_page.get_node_or_null(child_name)
+		var node := %AboutPage.get_node_or_null(child_name)
 		if node == null or not (node is Control):
 			continue
 		node.offset_transform_enabled = true
@@ -326,22 +328,20 @@ func _stagger_about_children() -> void:
 
 ## 关于页出场：滑出 + 淡出，结束后显示设置列表并回调（p_on_done 通常为揭示目标分组）
 func _exit_about(p_on_done: Callable = Callable()) -> void:
-	if not about_page.visible:
+	if not %AboutPage.visible:
 		if p_on_done.is_valid():
 			p_on_done.call()
 		return
-	var tween := AniMGR.animate_fade_slide_out(about_page, Vector2(1500, 0), AniMGR.DURATION_QUICK, "about_exit")
+	var tween := AniMGR.animate_fade_slide_out(%AboutPage, Vector2(1500, 0), AniMGR.DURATION_QUICK, "about_exit")
 	if tween and tween.is_valid():
 		tween.finished.connect(func() -> void:
-			if is_instance_valid(setting_list):
-				setting_list.visible = true
-				TextScrollMGR.resume_page(setting_list)
+			%SettingList.visible = true
+			TextScrollMGR.resume_page(%SettingList)
 			if p_on_done.is_valid():
 				p_on_done.call()
 		)
 	else:
-		if is_instance_valid(setting_list):
-			setting_list.visible = true
+		%SettingList.visible = true
 		if p_on_done.is_valid():
 			p_on_done.call()
 
@@ -349,7 +349,7 @@ func _exit_about(p_on_done: Callable = Callable()) -> void:
 ## 直接置 button_pressed 会重新触发 toggled → _on_button_toggled，从而复用那里的
 ## 滚动吸附与右邻焦点重建，不必在这里重复实现一遍定位逻辑。
 func _restore_last_group() -> void:
-	var btn := short_cut_btn.get_child(_last_group_btn_idx)
+	var btn := %ShortCutBtns.get_child(_last_group_btn_idx)
 	if btn is Button and not (btn as Button).button_pressed:
 		(btn as Button).button_pressed = true
 	else:
@@ -358,22 +358,18 @@ func _restore_last_group() -> void:
 
 # 获取当前ui中的配置
 func _get_config():
-	var config = setting_list.get_all_settings_as_json()
+	var config = %SettingList.get_all_settings_as_json()
 	return config
 
 ## 关于页版本号动态绑定（避免硬编码，版本以 VerMGR / version_history.json 为准）
 func _refresh_about_version() -> void:
-	if about_page == null or VerMGR == null:
-		return
-	var ver_label := about_page.get_node_or_null("Project/Info/Version")
+	var ver_label := %AboutPage.get_node_or_null("Project/Info/Version")
 	if ver_label is Label:
 		ver_label.text = VerMGR.get_version_label()
 
 ## 刷新关于页全部动态内容：版本号、关于项目正文、更新历史、链接与更新按钮。
 ## _ready 时调用一次；外部需要时也可再次调用强制刷新。
 func refresh_about_page() -> void:
-	if about_page == null:
-		return
 	_refresh_about_version()
 	_setup_about_content()
 
@@ -394,24 +390,18 @@ func _about_project_bbcode() -> String:
 ## 外观/滚动/字号/布局等静态属性全部在 SettingView.tscn 中定义，代码不覆盖。
 func _setup_about_content() -> void:
 	# 关于项目
-	var about_text := about_page.get_node_or_null("TabContainer/About/Margin/text") as RichTextLabel
-	if about_text:
-		_bind_link_signal(about_text)
-		about_text.text = _about_project_bbcode()
+	_bind_link_signal(%AboutProjectText)
+	%AboutProjectText.text = _about_project_bbcode()
 
 	# 版本历史
-	var hist_text := about_page.get_node_or_null("TabContainer/History/Content/Margin/RichTextLabel") as RichTextLabel
-	if hist_text:
-		_bind_link_signal(hist_text)
-		hist_text.text = _history_bbcode()
+	_bind_link_signal(%VersionHistoryText)
+	%VersionHistoryText.text = _history_bbcode()
 
 	# 检查更新按钮
-	var manual_btn := about_page.get_node_or_null("TabContainer/History/Update/ManualUpdate") as Button
-	if manual_btn and not manual_btn.pressed.is_connected(_on_manual_update_pressed):
-		manual_btn.pressed.connect(_on_manual_update_pressed)
-	var auto_btn := about_page.get_node_or_null("TabContainer/History/Update/AutoUpdate") as Button
-	if auto_btn and not auto_btn.toggled.is_connected(_on_auto_update_toggled):
-		auto_btn.toggled.connect(_on_auto_update_toggled)
+	if %ManualUpdateBtn and not %ManualUpdateBtn.pressed.is_connected(_on_manual_update_pressed):
+		%ManualUpdateBtn.pressed.connect(_on_manual_update_pressed)
+	if %AutoUpdateBtn and not %AutoUpdateBtn.toggled.is_connected(_on_auto_update_toggled):
+		%AutoUpdateBtn.toggled.connect(_on_auto_update_toggled)
 
 ## 统一配置 RichTextLabel：只负责行为（[url] 点击），
 ## 富文本/滚动/字号/布局等静态属性全部在 SettingView.tscn 中定义。
@@ -494,8 +484,7 @@ func _channel_label(channel: String) -> String:
 
 ## 「手动检查更新」按钮
 func _on_manual_update_pressed() -> void:
-	var status_label := about_page.get_node_or_null("TabContainer/History/Update/Status") as Label
-	check_for_update(status_label)
+	check_for_update(%UpdateStatusText)
 
 ## 「自动检查更新」开关（当前仅记录会话内状态；联网接入后可持久化）
 func _on_auto_update_toggled(on: bool) -> void:
@@ -530,12 +519,12 @@ func check_for_update(status_label: Label = null) -> void:
 ## 此方法由其他模块（如TrackView、PlayView）调用，用于查询当前设置值
 ## 优先从 SettingList 的 _pending_config 读取（包含本次会话的修改），未命中则回退到配置文件
 func get_setting_value(setting_id: String) -> Variant:
-	if setting_list == null:
+	if %SettingList == null:
 		push_warning("[SettingView] SettingList not initialized when querying: %s" % setting_id)
 		return null
 
 	# 优先从待保存配置中读取（已转换好类型）
-	var pending_value = setting_list.get_setting_value(setting_id)
+	var pending_value = %SettingList.get_setting_value(setting_id)
 	if pending_value != null:
 		return pending_value
 
@@ -556,51 +545,48 @@ func get_setting_value(setting_id: String) -> Variant:
 	GLogger.warning("Setting not found: %s" % setting_id, "SettingView")
 	return null
 
-@onready var setting_page = $HBoxC
-@onready var resource_page = $ResourceView
-@onready var ani: AnimationManager = AniMGR
 func switch_page(direction: int = 0):
 	var op: bool = true
 	if direction == -1:
 		op = false
-		resource_page.visible = true
-		TextScrollMGR.resume_page(resource_page)
+		%ResourceView.visible = true
+		TextScrollMGR.resume_page(%ResourceView)
 		# 提前触发构建：页面在左滑入时就已经有内容，不会滑到一半才开始加载卡片
-		resource_page.on_entered()
+		%ResourceView.on_entered()
 	else:
-		setting_page.visible = true
-		TextScrollMGR.resume_page(setting_page)
+		%SettingView.visible = true
+		TextScrollMGR.resume_page(%SettingView)
 
-	var wid = setting_page.size.x + 600
-	ani.animate_position(setting_page, Vector2(wid * 1 if not op else 0, 0), 0.5, "SV_PAGE_SW_1")
-	await ani.animate_position(resource_page, Vector2(-wid * 1 if op else 0, 0), 0.5, "SV_PAGE_SW_2").finished
+	var wid = %SettingView.size.x + 600
+	AniMGR.animate_position(%SettingView, Vector2(wid * 1 if not op else 0, 0), 0.5, "SV_PAGE_SW_1")
+	await AniMGR.animate_position(%ResourceView, Vector2(-wid * 1 if op else 0, 0), 0.5, "SV_PAGE_SW_2").finished
 
-	setting_page.visible = op
-	resource_page.visible = not op
+	%SettingView.visible = op
+	%ResourceView.visible = not op
 	if op:
-		TextScrollMGR.suspend_page(resource_page)
-		resource_page.on_exited_to_setting_list()
+		TextScrollMGR.suspend_page(%ResourceView)
+		%ResourceView.on_exited_to_setting_list()
 	else:
-		TextScrollMGR.suspend_page(setting_page)
+		TextScrollMGR.suspend_page(%SettingView)
 
 func has_pending_changes() -> bool:
-	return setting_list and setting_list.has_pending_changes()
+	return %SettingList and %SettingList.has_pending_changes()
 
 func switch_page_instant() -> void:
-	setting_page.visible = true
-	TextScrollMGR.resume_page(setting_page)
-	resource_page.visible = false
-	TextScrollMGR.suspend_page(resource_page)
-	resource_page.on_exited_to_setting_list()
+	%SettingView.visible = true
+	TextScrollMGR.resume_page(%SettingView)
+	%ResourceView.visible = false
+	TextScrollMGR.suspend_page(%ResourceView)
+	%ResourceView.on_exited_to_setting_list()
 
 ## 返回处理：ResourceView 子页面可见时先切回设置主页（Esc / Android 返回键调用）
 ## 返回 true 表示已消费返回事件，上层不应再执行 go_back
 func handle_back_request() -> bool:
-	if resource_page and resource_page.visible and not setting_page.visible:
+	if %ResourceView and %ResourceView.visible and not %SettingView.visible:
 		EvtBus.page_right.emit()
 		return true
 	# 关于页可见时，返回键先回设置列表（还原进入前的分组），而不是直接退出设置
-	if about_page and about_page.visible:
+	if %AboutPage and %AboutPage.visible:
 		_restore_last_group()
 		return true
 	return false

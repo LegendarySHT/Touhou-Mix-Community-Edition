@@ -31,7 +31,8 @@ script = ExtResource("1_card")
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Cover" type="TextureRect" parent="HBox" unique_id=1549440985]
+[node name="CoverImage" type="TextureRect" parent="HBox" unique_id=1549440985]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(250, 250)
 custom_maximum_size = Vector2(-1, 250)
 layout_mode = 2
@@ -46,28 +47,32 @@ size_flags_horizontal = 3
 size_flags_vertical = 4
 theme_override_constants/separation = 2
 
-[node name="Song" type="Label" parent="HBox/Info" unique_id=1309462093]
+[node name="SongText" type="Label" parent="HBox/Info" unique_id=1309462093]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 1
 text = "曲名"
 clip_text = true
 script = ExtResource("2_slpyo")
 
-[node name="Artist" type="Label" parent="HBox/Info" unique_id=296780778]
+[node name="ArtistText" type="Label" parent="HBox/Info" unique_id=296780778]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 1
 text = "歌手"
 clip_text = true
 script = ExtResource("2_slpyo")
 
-[node name="Album" type="Label" parent="HBox/Info" unique_id=752232329]
+[node name="AlbumText" type="Label" parent="HBox/Info" unique_id=752232329]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 1
 text = "专辑"
 clip_text = true
 script = ExtResource("2_slpyo")
 
-[node name="MidiName" type="Label" parent="HBox/Info" unique_id=1334673238]
+[node name="MidiNameText" type="Label" parent="HBox/Info" unique_id=1334673238]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 10
 mouse_filter = 1
@@ -75,7 +80,8 @@ text = "Midi名"
 clip_text = true
 script = ExtResource("2_slpyo")
 
-[node name="MidiAuthor" type="Label" parent="HBox/Info" unique_id=466898868]
+[node name="MidiAuthorText" type="Label" parent="HBox/Info" unique_id=466898868]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 1
 text = "Midi作者"
@@ -88,6 +94,7 @@ theme_override_constants/separation = 2
 alignment = 1
 
 [node name="NextBtn" type="Button" parent="HBox/Btns" unique_id=1217820615]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(88, 26)
 layout_mode = 2
 size_flags_vertical = 3
@@ -99,6 +106,7 @@ icon_alignment = 1
 expand_icon = true
 
 [node name="AddBtn" type="Button" parent="HBox/Btns" unique_id=1530027126]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(88, 26)
 layout_mode = 2
 size_flags_vertical = 3
@@ -109,6 +117,7 @@ icon = SubResource("AtlasTexture_fpwv8")
 expand_icon = true
 
 [node name="FavBtn" type="Button" parent="HBox/Btns" unique_id=422932935]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(88, 26)
 layout_mode = 2
 size_flags_vertical = 3

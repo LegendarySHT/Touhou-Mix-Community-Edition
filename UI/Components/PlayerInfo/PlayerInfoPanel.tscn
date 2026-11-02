@@ -1,0 +1,475 @@
+[gd_scene format=3 uid="uid://75cml12yghyv"]
+
+[ext_resource type="Script" uid="uid://co2lh8xsnaw8m" path="res://UI/Components/PlayerInfo/PlayerInfoPanel.gd" id="1_6fu8q"]
+[ext_resource type="Script" uid="uid://b5d8tybu8al2f" path="res://UI/Components/PlayerInfo/SkewButton.gd" id="2_au6ng"]
+[ext_resource type="Script" uid="uid://c24k3xb5msmbw" path="res://UI/Components/PlayerInfo/PlayerInfoContent.gd" id="3_cw7x2"]
+[ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ImgRoundCorner.gdshader" id="4_3xusd"]
+[ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="5_eo2i6"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3ccbu"]
+skew = Vector2(0.268, 0)
+border_width_left = 2
+border_width_top = 2
+border_color = Color(0.3569, 0.549, 1, 0.7)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_vi5kq"]
+skew = Vector2(0.268, 0)
+border_width_left = 2
+border_width_top = 2
+border_color = Color(0.3569, 0.549, 1, 0.7)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_5mkgo"]
+skew = Vector2(0.268, 0)
+border_width_left = 2
+border_width_top = 2
+border_color = Color(0.3569, 0.549, 1, 0.7)
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_3y6u5"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hhcpw"]
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.576, 0.706, 1, 0.9)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_right = 12
+corner_radius_bottom_left = 12
+expand_margin_left = 2.0
+expand_margin_top = 2.0
+expand_margin_right = 2.0
+expand_margin_bottom = 2.0
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 10
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_2c5n8"]
+shader = ExtResource("4_3xusd")
+shader_parameter/corner_radius = 12.0
+shader_parameter/rect_size = Vector2(150, 150)
+shader_parameter/uv_rect = Vector4(0, 0, 1, 1)
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_link"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_yverd"]
+shader = ExtResource("4_3xusd")
+shader_parameter/corner_radius = 12.0
+shader_parameter/rect_size = Vector2(200, 200)
+shader_parameter/uv_rect = Vector4(0, 0, 1, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3y6u5"]
+draw_center = false
+border_width_top = 2
+border_color = Color(1, 1, 1, 1)
+expand_margin_left = 2.0
+expand_margin_bottom = 2.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_b1c4s"]
+draw_center = false
+border_width_bottom = 2
+expand_margin_left = 15.0
+expand_margin_right = 15.0
+expand_margin_bottom = 10.0
+
+[node name="PlayerInfo" type="Control" unique_id=1535960465]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_transform_enabled = true
+offset_transform_position = Vector2(900, 200)
+mouse_filter = 2
+script = ExtResource("1_6fu8q")
+
+[node name="ExpandPanelShader" type="ColorRect" parent="." unique_id=12854179]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.72)
+
+[node name="InfoPanelBtn" type="Button" parent="." unique_id=1110667339]
+unique_name_in_owner = true
+propagate_maximum_size = true
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -370.0
+offset_top = -200.0
+grow_horizontal = 0
+grow_vertical = 0
+offset_transform_enabled = true
+offset_transform_position = Vector2(55, 0)
+offset_transform_visual_only = false
+focus_mode = 0
+theme_override_styles/normal = SubResource("StyleBoxFlat_3ccbu")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_vi5kq")
+theme_override_styles/hover = SubResource("StyleBoxFlat_5mkgo")
+script = ExtResource("2_au6ng")
+
+[node name="Tabs" type="TabContainer" parent="InfoPanelBtn" unique_id=2057706222]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 55.0
+offset_top = 10.0
+offset_right = -205.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxEmpty_3y6u5")
+current_tab = 0
+tabs_visible = false
+script = ExtResource("3_cw7x2")
+
+[node name="MiniInfo" type="HBoxContainer" parent="InfoPanelBtn/Tabs" unique_id=1772097877]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 20
+metadata/_tab_index = 0
+
+[node name="MiniTip" type="Control" parent="InfoPanelBtn/Tabs/MiniInfo" unique_id=1293447054]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+
+[node name="TipText" type="Label" parent="InfoPanelBtn/Tabs/MiniInfo/MiniTip" unique_id=1332056517]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -20.0
+offset_top = -20.0
+offset_right = 148.0
+offset_bottom = 13.0
+grow_vertical = 0
+rotation = -1.0471976
+offset_transform_enabled = true
+offset_transform_position = Vector2(-25, -45)
+text = "点击登录"
+
+[node name="MiniAvatar" type="Panel" parent="InfoPanelBtn/Tabs/MiniInfo" unique_id=1975925770]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(150, 150)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hhcpw")
+
+[node name="MiniAvatarTexture" type="TextureRect" parent="InfoPanelBtn/Tabs/MiniInfo/MiniAvatar" unique_id=1555465935]
+unique_name_in_owner = true
+material = SubResource("ShaderMaterial_2c5n8")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 8
+mouse_filter = 2
+texture = ExtResource("5_eo2i6")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="MiniData" type="VBoxContainer" parent="InfoPanelBtn/Tabs/MiniInfo" unique_id=924422637]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 160)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+alignment = 1
+
+[node name="MiniName" type="Label" parent="InfoPanelBtn/Tabs/MiniInfo/MiniData" unique_id=1734657356]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "Anonymous Player"
+vertical_alignment = 2
+
+[node name="MiniLevel" type="Label" parent="InfoPanelBtn/Tabs/MiniInfo/MiniData" unique_id=903112923]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "Lv256"
+vertical_alignment = 2
+
+[node name="MiniPp" type="Label" parent="InfoPanelBtn/Tabs/MiniInfo/MiniData" unique_id=1534731856]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "114514 pp"
+vertical_alignment = 2
+
+[node name="MiniProgress" type="ProgressBar" parent="InfoPanelBtn/Tabs/MiniInfo/MiniData" unique_id=1208854215]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="LogInPage" type="Control" parent="InfoPanelBtn/Tabs" unique_id=1368427938]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 1
+
+[node name="LogInSkew" type="Node2D" parent="InfoPanelBtn/Tabs/LogInPage" unique_id=2017607502]
+skew = 0.2617994
+
+[node name="LogInForm" type="VBoxContainer" parent="InfoPanelBtn/Tabs/LogInPage/LogInSkew" unique_id=993086706]
+custom_minimum_size = Vector2(618, 630)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 50.0
+offset_right = 668.0
+offset_bottom = 630.0
+theme_override_constants/separation = 15
+alignment = 1
+
+[node name="AccountText" type="Label" parent="InfoPanelBtn/Tabs/LogInPage/LogInSkew/LogInForm" unique_id=1898126385]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "帐号"
+
+[node name="AccountEdit" type="LineEdit" parent="InfoPanelBtn/Tabs/LogInPage/LogInSkew/LogInForm" unique_id=1403549710]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+
+[node name="PasswordText" type="Label" parent="InfoPanelBtn/Tabs/LogInPage/LogInSkew/LogInForm" unique_id=467309134]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "密码"
+
+[node name="PwdEdit" type="LineEdit" parent="InfoPanelBtn/Tabs/LogInPage/LogInSkew/LogInForm" unique_id=2078018352]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+secret = true
+
+[node name="FormSpacer" type="Control" parent="InfoPanelBtn/Tabs/LogInPage/LogInSkew/LogInForm" unique_id=698337203]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="SubmitBtn" type="Button" parent="InfoPanelBtn/Tabs/LogInPage/LogInSkew/LogInForm" unique_id=1493588095]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 70)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "登录"
+
+[node name="ErrorText" type="Label" parent="InfoPanelBtn/Tabs/LogInPage/LogInSkew/LogInForm" unique_id=1289395384]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
+theme_override_font_sizes/font_size = 32
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="RegisterBtn" type="Button" parent="InfoPanelBtn/Tabs/LogInPage/LogInSkew/LogInForm" unique_id=2045075451]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+theme_override_styles/normal = SubResource("StyleBoxEmpty_link")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_link")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_link")
+text = "没有账号？前往网页注册"
+
+[node name="Summary" type="VBoxContainer" parent="InfoPanelBtn/Tabs" unique_id=374052302]
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 15
+metadata/_tab_index = 2
+
+[node name="ProfileHeader" type="HBoxContainer" parent="InfoPanelBtn/Tabs/Summary" unique_id=1827199432]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 30
+
+[node name="ProfileAvatarPanel" type="Panel" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader" unique_id=288038191]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 200)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hhcpw")
+
+[node name="ProfileAvatar" type="TextureRect" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/ProfileAvatarPanel" unique_id=1217097568]
+unique_name_in_owner = true
+material = SubResource("ShaderMaterial_yverd")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("5_eo2i6")
+expand_mode = 3
+stretch_mode = 5
+
+[node name="NameLevelBox" type="VBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader" unique_id=412340895]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="ProfileName" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox" unique_id=1139186740]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "Anonymous Player"
+vertical_alignment = 1
+
+[node name="NameRow" type="HBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox" unique_id=1666975059]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BioColumn" type="VBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow" unique_id=1540988350]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 3.0
+theme_override_constants/separation = 0
+
+[node name="ProfileBio" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow/BioColumn" unique_id=2047924668]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(350, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("StyleBoxFlat_3y6u5")
+text = "个人简介"
+autowrap_mode = 1
+
+[node name="LevelRow" type="HBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow/BioColumn" unique_id=360823389]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="ProfileLevel" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow/BioColumn/LevelRow" unique_id=43860547]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 28
+theme_override_styles/normal = SubResource("StyleBoxFlat_3y6u5")
+text = "Level 1"
+horizontal_alignment = 1
+
+[node name="ProfilePp" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow/BioColumn/LevelRow" unique_id=1485913361]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 28
+theme_override_styles/normal = SubResource("StyleBoxFlat_3y6u5")
+text = "0 pp"
+horizontal_alignment = 1
+
+[node name="ProfileRank" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow" unique_id=1477374343]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 32
+text = "Unranked"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ProfileProgress" type="ProgressBar" parent="InfoPanelBtn/Tabs/Summary" unique_id=1220632323]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+mouse_filter = 2
+rounded = true
+
+[node name="ProfileStatsGrid" type="GridContainer" parent="InfoPanelBtn/Tabs/Summary" unique_id=1623544005]
+layout_mode = 2
+mouse_filter = 2
+columns = 2
+
+[node name="TotalPlaysLabel" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileStatsGrid" unique_id=693470566]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+text = "Total Plays: 0"
+horizontal_alignment = 1
+
+[node name="AccuracyLabel" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileStatsGrid" unique_id=1037732186]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+text = "Accuracy: 0.00%"
+horizontal_alignment = 1
+
+[node name="MaxComboLabel" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileStatsGrid" unique_id=927222366]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("StyleBoxFlat_b1c4s")
+text = "Max Combo: 0"
+horizontal_alignment = 1
+
+[node name="PlayTimeLabel" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileStatsGrid" unique_id=1130501737]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("StyleBoxFlat_b1c4s")
+text = "Play Time: 0h"
+horizontal_alignment = 1
+
+[node name="ExpandBtn" type="Button" parent="InfoPanelBtn/Tabs/Summary" unique_id=742963081]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 45)
+layout_mode = 2
+size_flags_horizontal = 0
+offset_transform_enabled = true
+offset_transform_position = Vector2(60, 0)
+offset_transform_position_ratio = Vector2(0, 0.5)
+offset_transform_visual_only = false
+theme_override_font_sizes/font_size = 24
+text = "展开详情"
+
+[node name="LogoutBtn" type="Button" parent="InfoPanelBtn/Tabs/Summary" unique_id=1561299761]
+custom_minimum_size = Vector2(220, 45)
+layout_mode = 2
+size_flags_horizontal = 0
+offset_transform_enabled = true
+offset_transform_position = Vector2(210, -15)
+offset_transform_position_ratio = Vector2(1, -0.5)
+offset_transform_visual_only = false
+theme_override_font_sizes/font_size = 24
+text = "退出登录"
+
+[connection signal="gui_input" from="ExpandPanelShader" to="." method="_on_shader_overlay_gui_input"]
+[connection signal="pressed" from="InfoPanelBtn" to="." method="_on_expand_panel_pressed"]
+[connection signal="pressed" from="InfoPanelBtn/Tabs/LogInPage/LogInSkew/LogInForm/SubmitBtn" to="InfoPanelBtn/Tabs" method="_on_submit_btn_pressed"]
+[connection signal="pressed" from="InfoPanelBtn/Tabs/LogInPage/LogInSkew/LogInForm/RegisterBtn" to="InfoPanelBtn/Tabs" method="_on_register_btn_pressed"]
+[connection signal="pressed" from="InfoPanelBtn/Tabs/Summary/ExpandBtn" to="InfoPanelBtn/Tabs" method="_on_expand_btn_pressed"]
+[connection signal="pressed" from="InfoPanelBtn/Tabs/Summary/LogoutBtn" to="InfoPanelBtn/Tabs" method="_on_logout_btn_pressed"]

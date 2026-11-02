@@ -1,4 +1,4 @@
-extends Control
+extends ViewBase
 class_name ProfileView
 
 ## 个人信息详情页：Profile / History / Edit 三页切换
@@ -9,68 +9,10 @@ signal profile_updated()
 ## 头像上传成功后的新 URL（PlayerInfoContent 据此立即刷新各处头像）
 signal avatar_uploaded(url: String)
 
-# ========== PageContent（Profile / History / Edit） ==========
-@onready var page_content: TabContainer = $PageContent
-@onready var navi_profile_btn: Button = $Navi/Btns/Profile
-@onready var navi_history_btn: Button = $Navi/Btns/History
-@onready var navi_edit_btn: Button = $Navi/Btns/Edit
-
-# ========== History 页面 List 切换 ==========
-@onready var history_list: TabContainer = $PageContent/History/List
-@onready var recent_play_btn: Button = $PageContent/History/PC/TopBar/TopBtns/RecentPlay
-@onready var best_play_btn: Button = $PageContent/History/PC/TopBar/TopBtns/BestPlay
-@onready var most_play_btn: Button = $PageContent/History/PC/TopBar/TopBtns/MostPlay
-
-# ========== History 页三个列表的 VBox 容器 ==========
-@onready var recent_list_vbox: VBoxContainer = $PageContent/History/List/RecentPlay/VBox
-@onready var best_list_vbox: VBoxContainer = $PageContent/History/List/BestPlay/VBox
-@onready var most_list_vbox: VBoxContainer = $PageContent/History/List/MostPlay/VBox
-
-# ========== Profile 页显示节点 ==========
-@onready var profile_name_label: Label = $PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox/NameLabel
-@onready var profile_pp_label: Label = $PageContent/Profile/Main/Header/HBoxContainer/NameLevelVBox/Level/PPLabel
-@onready var profile_bio_label: Label = $PageContent/Profile/Data/VBox/Desc/Label
-@onready var profile_avatar_rect: TextureRect = $PageContent/Profile/Main/Header/HBoxContainer/AvatarBig/TextureRect
-# 头像外圈细边框（draw_center=false 的空心描边，bg_color 无意义，只刷 border_color）
-@onready var profile_avatar_border: Panel = $PageContent/Profile/Main/Header/HBoxContainer/AvatarBig
-# ========== Profile 角色展示（Displayer） ==========
-# 角色卡外圈细边框（同上，空心描边）
-@onready var chara_card_border: PanelContainer = $PageContent/Profile/Main/Displayer/Border
-@onready var chara_display_img: TextureRect = $PageContent/Profile/Main/Displayer/Border/CharaImg
-@onready var bg_display_img: TextureRect = $PageContent/Profile/Main/Displayer/Border/BGImg
-@onready var chara_info_name: Label = $PageContent/Profile/Main/Displayer/Info/VBox/Name
-@onready var chara_info_author: Label = $PageContent/Profile/Main/Displayer/Info/VBox/Illustrator
-
-# ========== History 页统计显示节点（TopBar/Grid） ==========
-@onready var history_pp_label: Label = $PageContent/History/PC/TopBar/PC/Grid/pp
-@onready var history_s_count: Label = $PageContent/History/PC/TopBar/PC/Grid/SCount
-@onready var history_a_count: Label = $PageContent/History/PC/TopBar/PC/Grid/ACount
-@onready var history_b_count: Label = $PageContent/History/PC/TopBar/PC/Grid/BCount
-@onready var history_c_count: Label = $PageContent/History/PC/TopBar/PC/Grid/CCount
-@onready var history_d_count: Label = $PageContent/History/PC/TopBar/PC/Grid/DCount
-@onready var history_f_count: Label = $PageContent/History/PC/TopBar/PC/Grid/FCount
-
-# ========== Edit 页输入节点 ==========
-@onready var nickname_edit: LineEdit = $PageContent/Edit/HBox/ProfileEdit/Nickname/LineEdit
-@onready var desc_edit: LineEdit = $PageContent/Edit/HBox/ProfileEdit/Desc/LineEdit
-@onready var old_pwd_edit: LineEdit = $PageContent/Edit/HBox/OtherEdit/Password/LineEdit
-@onready var new_pwd_edit: LineEdit = $PageContent/Edit/HBox/OtherEdit/NewPassword/LineEdit
-@onready var avatar_border: AvatarPreview = $PageContent/Edit/HBox/OtherEdit/AvatorEdit/Border
-@onready var avatar_scale_slider: HSlider = $PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/ScaleSlider
-@onready var upload_avatar_btn: Button = $PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/UploadBtn
-@onready var avatar_save_btn: Button = $PageContent/Edit/HBox/OtherEdit/AvatorEdit/AdjustBtns/SaveBtn
-@onready var nickname_confirm_btn: Button = $PageContent/Edit/HBox/ProfileEdit/Nickname/ConfirmBtn
-@onready var desc_confirm_btn: Button = $PageContent/Edit/HBox/ProfileEdit/Desc/ConfirmBtn
-@onready var pwd_confirm_btn: Button = $PageContent/Edit/HBox/OtherEdit/NewPassword/ConfirmBtn
-
-# ========== 主题色引用节点（每个共享 StyleBox 取一个代表节点） ==========
-@onready var _info_panel: PanelContainer = $PageContent/Profile/Main/Displayer/Info
-@onready var _header_panel: PanelContainer = $PageContent/Profile/Main/Header
-@onready var _play_panel: PanelContainer = $PageContent/Profile/Data/VBox/Play
-@onready var _rank_total: Panel = $PageContent/Profile/Data/VBox/Desc/Rank/RankTotal
-@onready var _navi_panel: PanelContainer = $Navi
-@onready var _history_pc: PanelContainer = $PageContent/History/PC
-@onready var _edit_confirm_btn: Button = $PageContent/Edit/HBox/ProfileEdit/Nickname/ConfirmBtn
+# 被 PlayerInfoPanel 直接访问（pv.page_content.modulate.a）
+@onready var page_content: TabContainer = %PageContent
+# 需要调用 AvatarPreview 的专有方法
+@onready var avatar_preview: AvatarPreview = %AvatarPreviewBorder
 
 # PageContent tab 索引
 const TAB_PROFILE := 0
@@ -102,25 +44,21 @@ var _recent_loading: bool = false
 var _best_loading: bool = false
 var _most_loading: bool = false
 
-func _ready() -> void:
-	navi_profile_btn.pressed.connect(_on_navi_profile_pressed)
-	navi_history_btn.pressed.connect(_on_navi_history_pressed)
-	navi_edit_btn.pressed.connect(_on_navi_edit_pressed)
-	recent_play_btn.pressed.connect(_on_recent_play_pressed)
-	best_play_btn.pressed.connect(_on_best_play_pressed)
-	most_play_btn.pressed.connect(_on_most_play_pressed)
-	_sync_navi_selection(page_content.current_tab)
-	_sync_topbtn_z_index(recent_play_btn)
+func _on_view_ready() -> void:
+	%ProfileBtn.pressed.connect(_on_navi_profile_pressed)
+	%HistoryBtn.pressed.connect(_on_navi_history_pressed)
+	%EditBtn.pressed.connect(_on_navi_edit_pressed)
+	%RecentPlayBtn.pressed.connect(_on_recent_play_pressed)
+	%BestPlayBtn.pressed.connect(_on_best_play_pressed)
+	%MostPlayBtn.pressed.connect(_on_most_play_pressed)
+	_sync_navi_selection(%PageContent.current_tab)
+	_sync_topbtn_z_index(%RecentPlayBtn)
 	# 密码输入框设为密文
-	old_pwd_edit.secret = true
-	new_pwd_edit.secret = true
+	%PasswordEdit.secret = true
+	%NewPasswordEdit.secret = true
 	_reset_avatar_adjust()
 	# 头像卡（Border 整块卡片框）点击进入 Chara_View：卡片框接收点击，头像图透传
-	if chara_card_border:
-		chara_card_border.gui_input.connect(_on_card_border_gui_input)
-	if ThemeMGR:
-		ThemeMGR.register_theme_applier(self)
-		apply_theme()
+	%CharaCardBorder.gui_input.connect(_on_card_border_gui_input)
 	# 角色展示：初始加载当前人物，并监听切换（选中角色后刷新）
 	_load_chara_display()
 	EvtBus.config_changed.connect(_on_config_changed)
@@ -145,22 +83,46 @@ func _load_chara_display() -> void:
 	var data: Dictionary = CharaMGR.get_chara_data(key)
 	var tex := CharaMGR.get_portrait(key, 0)
 	if tex:
-		chara_display_img.texture = tex
+		%CharaPortrait.texture = tex
 	var bg := CharaMGR.get_background(key)
 	if bg:
-		bg_display_img.texture = bg
+		%CharaBackground.texture = bg
 	# 名字与作者
-	chara_info_name.text = str(data.get("name", key))
-	chara_info_author.text = "by %s" % str(data.get("author", ""))
+	%CharaInfoName.text = str(data.get("name", key))
+	%CharaInfoAuthor.text = "by %s" % str(data.get("author", ""))
 
 ## 头像卡点击：进入 CHARA_VIEW（标准视图导航，返回键经 UiState 栈回 PROFILE_VIEW）
 func _on_card_border_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		UiStatMGR.change_state(UIStateManager.UIState.CHARA_VIEW)
 
-func _exit_tree() -> void:
-	if ThemeMGR:
-		ThemeMGR.unregister_theme_applier(self)
+## 出场：底栏下滑 + 内容区淡出，播完后隐藏（独立视图，避免盖住其它页面）
+func _play_exit() -> Tween:
+	var navi := %Navi
+	if navi:
+		AniMGR.animate_offset_to(navi, Vector2(0, navi.size.y), 0.3, "ProfileNaviOut")
+	var content := %PageContent
+	if content == null:
+		return null
+	var tw := AniMGR.animate_fade_out(content, 0.3, "%s_out" % name)
+	if tw and tw.is_valid():
+		tw.finished.connect(func() -> void:
+			if is_instance_valid(self) and UiStatMGR.current_state != UIStateManager.UIState.PROFILE_VIEW:
+				visible = false
+		)
+	return tw
+
+## 入场：底栏上滑 + 内容区淡入
+func _play_enter() -> Tween:
+	var navi := %Navi
+	if navi:
+		navi.offset_transform_position = Vector2(0, navi.size.y)
+		AniMGR.animate_offset_back(navi, 0.3, "ProfileNaviIn")
+	var content := %PageContent
+	if content == null:
+		return null
+	content.modulate.a = 0.0
+	return AniMGR.animate_fade_in(content, 0.35, "%s_in" % name)
 
 # ========== 主题色应用 ==========
 
@@ -172,40 +134,40 @@ func apply_theme() -> void:
 	var border: Color = ThemeMGR.get_color("border")
 	var accent_border: Color = Color(p.r, p.g, p.b, 0.6)
 
-	# 页面底色为 InfoPanelBtn 的 surface；本页内容面板统一用 surface_high 浮起（简介与 Play 共享同一 StyleBox）
-	_set_panel(_info_panel, surface_high, accent_border)   # Info
-	_set_panel(_header_panel, surface_high, border)        # Header
-	_set_panel(_play_panel, surface_high, border)          # Play
-	_set_panel(_rank_total, surface_high, accent_border)   # RankTotal
+	# 页面底色为 InfoPanelBtn 的 surface；本页内容面板统一用 surface_high 浮起（简介与最近游玩共享同一 StyleBox）
+	_set_panel(%CharaInfoPanel, surface_high, accent_border)   # 角色立绘旁的信息栏
+	_set_panel(%ProfileHeaderPanel, surface_high, border)      # 头像 / 昵称 / 等级头部
+	_set_panel(%RecentPlayPanel, surface_high, border)         # 最近游玩列表
+	_set_panel(%RankTotal, surface_high, accent_border)        # 总排名卡片
 	# Navi 面板
-	_set_panel(_navi_panel, surface, border)               # Navi 底栏与页面底色一致
+	_set_panel(%Navi, surface, border)                         # 底栏与页面底色一致
 	# History 顶部面板
-	_set_panel_border(_history_pc, border)
-	# Navi 底栏三个按钮共用同一组 StyleBox，改 navi_profile_btn 即同步全部：
+	_set_panel_border(%HistoryPanel, border)
+	# Navi 底栏三个按钮共用同一组 StyleBox，改 %ProfileBtn 即同步全部：
 	#   normal  → 与所在底栏面板同色（surface），平时与底栏融为一体
 	#   pressed → 与内容面板同色（surface_high，选中项并入内容区；浅色模式下即「略微变暗」）
 	#   hover_pressed → 保持与 pressed 同色，避免选中项 hover 时闪回普通态
-	_set_btn(navi_profile_btn, "normal", surface, border)
-	_set_btn(navi_profile_btn, "pressed", surface_high, border)
-	_set_btn(navi_profile_btn, "hover", surface_hover, accent_border)
-	_set_btn(navi_profile_btn, "hover_pressed", surface_high, border)
-	_set_btn(navi_profile_btn, "focus", surface, p)
+	_set_btn(%ProfileBtn, "normal", surface, border)
+	_set_btn(%ProfileBtn, "pressed", surface_high, border)
+	_set_btn(%ProfileBtn, "hover", surface_hover, accent_border)
+	_set_btn(%ProfileBtn, "hover_pressed", surface_high, border)
+	_set_btn(%ProfileBtn, "focus", surface, p)
 	# History TopBtns
-	_set_btn_border(recent_play_btn, "pressed", p)
-	_set_btn_border(recent_play_btn, "hover", p)
+	_set_btn_border(%RecentPlayBtn, "pressed", p)
+	_set_btn_border(%RecentPlayBtn, "hover", p)
 	# MostPlay hover 用单独 StyleBox
-	_set_btn_border(most_play_btn, "hover", p)
+	_set_btn_border(%MostPlayBtn, "hover", p)
 	# Edit 页面 ConfirmBtn / UploadBtn（共享 StyleBox）
-	_set_btn(_edit_confirm_btn, "normal", p.darkened(0.1), p)
-	_set_btn(_edit_confirm_btn, "pressed", p.darkened(0.3), p)
-	_set_btn(_edit_confirm_btn, "hover", p, p)
+	_set_btn(%NicknameConfirmBtn, "normal", p.darkened(0.1), p)
+	_set_btn(%NicknameConfirmBtn, "pressed", p.darkened(0.3), p)
+	_set_btn(%NicknameConfirmBtn, "hover", p, p)
 	# 圆角头像 / 角色卡的外圈细描边：tscn 里硬编码成淡蓝 #93B4FF（= primary_light 的初值），
 	# 换主题色后仍是蓝的。这里按外观模式取强调色：深色用 primary_light（亮，暗底上才看得见），
 	# 浅色用 primary（深，浅底上才看得见）。
 	# 共 3 个空心描边 StyleBox：资料页大头像 / 编辑页头像预览框 / 角色展示卡。
-	_set_panel_border_keep_alpha(profile_avatar_border, _avatar_ring_color())
-	_set_panel_border_keep_alpha(avatar_border, _avatar_ring_color())
-	_set_panel_border_keep_alpha(chara_card_border, _avatar_ring_color())
+	_set_panel_border_keep_alpha(%ProfileAvatarBorder, _avatar_ring_color())
+	_set_panel_border_keep_alpha(avatar_preview, _avatar_ring_color())
+	_set_panel_border_keep_alpha(%CharaCardBorder, _avatar_ring_color())
 
 ## 设置面板 bg + border
 func _set_panel(node: Control, bg: Color, border: Color) -> void:
@@ -260,47 +222,47 @@ func _set_btn_border(btn: Button, state: String, border: Color) -> void:
 # ========== Navi → PageContent 切换 ==========
 
 func _on_navi_profile_pressed() -> void:
-	page_content.current_tab = TAB_PROFILE
+	%PageContent.current_tab = TAB_PROFILE
 
 func _on_navi_history_pressed() -> void:
-	page_content.current_tab = TAB_HISTORY
+	%PageContent.current_tab = TAB_HISTORY
 
 func _on_navi_edit_pressed() -> void:
-	page_content.current_tab = TAB_EDIT
+	%PageContent.current_tab = TAB_EDIT
 
 func _sync_navi_selection(tab_idx: int) -> void:
-	navi_profile_btn.button_pressed = (tab_idx == TAB_PROFILE)
-	navi_history_btn.button_pressed = (tab_idx == TAB_HISTORY)
-	navi_edit_btn.button_pressed = (tab_idx == TAB_EDIT)
+	%ProfileBtn.button_pressed = (tab_idx == TAB_PROFILE)
+	%HistoryBtn.button_pressed = (tab_idx == TAB_HISTORY)
+	%EditBtn.button_pressed = (tab_idx == TAB_EDIT)
 
 # ========== History TopBar → List 切换 + z_index ==========
 
 func _on_recent_play_pressed() -> void:
-	_switch_history_list(LIST_RECENT, recent_play_btn)
+	_switch_history_list(LIST_RECENT, %RecentPlayBtn)
 	if not _recent_loaded:
 		_load_recent_scores()
 
 func _on_best_play_pressed() -> void:
-	_switch_history_list(LIST_BEST, best_play_btn)
+	_switch_history_list(LIST_BEST, %BestPlayBtn)
 	if not _best_loaded:
 		_load_best_scores()
 
 func _on_most_play_pressed() -> void:
-	_switch_history_list(LIST_MOST, most_play_btn)
+	_switch_history_list(LIST_MOST, %MostPlayBtn)
 	if not _most_loaded:
 		_load_most_played()
 
 ## 切换 History/List 的 tab，并把激活按钮 z_index 抬到 1，其余压回 0
 ## 避免相邻按钮 stylebox 超边界部分被遮挡
 func _switch_history_list(tab_idx: int, active_btn: Button) -> void:
-	if tab_idx < history_list.get_tab_count():
-		history_list.current_tab = tab_idx
+	if tab_idx < %HistoryTabs.get_tab_count():
+		%HistoryTabs.current_tab = tab_idx
 	_sync_topbtn_z_index(active_btn)
 
 func _sync_topbtn_z_index(active_btn: Button) -> void:
-	recent_play_btn.z_index = 1 if recent_play_btn == active_btn else 0
-	best_play_btn.z_index = 1 if best_play_btn == active_btn else 0
-	most_play_btn.z_index = 1 if most_play_btn == active_btn else 0
+	%RecentPlayBtn.z_index = 1 if %RecentPlayBtn == active_btn else 0
+	%BestPlayBtn.z_index = 1 if %BestPlayBtn == active_btn else 0
+	%MostPlayBtn.z_index = 1 if %MostPlayBtn == active_btn else 0
 
 # ========== 资料显示（由 PlayerInfoContent 调用） ==========
 
@@ -311,33 +273,33 @@ func update_display(data: Dictionary) -> void:
 	if display_name.is_empty() or display_name == "<null>":
 		var name_raw = data.get("name", "Anonymous Player")
 		display_name = str(name_raw) if name_raw != null else "Anonymous Player"
-	profile_name_label.text = display_name
-	profile_pp_label.text = "%.2f pp" % float(data.get("pp", 0.0))
+	%ProfileNameText.text = display_name
+	%ProfilePPText.text = "%.2f pp" % float(data.get("pp", 0.0))
 	var bio_raw = data.get("bio", "")
 	var bio := str(bio_raw) if bio_raw != null else ""
-	profile_bio_label.text = bio if not bio.is_empty() and bio != "<null>" else "还没有填写简介..."
+	%ProfileDescription.text = bio if not bio.is_empty() and bio != "<null>" else "还没有填写简介..."
 	# 同步 History 页统计：总 pp + 各评级数量
-	history_pp_label.text = "%.2f pp" % float(data.get("pp", 0.0))
+	%HistoryPp.text = "%.2f pp" % float(data.get("pp", 0.0))
 	var grades = data.get("grades", {})
 	if grades == null:
 		grades = {}
-	history_s_count.text = str(int(grades.get("S", 0)))
-	history_a_count.text = str(int(grades.get("A", 0)))
-	history_b_count.text = str(int(grades.get("B", 0)))
-	history_c_count.text = str(int(grades.get("C", 0)))
-	history_d_count.text = str(int(grades.get("D", 0)))
-	history_f_count.text = str(int(grades.get("F", 0)))
+	%GradeCountS.text = str(int(grades.get("S", 0)))
+	%GradeCountA.text = str(int(grades.get("A", 0)))
+	%GradeCountB.text = str(int(grades.get("B", 0)))
+	%GradeCountC.text = str(int(grades.get("C", 0)))
+	%GradeCountD.text = str(int(grades.get("D", 0)))
+	%GradeCountF.text = str(int(grades.get("F", 0)))
 	# 同步 Edit 页输入框为当前值
-	nickname_edit.text = display_name
-	desc_edit.text = bio
+	%NicknameEdit.text = display_name
+	%DescEdit.text = bio
 
 ## 头像上屏：Profile 页大图 + Edit 页预览。
 ## 头像由 PlayerInfoContent 统一加载（MiniInfo/Summary 也要用），这里只负责显示。
 func set_avatar_texture(tex: Texture2D) -> void:
 	if tex == null:
 		return
-	profile_avatar_rect.texture = tex
-	avatar_border.set_display_texture(tex)
+	%ProfileAvatar.texture = tex
+	avatar_preview.set_display_texture(tex)
 
 # ========== Edit 页面：资料修改 ==========
 
@@ -347,14 +309,14 @@ func _on_save_nickname_btn_pressed() -> void:
 		return
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
 		return
-	var new_name := nickname_edit.text.strip_edges()
+	var new_name := (%NicknameEdit as LineEdit).text.strip_edges()
 	if new_name.is_empty():
 		return
 	_busy = true
-	nickname_confirm_btn.disabled = true
+	%NicknameConfirmBtn.disabled = true
 	var result: Dictionary = await AuthManager.instance.update_profile(new_name, null)
 	_busy = false
-	nickname_confirm_btn.disabled = false
+	%NicknameConfirmBtn.disabled = false
 	if result.get("ok", false):
 		GLogger.info("Nickname updated: %s" % new_name, "ProfileView")
 		profile_updated.emit()
@@ -367,12 +329,12 @@ func _on_save_desc_btn_pressed() -> void:
 		return
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
 		return
-	var new_bio := desc_edit.text.strip_edges()
+	var new_bio := (%DescEdit as LineEdit).text.strip_edges()
 	_busy = true
-	desc_confirm_btn.disabled = true
+	%DescConfirmBtn.disabled = true
 	var result: Dictionary = await AuthManager.instance.update_profile(null, new_bio)
 	_busy = false
-	desc_confirm_btn.disabled = false
+	%DescConfirmBtn.disabled = false
 	if result.get("ok", false):
 		GLogger.info("Bio updated", "ProfileView")
 		profile_updated.emit()
@@ -385,25 +347,25 @@ func _on_save_pwd_btn_pressed() -> void:
 		return
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
 		return
-	var old_pwd := old_pwd_edit.text
-	var new_pwd := new_pwd_edit.text
+	var old_pwd: String = %PasswordEdit.text
+	var new_pwd: String = %NewPasswordEdit.text
 	if old_pwd.is_empty() or new_pwd.is_empty():
 		return
 	if new_pwd.length() < 6:
-		new_pwd_edit.text = ""
+		%NewPasswordEdit.text = ""
 		return
 	_busy = true
-	pwd_confirm_btn.disabled = true
+	%PasswordConfirmBtn.disabled = true
 	var result: Dictionary = await AuthManager.instance.change_password(old_pwd, new_pwd)
 	_busy = false
-	pwd_confirm_btn.disabled = false
+	%PasswordConfirmBtn.disabled = false
 	if result.get("ok", false):
 		GLogger.info("Password changed", "ProfileView")
-		old_pwd_edit.text = ""
-		new_pwd_edit.text = ""
+		%PasswordEdit.text = ""
+		%NewPasswordEdit.text = ""
 	else:
 		GLogger.warning("Password change failed: %s" % str(result.get("error", "")), "ProfileView")
-		old_pwd_edit.text = ""
+		%PasswordEdit.text = ""
 
 ## 上传头像：弹出 FileDialog 选择图片
 func _on_upload_avatar_btn_pressed() -> void:
@@ -437,11 +399,11 @@ func _on_save_avatar_btn_pressed() -> void:
 		return
 	# 由预览偏移/缩放反推方形裁剪区（源图像素坐标），缩放以左上角为锚点
 	var img := _pending_avatar
-	var s := avatar_scale_slider.value
+	var s: float = %AvatarZoomSlider.value
 	if s <= 0.0:
 		return
-	var view := avatar_border.get_box_size()
-	var off := avatar_border.offset
+	var view := avatar_preview.get_box_size()
+	var off := avatar_preview.offset
 	# STRETCH_KEEP + 左上角锚：off 即缩放后图片左上角，源图像素 q=(p-off)/s，
 	# 屏幕 [0, view] 对应源图区域 = -off/s + (view/s)
 	var crop_rect := Rect2(-off / s, view / s)
@@ -460,11 +422,11 @@ func _on_save_avatar_btn_pressed() -> void:
 		GLogger.warning("Avatar PNG encode failed", "ProfileView")
 		return
 	_busy = true
-	avatar_save_btn.disabled = true
+	%AvatarSaveBtn.disabled = true
 	var image_base64 := Marshalls.raw_to_base64(png)
 	var result: Dictionary = await AuthManager.instance.upload_avatar(image_base64, "image/png")
 	_busy = false
-	avatar_save_btn.disabled = false
+	%AvatarSaveBtn.disabled = false
 	if result.get("ok", false):
 		GLogger.info("Avatar uploaded", "ProfileView")
 		# 上传响应里的新头像 URL 交给 PlayerInfoContent 统一加载，避免等一次资料拉取
@@ -515,23 +477,23 @@ func _on_avatar_file_selected(path: String) -> void:
 ## 载入源图到预览：交给 Border 自绘（可平移/缩放）
 func _show_avatar_preview(img: Image) -> void:
 	_pending_avatar = img
-	avatar_border.set_source_image(img)
-	avatar_scale_slider.value = 1.0
-	avatar_scale_slider.visible = true
+	avatar_preview.set_source_image(img)
+	%AvatarZoomSlider.value = 1.0
+	%AvatarZoomSlider.visible = true
 
 ## 缩放滑条：更新缩放并保持位置边界
-func _on_avatar_scale_changed(value: float) -> void:
+func _on_avatar_zoom_changed(value: float) -> void:
 	if _pending_avatar == null:
 		return
-	avatar_border.set_zoom(value)
+	avatar_preview.set_zoom(value)
 
 ## 回到「仅显示当前头像」状态：清除待调整图、隐藏滑条
 ## 拖拽/缩放/裁剪状态由 Border 内部持有，退出详情页时清空即可恢复显示当前头像
 func _reset_avatar_adjust() -> void:
 	_pending_avatar = null
-	avatar_border.clear_preview()
-	avatar_scale_slider.value = 1.0
-	avatar_scale_slider.visible = false
+	avatar_preview.clear_preview()
+	%AvatarZoomSlider.value = 1.0
+	%AvatarZoomSlider.visible = false
 
 # ========== History 页成绩列表加载 ==========
 
@@ -551,7 +513,7 @@ func _load_recent_scores() -> void:
 	if not result.get("ok", false) or not result.data is Dictionary:
 		GLogger.warning("Failed to load recent scores: %s" % str(result.get("error", "")), "ProfileView")
 		return
-	_populate_records(recent_list_vbox, result.data.get("records", []), RecordListItem.RecordMode.RECENT)
+	_populate_records(%RecentPlayList, result.data.get("records", []), RecordListItem.RecordMode.RECENT)
 	_recent_loaded = true
 
 ## 加载最佳记录（按 MIDI 去重）
@@ -570,7 +532,7 @@ func _load_best_scores() -> void:
 	if not result.get("ok", false) or not result.data is Dictionary:
 		GLogger.warning("Failed to load best scores: %s" % str(result.get("error", "")), "ProfileView")
 		return
-	_populate_records(best_list_vbox, result.data.get("records", []), RecordListItem.RecordMode.BEST)
+	_populate_records(%BestPlayList, result.data.get("records", []), RecordListItem.RecordMode.BEST)
 	_best_loaded = true
 
 ## 加载最多游玩记录
@@ -589,7 +551,7 @@ func _load_most_played() -> void:
 	if not result.get("ok", false) or not result.data is Dictionary:
 		GLogger.warning("Failed to load most played: %s" % str(result.get("error", "")), "ProfileView")
 		return
-	_populate_records(most_list_vbox, result.data.get("records", []), RecordListItem.RecordMode.MOST)
+	_populate_records(%MostPlayList, result.data.get("records", []), RecordListItem.RecordMode.MOST)
 	_most_loaded = true
 
 ## 清空 VBox 并填充记录项
@@ -607,7 +569,7 @@ func refresh_history_lists() -> void:
 	_best_loaded = false
 	_most_loaded = false
 	# 重新加载当前可见的 Tab
-	match history_list.current_tab:
+	match %HistoryTabs.current_tab:
 		LIST_RECENT:
 			_load_recent_scores()
 		LIST_BEST:
@@ -617,11 +579,11 @@ func refresh_history_lists() -> void:
 
 ## 清空所有历史列表（退出登录时调用）
 func clear_history_lists() -> void:
-	for child in recent_list_vbox.get_children():
+	for child in %RecentPlayList.get_children():
 		child.queue_free()
-	for child in best_list_vbox.get_children():
+	for child in %BestPlayList.get_children():
 		child.queue_free()
-	for child in most_list_vbox.get_children():
+	for child in %MostPlayList.get_children():
 		child.queue_free()
 	_recent_loaded = false
 	_best_loaded = false

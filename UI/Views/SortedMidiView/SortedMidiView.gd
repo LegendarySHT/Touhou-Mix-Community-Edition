@@ -41,9 +41,6 @@ var _bind_animate: bool = false
 @onready var eb: EventBus = EvtBus
 @onready var se: SortingEngine = SortEngine
 
-## 空结果提示节点
-@onready var no_items_node: Label = get_node_or_null(PathRegistry.NO_ITEMS)
-
 var item_bg: ButtonGroup = null
 
 func _ready() -> void:
@@ -109,7 +106,7 @@ func _load_sorted_midis(refectch: bool = true) -> void:
 
 	# 空提示只在「排序页」显示：曲库（MusicPlayerView）筛选同样走 SortEngine，
 	# 排序结果可能在离开排序页后才回来，不能把全局 NoItems 盖到当前页面上。
-	no_items_node.visible = current_items.size() == 0 \
+	%NoItems.visible = current_items.size() == 0 \
 		and sm.current_state == UIStateManager.UIState.SORTED_VIEW
 	_ensure_pool_ready()
 
@@ -272,8 +269,8 @@ func _on_search_query_changed(query: String) -> void:
 		se.set_sort_mode_with_query(query)
 
 func _hide_label(_old,_new):
-	if no_items_node.visible:
-		no_items_node.visible = false
+	if %NoItems.visible:
+		%NoItems.visible = false
 
 ## 收藏夹被选中浏览：加载该收藏夹的所有 midi（轻量投影）
 func _on_favorite_selected_for_browse(fav_id: String) -> void:

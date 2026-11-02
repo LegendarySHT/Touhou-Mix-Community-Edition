@@ -17,11 +17,6 @@ const CHILD_FONT_SIZE := 34
 const GROUP_SUB_SIZE := 38
 const CHILD_SUB_SIZE := 30
 
-@onready var _indent := $Indent as Control
-@onready var _checkbox := $CheckBox as CheckBox
-@onready var _left_label := $LeftLabel as Label
-@onready var _right_label := $RightLabel as Label
-
 ## 当前是否为子行样式（影响缩进与字号）
 var is_child_row: bool = false
 
@@ -32,52 +27,43 @@ func _ready() -> void:
 
 ## 切换组行 / 子行样式。样式相同的重绑不重复改字号（换字号会触发字形重排）
 func apply_style(child: bool) -> void:
-	if is_child_row == child and _indent != null and _indent.visible == child:
+	if is_child_row == child and %Indent.visible == child:
 		return
 	is_child_row = child
-	if _indent:
-		_indent.visible = child
-		_indent.custom_minimum_size.x = CHILD_INDENT if child else 0.0
-	if _left_label:
-		_left_label.add_theme_font_size_override("font_size",
-			CHILD_FONT_SIZE if child else GROUP_FONT_SIZE)
-	if _right_label:
-		_right_label.add_theme_font_size_override("font_size",
-			CHILD_SUB_SIZE if child else GROUP_SUB_SIZE)
+	%Indent.visible = child
+	%Indent.custom_minimum_size.x = CHILD_INDENT if child else 0.0
+	%LeftLabel.add_theme_font_size_override("font_size",
+		CHILD_FONT_SIZE if child else GROUP_FONT_SIZE)
+	%RightLabel.add_theme_font_size_override("font_size",
+		CHILD_SUB_SIZE if child else GROUP_SUB_SIZE)
 
 
 ## 填文本（走 TextScrollHelper 的滚动文本，超长自动滚）
 func set_content(left_text: String, right_text: String) -> void:
-	if _left_label:
-		_left_label.set_scroll_text(left_text)
-	if _right_label:
-		_right_label.set_scroll_text(right_text)
+	%LeftLabel.set_scroll_text(left_text)
+	%RightLabel.set_scroll_text(right_text)
 
 
 ## 设置勾选态（不触发 toggled 信号）
 func set_checked(on: bool) -> void:
-	if _checkbox:
-		_checkbox.set_pressed_no_signal(on)
+	%CheckBox.set_pressed_no_signal(on)
 
 
 ## 设置半选态（组内部分选中）
 func set_indeterminate(on: bool) -> void:
-	if _checkbox == null:
-		return
 	if on:
-		_checkbox.self_modulate = Color(0.5, 0.5, 0.5, 1.0)
-		_checkbox.tooltip_text = "部分选中"
+		%CheckBox.self_modulate = Color(0.5, 0.5, 0.5, 1.0)
+		%CheckBox.tooltip_text = "部分选中"
 	else:
-		_checkbox.self_modulate = Color.WHITE
-		_checkbox.tooltip_text = ""
+		%CheckBox.self_modulate = Color.WHITE
+		%CheckBox.tooltip_text = ""
 
 
 ## 复选框是否禁用（内置资源不可删）
 func set_check_disabled(on: bool) -> void:
-	if _checkbox:
-		_checkbox.disabled = on
+	%CheckBox.disabled = on
 
 
 var checkbox: CheckBox:
 	get:
-		return _checkbox
+		return %CheckBox

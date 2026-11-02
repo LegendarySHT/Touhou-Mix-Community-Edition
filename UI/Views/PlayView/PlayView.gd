@@ -1,4 +1,4 @@
-extends Control
+extends ViewBase
 
 ## 播放相关枚举（换曲入口的 SongMode 等；真值在 C# MeltySynth）
 const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
@@ -7,46 +7,18 @@ const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
 signal retry_pressed
 
 # 音符显示区
-@onready var flow_area: Panel = $FlowArea
+@onready var flow_area: Panel = %FlowArea
 # 背景节点自管（ViewBackground 脚本挂在 Background 上）：封面/模糊/暗化/闪光都在那边
-@onready var bg: ViewBackground = $Background
-# HUD 展示层（Layer 节点，封装判定 UI/进度条/调试悬浮）
-@onready var hud: PlayHud = $Layer
-
-# 菜单及歌曲信息的背景遮罩
-@onready var center_bg:ColorRect = $CenterBackGround
-# 菜单
-@onready var menu: Control = $CenterBackGround/VBox/Menu
-@onready var retry_btn: Button = $CenterBackGround/VBox/Menu/retry
-# 歌曲信息
-@onready var song_info: Control = $CenterBackGround/VBox/SongInfo
-@onready var cover: TextureRect = $CenterBackGround/VBox/SongInfo/PanelContainer/TextureRect
-# 原曲
-@onready var album: Label = $CenterBackGround/VBox/SongInfo/GridContainer/album
-@onready var song: Label = $CenterBackGround/VBox/SongInfo/GridContainer/song
-@onready var artist: Label = $CenterBackGround/VBox/SongInfo/GridContainer/artist
-# midi
-@onready var midi_name: Label = $CenterBackGround/VBox/SongInfo/GridContainer/midiName
-@onready var midi_author: Label = $CenterBackGround/VBox/SongInfo/GridContainer/midiAuthor
-@onready var midi_duration: Label = $CenterBackGround/VBox/SongInfo/GridContainer/midiDuration
-# 难度
-@onready var difficulty: Label = $CenterBackGround/VBox/SongInfo/GridContainer/difficulty
+@onready var bg: ViewBackground = %Background
 
 # 难度预设显示名（下标即 difficulty id：0=Easy,1=Normal,2=Hard,3=Lunatic,4=Custom）
 const DIFFICULTY_NAMES: Array[String] = ["Easy", "Normal", "Hard", "Lunatic", "Custom"]
 const DIFFICULTY_CFG_KEY: String = "difficulty"
 
-# 轨道光效及键位显示
-@onready var lane_area: Control = $Lane
-
-# auto标识
-@onready var auto_label: Label = $AutoLabel
-
 var current_midi: MidiData = null
 ## play_result 仅作为传递给 ScoreView 的展示数据容器
 var play_result: ScoreView.ScoreData = null
 
-@onready var ani: AnimationManager = AniMGR
 @onready var playback_mgr: PlaybackDisplay = PlaybackDisplay.instance
 @onready var key_sequence_mgr: KeySequenceManager = KeySequenceManager.instance
 @onready var score_calc: ScoreCalculator = ScoreCalculator.instance
@@ -147,7 +119,7 @@ func _enter_tree() -> void:
 	# 若拖到 _ready 才设置，子节点会先按主主题（浅色模式下是深字）解析并缓存文字色，导致黑底上出现深字。
 	_apply_stage_theme()
 
-func _ready() -> void:
+func _on_view_ready() -> void:
 	# 从配置加载键盘和轨道相关的参数
 	_load_lane_parameters()
 	_load_debug_display_setting()
@@ -168,10 +140,10 @@ func _ready() -> void:
 	flow_area.parent_node = self
 
 	# HUD 展示层回调（结算检测 / 背景闪光请求 / 暂停按钮）
-	hud.game_finished_requested.connect(_on_game_finished)
-	hud.flash_requested.connect(bg.flash)
-	hud.pause_requested.connect(show_or_hide_menu)
-	retry_btn.pressed.connect(func ():
+	%Hud.game_finished_requested.connect(_on_game_finished)
+	%Hud.flash_requested.connect(bg.flash)
+	%Hud.pause_requested.connect(show_or_hide_menu)
+	%Retry.pressed.connect(func ():
 		_prepare_game()
 	)
 	retry_pressed.connect(func ():
@@ -202,6 +174,13 @@ func _ready() -> void:
 		EvtBus.config_changed.connect(_on_lane_config_changed)
 	if not EvtBus.config_changed.is_connected(_on_config_changed):
 		EvtBus.config_changed.connect(_on_config_changed)
+
+## 转场：整页淡入淡出。比常规慢（0.45s），用于掩盖打歌页首次布局的成本。
+func _play_enter() -> Tween:
+	return AniMGR.animate_fade_in(self, 0.45, "%s_in" % name)
+
+func _play_exit() -> Tween:
+	return AniMGR.animate_fade_out(self, 0.45, "%s_out" % name)
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
@@ -256,7 +235,7 @@ func _process(delta: float) -> void:
 			else:
 				# 如果正在播放MIDI，使用MIDI播放管理器的时间（判定时钟）
 				current_time = playback_mgr.get_position_ms()
-			hud.set_progress(current_time)
+			%Hud.set_progress(current_time)
 			# 视觉时钟：墙钟累加 + 软锚定音频钟（渲染平滑，判定仍用音频钟）
 			# 起播对齐保持期内（音频钟尚未开始推进）改为逐帧硬锚，避免渲染钟抢跑
 			if _visual_time_needs_anchor or _visual_startup_hold_ms > 0.0:
@@ -398,7 +377,7 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 	var enable:bool = state == UIStateManager.UIState.PLAY_VIEW
 	_apply_input_low_latency(enable)
 	set_process(enable)
-	get_node("Layer").visible = enable
+	%Hud.visible = enable
 	_set_game_signal_subscribed(enable)
 
 	# 离开播放视图时统一清理所有资源（无论从哪条路径退出都走这里）
@@ -444,14 +423,12 @@ func _on_config_changed(key: String, value: Variant) -> void:
 	if key in ["note_glow_intensity", "note_glow_size"]:
 		var gi = ConfigManager.instance.get_float("note_glow_intensity", 0.5)
 		var gs = ConfigManager.instance.get_float("note_glow_size", 5.0)
-		if flow_area and flow_area.has_method("set_glow_params"):
-			flow_area.set_glow_params(gi, gs)
+		flow_area.set_glow_params(gi, gs)
 		return
 	
 	if key == "block_skin_preset":
 		var skin_name = str(value)
-		if flow_area and flow_area.has_method("load_note_skin"):
-			flow_area.load_note_skin(skin_name)
+		flow_area.load_note_skin(skin_name)
 		return
 
 	if key in [
@@ -462,19 +439,17 @@ func _on_config_changed(key: String, value: Variant) -> void:
 		"long_block_color",
 	]:
 		_regenerate_global_random_colors()
-		if flow_area:
-			flow_area.refresh_note_colors()
+		flow_area.refresh_note_colors()
 		return
 
 	if key == "display_debug_info":
-		hud.set_debug_enabled(int(value) == 1)
+		%Hud.set_debug_enabled(int(value) == 1)
 		return
 
 	if key == "auto_mode":
 		var auto_enabled = int(value) == 1
-		if flow_area:
-			flow_area.auto_mode = auto_enabled
-		auto_label.visible = auto_enabled
+		flow_area.auto_mode = auto_enabled
+		%AutoLabel.visible = auto_enabled
 		GLogger.info("PlayView auto mode changed: %s" % ("ON" if auto_enabled else "OFF"), "PlayView")
 		return
 
@@ -499,7 +474,7 @@ func _on_config_changed(key: String, value: Variant) -> void:
 				GLogger.info("Performing mode OFF: cleared manual control notes", "PlayView")
 
 func _load_debug_display_setting() -> void:
-	hud.set_debug_enabled(ConfigManager.instance.get_int("display_debug_info", 0) == 1)
+	%Hud.set_debug_enabled(ConfigManager.instance.get_int("display_debug_info", 0) == 1)
 
 
 func _load_note_skin_setting() -> void:
@@ -520,16 +495,13 @@ func _do_load_note_skin() -> void:
 	var skin_name = ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 
 	# 应用皮肤
-	if flow_area and flow_area.has_method("load_note_skin"):
-		flow_area.load_note_skin(skin_name)
-		GLogger.info("Loaded note skin: %s" % skin_name, "PlayView")
+	flow_area.load_note_skin(skin_name)
+	GLogger.info("Loaded note skin: %s" % skin_name, "PlayView")
 
 ## 根据当前皮肤的 random_color 配置生成随机颜色并推送到 FlowArea
 ## 仅在 custom_color 主开关 + 该类型 enable_color + random_color 均开启时生成
 ## 必须在 flow_area.init_flow_area() 之前调用，使新音符按新颜色生成
 func _regenerate_random_note_colors() -> void:
-	if not flow_area:
-		return
 	var skin_name = ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	var skin_config = SkinMGR.get_skin_config(skin_name)
 	if skin_config.is_empty():
@@ -558,8 +530,6 @@ func _regenerate_random_note_colors() -> void:
 ## 根据全局设置（非键盘模式 + 皮肤 custom_color 关闭时生效）生成随机调色板并推送到 FlowArea
 ## 必须在 flow_area.init_flow_area() 之前调用，使新音符按新颜色生成
 func _regenerate_global_random_colors() -> void:
-	if not flow_area:
-		return
 	var random_on := ConfigManager.instance.get_int("randomize_block_color", 0) == 1
 	if not random_on:
 		flow_area.set_random_colors({}, true)
@@ -592,7 +562,7 @@ func show_or_hide_menu():
 		if _hud_editor != null and is_instance_valid(_hud_editor):
 			_hud_editor.request_close()
 		return
-	if is_pause and menu.visible:
+	if is_pause and %PauseMenu.visible:
 		if _game_started:
 			# 只有在"准备阶段就呼出暂停菜单"时，预卷才还没被玩家看到过，需要重新起算；
 			# 已经正常打起来过的会话（来电打断 / 手动暂停）绝不能重起预卷 ——
@@ -602,16 +572,16 @@ func show_or_hide_menu():
 				_begin_pre_roll("menu resume (pre-roll never played)")
 				_visual_time_needs_anchor = true
 			is_pause = false
-			ani.animate_fade_out(center_bg, 0.2, "_show_bg")
-		ani.animate_fade_out(menu, 0.2, "_show_menu")
+			AniMGR.animate_fade_out(%CenterBackground, 0.2, "_show_bg")
+		AniMGR.animate_fade_out(%PauseMenu, 0.2, "_show_menu")
 	else:
 		_show_pause_menu()
 
 func _show_pause_menu() -> void:
 	is_pause = true
-	if not center_bg.visible:
-		ani.animate_fade_in(center_bg, 0.2, "_show_bg")
-	ani.animate_fade_in(menu, 0.2, "_show_menu")
+	if not %CenterBackground.visible:
+		AniMGR.animate_fade_in(%CenterBackground, 0.2, "_show_bg")
+	AniMGR.animate_fade_in(%PauseMenu, 0.2, "_show_menu")
 
 # ==================== 自定义 HUD 编辑模式 ====================
 
@@ -621,12 +591,12 @@ func enter_hud_edit_mode() -> void:
 		return
 	_hud_edit_mode = true
 	set_process(false)
-	center_bg.visible = false
-	menu.visible = false
-	song_info.visible = false
-	auto_label.visible = false
+	%CenterBackground.visible = false
+	%PauseMenu.visible = false
+	%SongInfo.visible = false
+	%AutoLabel.visible = false
 	flow_area.visible = false
-	lane_area.visible = false
+	%LaneEffect.visible = false
 	_start_hud_editor()
 
 
@@ -635,22 +605,22 @@ func exit_hud_edit_mode() -> void:
 		return
 	_hud_edit_mode = false
 	_close_hud_editor()
-	hud.set_edit_mode(false)
+	%Hud.set_edit_mode(false)
 	flow_area.visible = true
-	lane_area.visible = true
-	song_info.visible = true
-	auto_label.visible = flow_area.auto_mode
+	%LaneEffect.visible = true
+	%SongInfo.visible = true
+	%AutoLabel.visible = flow_area.auto_mode
 	set_process(UiStatMGR.current_state == UIStateManager.UIState.PLAY_VIEW)
 
 
 func _start_hud_editor() -> void:
-	hud.set_edit_mode(true)
-	hud.apply_all_layouts()
+	%Hud.set_edit_mode(true)
+	%Hud.apply_all_layouts()
 	_hud_editor = HudEditor.new()
 	_hud_editor.name = "HudEditor"
 	add_child(_hud_editor)
 	_hud_editor.closed.connect(_on_hud_editor_closed)
-	_hud_editor.setup(hud)
+	_hud_editor.setup(%Hud)
 	GLogger.info("进入自定义 HUD 编辑模式", "PlayView")
 
 
@@ -708,8 +678,8 @@ func _on_audio_focus_changed(state: int) -> void:
 			playback_mgr.evaluate_audio_device_health("focus_gain")
 		is_pause = false
 		_visual_time_needs_anchor = true
-		ani.animate_fade_out(center_bg, 0.2, "_show_bg")
-		ani.animate_fade_out(menu, 0.2, "_show_menu")
+		AniMGR.animate_fade_out(%CenterBackground, 0.2, "_show_bg")
+		AniMGR.animate_fade_out(%PauseMenu, 0.2, "_show_menu")
 		return
 
 	# 焦点丢失：暂停。只有在**真的暂停成功**时才记下"是我们的自动暂停"，
@@ -771,7 +741,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	playback_mgr.ensure_audio_focus()
 	flow_area.init_flow_area()
 	_is_auto_mode_play = flow_area.auto_mode
-	auto_label.visible = flow_area.auto_mode
+	%AutoLabel.visible = flow_area.auto_mode
 
 	# 预解析 MIDI（同步，命中缓存时几乎零开销），
 	# 后续 play_song 直接命中解析缓存，仅做配置应用 + 后端加载
@@ -837,7 +807,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	_finish_playback_setup()
 	GLogger.info("FlowArea prebuilt seq data = %d" % flow_area.get_sequence_count(), "PlayView")
 	# 设置进度条最大值
-	hud.set_progress_max(current_midi.duration_ms)
+	%Hud.set_progress_max(current_midi.duration_ms)
 
 	# 歌曲信息面板显示期间预启动人声：加载 + play + 立即暂停
 	# 此处主线程可阻塞（有歌曲信息面板遮罩），消除 is_pause=false 时
@@ -864,11 +834,11 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 			await get_tree().create_timer(remain_ms / 1000.0).timeout
 		# 等待期间若用户主动呼出了暂停菜单，则不再自动淡出遮罩并开始播放，
 		# 交给用户从暂停菜单手动"继续"（标记 _game_started 使"继续"等同于直接开局）
-		if menu.visible:
+		if %PauseMenu.visible:
 			GLogger.info("Ready phase done but pause menu opened, skipping auto-start (awaiting user resume)", "PlayView")
 			_game_started = true
 			return
-		await AniMGR.animate_fade_out(center_bg, 1).finished
+		await AniMGR.animate_fade_out(%CenterBackground, 1).finished
 
 	# 准备阶段若用户已退出播放视图（打开菜单后强退/返回），不再启动播放：
 	# 同样要防"新一轮已开始"——否则旧轮会把 is_pause 置回 false，和新轮抢播放态
@@ -925,16 +895,6 @@ func _start_generate_game_sequences(midi_data: MidiData) -> int:
 		key_sequence_mgr.clear_sequences()
 		return -1
 
-	# 不调用 set_screen_size：读 lane_area.size.x 没意义（永远是 40，Lane 节点 anchors_preset=0 不拉伸），
-	# KSM 内部用默认 1920 即可；screen_width 仍进 KSM 的配置指纹（改了会整体失效缓存，安全）。
-
-	# 构建启用 (track, channel) 集合并筛选音符（主线程）。
-	# 音符数据由 C# MidiCore 持有（解析缓存），这里只取"启用子集的 SOA 索引"；
-	# 键序列生成时 C# 直读自己的缓存数组，不再把 6 条 PackedInt32Array 来回拷贝。
-	#
-	# 【自查解析就绪】_prepare_game 开头虽已 ensure_parsed，但到这里的路上有多个 await，
-	# 期间别的消费者（MidiListItem 统计等）可能解析其它谱面、把 2 槽解析缓存挤掉 ——
-	# 那时下面的 HasParsed 会为 false，静默变成"整首歌没有音符"。ensure_parsed 幂等且命中时几乎零开销。
 	if not playback_mgr.ensure_parsed(midi_data):
 		key_sequence_mgr.clear_sequences()
 		return -1
@@ -1098,12 +1058,10 @@ func _load_lane_parameters() -> void:
 		"PlayView"
 	)
 	beam_alpha = config_mgr.get_float("flash_alpha", 0.8)
-	if lane_area and lane_area.has_method("set_beam_alpha"):
-		lane_area.set_beam_alpha(beam_alpha)
+	%LaneEffect.set_beam_alpha(beam_alpha)
 	var note_glow_intensity = config_mgr.get_float("note_glow_intensity", 0.5)
 	var note_glow_size = config_mgr.get_float("note_glow_size", 5.0)
-	if flow_area and flow_area.has_method("set_glow_params"):
-		flow_area.set_glow_params(note_glow_intensity, note_glow_size)
+	flow_area.set_glow_params(note_glow_intensity, note_glow_size)
 
 
 ## 处理轨道/键位/判定线相关的配置变更（轨道数量、键位、左右安全区、光柱）
@@ -1118,8 +1076,7 @@ func _on_lane_config_changed(key: String, value: Variant) -> void:
 		if new_offset != judge_line_offset_y:
 			judge_line_offset_y = new_offset
 			should_reinit = true
-			if flow_area and flow_area.has_method("_apply_judge_line_position"):
-				flow_area._apply_judge_line_position()
+			flow_area._apply_judge_line_position()
 			GLogger.info("PlayView judge_line_offset_y updated: %d" % judge_line_offset_y, "PlayView")
 
 	if key == "canvas_horizontal_padding":
@@ -1202,8 +1159,7 @@ func _on_lane_config_changed(key: String, value: Variant) -> void:
 
 		"flash_alpha":
 			beam_alpha = float(value)
-			if lane_area and lane_area.has_method("set_beam_alpha"):
-				lane_area.set_beam_alpha(beam_alpha)
+			%LaneEffect.set_beam_alpha(beam_alpha)
 
 	if should_reinit:
 		# 仅在游戏未开始或者允许的情况下重新初始化轨道
@@ -1222,19 +1178,16 @@ func _are_keys_different(keys1: Array[Key], keys2: Array[Key]) -> bool:
 ## 重新初始化轨道显示
 ## 清空旧轨道并根据当前配置重新初始化
 func _reinit_lane_display() -> void:
-	if flow_area == null or lane_area == null:
-		return
-	
 	# 重新初始化流动区域
 	flow_area.init_flow_area()
-	
-	# 重新初始化轨道光效（lane_area 已经是 LaneEffect 实例）
-	lane_area.init_beam(get_lane_count(), self)
-	lane_area.set_beam_alpha(beam_alpha)
+
+	# 重新初始化轨道光效（%LaneEffect 已经是 LaneEffect 实例）
+	%LaneEffect.init_beam(get_lane_count(), self)
+	%LaneEffect.set_beam_alpha(beam_alpha)
 	
 	# 如果启用了键盘模式，显示键位提示
 	if keyboard_mode and key_map.size() > 0:
-		lane_area.init_key_display(key_map, key_display_names)
+		%LaneEffect.init_key_display(key_map, key_display_names)
 	
 	GLogger.info("PlayView lane display reinitialized", "PlayView")
 
@@ -1388,42 +1341,42 @@ func _midi_key(midi: MidiData) -> String:
 # 初始化分数等内容的显示
 func _init_display(show_ready_animation: bool = true):
 	_is_finishing_game = false
-	hud.init_display()
+	%Hud.init_display()
 
 	# 设置歌曲信息（封面只加载一次，同时传给信息面板和背景）
 	var cover_texture = FileSystemManager.instance.get_cover_by_midiData(current_midi)
 	if cover_texture:
-		cover.texture = cover_texture
+		%Cover.texture = cover_texture
 	# 背景自己按 play 段配置取用（默认 cover + 模糊），没封面时自动退回默认背景
 	bg.set_cover(cover_texture, _midi_key(current_midi))
 
 	if show_ready_animation:
-		ani.animate_fade_in(center_bg, 0.2, "_show_bg")
-	album.set_scroll_text(current_midi.album_name if not current_midi.album_name.is_empty() else current_midi.artist_name)
-	song.set_scroll_text(current_midi.song_name)
-	artist.set_scroll_text(current_midi.author_name if current_midi.author_name else "Unknow")
+		AniMGR.animate_fade_in(%CenterBackground, 0.2, "_show_bg")
+	%Album.set_scroll_text(current_midi.album_name if not current_midi.album_name.is_empty() else current_midi.artist_name)
+	%Song.set_scroll_text(current_midi.song_name)
+	%Artist.set_scroll_text(current_midi.author_name if current_midi.author_name else "Unknow")
 	var s := int(current_midi.duration_ms / 1000.0)
 	@warning_ignore("integer_division")
-	midi_duration.text = "%02d:%02d" % [s / 60, s % 60]
-	midi_name.set_scroll_text(current_midi.name)
-	midi_author.set_scroll_text(current_midi.artist_name)
+	%MidiDuration.text = "%02d:%02d" % [s / 60, s % 60]
+	%MidiName.set_scroll_text(current_midi.name)
+	%MidiAuthor.set_scroll_text(current_midi.artist_name)
 
 	# 显示当前选中的难度预设
 	var difficulty_id := ConfigManager.instance.get_int(DIFFICULTY_CFG_KEY, 1)
 	if difficulty_id >= 0 and difficulty_id < DIFFICULTY_NAMES.size():
-		difficulty.text = DIFFICULTY_NAMES[difficulty_id]
+		%Difficulty.text = DIFFICULTY_NAMES[difficulty_id]
 
 	# 自定义 HUD 里的信息类组件用同一份数据
-	hud.set_song_info(
+	%Hud.set_song_info(
 		current_midi.album_name if not current_midi.album_name.is_empty() else current_midi.artist_name,
 		current_midi.song_name,
 		current_midi.name,
-		difficulty.text)
+		%Difficulty.text)
 
-	menu.visible = false
-	song_info.visible = true
+	%PauseMenu.visible = false
+	%SongInfo.visible = true
 
-	center_bg.visible = show_ready_animation
+	%CenterBackground.visible = show_ready_animation
 	is_pause = true
 	
 	# 恢复flow_area显示
@@ -1431,17 +1384,16 @@ func _init_display(show_ready_animation: bool = true):
 
 	_init_lane_display()
 
-	auto_label.visible = flow_area.auto_mode
+	%AutoLabel.visible = flow_area.auto_mode
 
 
 func _init_lane_display():
 	# 窗口大小变化时重新计算音符尺寸
-	if flow_area and flow_area.has_method("_recalculate_note_dimensions"):
-		flow_area._recalculate_note_dimensions()
-	lane_area.init_beam(get_lane_count(), self)
-	lane_area.set_beam_alpha(beam_alpha)
+	flow_area._recalculate_note_dimensions()
+	%LaneEffect.init_beam(get_lane_count(), self)
+	%LaneEffect.set_beam_alpha(beam_alpha)
 	if keyboard_mode:
-		lane_area.init_key_display(key_map, key_display_names)
+		%LaneEffect.init_key_display(key_map, key_display_names)
 
 # ---- 判定回调（计分数据源留在 PlayView，展示委托 HUD） ----
 
@@ -1456,9 +1408,9 @@ func _on_note_judged(result: String, offset: String, block_type: int, timing_sec
 		"Miss":    judgment = ScoreCalculator.Judgment.MISS
 
 	var snap = score_calc.record_judgment(judgment, block_type, timing_sec, signed_offset_sec, false, long_instance_id)
-	hud.on_note_judged(result, offset, snap)
+	%Hud.on_note_judged(result, offset, snap)
 
 ## LONG 持续 tick 加分（已委托 ScoreCalculator）
 func _on_long_holding(long_instance_id: int):
 	var snap = score_calc.record_long_sustain(ScoreCalculator.Judgment.PERFECT, long_instance_id)
-	hud.on_note_judged("Perfect", "", snap, true)
+	%Hud.on_note_judged("Perfect", "", snap, true)

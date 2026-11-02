@@ -27,8 +27,8 @@ var _glow_enabled: bool = false
 var _glow_intensity: float = 1.0
 var _glow_size: float = 20.0
 # 加色混合子层（PlayView.tscn 预挂节点：GlowLayer.gd，z_index=-1 保证在音符之下、背景之上）
-# 皮肤预览复用本节点时不挂 GlowLayer，用 get_node_or_null 避免缺节点报错
-@onready var _glow_layer: GlowLayer = get_node_or_null("GlowLayer")
+# 皮肤预览复用本节点时不挂 GlowLayer，故按唯一名查并允许为空
+var _glow_layer: GlowLayer = null
 
 # 光效高斯峰值：加色混合逐通道相加，峰值 ≥0.5 时两个相同颜色的光效叠加就达 1.0（白）
 # 0.45 保证两个光效叠加不超过 0.9，不白但接近白；调高更亮更易白，调低更压白
@@ -102,6 +102,7 @@ var _transparent_tex: Texture2D = null
 
 
 func _ready() -> void:
+	_glow_layer = get_node_or_null("%GlowLayer") as GlowLayer
 	_transparent_tex = _create_transparent_texture()
 	_bake_glow_texture()
 	_setup_glow_layer()

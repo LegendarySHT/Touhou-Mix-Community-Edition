@@ -1,14 +1,5 @@
 extends VBoxContainer
 
-# 模式设置 (自动/普通 模式)
-@onready var mode_btn: OptionButton = $TabView/Mode/HFlowC/Mode
-# 限制设置 (无限制/FC/AP)
-@onready var limit_btn: OptionButton = $TabView/Mode/HFlowC/Limit
-# 游戏模式 （普通/扫描线）
-@onready var gamme_mode_btn: OptionButton = $TabView/Mode/HFlowC/GameMode
-# 难度预设 (Easy/Normal/Hard/Lunatic/Custom)
-@onready var difficulty_btn: OptionButton = $TabView/Mode/HFlowC/Difficulty
-
 const MODE_NORMAL_ID: int = 0
 const MODE_AUTO_ID: int = 1
 
@@ -25,10 +16,9 @@ const DIFFICULTY_CFG_KEY: String = "difficulty"
 var _is_syncing_mode_ui: bool = false
 var _is_syncing_difficulty_ui: bool = false
 
-
 func _ready():
 	# 连接选项卡按钮
-	for i in get_node("TabBtn").get_children():
+	for i in %OptTabBtns.get_children():
 		if i is Button:
 			i.toggled.connect(_on_button_toggled.bind(i))
 			i.focus_entered.connect(func ():
@@ -36,7 +26,7 @@ func _ready():
 					i.button_pressed = true
 			)
 	
-	for i in [mode_btn, limit_btn, gamme_mode_btn, difficulty_btn]:
+	for i in [%ModeSelect, %LimitSelect, %GameModeSelect, %DifficultySelect]:
 		i.get_popup().about_to_popup.connect(_on_popup_menu_popup.bind(i.get_popup()))
 
 	_sync_mode_from_config()
@@ -45,20 +35,20 @@ func _ready():
 func _sync_mode_from_config() -> void:
 	var is_auto := ConfigManager.instance.get_int("auto_mode") == 1
 	var target_id := MODE_AUTO_ID if is_auto else MODE_NORMAL_ID
-	var target_index := mode_btn.get_item_index(target_id)
+	var target_index: int = %ModeSelect.get_item_index(target_id)
 
 	if target_index < 0:
 		target_index = 0
 
 	_is_syncing_mode_ui = true
-	mode_btn.select(target_index)
+	%ModeSelect.select(target_index)
 	_is_syncing_mode_ui = false
 
 func _on_mode_selected(index: int) -> void:
 	if _is_syncing_mode_ui:
 		return
 
-	var selected_id := mode_btn.get_item_id(index)
+	var selected_id: int = %ModeSelect.get_item_id(index)
 	var is_auto := selected_id == MODE_AUTO_ID
 	var value := 1 if is_auto else 0
 
@@ -72,18 +62,18 @@ func _on_mode_selected(index: int) -> void:
 ## 从配置恢复难度 OptionButton 选中态
 func _sync_difficulty_from_config() -> void:
 	var difficulty_id := ConfigManager.instance.get_int(DIFFICULTY_CFG_KEY, 1)
-	var idx := difficulty_btn.get_item_index(difficulty_id)
+	var idx: int = %DifficultySelect.get_item_index(difficulty_id)
 	if idx < 0:
 		idx = 1  # 回退 Normal
 	_is_syncing_difficulty_ui = true
-	difficulty_btn.select(idx)
+	%DifficultySelect.select(idx)
 	_is_syncing_difficulty_ui = false
 
 ## 难度切换：写预设值到配置 + 锁定设置项（Custom 仅解锁，不覆盖值）
 func _on_difficulty_selected(index: int) -> void:
 	if _is_syncing_difficulty_ui:
 		return
-	var difficulty_id: int = difficulty_btn.get_item_id(index)
+	var difficulty_id: int = %DifficultySelect.get_item_id(index)
 	# 先写 5 个预设值（触发 KeySequenceManager 运行时更新），最后写 difficulty
 	# 保证 SettingList 的 difficulty 监听器触发时 5 个值已就位
 	if difficulty_id != DIFFICULTY_CUSTOM_ID:
@@ -110,7 +100,7 @@ func _on_popup_menu_popup(popup_menu: PopupMenu) -> void:
 func _on_button_toggled(toggle_on, button):
 	
 	if toggle_on:
-		var t_page = get_node("TabView/%s" % button.name)
+		var t_page = %OptTabs.get_child(button.get_index())
 		if t_page.visible:
 			return
 		t_page.visible = true

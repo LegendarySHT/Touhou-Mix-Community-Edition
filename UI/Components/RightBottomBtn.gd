@@ -11,29 +11,23 @@ enum ShowStat {
 	CHARA_BTN,
 }
 
-@onready var ani:AnimationManager = AniMGR
-@onready var ui:UIStateManager = UiStatMGR
-@onready var eb: EventBus = EvtBus
-
-@onready var vboxc: VBoxContainer = $VBoxC
-
 func _ready():
 	instance = self
-	ui.state_changed.connect(_on_state_change)
+	UiStatMGR.state_changed.connect(_on_state_change)
 
-	eb.page_right.connect(func ():
-		if ui.current_state == ui.UIState.SETTINGS_VIEW:
+	EvtBus.page_right.connect(func ():
+		if UiStatMGR.current_state == UiStatMGR.UIState.SETTINGS_VIEW:
 			switch_display(ShowStat.BACK_BTN)
 	)
-	eb.page_left.connect(func ():
-		if ui.current_state == ui.UIState.SETTINGS_VIEW:
+	EvtBus.page_left.connect(func ():
+		if UiStatMGR.current_state == UiStatMGR.UIState.SETTINGS_VIEW:
 			switch_display(ShowStat.DELVIEW_BACK)
 	)
 
 func _on_state_change(_old_state, new_state: UIStateManager.UIState):
-	if new_state in [ui.UIState.ALBUM_VIEW]:
+	if new_state in [UiStatMGR.UIState.ALBUM_VIEW]:
 		switch_display(ShowStat.STORE_BTN)
-	elif new_state in [ui.UIState.PLAY_VIEW, ui.UIState.MUSIC_PLAYER_VIEW]:
+	elif new_state in [UiStatMGR.UIState.PLAY_VIEW, UiStatMGR.UIState.MUSIC_PLAYER_VIEW]:
 		switch_display(ShowStat.NONE)
 	else:
 		switch_display(ShowStat.BACK_BTN)
@@ -73,27 +67,27 @@ func switch_display(content_to_show: ShowStat = ShowStat.NONE):
 	# 控制按钮框架是否可见
 	if content_to_show == ShowStat.NONE:
 		if _visible:
-			ani.animate_offset_to(self, Vector2(500, 134), 0.5, "RB_VISBLE")
+			AniMGR.animate_offset_to(self, Vector2(500, 134), 0.5, "RB_VISBLE")
 			_visible = false
 	else:
 		if not _visible:
-			ani.animate_offset_back(self, 0.5, "RB_VISBLE")
+			AniMGR.animate_offset_back(self, 0.5, "RB_VISBLE")
 			_visible = true
 
 	var event = InputEventKey.new()
 	# 控制内容显示
 	match content_to_show:
 		ShowStat.BACK_BTN:
-			ani.animate_offset_to(vboxc, Vector2(0, -430))
+			AniMGR.animate_offset_to(%RTBtnIcons, Vector2(0, -430))
 			event.keycode = KEY_ESCAPE
 		ShowStat.STORE_BTN:
-			ani.animate_offset_to(vboxc, Vector2(0, 0))
+			AniMGR.animate_offset_to(%RTBtnIcons, Vector2(0, 0))
 			event.keycode = KEY_O
 		ShowStat.DELVIEW_BACK:
-			ani.animate_offset_to(vboxc, Vector2(0, -430))
+			AniMGR.animate_offset_to(%RTBtnIcons, Vector2(0, -430))
 			event.keycode = KEY_RIGHT
 		ShowStat.CHARA_BTN:
-			ani.animate_offset_to(vboxc, Vector2(0, -860))
+			AniMGR.animate_offset_to(%RTBtnIcons, Vector2(0, -860))
 			event.keycode = KEY_O
 	
 	# 快捷键：shortcut 被禁用时更新到 _saved_shortcut，恢复后即生效
@@ -115,6 +109,6 @@ func _on_button_pressed() -> void:
 		ShowStat.STORE_BTN:
 			UiStatMGR.change_state(UiStatMGR.UIState.STORE_VIEW)
 		ShowStat.DELVIEW_BACK:
-			eb.page_right.emit()
+			EvtBus.page_right.emit()
 		ShowStat.CHARA_BTN:
 			UiStatMGR.change_state(UiStatMGR.UIState.CHARA_VIEW)

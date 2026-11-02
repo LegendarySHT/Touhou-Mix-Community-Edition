@@ -10,14 +10,11 @@ static var _shared_style_revision := -1
 var item: Dictionary = {}
 var _has_ready := false
 
-@onready var _name: Label = $Margin/HBox/Name
-@onready var _remove_btn: Button = $Margin/HBox/RemoveBtn
-
 
 func _ready() -> void:
 	_has_ready = true
-	_remove_btn.icon = StoreIconsLib.close()
-	_remove_btn.pressed.connect(func() -> void: remove_requested.emit(item))
+	%RemoveBtn.icon = StoreIconsLib.close()
+	%RemoveBtn.pressed.connect(func() -> void: remove_requested.emit(item))
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
@@ -32,7 +29,7 @@ func setup(p_item: Dictionary) -> void:
 
 
 func _apply() -> void:
-	_name.set_scroll_text(str(item.get("title", "未命名")))
+	%Name.set_scroll_text(str(item.get("title", "未命名")))
 
 
 func apply_theme() -> void:
@@ -57,10 +54,10 @@ func apply_theme() -> void:
 		if focus_sb:
 			focus_sb.border_color = ThemeMGR.get_color("primary_dark") \
 				if ThemeMGR.get_appearance() == "light" else ThemeMGR.get_color("primary_light")
-	_remove_btn.icon = StoreIconsLib.close()
-	_remove_btn.add_theme_color_override("icon_normal_color", ThemeMGR.get_color("text_secondary"))
-	_remove_btn.add_theme_color_override("icon_hover_color", ThemeMGR.get_color("danger"))
-	_remove_btn.add_theme_color_override("icon_pressed_color", ThemeMGR.get_color("danger"))
+	%RemoveBtn.icon = StoreIconsLib.close()
+	%RemoveBtn.add_theme_color_override("icon_normal_color", ThemeMGR.get_color("text_secondary"))
+	%RemoveBtn.add_theme_color_override("icon_hover_color", ThemeMGR.get_color("danger"))
+	%RemoveBtn.add_theme_color_override("icon_pressed_color", ThemeMGR.get_color("danger"))
 
 
 func _exit_tree() -> void:

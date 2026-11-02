@@ -61,7 +61,9 @@ const LAZY_VIEW_PATHS := {
 	UIState.MUSIC_PLAYER_VIEW: "res://UI/Views/MusicPlayerView/MusicPlayerView.tscn",
 }
 
-## 懒加载视图的挂载层级（UIState → ViewLayer）
+## 懒加载视图的挂载层级兜底表（UIState → ViewLayer）
+## 视图继承 ViewBase 并在自己的 tscn 根节点声明 view_layer 后，这条表对它不再生效。
+## 现在全部 9 个视图都已在各自 tscn 里声明 view_layer，本表仅作为「tscn 漏写」时的兜底保留。
 const LAZY_VIEW_LAYERS := {
 	UIState.MIDI_VIEW: ViewLayer.SKEW_C,
 	UIState.STORE_VIEW: ViewLayer.MAIN_BEFORE_RB,
@@ -212,17 +214,31 @@ func _enter_initial_view(state: UIState) -> void:
 
 ## 统一的新建入口：加载场景 → 实例化 → 按 layer 插入 → 置为隐藏。
 ## 视图的绘制/点击优先级全部由插入位置（树序）表达，不设置 z_index。
-func create_view(scene_path: String, layer: ViewLayer) -> Node:
+## layer_override >= 0 时强制使用；否则读视图自声明的 ViewBase.view_layer，
+## 未声明则回退中央表 LAZY_VIEW_LAYERS（兼容尚未迁移的视图）。
+func create_view(scene_path: String, state: UIState, layer_override: int = -1) -> Node:
 	var packed: PackedScene = load(scene_path)
 	if packed == null:
 		push_error("Failed to load view: %s" % scene_path)
 		return null
 	var instance: Node = packed.instantiate()
 	instance.visible = false
-	if not _place_view(instance, layer):
+	if not _place_view(instance, _resolve_layer(instance, state, layer_override)):
 		instance.free()
 		return null
 	return instance
+
+## 解析视图挂载层级：显式参数 > 视图自声明 > 中央表兜底
+func _resolve_layer(instance: Node, state: UIState, override: int = -1) -> ViewLayer:
+	if override >= 0:
+		return override as ViewLayer
+	var declared: Variant = instance.get("view_layer")
+	if declared is int and declared >= 0:
+		GLogger.debug("[UiStatMGR] %s layer=%d (场景声明)" % [instance.name, declared], "UiStatMGR")
+		return declared as ViewLayer
+	var fallback: ViewLayer = LAZY_VIEW_LAYERS.get(state, ViewLayer.SKEW_C)
+	GLogger.debug("[UiStatMGR] %s layer=%d (中央表兜底)" % [instance.name, fallback], "UiStatMGR")
+	return fallback
 
 ## 把新视图插到 Main / skew.C 的固定位置
 func _place_view(instance: Node, layer: ViewLayer) -> bool:
@@ -259,7 +275,7 @@ func ensure_view_loaded(state: UIState) -> Node:
 		_loaded_lazy_views.erase(state)
 	if not LAZY_VIEW_PATHS.has(state):
 		return null
-	var instance: Node = create_view(LAZY_VIEW_PATHS[state], LAZY_VIEW_LAYERS[state])
+	var instance: Node = create_view(LAZY_VIEW_PATHS[state], state)
 	if instance == null:
 		return null
 	_loaded_lazy_views[state] = instance

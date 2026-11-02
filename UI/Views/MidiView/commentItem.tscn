@@ -55,7 +55,7 @@ layout_mode = 2
 size_flags_vertical = 4
 theme_override_styles/panel = SubResource("StyleBoxFlat_avator")
 
-[node name="img" type="TextureRect" parent="HBox/Avator" unique_id=319000003]
+[node name="Img" type="TextureRect" parent="HBox/Avator" unique_id=319000003]
 layout_mode = 2
 texture = ExtResource("2_cmt")
 expand_mode = 1

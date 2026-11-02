@@ -1,4 +1,4 @@
-extends Control
+extends ViewBase
 ## 音乐播放器页
 ##
 ## 与其他页面不同，本页不驱动播放——系统媒体控件与页面按钮的命令都经
@@ -19,57 +19,23 @@ const RepeatMode := PlaybackTypesLib.RepeatMode
 ## 子页脚本用 preload 常量做类型标注，不依赖全局类缓存
 const LibraryLayerScript := preload("res://UI/Views/MusicPlayerView/LibraryLayer.gd")
 const PlaylistPanelScript := preload("res://UI/Views/MusicPlayerView/PlaylistPanel.gd")
-
-@onready var _back_btn: TextureButton = $BackBtn
-@onready var _track_view_btn: TextureButton = $TrackViewBtn
-@onready var _cover_view: Control = $MainColumn/Stage/CoverView
-@onready var _cover: TextureRect = $MainColumn/Stage/CoverView/AspectRatio/Cover
-@onready var _cover_placeholder: Label = $MainColumn/Stage/CoverView/AspectRatio/CoverPlaceholder
-@onready var _note_roll: Control = $MainColumn/Stage/NoteRollView
-@onready var _note_roll_view: Node = $MainColumn/Stage/NoteRollView
-@onready var _main_column: Control = $MainColumn
-@onready var _stage: Control = $MainColumn/Stage
-@onready var _bottom_bar: Control = $MainColumn/BottomBar
-@onready var _stage_switch_btn: TextureButton = $MainColumn/BottomBar/RightBts/StageSwitchBtn
-@onready var _song_title: Label = $MainColumn/BottomBar/SongInfo/SongTitle
-@onready var _song_artist: Label = $MainColumn/BottomBar/SongInfo/SongArtist
-@onready var _prev_btn: TextureButton = $MainColumn/BottomBar/CenterBtns/PrevBtn
-@onready var _play_pause_btn: TextureButton = $MainColumn/BottomBar/CenterBtns/PlayPauseBtn
-@onready var _next_btn: TextureButton = $MainColumn/BottomBar/CenterBtns/NextBtn
-@onready var _repeat_btn: TextureButton = $MainColumn/BottomBar/RightBts/RepeatBtn
-@onready var _volume_btn: TextureButton = $MainColumn/BottomBar/RightBts/VolumeBtn
-@onready var _equalizer_btn: TextureButton = $MainColumn/BottomBar/RightBts/EqualizerBtn
-@onready var _library_btn: TextureButton = $MainColumn/BottomBar/RightBts/LibraryBtn
-@onready var _playlist_btn: TextureButton = $MainColumn/BottomBar/RightBts/PlaylistBtn
-@onready var _progress: HSlider = $MainColumn/BottomBar/Progress
-@onready var _time_cur: Label = $MainColumn/BottomBar/Progress/CurrentTime
-@onready var _time_total: Label = $MainColumn/BottomBar/Progress/TotalTime
-@onready var _library_layer: LibraryLayerScript = $LibraryLayer
-@onready var _playlist_panel: PlaylistPanelScript = $PlaylistPanel
-@onready var _fav_picker: Panel = $FavoritePicker
+const NoteRollViewScript := preload("res://UI/Views/MusicPlayerView/NoteRollView.gd")
 
 ## 进度条拖动中，避免被 _process 回写打断
 var _progress_dragging: bool = false
 
-@onready var _volume_popup: VBoxContainer = $MainColumn/BottomBar/RightBts/VolumeBtn/VolumePopup
-@onready var _midi_vol_slider: HSlider = $MainColumn/BottomBar/RightBts/VolumeBtn/VolumePopup/MidiVolSlider
-@onready var _vocal_vol_slider: HSlider = $MainColumn/BottomBar/RightBts/VolumeBtn/VolumePopup/VocalVolSlider
-
-func _ready() -> void:
+func _on_view_ready() -> void:
 	UiStatMGR.state_changed.connect(_on_ui_state_changed)
 	# _process 只在播放器页启用，进入/离开由 state_changed 驱动，避免常驻每帧空转
 	set_process(false)
-	ThemeMGR.register_theme_applier(self)
-	apply_theme()
 
-	if _progress != null:
-		_progress.drag_started.connect(func(): _progress_dragging = true)
+	%ProgressSlider.drag_started.connect(func(): _progress_dragging = true)
 
 	# 主栏让位动画与曲库开合是绑定的一对，由页面统一编排
-	_library_layer.opened.connect(_main_slide_out)
-	_library_layer.closed.connect(_main_slide_in)
-	_library_layer.favorite_requested.connect(_on_favorite_requested)
-	_playlist_panel.favorite_requested.connect(_on_favorite_requested)
+	%LibraryLayer.opened.connect(_main_slide_out)
+	%LibraryLayer.closed.connect(_main_slide_in)
+	%LibraryLayer.favorite_requested.connect(_on_favorite_requested)
+	%PlaylistPanel.favorite_requested.connect(_on_favorite_requested)
 
 	var mgr := PlaybackDisplay.instance
 	if mgr != null:
@@ -79,13 +45,13 @@ func _ready() -> void:
 		mgr.repeat_mode_changed.connect(_on_repeat_mode_changed)
 		# 本页会话读自己的总音量配置（[Playback]），不读谱面音量：滑块初值取自本页音量
 		# （不用 per-MIDI 值回填，否则会把上一首的 per-MIDI 音量固化成页面设置）
-		_midi_vol_slider.set_block_signals(true)
-		_vocal_vol_slider.set_block_signals(true)
-		_midi_vol_slider.value = mgr.get_player_midi_linear()
-		_vocal_vol_slider.value = mgr.get_player_vocal_db()
-		_midi_vol_slider.set_block_signals(false)
-		_vocal_vol_slider.set_block_signals(false)
-		mgr.set_player_volumes(_midi_vol_slider.value, _vocal_vol_slider.value)
+		%MidiVolSlider.set_block_signals(true)
+		%VocalVolSlider.set_block_signals(true)
+		%MidiVolSlider.value = mgr.get_player_midi_linear()
+		%VocalVolSlider.value = mgr.get_player_vocal_db()
+		%MidiVolSlider.set_block_signals(false)
+		%VocalVolSlider.set_block_signals(false)
+		mgr.set_player_volumes(%MidiVolSlider.value, %VocalVolSlider.value)
 
 	_apply_stage_mode()
 	# 懒加载视图的 _ready 可能晚于 state_changed，两处都调 _activate_page（幂等）
@@ -95,7 +61,7 @@ func _ready() -> void:
 func _on_current_song_changed(data) -> void:
 	_refresh_song_info()
 	_refresh_cover()
-	_note_roll_view.bind(data)
+	%NoteRollView.bind(data)
 
 func _on_transport_changed() -> void:
 	_refresh_song_info()
@@ -120,7 +86,7 @@ func _on_ui_state_changed(_old: int, new: int) -> void:
 		# 收尾回调，不收就会留下两个半透明的视图（且 NoteRollView 会一直每帧重绘）。
 		# 注意顺序：归位会按舞台态设一次帧率，下面紧接着恢复 0，别调换。
 		AniMGR.stop_tween(STAGE_FADE_TWEEN_ID)
-		_snap_stage_views(_stage_switch_btn != null and _stage_switch_btn.button_pressed)
+		_snap_stage_views(%StageSwitchBtn.button_pressed)
 		Engine.max_fps = 0
 		var mgr := PlaybackDisplay.instance
 		# 去 TrackView（同一首歌的另一种视图）与设置页都保留媒体会话：
@@ -138,16 +104,16 @@ func _process(_delta: float) -> void:
 
 ## 进度条：拖动中不回写，其余按播放位置更新
 func _refresh_progress() -> void:
-	if _progress == null or _progress_dragging:
+	if _progress_dragging:
 		return
 	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return
 	# 时长是 load 后才可知的；若 max 停在 HSlider 默认 100，value 会被 clamp 满
 	var dur: float = mgr.get_backend_duration_ms()
-	if dur > 0.0 and absf(_progress.max_value - dur) > 0.5:
-		_progress.max_value = dur
-	_progress.value = clampf(mgr.get_realtime_position_ms(), 0.0, _progress.max_value)
+	if dur > 0.0 and absf(%ProgressSlider.max_value - dur) > 0.5:
+		%ProgressSlider.max_value = dur
+	%ProgressSlider.value = clampf(mgr.get_realtime_position_ms(), 0.0, %ProgressSlider.max_value)
 	_update_time_labels(mgr)
 
 
@@ -157,7 +123,7 @@ func _on_progress_drag_ended(value_changed: bool) -> void:
 		return
 	var mgr := PlaybackDisplay.instance
 	if mgr != null:
-		mgr.handle_media_command("seek", _progress.value)
+		mgr.handle_media_command("seek", %ProgressSlider.value)
 
 ## 页面激活：注册媒体会话、灌入播放列表、起播、刷新界面。
 ## 幂等，且需在 _ready 之后再跑一遍——懒加载视图 add_child 后才进入树，_ready
@@ -170,7 +136,7 @@ func _activate_page() -> void:
 	var mgr := PlaybackDisplay.instance
 	if mgr != null:
 		# 本页会话读自己的总音量配置（[Playback]），不读谱面音量：回页面后重新下发
-		mgr.set_player_volumes(_midi_vol_slider.value, _vocal_vol_slider.value)
+		mgr.set_player_volumes(%MidiVolSlider.value, %VocalVolSlider.value)
 		# 熄屏/深后台期间 C# 可能已自行切到下一首（纯音频）：先对账把显示/配置补齐，
 		# 再决定是否起播（对账后 current_midi_data 才与 C# 当前曲一致）
 		mgr.reconcile_current_song()
@@ -178,8 +144,8 @@ func _activate_page() -> void:
 	# 从其它页面返回本页时复位全部开关：面板/模式是子页状态，不跨页面保留。
 	# 曲库/播放列表/音量连 toggled，取消按下即收起；StageSwitchBtn 连的是 pressed，
 	# 程序化取消按下不触发，由下方 _apply_stage_mode 同步视图。
-	for b in [_library_btn, _playlist_btn, _volume_btn, _stage_switch_btn]:
-		if b != null and b.button_pressed:
+	for b in [%LibraryBtn, %PlaylistBtn, %VolumeBtn, %StageSwitchBtn]:
+		if b.button_pressed:
 			b.button_pressed = false
 	_refresh_panel_btn_tint()
 	_refresh_song_info()
@@ -191,9 +157,9 @@ func _activate_page() -> void:
 	_progress_dragging = false
 	_sync_progress_range()
 	if mgr != null:
-		_note_roll_view.bind(mgr.current_midi_data)
+		%NoteRollView.bind(mgr.current_midi_data)
 	# 预载曲库（池子 + 首次排序），逻辑在 LibraryLayer
-	_library_layer.prewarm()
+	%LibraryLayer.prewarm()
 
 ## 接入主题色：页面背景 / 底栏。曲库与播放列表面板各自的主题在
 ## LibraryLayer.apply_theme / PlaylistPanel.apply_theme。
@@ -203,25 +169,28 @@ func apply_theme() -> void:
 		return
 	# 本页不再有独立的 Bg 底色矩形：底色交给全局背景（与其它视图一致），
 	# 免得在这里多一个"要跟着主题走"的色块，也少一处要维护的背景设置。
-	var bar := get_node_or_null("MainColumn/BottomBar") as Panel
-	if bar != null:
-		var sb := bar.get_theme_stylebox("panel") as StyleBoxFlat
-		if sb != null:
-			sb.bg_color = ThemeMGR.get_color("surface_low", sb.bg_color)
-			sb.border_color = ThemeMGR.get_color("border_soft", sb.border_color)
+	var bar := %BottomBar as Panel
+	var sb := bar.get_theme_stylebox("panel") as StyleBoxFlat
+	if sb != null:
+		sb.bg_color = ThemeMGR.get_color("surface_low", sb.bg_color)
+		sb.border_color = ThemeMGR.get_color("border_soft", sb.border_color)
 	_apply_icon_tints()
 
-## 入场/出场动画。由 AnimationManager 转调（契约：ani_comp.call("animate", [ani_in])），
-## 模式同 ScoreView.animate()——分段动画写在页面自己脚本里，管理器只负责转发与
-## 置可见，不在这里堆 match 分支。
+## 出场：整页缩放淡出
+func _play_exit() -> Tween:
+	# 打断进行中的入场，避免它继续把已隐藏的区块淡回来
+	_entry_pending = false
+	return AniMGR.animate_fade_scale_out(self, Vector2.ONE * 0.97, 0.18, "mpv_exit")
+
+## 入场：两段（先复位+置起始态，再逐块滑入）。await 无法用单个 Tween 表达，返回 null。
 ## 关键：每段动画用各自的 tween id。AnimationManager._create_tween 会 kill 同名
 ## tween，被 kill 的属性会停在设定值上（曾导致底栏永久透明却仍可点）。
-func animate(ani_in: bool = true) -> void:
-	if not ani_in:
-		# 打断进行中的入场，避免它继续把已隐藏的区块淡回来
-		_entry_pending = false
-		AniMGR.animate_fade_scale_out(self, Vector2.ONE * 0.97, 0.18, "mpv_exit")
-		return
+func _play_enter() -> Tween:
+	if not _entry_pending:
+		_play_enter_stages()
+	return null
+
+func _play_enter_stages() -> void:
 	if _entry_pending:
 		return   # 入场进行中，忽略重复触发
 	_entry_pending = true
@@ -230,8 +199,8 @@ func animate(ani_in: bool = true) -> void:
 	modulate.a = 1.0
 	offset_transform_position = Vector2.ZERO
 	offset_transform_scale = Vector2.ONE
-	_main_column.offset_transform_position_ratio = Vector2.ZERO
-	_main_column.offset_transform_position = Vector2.ZERO
+	%MainColumn.offset_transform_position_ratio = Vector2.ZERO
+	%MainColumn.offset_transform_position = Vector2.ZERO
 
 	var staged := _stage_staged_nodes()
 	await get_tree().create_timer(0.22).timeout
@@ -244,17 +213,15 @@ func animate(ani_in: bool = true) -> void:
 func _stage_staged_nodes() -> Dictionary:
 	var staged := {}
 	# 偏移量取控件高度的量级才有「从边缘进入」的感觉（50px 在 1080p 上几乎看不出）
-	var bh := _bottom_bar.size.y + 40.0
-	var sw := _stage_switch_btn.size.x + 40.0
-	_stage_one(staged, "stage", _stage, Vector2.ZERO, Vector2(0.94, 0.94))
-	_stage_one(staged, "bottom", _bottom_bar, Vector2(0, bh))
-	_stage_one(staged, "switch", _stage_switch_btn, Vector2(sw, 0))
+	var bh: float = (%BottomBar as Panel).size.y + 40.0
+	var sw: float = %StageSwitchBtn.size.x + 40.0
+	_stage_one(staged, "stage", %Stage, Vector2.ZERO, Vector2(0.94, 0.94))
+	_stage_one(staged, "bottom", %BottomBar, Vector2(0, bh))
+	_stage_one(staged, "switch", %StageSwitchBtn, Vector2(sw, 0))
 	return staged
 
 func _stage_one(staged: Dictionary, key: String, node: CanvasItem, from_offset: Vector2,
 		from_scale: Vector2 = Vector2.ONE) -> void:
-	if node == null:
-		return
 	var c := node as Control
 	if c != null:
 		c.offset_transform_enabled = true
@@ -321,7 +288,7 @@ func _ensure_playing(mgr) -> void:
 # ── 舞台 ──────────────────────────────────────────────
 
 func _on_stage_switch_pressed() -> void:
-	_fade_stage_to(_stage_switch_btn.button_pressed)
+	_fade_stage_to(%StageSwitchBtn.button_pressed)
 
 ## 封面 ↔ 可视化交叉淡入（唯一带过渡的切换入口：用户点击）。
 ##
@@ -330,16 +297,14 @@ func _on_stage_switch_pressed() -> void:
 ## 淡出的一方当场消失、还会误动页面文字滚动（同 NoteSkinAdjust 里记下的教训）。
 ## 这里只补 modulate:a，避开三处属性所有权：
 ##   - Stage 自己的 modulate 归入场动画（"mpv_stage"）
-##   - _cover_view.offset_transform_scale 归封面翻面（"mpv_cover_flip"）
+##   - _cover_panel.offset_transform_scale 归封面翻面（"mpv_cover_flip"）
 ##   - Engine.max_fps 归 _apply_stage_mode / _on_ui_state_changed
 ##
 ## 【收尾必须 visible=false】NoteRollView 的 _process 只看 is_visible_in_tree()：
 ## 只把 alpha 归 0 会让它继续每帧 queue_redraw（白白重扫窗口 + 绘制）。
 func _fade_stage_to(show_roll: bool) -> void:
-	var incoming: Control = _note_roll if show_roll else _cover_view
-	var outgoing: Control = _cover_view if show_roll else _note_roll
-	if incoming == null or outgoing == null:
-		return
+	var incoming: Control = %NoteRollView if show_roll else %CoverPanel
+	var outgoing: Control = %CoverPanel if show_roll else %NoteRollView
 
 	# 同名 tween 会被 create_managed_tween 直接 kill，而被 kill 的属性停在当前插值处：
 	# 不假设两侧 alpha，直接从当前值续跑到目标（快速连点也不会跳变）。
@@ -370,12 +335,10 @@ func _fade_stage_to(show_roll: bool) -> void:
 ## 把两侧视图直接摆到目标态（无动画）：活动方可见且 alpha=1，非活动方 alpha=0 **且隐藏**。
 ## 被 kill 的 tween 不会触发收尾回调，所以"进页面复位 / 离场打断 / 无 tween 兜底"都要显式调它。
 func _snap_stage_views(show_roll: bool) -> void:
-	if _cover_view == null or _note_roll == null:
-		return
-	_cover_view.visible = not show_roll
-	_note_roll.visible = show_roll
-	_cover_view.modulate.a = 0.0 if show_roll else 1.0
-	_note_roll.modulate.a = 1.0 if show_roll else 0.0
+	%CoverPanel.visible = not show_roll
+	%NoteRollView.visible = show_roll
+	%CoverPanel.modulate.a = 0.0 if show_roll else 1.0
+	%NoteRollView.modulate.a = 1.0 if show_roll else 0.0
 
 ## 帧率上限落定。本页未激活（预加载等场景）时不抢全局帧率，交给 _activate_page 在入场时设置。
 func _apply_stage_fps(fps: int) -> void:
@@ -389,7 +352,7 @@ func _apply_stage_fps(fps: int) -> void:
 ##
 ## 本函数是**瞬时**路径（初值同步 / 每次进页面复位），用户点击走 _fade_stage_to。
 func _apply_stage_mode() -> void:
-	var show_roll: bool = _stage_switch_btn.button_pressed
+	var show_roll: bool = %StageSwitchBtn.button_pressed
 	# 淡入到一半被叫回（进页面复位）时先杀掉在飞的 tween 并归位，否则会停在两侧半透明
 	AniMGR.stop_tween(STAGE_FADE_TWEEN_ID)
 	_snap_stage_views(show_roll)
@@ -433,7 +396,7 @@ func _on_play_pause_toggled(_pressed: bool) -> void:
 	if mgr == null:
 		return
 	# 点击时的目标状态 = 本次点击后按钮将处的状态
-	var want_playing := _play_pause_btn.button_pressed
+	var want_playing: bool = %PlayPauseBtn.button_pressed
 	if want_playing == mgr.is_playing and not mgr.is_paused:
 		return
 	mgr.handle_media_command("play" if want_playing else "pause", -1.0)
@@ -458,23 +421,23 @@ var _syncing_repeat_btn: bool = false
 ## 三个面板按钮的 toggle 状态即面板开关：想关面板就把它 button_pressed 置 false。
 ## 按下态同时用主题强调色点亮（未按下为原色）。
 func _on_volume_toggled(on: bool) -> void:
-	_volume_popup.visible = on
+	%VolumePopup.visible = on
 	_refresh_panel_btn_tint()
 
 func _on_library_toggled(on: bool) -> void:
 	if on:
-		_playlist_btn.button_pressed = false   # 打开曲库即收起播放列表（其 toggled 会执行收起）
-		_library_layer.open()
+		%PlaylistBtn.button_pressed = false   # 打开曲库即收起播放列表（其 toggled 会执行收起）
+		%LibraryLayer.open()
 	else:
-		_library_layer.close()
+		%LibraryLayer.close()
 	_refresh_panel_btn_tint()
 
 func _on_playlist_toggled(on: bool) -> void:
 	if on:
-		_library_btn.button_pressed = false
-		_playlist_panel.open()
+		%LibraryBtn.button_pressed = false
+		%PlaylistPanel.open()
 	else:
-		_playlist_panel.close()
+		%PlaylistPanel.close()
 	_refresh_panel_btn_tint()
 
 ## 图标贴图是白色描线，浅色模式下会消失在浅底上，需按主题翻成常规文字色
@@ -490,11 +453,9 @@ func _apply_icon_tints() -> void:
 	var dim := normal
 	if ThemeMGR != null:
 		dim = ThemeMGR.get_color("text_dim", normal)
-	for b in [_back_btn, _track_view_btn, _stage_switch_btn, _prev_btn, _play_pause_btn, _next_btn, _repeat_btn]:
-		if b != null:
-			b.self_modulate = normal
-	if _equalizer_btn != null:
-		_equalizer_btn.self_modulate = dim
+	for b in [%BackBtn, %TrackViewBtn, %StageSwitchBtn, %PrevBtn, %PlayPauseBtn, %NextBtn, %RepeatBtn]:
+		b.self_modulate = normal
+	%EqualizerBtn.self_modulate = dim
 	_refresh_panel_btn_tint()
 
 func _refresh_panel_btn_tint() -> void:
@@ -502,19 +463,18 @@ func _refresh_panel_btn_tint() -> void:
 	var on := off
 	if ThemeMGR != null:
 		on = ThemeMGR.get_color("primary", off)
-	for b in [_volume_btn, _library_btn, _playlist_btn]:
-		if b != null:
-			b.self_modulate = on if b.button_pressed else off
+	for b in [%VolumeBtn, %LibraryBtn, %PlaylistBtn]:
+		b.self_modulate = on if b.button_pressed else off
 
 func _on_midi_volume_changed(value: float) -> void:
 	var mgr := PlaybackDisplay.instance
 	if mgr != null:
-		mgr.set_player_volumes(value, _vocal_vol_slider.value)
+		mgr.set_player_volumes(value, %VocalVolSlider.value)
 
 func _on_vocal_volume_changed(value: float) -> void:
 	var mgr := PlaybackDisplay.instance
 	if mgr != null:
-		mgr.set_player_volumes(_midi_vol_slider.value, value)
+		mgr.set_player_volumes(%MidiVolSlider.value, value)
 
 # ── 曲库开合（页面侧）─────────────────────────────────
 
@@ -524,17 +484,17 @@ func _on_vocal_volume_changed(value: float) -> void:
 const MAIN_UP_SHIFT := 160.0
 
 func _main_slide_out() -> void:
-	_main_column.offset_transform_enabled = true
-	_main_column.offset_transform_position_ratio = Vector2(0, -1.0)
-	_main_column.offset_transform_position = Vector2.ZERO
+	%MainColumn.offset_transform_enabled = true
+	%MainColumn.offset_transform_position_ratio = Vector2(0, -1.0)
+	%MainColumn.offset_transform_position = Vector2.ZERO
 	# 两条通道同一个 tween 驱动，真正同步
-	AniMGR.animate_offset_and_ratio_to(_main_column, Vector2(0, MAIN_UP_SHIFT),
+	AniMGR.animate_offset_and_ratio_to(%MainColumn, Vector2(0, MAIN_UP_SHIFT),
 		Vector2(0, -1), 0.28, "MpvMainUp")
 
 ## 回落：同样两通道一起反向
 func _main_slide_in() -> void:
-	_main_column.offset_transform_enabled = true
-	AniMGR.animate_offset_and_ratio_to(_main_column, Vector2.ZERO,
+	%MainColumn.offset_transform_enabled = true
+	AniMGR.animate_offset_and_ratio_to(%MainColumn, Vector2.ZERO,
 		Vector2(0, 0), 0.24, "MpvMainDown")
 
 # ── 收藏选择器（曲库单曲/批量与播放列表共用）──────────
@@ -544,7 +504,7 @@ var _pending_fav_midis: Array = []
 ## 收到的是 chart_id 列表（曲库投影的 key / 播放列表项的 chart_id），选择收藏夹后批量入
 func _on_favorite_requested(midis: Array) -> void:
 	_pending_fav_midis = midis
-	_fav_picker.open(true)
+	%FavoritePicker.open(true)
 
 func _on_favorite_picked(fav_id: String) -> void:
 	if not _pending_fav_midis.is_empty():
@@ -560,13 +520,13 @@ func _refresh_song_info() -> void:
 		mgr.sync_display_if_needed()
 	var data: MidiData = mgr.current_midi_data if mgr != null else null
 	if data == null:
-		_song_title.set_scroll_text("未在播放")
-		_song_artist.set_scroll_text("")
+		%SongTitleText.set_scroll_text("未在播放")
+		%SongArtistText.set_scroll_text("")
 		_set_play_pause_pressed(false)
 	else:
-		_song_title.set_scroll_text(data.song_name if not data.song_name.is_empty() else data.name)
+		%SongTitleText.set_scroll_text(data.song_name if not data.song_name.is_empty() else data.name)
 		# 与 PlayView 的显示逻辑一致：第二行显示作曲（author_name），不是 MIDI 作者
-		_song_artist.set_scroll_text(data.author_name if not data.author_name.is_empty() else "Unknow")
+		%SongArtistText.set_scroll_text(data.author_name if not data.author_name.is_empty() else "Unknow")
 		# 正在播放 → 按下态（暂停图标）；已暂停 → 默认态（播放图标）
 		_set_play_pause_pressed(mgr != null and mgr.is_playing)
 	_sync_repeat_btn()
@@ -579,27 +539,23 @@ func _fmt_time(ms: float) -> String:
 
 ## 当前时间 / 总时间标签
 func _update_time_labels(mgr) -> void:
-	if _time_cur == null or _time_total == null:
-		return
 	var pos: float = mgr.get_realtime_position_ms()
-	_time_cur.text = _fmt_time(pos)
-	_time_total.text = _fmt_time(mgr.get_backend_duration_ms())
+	%CurrentTimeText.text = _fmt_time(pos)
+	%TotalTimeText.text = _fmt_time(mgr.get_backend_duration_ms())
 
 ## 进度条上限随当前曲目时长
 func _sync_progress_range() -> void:
-	if _progress == null:
-		return
 	var mgr := PlaybackDisplay.instance
 	var dur: float = mgr.get_backend_duration_ms() if mgr != null else 0.0
-	_progress.max_value = maxf(dur, 1.0)
-	_progress.step = 1.0
+	%ProgressSlider.max_value = maxf(dur, 1.0)
+	%ProgressSlider.step = 1.0
 
 ## 以 button_pressed 反映播放态。用 _syncing_* 防止「状态同步」与「用户点击」互相触发
 func _set_play_pause_pressed(playing: bool) -> void:
-	if _play_pause_btn.button_pressed == playing:
+	if %PlayPauseBtn.button_pressed == playing:
 		return
 	_syncing_pause_btn = true
-	_play_pause_btn.button_pressed = playing
+	%PlayPauseBtn.button_pressed = playing
 	_syncing_pause_btn = false
 
 ## 以 button_pressed 反映播放方式：按下=随机，默认=循环
@@ -608,10 +564,10 @@ func _sync_repeat_btn() -> void:
 	if mgr == null:
 		return
 	var random_on := mgr.repeat_mode == RepeatMode.SHUFFLE
-	if _repeat_btn.button_pressed == random_on:
+	if %RepeatBtn.button_pressed == random_on:
 		return
 	_syncing_repeat_btn = true
-	_repeat_btn.button_pressed = random_on
+	%RepeatBtn.button_pressed = random_on
 	_syncing_repeat_btn = false
 
 # ── 封面 ──────────────────────────────────────────────
@@ -640,8 +596,8 @@ func _refresh_cover() -> void:
 		_kill_cover_flip()
 		_cover_first_load = true
 		_cover_chart_id = ""
-		_cover.texture = null
-		_cover_placeholder.visible = true
+		%CoverImage.texture = null
+		%CoverEmptyText.visible = true
 		return
 	var fs_mgr := FileSystemManager.instance
 	if fs_mgr == null:
@@ -659,33 +615,33 @@ func _on_cover_loaded(_path: String, tex: Texture2D, _version: int, song_changed
 	if _cover_first_load or not song_changed or not is_inside_tree():
 		_cover_first_load = false
 		_kill_cover_flip()
-		_cover.texture = tex
-		_cover_placeholder.visible = tex == null
+		%CoverImage.texture = tex
+		%CoverEmptyText.visible = tex == null
 		return
 	_start_cover_flip(tex)
 
 ## 封面左右翻转：缩放到 x≈0 → 换贴图 → 展开回 1。
-## 作用在 CoverView（Stage/CoverView，含 AspectRatio 与占位文字）而不是 Cover 本身：
+## 作用在 CoverPanel（Stage 下的封面容器，含 AspectRatio 与占位文字）而不是封面贴图本身：
 ## 整块内容一起翻，"新封面从侧棱展开"的感觉才成立，也顺带翻掉了占位标签。
 ## 用 offset_transform_scale（纯视觉，不动布局）——改 size 会触发 AspectRatioContainer
 ## 重排 + 圆角 shader 重算，翻一次就是一次布局抖动。
 func _start_cover_flip(tex: Texture2D) -> void:
 	_kill_cover_flip()
-	var flip_node := _cover_view
+	var flip_node: Control = %CoverPanel
 	flip_node.offset_transform_enabled = true
 	flip_node.offset_transform_scale = Vector2.ONE
 	var tw := AniMGR.create_managed_tween(flip_node, COVER_FLIP_TWEEN_ID)
 	if tw == null:
-		_cover.texture = tex
-		_cover_placeholder.visible = tex == null
+		%CoverImage.texture = tex
+		%CoverEmptyText.visible = tex == null
 		return
 	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	tw.tween_property(flip_node, "offset_transform_scale:x", COVER_FLIP_MIN_SCALE_X, COVER_FLIP_SHRINK_SEC)
 	# 收窄到棱边时换图：这一刻宽度只有几个像素，看不到跳变。
 	# set_trans/set_ease 只作用于"之后追加"的 tweener，故换图后要重新设一遍。
 	tw.tween_callback(func() -> void:
-		_cover.texture = tex
-		_cover_placeholder.visible = tex == null
+		%CoverImage.texture = tex
+		%CoverEmptyText.visible = tex == null
 	)
 	tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tw.tween_property(flip_node, "offset_transform_scale:x", 1.0, COVER_FLIP_EXPAND_SEC)
@@ -693,8 +649,7 @@ func _start_cover_flip(tex: Texture2D) -> void:
 ## 打断翻面并把封面缩放复位（换曲/离开页面时调用，避免停在压扁状态）
 func _kill_cover_flip() -> void:
 	AniMGR.stop_tween(COVER_FLIP_TWEEN_ID)
-	if _cover_view != null:
-		_cover_view.offset_transform_scale = Vector2.ONE
+	%CoverPanel.offset_transform_scale = Vector2.ONE
 
 ## 全局封面缓存被后台回收（见 Core/MemoryGC.gd）后复位本页封面状态。
 ## 关键是把 _cover_chart_id 清掉：回页面时 _refresh_cover 才算"换了一首"→ 走直出分支，
@@ -711,7 +666,6 @@ func invalidate_cover_state() -> void:
 	_cover_chart_id = ""
 	_cover_first_load = true
 	if UiStatMGR != null and UiStatMGR.current_state != WORK_STATE:
-		if _cover != null:
-			_cover.texture = null
+		%CoverImage.texture = null
 		return
 	_refresh_cover()

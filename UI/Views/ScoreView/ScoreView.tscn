@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://bysbwc1jgvu75"]
 
-[ext_resource type="Script" uid="uid://sdxdtvdsllvp" path="res://UI/Views/ScoreView/ScoreView.gd" id="1_xn8wu"]
 [ext_resource type="Script" uid="uid://cq7vbk2mxn3dr" path="res://UI/Theme/ViewBackground.gd" id="1_vbg"]
+[ext_resource type="Script" uid="uid://sdxdtvdsllvp" path="res://UI/Views/ScoreView/ScoreView.gd" id="1_xn8wu"]
 [ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ImgRoundCorner.gdshader" id="3_y1cb1"]
 [ext_resource type="Texture2D" uid="uid://bxkgbenh2ja4h" path="res://Resources/Covers/423be8d161a8a972c9014454921864a9.jpg" id="4_iqsw5"]
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="5_0sw27"]
@@ -152,8 +152,10 @@ grow_horizontal = 2
 grow_vertical = 2
 offset_transform_enabled = true
 script = ExtResource("1_xn8wu")
+view_layer = 3
 
-[node name="BackGround" type="TextureRect" parent="." unique_id=526261264]
+[node name="Background" type="TextureRect" parent="." unique_id=526261264]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -163,9 +165,10 @@ grow_vertical = 2
 pivot_offset_ratio = Vector2(0.5, 0.5)
 texture = SubResource("GradientTexture2D_2uqmb")
 script = ExtResource("1_vbg")
-view_name = "score"
+view_name = "Score"
 
-[node name="Score" type="Panel" parent="." unique_id=1324214120]
+[node name="ScorePanel" type="Panel" parent="." unique_id=1324214120]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 150)
 layout_mode = 1
 anchors_preset = 14
@@ -178,7 +181,8 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxTexture_gehpp")
 
-[node name="score" type="Label" parent="Score" unique_id=87915455]
+[node name="ScoreText" type="Label" parent="ScorePanel" unique_id=87915455]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 13
 anchor_left = 0.5
@@ -198,7 +202,8 @@ text = "999,999,999,999"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="pp" type="Label" parent="Score/score" unique_id=21851494]
+[node name="PpText" type="Label" parent="ScorePanel/ScoreText" unique_id=21851494]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 1.0
@@ -217,7 +222,8 @@ theme_override_constants/outline_size = 3
 theme_override_font_sizes/font_size = 48
 text = "00.00pp"
 
-[node name="Accuracy" type="Label" parent="." unique_id=1414436247]
+[node name="AccuracyText" type="Label" parent="." unique_id=1414436247]
+unique_name_in_owner = true
 clip_children = 1
 layout_mode = 1
 anchors_preset = 8
@@ -237,7 +243,7 @@ theme_override_constants/outline_size = 8
 theme_override_font_sizes/font_size = 250
 text = "99.99%"
 
-[node name="ColorRect" type="TextureRect" parent="Accuracy" unique_id=1506882043]
+[node name="ColorRect" type="TextureRect" parent="AccuracyText" unique_id=1506882043]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -247,6 +253,7 @@ grow_vertical = 2
 texture = SubResource("GradientTexture2D_iqsw5")
 
 [node name="Chara" type="TextureRect" parent="." unique_id=802525350]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(600, 0)
 layout_mode = 1
 anchors_preset = -1
@@ -263,7 +270,8 @@ grow_vertical = 0
 expand_mode = 1
 stretch_mode = 4
 
-[node name="Bottom" type="Panel" parent="." unique_id=1860440925]
+[node name="BottomPanel" type="Panel" parent="." unique_id=1860440925]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 400)
 layout_mode = 1
 anchors_preset = 12
@@ -275,10 +283,10 @@ grow_horizontal = 2
 grow_vertical = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_wu7dc")
 
-[node name="skew" type="Node2D" parent="Bottom" unique_id=457752064]
+[node name="Skew" type="Node2D" parent="BottomPanel" unique_id=457752064]
 skew = 0.2617994
 
-[node name="C" type="Control" parent="Bottom/skew" unique_id=596731813]
+[node name="SkewContent" type="Control" parent="BottomPanel/Skew" unique_id=596731813]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 1920.0
@@ -288,7 +296,7 @@ script = ExtResource("5_skew")
 sync_height = false
 skew_compensate = false
 
-[node name="SongInfo" type="HBoxContainer" parent="Bottom/skew/C" unique_id=40191358]
+[node name="SongInfo" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent" unique_id=40191358]
 custom_minimum_size = Vector2(800, 250)
 layout_mode = 1
 anchors_preset = -1
@@ -298,25 +306,28 @@ offset_left = 200.0
 grow_vertical = 2
 theme_override_constants/separation = 50
 
-[node name="PanelContainer" type="PanelContainer" parent="Bottom/skew/C/SongInfo" unique_id=2037160204]
+[node name="SongInfoPanel" type="PanelContainer" parent="BottomPanel/Skew/SkewContent/SongInfo" unique_id=2037160204]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(250, 250)
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_styles/panel = SubResource("StyleBoxFlat_0sw27")
 
-[node name="TextureRect" type="TextureRect" parent="Bottom/skew/C/SongInfo/PanelContainer" unique_id=226451417]
+[node name="SongCover" type="TextureRect" parent="BottomPanel/Skew/SkewContent/SongInfo/SongInfoPanel" unique_id=226451417]
+unique_name_in_owner = true
 material = SubResource("ShaderMaterial_l05do")
 layout_mode = 2
 texture = ExtResource("4_iqsw5")
 expand_mode = 5
 stretch_mode = 6
 
-[node name="Info" type="VBoxContainer" parent="Bottom/skew/C/SongInfo" unique_id=1352108271]
+[node name="Info" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent/SongInfo" unique_id=1352108271]
 custom_minimum_size = Vector2(460, 0)
 layout_mode = 2
 size_flags_vertical = 4
 
-[node name="album" type="Label" parent="Bottom/skew/C/SongInfo/Info" unique_id=1795148437]
+[node name="Album" type="Label" parent="BottomPanel/Skew/SkewContent/SongInfo/Info" unique_id=1795148437]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -327,7 +338,8 @@ script = ExtResource("5_y1cb1")
 outline_size = 2
 end_padding = 0.0
 
-[node name="song" type="Label" parent="Bottom/skew/C/SongInfo/Info" unique_id=639353669]
+[node name="Song" type="Label" parent="BottomPanel/Skew/SkewContent/SongInfo/Info" unique_id=639353669]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -338,12 +350,13 @@ script = ExtResource("5_y1cb1")
 outline_size = 2
 end_padding = 0.0
 
-[node name="HSeparator" type="HSeparator" parent="Bottom/skew/C/SongInfo/Info" unique_id=1746048499]
+[node name="HSeparator" type="HSeparator" parent="BottomPanel/Skew/SkewContent/SongInfo/Info" unique_id=1746048499]
 modulate = Color(1, 1, 1, 0)
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 
-[node name="midiName" type="Label" parent="Bottom/skew/C/SongInfo/Info" unique_id=203874956]
+[node name="MidiName" type="Label" parent="BottomPanel/Skew/SkewContent/SongInfo/Info" unique_id=203874956]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -354,7 +367,8 @@ script = ExtResource("5_y1cb1")
 outline_size = 2
 end_padding = 0.0
 
-[node name="midiAuthor" type="Label" parent="Bottom/skew/C/SongInfo/Info" unique_id=1530134955]
+[node name="MidiAuthor" type="Label" parent="BottomPanel/Skew/SkewContent/SongInfo/Info" unique_id=1530134955]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -365,7 +379,7 @@ script = ExtResource("5_y1cb1")
 outline_size = 2
 end_padding = 0.0
 
-[node name="difficulty" type="Label" parent="Bottom/skew/C/SongInfo/Info" unique_id=1623047885]
+[node name="Difficulty" type="Label" parent="BottomPanel/Skew/SkewContent/SongInfo/Info" unique_id=1623047885]
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -374,7 +388,7 @@ text = "Lunatic"
 vertical_alignment = 1
 autowrap_mode = 3
 
-[node name="Flags" type="HBoxContainer" parent="Bottom/skew/C" unique_id=845442104]
+[node name="Flags" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent" unique_id=845442104]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
@@ -383,7 +397,8 @@ anchor_bottom = 0.35
 grow_vertical = 0
 theme_override_constants/separation = 50
 
-[node name="AutoMode" type="Label" parent="Bottom/skew/C/Flags" unique_id=1848675266]
+[node name="AutoMode" type="Label" parent="BottomPanel/Skew/SkewContent/Flags" unique_id=1848675266]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 90)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -393,7 +408,8 @@ text = "AUTO"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="AllPerfect" type="Label" parent="Bottom/skew/C/Flags" unique_id=608060386]
+[node name="AllPerfect" type="Label" parent="BottomPanel/Skew/SkewContent/Flags" unique_id=608060386]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 90)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -403,7 +419,8 @@ text = "AP"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="FullCombo" type="Label" parent="Bottom/skew/C/Flags" unique_id=1938791138]
+[node name="FullCombo" type="Label" parent="BottomPanel/Skew/SkewContent/Flags" unique_id=1938791138]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 90)
 layout_mode = 2
 size_flags_horizontal = 0
@@ -413,7 +430,8 @@ text = "FC"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Data" type="VBoxContainer" parent="Bottom/skew/C" unique_id=1444019217]
+[node name="DataBox" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent" unique_id=1444019217]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(800, 200)
 layout_mode = 1
 anchors_preset = -1
@@ -425,11 +443,12 @@ offset_left = 20.0
 grow_vertical = 0
 theme_override_constants/separation = 40
 
-[node name="Hbox" type="HBoxContainer" parent="Bottom/skew/C/Data" unique_id=888847882]
+[node name="Hbox" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/DataBox" unique_id=888847882]
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="PerfectCtn" type="Label" parent="Bottom/skew/C/Data/Hbox" unique_id=1700789026]
+[node name="PerfectCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox" unique_id=1700789026]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(170, 60)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -437,7 +456,7 @@ theme_override_font_sizes/font_size = 42
 text = "0"
 vertical_alignment = 2
 
-[node name="Label" type="Label" parent="Bottom/skew/C/Data/Hbox/PerfectCtn" unique_id=2043875143]
+[node name="Label" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox/PerfectCtn" unique_id=2043875143]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 1
 anchors_preset = 15
@@ -452,7 +471,8 @@ theme_override_colors/font_color = Color(1, 0.3137, 0.9922, 1)
 theme_override_font_sizes/font_size = 20
 text = "Perfect"
 
-[node name="GreatCtn" type="Label" parent="Bottom/skew/C/Data/Hbox" unique_id=2010235240]
+[node name="GreatCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox" unique_id=2010235240]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(170, 60)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -460,7 +480,7 @@ theme_override_font_sizes/font_size = 42
 text = "0"
 vertical_alignment = 2
 
-[node name="Label2" type="Label" parent="Bottom/skew/C/Data/Hbox/GreatCtn" unique_id=1428246906]
+[node name="Label2" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox/GreatCtn" unique_id=1428246906]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 1
 anchors_preset = 15
@@ -475,7 +495,8 @@ theme_override_colors/font_color = Color(1, 0.4627, 0, 1)
 theme_override_font_sizes/font_size = 20
 text = "Great"
 
-[node name="GoodCtn" type="Label" parent="Bottom/skew/C/Data/Hbox" unique_id=806650545]
+[node name="GoodCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox" unique_id=806650545]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(170, 60)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -483,7 +504,7 @@ theme_override_font_sizes/font_size = 42
 text = "0"
 vertical_alignment = 2
 
-[node name="Label3" type="Label" parent="Bottom/skew/C/Data/Hbox/GoodCtn" unique_id=1538563833]
+[node name="Label3" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox/GoodCtn" unique_id=1538563833]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 1
 anchors_preset = 15
@@ -498,7 +519,8 @@ theme_override_colors/font_color = Color(0.0392, 0.8784, 0, 1)
 theme_override_font_sizes/font_size = 20
 text = "Good"
 
-[node name="BadCtn" type="Label" parent="Bottom/skew/C/Data/Hbox" unique_id=985791868]
+[node name="BadCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox" unique_id=985791868]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(170, 60)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -506,7 +528,7 @@ theme_override_font_sizes/font_size = 42
 text = "0"
 vertical_alignment = 2
 
-[node name="Label4" type="Label" parent="Bottom/skew/C/Data/Hbox/BadCtn" unique_id=175487585]
+[node name="Label4" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox/BadCtn" unique_id=175487585]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 1
 anchors_preset = 15
@@ -521,7 +543,8 @@ theme_override_colors/font_color = Color(0.1098, 0.6902, 1, 1)
 theme_override_font_sizes/font_size = 20
 text = "Bad"
 
-[node name="MissCtn" type="Label" parent="Bottom/skew/C/Data/Hbox" unique_id=918746073]
+[node name="MissCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox" unique_id=918746073]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(170, 60)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -529,7 +552,7 @@ theme_override_font_sizes/font_size = 42
 text = "0"
 vertical_alignment = 2
 
-[node name="Label5" type="Label" parent="Bottom/skew/C/Data/Hbox/MissCtn" unique_id=612375162]
+[node name="Label5" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox/MissCtn" unique_id=612375162]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 1
 anchors_preset = 15
@@ -544,11 +567,12 @@ theme_override_colors/font_color = Color(0.8627, 0.2039, 0.3137, 1)
 theme_override_font_sizes/font_size = 20
 text = "Miss"
 
-[node name="HBox1" type="HBoxContainer" parent="Bottom/skew/C/Data" unique_id=165446906]
+[node name="HBox1" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/DataBox" unique_id=165446906]
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="EarlyCtn" type="Label" parent="Bottom/skew/C/Data/HBox1" unique_id=499340368]
+[node name="EarlyCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1" unique_id=499340368]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(170, 60)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -556,7 +580,7 @@ theme_override_font_sizes/font_size = 42
 text = "0"
 vertical_alignment = 2
 
-[node name="Label6" type="Label" parent="Bottom/skew/C/Data/HBox1/EarlyCtn" unique_id=1039571725]
+[node name="Label6" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1/EarlyCtn" unique_id=1039571725]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 1
 anchors_preset = 15
@@ -571,7 +595,8 @@ theme_override_colors/font_color = Color(0.1647, 0.8314, 0.8784, 1)
 theme_override_font_sizes/font_size = 20
 text = "Early"
 
-[node name="LateCtn" type="Label" parent="Bottom/skew/C/Data/HBox1" unique_id=874334327]
+[node name="LateCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1" unique_id=874334327]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(170, 60)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -579,7 +604,7 @@ theme_override_font_sizes/font_size = 42
 text = "0"
 vertical_alignment = 2
 
-[node name="Label7" type="Label" parent="Bottom/skew/C/Data/HBox1/LateCtn" unique_id=1164035922]
+[node name="Label7" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1/LateCtn" unique_id=1164035922]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 1
 anchors_preset = 15
@@ -594,7 +619,8 @@ theme_override_colors/font_color = Color(1, 0.4196, 0.6157, 1)
 theme_override_font_sizes/font_size = 20
 text = "Late"
 
-[node name="MaxCombo" type="Label" parent="Bottom/skew/C/Data/HBox1" unique_id=1699546943]
+[node name="MaxCombo" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1" unique_id=1699546943]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(150, 60)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -603,7 +629,7 @@ theme_override_font_sizes/font_size = 42
 text = "1000000/1000000"
 vertical_alignment = 2
 
-[node name="Label8" type="Label" parent="Bottom/skew/C/Data/HBox1/MaxCombo" unique_id=862610255]
+[node name="Label8" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1/MaxCombo" unique_id=862610255]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 1
 anchors_preset = 15
@@ -618,7 +644,8 @@ theme_override_colors/font_color = Color(1, 0.7608, 0.2941, 1)
 theme_override_font_sizes/font_size = 20
 text = "MaxCombo"
 
-[node name="Rank" type="Label" parent="." unique_id=1315821145]
+[node name="RankText" type="Label" parent="." unique_id=1315821145]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -641,14 +668,15 @@ theme_override_constants/shadow_outline_size = 10
 theme_override_font_sizes/font_size = 350
 text = "SS"
 
-[node name="LevelingProgress" type="Panel" parent="." unique_id=1477609467]
+[node name="LevelingProgressPanel" type="Panel" parent="." unique_id=1477609467]
+unique_name_in_owner = true
 layout_mode = 0
 offset_right = 939.0
 offset_bottom = 156.0
 offset_transform_enabled = true
 theme_override_styles/panel = SubResource("StyleBoxFlat_1u62t")
 
-[node name="Panel" type="Panel" parent="LevelingProgress" unique_id=425717518]
+[node name="AvatarPanel" type="Panel" parent="LevelingProgressPanel" unique_id=425717518]
 custom_minimum_size = Vector2(100, 100)
 layout_mode = 0
 offset_left = 237.0
@@ -657,7 +685,8 @@ offset_right = 337.0
 offset_bottom = 126.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_0iyyr")
 
-[node name="TextureRect" type="TextureRect" parent="LevelingProgress/Panel" unique_id=1193097683]
+[node name="Avatar" type="TextureRect" parent="LevelingProgressPanel/AvatarPanel" unique_id=1193097683]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(100, 100)
 layout_mode = 1
 anchors_preset = 15
@@ -672,7 +701,7 @@ stretch_mode = 5
 script = ExtResource("7_a5v8y")
 metadata/_custom_type_script = "uid://ciu0utm2fhqdw"
 
-[node name="Data" type="VBoxContainer" parent="LevelingProgress" unique_id=567145788]
+[node name="LevelInfoBox" type="VBoxContainer" parent="LevelingProgressPanel" unique_id=567145788]
 custom_minimum_size = Vector2(0, 160)
 layout_mode = 1
 anchors_preset = 15
@@ -685,19 +714,22 @@ grow_vertical = 2
 theme_override_constants/separation = 10
 alignment = 1
 
-[node name="name" type="Label" parent="LevelingProgress/Data" unique_id=254156086]
+[node name="Name" type="Label" parent="LevelingProgressPanel/LevelInfoBox" unique_id=254156086]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 30
 text = "Anonymous Player"
 vertical_alignment = 2
 
-[node name="level" type="Label" parent="LevelingProgress/Data" unique_id=1772319336]
+[node name="Level" type="Label" parent="LevelingProgressPanel/LevelInfoBox" unique_id=1772319336]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 30
 text = "Lv256"
 vertical_alignment = 2
 
-[node name="pp" type="Label" parent="LevelingProgress/Data/level" unique_id=1060842480]
+[node name="LevelPp" type="Label" parent="LevelingProgressPanel/LevelInfoBox/Level" unique_id=1060842480]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 1.0
@@ -709,10 +741,12 @@ theme_override_font_sizes/font_size = 30
 text = "999pp"
 vertical_alignment = 2
 
-[node name="ProgressBar" type="ProgressBar" parent="LevelingProgress/Data" unique_id=103941392]
+[node name="LevelExpBar" type="ProgressBar" parent="LevelingProgressPanel/LevelInfoBox" unique_id=103941392]
+unique_name_in_owner = true
 layout_mode = 2
 
 [node name="UploadState" type="Label" parent="." unique_id=63887011]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(250, 60)
 layout_mode = 1
 anchors_preset = -1
@@ -731,6 +765,7 @@ horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="RetryBtn" type="Button" parent="UploadState" unique_id=972914527]
+unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(60, 60)
 layout_mode = 1

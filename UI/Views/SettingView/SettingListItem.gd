@@ -32,11 +32,11 @@ func setup_item(ID: String, content: String, desc: String, valueType: ValueType,
 	self.value_type = valueType  # 设置value_type
 
 	# 设置标题和描述
-	var name_label = get_node_or_null("name")
+	var name_label = get_node_or_null("Name")
 	if name_label:
 		name_label.text = content
 
-	var desc_label = get_node_or_null("desc")
+	var desc_label = get_node_or_null("Desc")
 	if desc_label:
 		desc_label.text = desc
 

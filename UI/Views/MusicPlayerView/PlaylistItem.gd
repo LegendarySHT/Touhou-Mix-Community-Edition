@@ -23,18 +23,12 @@ var _row_accum: float = 0.0
 ## 行内拖动过（超阈值）后抑制紧随其后的 pressed，避免拖动被当成点击
 var _suppress_press: bool = false
 
-@onready var _title: Label = $HBox/Title
-@onready var _remove_btn: Button = $HBox/RemoveBtn
-@onready var _drag_btn: Button = $HBox/DragBtn
-
 func _ready() -> void:
 	pressed.connect(_on_pressed)
-	if _remove_btn != null:
-		_remove_btn.pressed.connect(func(): remove_requested.emit(index))
+	%RemoveBtn.pressed.connect(func(): remove_requested.emit(index))
 	# 拖动把手是 STOP（点它不触发"播放该首"），把它的拖拽事件转交列表处理；
 	# 拖拽状态存在列表上，所以调序引起的整表重建不会把拖动中断。
-	if _drag_btn != null:
-		_drag_btn.gui_input.connect(_on_drag_btn_input)
+	%DragBtn.gui_input.connect(_on_drag_btn_input)
 	gui_input.connect(_on_row_input)
 
 ## 转交拖动把手的按下/松开给列表：位移由列表按鼠标位置轮询现算（调序会重建行、
@@ -59,9 +53,8 @@ func setup_with(p_midi: MidiData, idx: int, current: bool, animate_in: bool = fa
 	if animate_in:
 		modulate.a = 0.0
 		AniMGR.animate_fade_in(self, 0.22, "plitem_%d" % get_instance_id())
-	if _title != null:
-		_title.set_scroll_text("" if p_midi == null else (
-			p_midi.song_name if not p_midi.song_name.is_empty() else p_midi.name))
+	%TitleText.set_scroll_text("" if p_midi == null else (
+		p_midi.song_name if not p_midi.song_name.is_empty() else p_midi.name))
 	if button_pressed != current:
 		set_pressed_no_signal(current)
 

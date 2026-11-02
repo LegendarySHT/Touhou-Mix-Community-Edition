@@ -9,16 +9,6 @@ var data_index: int = -1
 
 var _cover_version: int = 0
 
-@onready var _cover: TextureRect = $HBox/Cover
-@onready var _album: Label = $HBox/Info/Album
-@onready var _song: Label = $HBox/Info/Song
-@onready var _artist: Label = $HBox/Info/Artist
-@onready var _midi_name: Label = $HBox/Info/MidiName
-@onready var _midi_author: Label = $HBox/Info/MidiAuthor
-@onready var _next_btn: Button = $HBox/Btns/NextBtn
-@onready var _add_btn: Button = $HBox/Btns/AddBtn
-@onready var _fav_btn: Button = $HBox/Btns/FavBtn
-
 ## 回传轻量投影（Dictionary）
 signal play_next_requested(item: Dictionary)
 signal add_to_playlist_requested(item: Dictionary)
@@ -33,9 +23,9 @@ var _has_ready: bool = false
 
 func _ready() -> void:
 	_has_ready = true
-	_next_btn.pressed.connect(func(): play_next_requested.emit(item))
-	_add_btn.pressed.connect(func(): add_to_playlist_requested.emit(item))
-	_fav_btn.pressed.connect(_on_fav_pressed)
+	%NextBtn.pressed.connect(func(): play_next_requested.emit(item))
+	%AddBtn.pressed.connect(func(): add_to_playlist_requested.emit(item))
+	%FavBtn.pressed.connect(_on_fav_pressed)
 	# 进树时若已有数据（节点池先 instantiate 再 add_child 后立刻 setup_with），补刷一次
 	if not item.is_empty():
 		_apply_item()
@@ -62,12 +52,12 @@ func _apply_item() -> void:
 	var album := String(item.get("album_name", ""))
 	var song := String(item.get("song_name", ""))
 	var author := String(item.get("author_name", ""))
-	_album.set_scroll_text(album if not album.is_empty() else String(item.get("artist_name", "")))
-	_song.set_scroll_text(song if not song.is_empty() else String(item.get("name", "")))
-	_artist.set_scroll_text(author if not author.is_empty() else "Unknown")
-	_midi_name.set_scroll_text(String(item.get("name", "")))
-	_midi_author.set_scroll_text(String(item.get("artist_name", "")))
-	_cover.texture = null
+	%AlbumText.set_scroll_text(album if not album.is_empty() else String(item.get("artist_name", "")))
+	%SongText.set_scroll_text(song if not song.is_empty() else String(item.get("name", "")))
+	%ArtistText.set_scroll_text(author if not author.is_empty() else "Unknown")
+	%MidiNameText.set_scroll_text(String(item.get("name", "")))
+	%MidiAuthorText.set_scroll_text(String(item.get("artist_name", "")))
+	%CoverImage.texture = null
 	var cover_path := _cover_path_of(item)
 	if cover_path.is_empty():
 		_cover_version = 0
@@ -77,7 +67,7 @@ func _apply_item() -> void:
 	# 与本卡单调递增的计数会错位（尤其封面路径为空把它重置为 0 之后），拿它的版本比对会永久不显示
 	var ver := _cover_version
 	CoverLoader.request_load(COVER_ITEM_PREFIX + str(get_instance_id()), cover_path,
-		func(_p: String, tex: Texture2D, _v: int): if ver == _cover_version: _cover.texture = tex)
+		func(_p: String, tex: Texture2D, _v: int): if ver == _cover_version: %CoverImage.texture = tex)
 
 ## 封面：投影已带 file_hash / coverHash，直接走 FileSystemManager 的按 id 取图
 func _cover_path_of(midi_item: Dictionary) -> String:
@@ -97,8 +87,7 @@ func _exit_tree() -> void:
 func release_cover_state() -> void:
 	_cover_version += 1
 	CoverLoader.cancel(COVER_ITEM_PREFIX + str(get_instance_id()))
-	if _cover != null and is_instance_valid(_cover):
-		_cover.texture = null
+	%CoverImage.texture = null
 
 func _on_fav_pressed() -> void:
 	add_to_favorite_requested.emit(item)

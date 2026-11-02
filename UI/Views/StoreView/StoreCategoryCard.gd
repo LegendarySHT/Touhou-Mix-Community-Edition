@@ -26,17 +26,6 @@ var _dl_hover: StyleBoxFlat
 var _dl_pressed: StyleBoxFlat
 var _dl_focus: StyleBoxFlat
 
-@onready var _cover: RoundedTextureRect = $Margin/HBox/CoverWrap/Cover
-@onready var _cover_placeholder: TextureRect = $Margin/HBox/CoverWrap/Placeholder
-@onready var _cover_wrap: Panel = $Margin/HBox/CoverWrap
-@onready var _kind_chip: Label = $Margin/HBox/CoverWrap/KindChip
-@onready var _type_label: Label = $Margin/HBox/Info/Type
-@onready var _title: Label = $Margin/HBox/Info/Title
-@onready var _desc: Label = $Margin/HBox/Info/Desc
-@onready var _meta: Label = $Margin/HBox/Info/Meta
-@onready var _download_btn: Button = $Margin/HBox/RightCol/DownloadBtn
-@onready var _state_label: Label = $Margin/HBox/RightCol/StateLabel
-
 
 func _ready() -> void:
 	_has_ready = true
@@ -45,17 +34,17 @@ func _ready() -> void:
 	_dl_pressed = _duplicate_stylebox("pressed")
 	_dl_focus = _duplicate_stylebox("focus")
 	if _dl_normal:
-		_download_btn.add_theme_stylebox_override("normal", _dl_normal)
+		%DownloadBtn.add_theme_stylebox_override("normal", _dl_normal)
 	if _dl_hover:
-		_download_btn.add_theme_stylebox_override("hover", _dl_hover)
+		%DownloadBtn.add_theme_stylebox_override("hover", _dl_hover)
 	if _dl_pressed:
-		_download_btn.add_theme_stylebox_override("pressed", _dl_pressed)
+		%DownloadBtn.add_theme_stylebox_override("pressed", _dl_pressed)
 	if _dl_focus:
-		_download_btn.add_theme_stylebox_override("focus", _dl_focus)
+		%DownloadBtn.add_theme_stylebox_override("focus", _dl_focus)
 
 	button_down.connect(func() -> void: _press_pos = get_global_mouse_position())
 	pressed.connect(_on_pressed)
-	_download_btn.pressed.connect(_on_download_pressed)
+	%DownloadBtn.pressed.connect(_on_download_pressed)
 
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
@@ -65,7 +54,7 @@ func _ready() -> void:
 
 
 func _duplicate_stylebox(state: String) -> StyleBoxFlat:
-	var sb := _download_btn.get_theme_stylebox(state) as StyleBoxFlat
+	var sb := %DownloadBtn.get_theme_stylebox(state) as StyleBoxFlat
 	return sb.duplicate() as StyleBoxFlat if sb else null
 
 
@@ -86,17 +75,17 @@ func _apply_item(animate_in: bool) -> void:
 	if item.is_empty():
 		return
 	var kind := str(item.get("kind", ""))
-	_type_label.text = str(item.get("type_label", _type_label_text(kind)))
-	_title.set_scroll_text(str(item.get("title", "未命名")))
+	%Type.text = str(item.get("type_label", _type_label_text(kind)))
+	%Title.set_scroll_text(str(item.get("title", "未命名")))
 	var desc := str(item.get("desc", ""))
-	_desc.text = desc if not desc.is_empty() else _default_desc(kind)
+	%Desc.text = desc if not desc.is_empty() else _default_desc(kind)
 	var meta := str(item.get("author", ""))
 	var size_text := str(item.get("size_text", ""))
 	if not size_text.is_empty():
 		meta = ("%s · %s" % [meta, size_text]) if not meta.is_empty() else size_text
-	_meta.set_scroll_text(meta)
-	_kind_chip.text = "内置" if bool(item.get("is_builtin", false)) else "本地"
-	_kind_chip.visible = true
+	%Meta.set_scroll_text(meta)
+	%KindChip.text = "内置" if bool(item.get("is_builtin", false)) else "本地"
+	%KindChip.visible = true
 
 	_load_cover(kind)
 	_apply_state()
@@ -129,19 +118,19 @@ func _default_desc(kind: String) -> String:
 
 func _load_cover(kind: String) -> void:
 	_cover_version += 1
-	_cover.texture = null
-	_cover_placeholder.visible = true
-	_cover_placeholder.texture = _placeholder_icon(kind)
+	%Cover.texture = null
+	%Placeholder.visible = true
+	%Placeholder.texture = _placeholder_icon(kind)
 	if ThemeMGR:
-		_cover_placeholder.modulate = ThemeMGR.get_color("text_dim")
-		_cover_placeholder.modulate.a = 0.55
+		%Placeholder.modulate = ThemeMGR.get_color("text_dim")
+		%Placeholder.modulate.a = 0.55
 	else:
-		_cover_placeholder.modulate = Color(1, 1, 1, 0.55)
+		%Placeholder.modulate = Color(1, 1, 1, 0.55)
 
 	var local_tex = item.get("cover_tex")
 	if local_tex is Texture2D:
-		_cover.texture = local_tex
-		_cover_placeholder.visible = false
+		%Cover.texture = local_tex
+		%Placeholder.visible = false
 
 
 func _placeholder_icon(kind: String) -> Texture2D:
@@ -174,9 +163,9 @@ func _apply_state() -> void:
 			icon_tex = StoreIconsLib.close()
 			label_text = "重试"
 			tip = "下载失败，点击重试"
-	_download_btn.icon = icon_tex
-	_download_btn.tooltip_text = tip
-	_state_label.text = label_text
+	%DownloadBtn.icon = icon_tex
+	%DownloadBtn.tooltip_text = tip
+	%StateLabel.text = label_text
 	_set_download_colors(base)
 
 
@@ -194,7 +183,7 @@ func _set_download_colors(base: Color) -> void:
 		var light := ThemeMGR != null and ThemeMGR.get_appearance() == "light"
 		_dl_focus.border_color = base.darkened(0.08) if light else base.lightened(0.5)
 		_dl_focus.shadow_color = Color(base.r, base.g, base.b, 0.4)
-	_state_label.add_theme_color_override("font_color",
+	%StateLabel.add_theme_color_override("font_color",
 		ThemeMGR.get_color("text_secondary") if ThemeMGR else Color(0.7, 0.75, 0.85))
 
 
@@ -245,19 +234,19 @@ func apply_theme() -> void:
 			focus_sb.border_color = ThemeMGR._tint_keep_alpha(focus_color, 0.9)
 			focus_sb.shadow_color = Color(primary.r, primary.g, primary.b, 0.35)
 
-		var cover_sb := _cover_wrap.get_theme_stylebox("panel") as StyleBoxFlat
+		var cover_sb := %CoverWrap.get_theme_stylebox("panel") as StyleBoxFlat
 		if cover_sb:
 			cover_sb.bg_color = ThemeMGR.get_color("surface_high") if is_light else surface_low
 			cover_sb.border_color = border
 
-	_type_label.add_theme_color_override("font_color", primary_dark if is_light else primary_light)
-	_desc.add_theme_color_override("font_color",
+	%Type.add_theme_color_override("font_color", primary_dark if is_light else primary_light)
+	%Desc.add_theme_color_override("font_color",
 		ThemeMGR.get_color("text_secondary") if is_light else ThemeMGR.get_color("text_dim"))
 	# 分类角标固定深蓝底，字色必须固定白色（不能跟随主题的深色正文）
-	_kind_chip.add_theme_color_override("font_color", Color.WHITE)
-	_cover_placeholder.modulate = ThemeMGR.get_color("text_secondary") if is_light \
+	%KindChip.add_theme_color_override("font_color", Color.WHITE)
+	%Placeholder.modulate = ThemeMGR.get_color("text_secondary") if is_light \
 		else ThemeMGR.get_color("text_dim")
-	_cover_placeholder.modulate.a = 0.55
+	%Placeholder.modulate.a = 0.55
 
 	_apply_state()
 

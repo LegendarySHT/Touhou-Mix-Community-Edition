@@ -92,8 +92,10 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_mugt3")
+view_layer = 2
 
-[node name="Title" type="Label" parent="." unique_id=1008770526]
+[node name="CharaViewTitle" type="Label" parent="." unique_id=1008770526]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -104,6 +106,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_2xvos")
 text = "角色列表"
 
 [node name="CharaList" type="ScrollContainer" parent="." unique_id=753285390]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -111,15 +114,17 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="HBox" type="HBoxContainer" parent="CharaList" unique_id=1334364538]
+[node name="CharaListRow" type="HBoxContainer" parent="CharaList" unique_id=1334364538]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 20
 
-[node name="Chara" parent="CharaList/HBox" unique_id=1092599467 instance=ExtResource("2_xna20")]
+[node name="Chara" parent="CharaList/CharaListRow" unique_id=1092599467 instance=ExtResource("2_xna20")]
 layout_mode = 2
 
-[node name="CharaDetail" type="TextureButton" parent="." unique_id=1845463010]
+[node name="CharaInfoBtn" type="TextureButton" parent="." unique_id=1845463010]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -129,7 +134,8 @@ grow_vertical = 2
 texture_normal = SubResource("GradientTexture2D_3y6u5")
 stretch_mode = 0
 
-[node name="Panel" type="Panel" parent="CharaDetail" unique_id=1267920987]
+[node name="CharaInfoPanel" type="Panel" parent="CharaInfoBtn" unique_id=1267920987]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 400)
 clip_contents = true
 layout_mode = 1
@@ -142,7 +148,8 @@ grow_vertical = 2
 offset_transform_enabled = true
 mouse_filter = 2
 
-[node name="BG" type="TextureRect" parent="CharaDetail/Panel" unique_id=169228102]
+[node name="CharaBGImg" type="TextureRect" parent="CharaInfoBtn/CharaInfoPanel" unique_id=169228102]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 400)
 clip_contents = true
 layout_mode = 1
@@ -156,7 +163,7 @@ texture = ExtResource("3_07cun")
 expand_mode = 4
 stretch_mode = 5
 
-[node name="MeshDot" type="TextureRect" parent="CharaDetail/Panel" unique_id=178940303]
+[node name="MeshDot" type="TextureRect" parent="CharaInfoBtn/CharaInfoPanel" unique_id=178940303]
 material = SubResource("ShaderMaterial_iygje")
 custom_minimum_size = Vector2(0, 400)
 layout_mode = 1
@@ -173,7 +180,8 @@ pivot_offset_ratio = Vector2(0.5, 0.5)
 mouse_filter = 2
 texture = SubResource("GradientTexture1D_ck4ec")
 
-[node name="RightShader" type="TextureRect" parent="CharaDetail" unique_id=608952636]
+[node name="RightShader" type="TextureRect" parent="CharaInfoBtn" unique_id=608952636]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -190,7 +198,8 @@ pivot_offset_ratio = Vector2(1, 0.5)
 mouse_filter = 2
 texture = SubResource("GradientTexture2D_iygje")
 
-[node name="Desc" type="Label" parent="CharaDetail" unique_id=1634978454]
+[node name="CharaDescription" type="Label" parent="CharaInfoBtn" unique_id=1634978454]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.45
@@ -207,7 +216,8 @@ theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_iygje")
 text = "人物描述"
 
-[node name="Name" type="Label" parent="CharaDetail" unique_id=1784649538]
+[node name="CharaName" type="Label" parent="CharaInfoBtn" unique_id=1784649538]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 70)
 layout_mode = 1
 anchors_preset = -1
@@ -226,7 +236,8 @@ label_settings = SubResource("LabelSettings_iygje")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Illustrator" type="Label" parent="CharaDetail" unique_id=1944551029]
+[node name="CharaAuthor" type="Label" parent="CharaInfoBtn" unique_id=1944551029]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 1
 anchors_preset = -1
@@ -241,9 +252,10 @@ grow_horizontal = 0
 grow_vertical = 2
 offset_transform_enabled = true
 theme_override_font_sizes/font_size = 24
-text = "插图 xxx"
+text = "立绘 xxx"
 
-[node name="SelectBtn" type="Button" parent="CharaDetail" unique_id=219925961]
+[node name="SelectBtn" type="Button" parent="CharaInfoBtn" unique_id=219925961]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 90)
 layout_mode = 1
 anchors_preset = -1
@@ -264,7 +276,8 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_j02sm")
 theme_override_styles/disabled = SubResource("StyleBoxFlat_yuy5i")
 text = "选择"
 
-[node name="Chara" type="TextureRect" parent="CharaDetail" unique_id=545696298]
+[node name="CharaImg" type="TextureRect" parent="CharaInfoBtn" unique_id=545696298]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(512, 0)
 layout_mode = 1
 anchors_preset = -1
@@ -285,5 +298,5 @@ texture = ExtResource("1_6lf20")
 expand_mode = 1
 stretch_mode = 5
 
-[connection signal="pressed" from="CharaDetail" to="." method="_on_chara_detail_close"]
-[connection signal="pressed" from="CharaDetail/SelectBtn" to="." method="_on_chara_select"]
+[connection signal="pressed" from="CharaInfoBtn" to="." method="_on_chara_detail_close"]
+[connection signal="pressed" from="CharaInfoBtn/SelectBtn" to="." method="_on_chara_select"]

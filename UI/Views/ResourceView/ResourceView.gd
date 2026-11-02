@@ -68,46 +68,36 @@ var _pending_vlist: VirtualListLib = null
 
 var _bind_animate: bool = false
 
-@onready var _top_bar: Panel = $TopBar
-@onready var _tab_underline: Panel = $TopBar/TabUnderline
-@onready var _search_edit: LineEdit = $TopBar/HeaderMargin/Row/Toolbar/SearchEdit
-@onready var _search_icon: TextureRect = $TopBar/HeaderMargin/Row/Toolbar/SearchEdit/SearchIcon
-@onready var _count_label: Label = $TopBar/HeaderMargin/Row/Toolbar/CountLabel
-@onready var _songs_empty: Label = $Pages/SongsPage/Empty
-@onready var _skins_empty: Label = $Pages/SkinsPage/Empty
-@onready var _effects_empty: Label = $Pages/EffectsPage/Empty
-@onready var _soundfonts_empty: Label = $Pages/SoundfontsPage/Empty
-@onready var _backgrounds_empty: Label = $Pages/BackgroundsPage/Empty
+# 各标签页的空列表提示，下标与 Tab 一致
+var _empty_labels: Array[Label] = []
 
-@onready var _pending_bar: PanelContainer = $PendingBar
-@onready var _pending_title: Label = $PendingBar/VBox/Head/PendingTitle
-@onready var _pending_count: Label = $PendingBar/VBox/Head/PendingCount
-@onready var _select_all_btn: Button = $PendingBar/VBox/Head/SelectAllBtn
-@onready var _expand_btn: Button = $PendingBar/VBox/Head/ExpandBtn
-@onready var _pending_scroll: ScrollContainer = $PendingBar/VBox/PendingScroll
-@onready var _pending_list: Control = $PendingBar/VBox/PendingScroll/PendingList
-@onready var _pending_empty: Label = $PendingBar/PendingEmpty
-@onready var _delete_vocal_btn: Button = $PendingBar/VBox/Actions/DeleteVocalBtn
-@onready var _delete_song_btn: Button = $PendingBar/VBox/Actions/DeleteSongBtn
-@onready var _reset_btn: Button = $PendingBar/VBox/Actions/ResetBtn
-@onready var _fav_btn: Button = $PendingBar/VBox/Actions/FavBtn
-@onready var _clear_btn: Button = $PendingBar/VBox/Actions/ClearBtn
-
+# 各标签页的滚动容器与列表内容，下标与 Tab 一致
+var _resource_scrolls: Array[ScrollContainer] = []
+var _resource_lists: Array[Control] = []
 
 func _ready() -> void:
 	_tab_buttons = [
-		$TopBar/HeaderMargin/Row/TabBar/TabSong,
-		$TopBar/HeaderMargin/Row/TabBar/TabSkin,
-		$TopBar/HeaderMargin/Row/TabBar/TabEffect,
-		$TopBar/HeaderMargin/Row/TabBar/TabSoundfont,
-		$TopBar/HeaderMargin/Row/TabBar/TabBackground,
+		%SongsTabBtn,
+		%SkinsTabBtn,
+		%EffectsTabBtn,
+		%SoundfontsTabBtn,
+		%BackgroundsTabBtn,
 	]
 	_pages = [
-		$Pages/SongsPage,
-		$Pages/SkinsPage,
-		$Pages/EffectsPage,
-		$Pages/SoundfontsPage,
-		$Pages/BackgroundsPage,
+		%SongsPage,
+		%SkinsPage,
+		%EffectsPage,
+		%SoundfontsPage,
+		%BackgroundsPage,
+	]
+	_empty_labels = [
+		%SongsEmpty, %SkinsEmpty, %EffectsEmpty, %SoundfontsEmpty, %BackgroundsEmpty,
+	]
+	_resource_scrolls = [
+		%SongsScroll, %SkinsScroll, %EffectsScroll, %SoundfontsScroll, %BackgroundsScroll,
+	]
+	_resource_lists = [
+		%SongsList, %SkinsList, %EffectsList, %SoundfontsList, %BackgroundsList,
 	]
 	_setup_icons()
 	_setup_song_vlist()
@@ -137,7 +127,7 @@ func _exit_tree() -> void:
 
 
 func _setup_icons() -> void:
-	_search_icon.texture = StoreIconsLib.search()
+	%SearchIcon.texture = StoreIconsLib.search()
 	_tab_buttons[Tab.SONGS].icon = StoreIconsLib.song()
 	_tab_buttons[Tab.SKINS].icon = StoreIconsLib.skin()
 	_tab_buttons[Tab.EFFECTS].icon = StoreIconsLib.effect()
@@ -153,7 +143,7 @@ func _setup_song_vlist() -> void:
 	_song_vlist.margin_rows = CARD_MARGIN_ROWS
 	_song_vlist.on_row_ready = _on_card_ready
 	_song_vlist.on_row_bind = _bind_song_card
-	_song_vlist.setup($Pages/SongsPage/List, $Pages/SongsPage/List/ListContent, CARD_SCENE)
+	_song_vlist.setup(%SongsScroll, %SongsList, CARD_SCENE)
 
 
 func _setup_pending_vlist() -> void:
@@ -163,7 +153,7 @@ func _setup_pending_vlist() -> void:
 	_pending_vlist.margin_rows = 4
 	_pending_vlist.on_row_ready = _on_pending_row_ready
 	_pending_vlist.on_row_bind = _bind_pending_row
-	_pending_vlist.setup(_pending_scroll, _pending_list, PENDING_ROW_SCENE)
+	_pending_vlist.setup(%PendingScroll, %PendingList, PENDING_ROW_SCENE)
 
 
 func _connect_ui() -> void:
@@ -173,16 +163,16 @@ func _connect_ui() -> void:
 			if i == _current_tab:
 				_update_tab_underline(true)
 		)
-	_top_bar.resized.connect(func() -> void: _update_tab_underline(true))
-	_search_edit.text_changed.connect(_on_search_changed)
-	_search_edit.text_submitted.connect(_on_search_submitted)
-	_select_all_btn.pressed.connect(_on_select_all_pressed)
-	_expand_btn.pressed.connect(_on_expand_pressed)
-	_delete_vocal_btn.pressed.connect(_on_delete_vocal_pressed)
-	_delete_song_btn.pressed.connect(_on_delete_song_pressed)
-	_reset_btn.pressed.connect(_on_reset_pressed)
-	_fav_btn.pressed.connect(_on_favorite_pressed)
-	_clear_btn.pressed.connect(_on_clear_pressed)
+	%TopBarPanel.resized.connect(func() -> void: _update_tab_underline(true))
+	%SearchEdit.text_changed.connect(_on_search_changed)
+	%SearchEdit.text_submitted.connect(_on_search_submitted)
+	%SelectAllBtn.pressed.connect(_on_select_all_pressed)
+	%ExpandBtn.pressed.connect(_on_expand_pressed)
+	%DeleteVocalBtn.pressed.connect(_on_delete_vocal_pressed)
+	%DeleteSongBtn.pressed.connect(_on_delete_song_pressed)
+	%ResetBtn.pressed.connect(_on_reset_pressed)
+	%FavBtn.pressed.connect(_on_favorite_pressed)
+	%ClearBtn.pressed.connect(_on_clear_pressed)
 
 
 # ══════════════════════════════════════════════════════
@@ -191,7 +181,7 @@ func _connect_ui() -> void:
 
 func on_entered() -> void:
 	_entered = true
-	_pending_bar.visible = _current_tab == Tab.SONGS
+	%PendingBarPanel.visible = _current_tab == Tab.SONGS
 	TextScrollMGR.resume_page(self)
 	var need_load := _current_tab == Tab.SONGS \
 		and (not _song_loaded or _song_applied_query != _search_text.strip_edges())
@@ -208,10 +198,9 @@ func on_entered() -> void:
 
 func _show_loading_state(tab: int) -> void:
 	var empty := _empty_label_for(tab)
-	if empty:
-		empty.visible = true
-		empty.text = "正在加载…"
-	_count_label.text = "…"
+	empty.visible = true
+	empty.text = "正在加载…"
+	%CountText.text = "…"
 
 
 ## 数据加载分帧/延时：先让页面切换或滑入动画开始，再构建列表。
@@ -232,7 +221,7 @@ func on_exited_to_setting_list() -> void:
 	_load_token += 1
 	_stop_search_timer()
 	_search_text = ""
-	_search_edit.text = ""
+	%SearchEdit.text = ""
 	_set_pending_expanded(false, true)
 	TextScrollMGR.suspend_page(self)
 
@@ -248,7 +237,7 @@ func _release_all() -> void:
 	_load_token += 1
 	_stop_search_timer()
 	_search_text = ""
-	_search_edit.text = ""
+	%SearchEdit.text = ""
 	_song_items.clear()
 	_song_loaded = false
 	_song_applied_query = ""
@@ -288,7 +277,7 @@ func _select_tab(tab: int, instant: bool) -> void:
 	if old_tab != tab:
 		_stop_search_timer()
 		_search_text = ""
-		_search_edit.text = ""
+		%SearchEdit.text = ""
 	for i in _tab_buttons.size():
 		_tab_buttons[i].set_pressed_no_signal(i == tab)
 	for i in _pages.size():
@@ -296,8 +285,8 @@ func _select_tab(tab: int, instant: bool) -> void:
 	if not instant:
 		TextScrollMGR.suspend_page(_pages[old_tab])
 	TextScrollMGR.resume_page(_pages[tab])
-	_search_edit.placeholder_text = SEARCH_PLACEHOLDERS[tab]
-	_pending_bar.visible = tab == Tab.SONGS
+	%SearchEdit.placeholder_text = SEARCH_PLACEHOLDERS[tab]
+	%PendingBarPanel.visible = tab == Tab.SONGS
 	if tab != Tab.SONGS:
 		_set_pending_expanded(false, true)
 	_update_tab_underline(instant)
@@ -373,24 +362,24 @@ func _update_tab_underline(instant: bool) -> void:
 	if _tab_buttons.is_empty():
 		return
 	var btn := _tab_buttons[clampi(_current_tab, 0, _tab_buttons.size() - 1)]
-	if btn.size.x <= 0.0 or _top_bar.size.y <= 0.0:
+	if btn.size.x <= 0.0 or %TopBarPanel.size.y <= 0.0:
 		return
-	var bar_pos := btn.global_position - _top_bar.global_position
-	var target_pos := Vector2(bar_pos.x + 8.0, _top_bar.size.y - 4.0)
+	var bar_pos: Vector2 = btn.global_position - %TopBarPanel.global_position
+	var target_pos := Vector2(bar_pos.x + 8.0, %TopBarPanel.size.y - 4.0)
 	var target_size := Vector2(maxf(btn.size.x - 16.0, 16.0), 4.0)
 	if instant:
-		_tab_underline.position = target_pos
-		_tab_underline.size = target_size
+		%TabUnderlinePanel.position = target_pos
+		%TabUnderlinePanel.size = target_size
 		return
-	var tw := AniMGR.create_managed_tween(_tab_underline, "resource_tab_underline")
+	var tw := AniMGR.create_managed_tween(%TabUnderlinePanel, "resource_tab_underline")
 	if tw == null:
-		_tab_underline.position = target_pos
-		_tab_underline.size = target_size
+		%TabUnderlinePanel.position = target_pos
+		%TabUnderlinePanel.size = target_size
 		return
 	tw.set_parallel(true)
-	tw.tween_property(_tab_underline, "position", target_pos, 0.24) \
+	tw.tween_property(%TabUnderlinePanel, "position", target_pos, 0.24) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_property(_tab_underline, "size", target_size, 0.24) \
+	tw.tween_property(%TabUnderlinePanel, "size", target_size, 0.24) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 
@@ -413,10 +402,10 @@ func _animate_page_in(page: Control) -> void:
 
 func _update_count_for_current() -> void:
 	if _current_tab == Tab.SONGS:
-		_count_label.text = "%d 首" % _song_items.size()
+		%CountText.text = "%d 首" % _song_items.size()
 	else:
 		var arr: Array = _resource_view.get(_current_tab, [])
-		_count_label.text = "%d 项" % arr.size()
+		%CountText.text = "%d 项" % arr.size()
 
 
 # ══════════════════════════════════════════════════════
@@ -542,8 +531,8 @@ func _rebuild_song_cards() -> void:
 	_bind_animate = true
 	_song_vlist.set_total(_song_items.size(), true)
 	_bind_animate = false
-	_songs_empty.visible = _song_items.is_empty()
-	_songs_empty.text = "没有找到歌曲" if not _search_text.strip_edges().is_empty() else "没有谱面数据"
+	_empty_labels[Tab.SONGS].visible = _song_items.is_empty()
+	_empty_labels[Tab.SONGS].text = "没有找到歌曲" if not _search_text.strip_edges().is_empty() else "没有谱面数据"
 	_update_count_for_current()
 	_update_pending_ui()
 
@@ -632,14 +621,14 @@ func _clear_pending() -> void:
 
 func _update_pending_ui() -> void:
 	var count := _pending_order.size()
-	_pending_title.text = "待操作列表"
-	_pending_count.text = "%d 首" % count
-	_pending_empty.visible = _pending_expanded and count == 0
+	%PendingTitle.text = "待操作列表"
+	%PendingCount.text = "%d 首" % count
+	%PendingEmpty.visible = _pending_expanded and count == 0
 	var can_act := count > 0 and not _busy
-	for btn in [_delete_vocal_btn, _delete_song_btn, _reset_btn, _fav_btn]:
+	for btn in [%DeleteVocalBtn, %DeleteSongBtn, %ResetBtn, %FavBtn]:
 		btn.disabled = not can_act
-	_clear_btn.disabled = count == 0 or _busy
-	_select_all_btn.disabled = _song_items.is_empty() or _busy
+	%ClearBtn.disabled = count == 0 or _busy
+	%SelectAllBtn.disabled = _song_items.is_empty() or _busy
 	if _pending_vlist:
 		_pending_vlist.set_total(count, false)
 		if _pending_expanded:
@@ -659,28 +648,28 @@ func _set_pending_expanded(expanded: bool, instant: bool = false) -> void:
 	if expanded == _pending_expanded and not instant:
 		return
 	_pending_expanded = expanded
-	_expand_btn.text = "收起" if expanded else "展开"
+	%ExpandBtn.text = "收起" if expanded else "展开"
 	if expanded:
-		_pending_scroll.visible = true
-		_pending_empty.visible = _pending_order.is_empty()
+		%PendingScroll.visible = true
+		%PendingEmpty.visible = _pending_order.is_empty()
 	var target_top := -PENDING_EXPANDED_H if expanded else -PENDING_COLLAPSED_H
 	if instant:
-		_pending_bar.offset_top = target_top
-		_pending_scroll.visible = expanded
+		%PendingBarPanel.offset_top = target_top
+		%PendingScroll.visible = expanded
 		if expanded:
 			_sync_pending_vlist.call_deferred()
 		return
-	var tw := AniMGR.create_managed_tween(_pending_bar, "resource_pending_bar")
+	var tw := AniMGR.create_managed_tween(%PendingBarPanel, "resource_pending_bar")
 	if tw == null:
-		_pending_bar.offset_top = target_top
-		_pending_scroll.visible = expanded
+		%PendingBarPanel.offset_top = target_top
+		%PendingScroll.visible = expanded
 		return
-	tw.tween_property(_pending_bar, "offset_top", target_top, 0.24) \
+	tw.tween_property(%PendingBarPanel, "offset_top", target_top, 0.24) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	if not expanded:
 		tw.finished.connect(func() -> void:
 			if not _pending_expanded:
-				_pending_scroll.visible = false
+				%PendingScroll.visible = false
 		)
 	else:
 		_sync_pending_vlist.call_deferred()
@@ -856,9 +845,8 @@ func _info(text: String) -> void:
 func _ensure_resource_vlist(tab: int) -> void:
 	if _resource_vlists.has(tab):
 		return
-	var page: Control = _pages[tab]
-	var scroll := page.get_node("List") as ScrollContainer
-	var content := page.get_node("List/ListContent") as Control
+	var scroll := _resource_scrolls[tab]
+	var content := _resource_lists[tab]
 	var vl := VirtualListLib.new()
 	vl.columns = CARD_COLUMNS
 	vl.row_gap = CARD_ROW_GAP
@@ -987,22 +975,15 @@ func _rebuild_resource_cards(tab: int) -> void:
 	_bind_animate = true
 	vl.set_total(view.size(), true)
 	_bind_animate = false
-	var empty: Label = _empty_label_for(tab)
-	if empty:
-		empty.visible = view.is_empty()
-		empty.text = EMPTY_TEXTS[tab] if _search_text.strip_edges().is_empty() \
-			else "没有匹配的资源"
+	var empty := _empty_label_for(tab)
+	empty.visible = view.is_empty()
+	empty.text = EMPTY_TEXTS[tab] if _search_text.strip_edges().is_empty() \
+		else "没有匹配的资源"
 	_update_count_for_current()
 
 
 func _empty_label_for(tab: int) -> Label:
-	match tab:
-		Tab.SONGS: return _songs_empty
-		Tab.SKINS: return _skins_empty
-		Tab.EFFECTS: return _effects_empty
-		Tab.SOUNDFONTS: return _soundfonts_empty
-		Tab.BACKGROUNDS: return _backgrounds_empty
-	return null
+	return _empty_labels[tab]
 
 
 func _confirm_delete_resource(item: Dictionary) -> void:
@@ -1111,24 +1092,24 @@ func apply_theme() -> void:
 	var accent_text := primary_dark if is_light else primary_light
 	var muted_text := text_secondary if is_light else text_dim
 
-	var top_sb := _top_bar.get_theme_stylebox("panel") as StyleBoxFlat
+	var top_sb := %TopBarPanel.get_theme_stylebox("panel") as StyleBoxFlat
 	if top_sb:
 		top_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.97)
 		top_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.55 if is_light else 0.4)
 
-	var search_sb := _search_edit.get_theme_stylebox("normal") as StyleBoxFlat
+	var search_sb := %SearchEdit.get_theme_stylebox("normal") as StyleBoxFlat
 	if search_sb:
 		search_sb.bg_color = surface_low
 		search_sb.border_color = border
-	var search_focus_sb := _search_edit.get_theme_stylebox("focus") as StyleBoxFlat
+	var search_focus_sb := %SearchEdit.get_theme_stylebox("focus") as StyleBoxFlat
 	if search_focus_sb:
 		search_focus_sb.bg_color = surface_low.lightened(0.04)
 		search_focus_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.9)
-	_search_edit.add_theme_color_override("font_color", text_primary)
-	_search_edit.add_theme_color_override("font_placeholder_color", muted_text)
-	_search_edit.add_theme_color_override("caret_color", primary)
-	_search_icon.modulate = text_secondary
-	_count_label.add_theme_color_override("font_color", text_secondary)
+	%SearchEdit.add_theme_color_override("font_color", text_primary)
+	%SearchEdit.add_theme_color_override("font_placeholder_color", muted_text)
+	%SearchEdit.add_theme_color_override("caret_color", primary)
+	%SearchIcon.modulate = text_secondary
+	%CountText.add_theme_color_override("font_color", text_secondary)
 
 	for btn in _tab_buttons:
 		_style_flat_button(btn, surface_high, surface_hover, primary_dark, border, text_secondary, text_primary)
@@ -1149,22 +1130,22 @@ func apply_theme() -> void:
 		if focus_sb:
 			focus_sb.border_color = accent_text
 
-	var underline_sb := _tab_underline.get_theme_stylebox("panel") as StyleBoxFlat
+	var underline_sb := %TabUnderlinePanel.get_theme_stylebox("panel") as StyleBoxFlat
 	if underline_sb:
 		underline_sb.bg_color = primary_dark if is_light else primary_light
 
-	var pending_sb := _pending_bar.get_theme_stylebox("panel") as StyleBoxFlat
+	var pending_sb := %PendingBarPanel.get_theme_stylebox("panel") as StyleBoxFlat
 	if pending_sb:
 		pending_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.98)
 		pending_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.55 if is_light else 0.45)
-	_pending_title.add_theme_color_override("font_color", text_primary)
-	_pending_count.add_theme_color_override("font_color", muted_text)
-	_pending_empty.add_theme_color_override("font_color", muted_text)
-	for label in [_songs_empty, _skins_empty, _effects_empty, _soundfonts_empty, _backgrounds_empty]:
+	%PendingTitle.add_theme_color_override("font_color", text_primary)
+	%PendingCount.add_theme_color_override("font_color", muted_text)
+	%PendingEmpty.add_theme_color_override("font_color", muted_text)
+	for label in _empty_labels:
 		label.add_theme_color_override("font_color", muted_text)
 
-	for btn in [_select_all_btn, _expand_btn, _delete_vocal_btn, _delete_song_btn,
-			_reset_btn, _fav_btn, _clear_btn]:
+	for btn in [%SelectAllBtn, %ExpandBtn, %DeleteVocalBtn, %DeleteSongBtn,
+			%ResetBtn, %FavBtn, %ClearBtn]:
 		_style_flat_button(btn, surface_high, surface_hover, primary_dark, border, text_secondary, text_primary)
 		var pressed_color := Color.WHITE if is_light else primary_light
 		btn.add_theme_color_override("font_pressed_color", pressed_color)

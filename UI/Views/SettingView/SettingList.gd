@@ -50,7 +50,7 @@ func _ready() -> void:
 		# 隐藏期间容器仍可能程序性钳制滚动值，会误触发 toggled 把面板强行切回列表
 		if not visible:
 			return
-		var btns = get_parent().get_parent().short_cut_btn.get_children()
+		var btns = %ShortCutBtns.get_children()
 		var idx = _get_current_para_sepa_idx()
 		# 边界检查：分组索引超出快捷按钮数量时跳过
 		if idx < 0 or idx >= btns.size():
@@ -236,10 +236,9 @@ func add_setting_item(setting_data: Dictionary, init_value: Variant = "", group_
 ## 分组下标与 SettingView 左侧 ShortCut 按钮下标一一对应（每个分组前都 _add_separator）
 ## 仅设置真正的可聚焦控件（OptionButton/ColorPickerButton/LineEdit/Button），容器本身不可聚焦
 func _setup_focus_neighbor_left(setting_item: SettingItem, group_idx: int) -> void:
-	var shortcut = get_parent().get_parent().short_cut_btn
-	if shortcut == null or group_idx < 0 or group_idx >= shortcut.get_child_count():
+	if %ShortCutBtns == null or group_idx < 0 or group_idx >= %ShortCutBtns.get_child_count():
 		return
-	var target: Button = shortcut.get_child(group_idx)
+	var target: Button = %ShortCutBtns.get_child(group_idx)
 	if target == null:
 		return
 	var focusable: Control = null

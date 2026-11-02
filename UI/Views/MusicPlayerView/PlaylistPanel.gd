@@ -23,11 +23,8 @@ const POOL_MARGIN_ROWS := 3
 ## 页面一次能显示 ~15 行，池 = 可见 + margin 就够；上限只防窗口异常大时无节制膨胀
 const POOL_MAX_ROWS := 24
 
-@onready var _pl_list: LIST_SCRIPT = $PlColumn/PlScroll/PlList
-@onready var _pl_empty: Label = $PlColumn/PlScroll/PlList/PlEmpty
-@onready var _fav_select_btn: OptionButton = $PlColumn/PlCtrlRow/PlCtrl/FavSelectBtn
-@onready var _pl_scroll: ScrollContainer = $PlColumn/PlScroll
-@onready var _reshuffle_btn: Button = $PlColumn/PlTitle/ReshuffleBtn
+@onready var _pl_list: LIST_SCRIPT = %PlList
+@onready var _pl_scroll: ScrollContainer = %PlScroll
 
 ## 播放列表拖动滚动（仅桌面补足）：ScrollContainer 的拖拽滚动只在触屏平台生效，
 ## 桌面没有，所以在视图里补一份，手感同曲库（1:1 跟手 + 松手惯性）。
@@ -108,7 +105,7 @@ func _ready() -> void:
 ## _ready / 打开面板 / 收到 playlist_changed 都刷一次，保证显示的是当前模式
 func _refresh_mode_ui() -> void:
 	var mgr := PlaybackDisplay.instance
-	_reshuffle_btn.visible = mgr != null and mgr.repeat_mode == RepeatMode.SHUFFLE
+	%ReshuffleBtn.visible = mgr != null and mgr.repeat_mode == RepeatMode.SHUFFLE
 
 func _on_repeat_mode_changed(_mode: int) -> void:
 	_refresh_mode_ui()
@@ -302,7 +299,7 @@ func _rebuild_playlist_list() -> void:
 		return
 	_playlist_total = keys.size()
 	_pl_list.total_count = keys.size()
-	_pl_empty.visible = keys.is_empty()
+	%PlEmpty.visible = keys.is_empty()
 	_sync_row_window(true)
 
 ## 列表本体变化（切随机/顺序重排、外部增删）→ 强制重绑池行内容 + 同步模式显示
@@ -377,26 +374,26 @@ func _on_pl_clear_pressed() -> void:
 
 ## 收藏夹下拉：首项为「未选择歌单」
 func _rebuild_fav_select() -> void:
-	_fav_select_btn.clear()
-	_fav_select_btn.add_item("未选择歌单")
-	_fav_select_btn.set_item_metadata(0, "")
+	%FavSelectBtn.clear()
+	%FavSelectBtn.add_item("未选择歌单")
+	%FavSelectBtn.set_item_metadata(0, "")
 	var fav_mgr := FavoriteManager.instance
 	if fav_mgr != null:
 		for f in fav_mgr.favorites:
-			_fav_select_btn.add_item(f.name)
-			_fav_select_btn.set_item_metadata(_fav_select_btn.item_count - 1, f.id)
+			%FavSelectBtn.add_item(f.name)
+			%FavSelectBtn.set_item_metadata(%FavSelectBtn.item_count - 1, f.id)
 	# 恢复当前选择
 	var src := String(MidiCore.GetSourceFavId())
 	if src.is_empty():
-		_fav_select_btn.select(0)
+		%FavSelectBtn.select(0)
 		return
-	for i in _fav_select_btn.item_count:
-		if str(_fav_select_btn.get_item_metadata(i)) == src:
-			_fav_select_btn.select(i)
+	for i in %FavSelectBtn.item_count:
+		if str(%FavSelectBtn.get_item_metadata(i)) == src:
+			%FavSelectBtn.select(i)
 			return
 	# 源歌单已被删除：下拉会停在「未选择歌单」，同步解除关联，避免显示与状态不一致
 	MidiCore.SetSourceFavId("")
-	_fav_select_btn.select(0)
+	%FavSelectBtn.select(0)
 
 ## 收藏夹 → 规范键数组（收藏夹按 chart_id/chart_key 存储，与列表 key 同源）
 func _keys_of_favorite(fav_id: String) -> Array:
@@ -409,7 +406,7 @@ func _keys_of_favorite(fav_id: String) -> Array:
 	return out
 
 func _on_fav_select_selected(idx: int) -> void:
-	var fav_id := str(_fav_select_btn.get_item_metadata(idx))
+	var fav_id := str(%FavSelectBtn.get_item_metadata(idx))
 	var mgr := PlaybackDisplay.instance
 	if mgr == null:
 		return

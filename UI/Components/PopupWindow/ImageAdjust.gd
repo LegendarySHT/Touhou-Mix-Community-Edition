@@ -2,38 +2,8 @@ extends HBoxContainer
 
 class_name ImageAdjust
 
-@onready var _image_texture_rect: TextureRect = $ImagePreview/TextureRect
-@onready var _img_type_btn: OptionButton = $VBoxC/ImgType
-@onready var _img_name_btn: TouchScrollOptionButton = $VBoxC/OtherOptions/ImgName
-@onready var _img_fill_mode_btn: OptionButton = $VBoxC/OtherOptions/ImgFillMode
-@onready var _start_color_btn: ColorPickerButton = $VBoxC/OtherOptions/StartColor/ColorPickerButton
-@onready var _start_color_edit: LineEdit = $VBoxC/OtherOptions/StartColor/HexColor
-@onready var _end_color_btn: ColorPickerButton = $VBoxC/OtherOptions/EndColor/ColorPickerButton
-@onready var _end_color_edit: LineEdit = $VBoxC/OtherOptions/EndColor/HexColor
-@onready var _from_x_edit: LineEdit = $VBoxC/OtherOptions/FromX/LineEdit
-@onready var _from_y_edit: LineEdit = $VBoxC/OtherOptions/FromY/LineEdit
-@onready var _to_x_edit: LineEdit = $VBoxC/OtherOptions/ToX/LineEdit
-@onready var _to_y_edit: LineEdit = $VBoxC/OtherOptions/ToY/LineEdit
-@onready var _solid_color_btn: ColorPickerButton = $VBoxC/OtherOptions/SolidColor/ColorPickerButton
-@onready var _solid_color_edit: LineEdit = $VBoxC/OtherOptions/SolidColor/HexColor
 # OtherOptions 子节点引用（用于显隐控制）
-@onready var _img_name_label: Control = $VBoxC/OtherOptions/Label
-@onready var _img_fill_mode_label: Control = $VBoxC/OtherOptions/Label2
-@onready var _start_color_label: Control = $VBoxC/OtherOptions/Label3
-@onready var _start_color_container: Control = $VBoxC/OtherOptions/StartColor
-@onready var _end_color_label: Control = $VBoxC/OtherOptions/Label4
-@onready var _end_color_container: Control = $VBoxC/OtherOptions/EndColor
-@onready var _from_x_container: Control = $VBoxC/OtherOptions/FromX
-@onready var _from_y_container: Control = $VBoxC/OtherOptions/FromY
-@onready var _to_x_container: Control = $VBoxC/OtherOptions/ToX
-@onready var _to_y_container: Control = $VBoxC/OtherOptions/ToY
-@onready var _solid_color_label: Control = $VBoxC/OtherOptions/Label5
-@onready var _solid_color_container: Control = $VBoxC/OtherOptions/SolidColor
 # 封面模式相关节点（已在 tscn 中存在，默认 visible=false）
-@onready var _cover_blur_label: Control = $VBoxC/OtherOptions/Label6
-@onready var _cover_blur_edit: LineEdit = $VBoxC/OtherOptions/BlurIntensity
-@onready var _cover_style_label: Control = $VBoxC/OtherOptions/Label7
-@onready var _cover_style_btn: OptionButton = $VBoxC/OtherOptions/BlurStyle
 
 # ===== 图片设置页 =====
 ## 图片类型枚举（与 ImgType OptionButton 顺序一致）
@@ -51,15 +21,15 @@ var _preview_mip_texture: Texture2D = null
 var _preview_mip_key: Texture2D = null
 
 func _ready() -> void:
-	_start_color_btn.color_changed.connect(_on_color_picker_changed.bind(_start_color_edit))
-	_start_color_edit.text_changed.connect(_on_hex_color_changed.bind(_start_color_btn))
-	_end_color_btn.color_changed.connect(_on_color_picker_changed.bind(_end_color_edit))
-	_end_color_edit.text_changed.connect(_on_hex_color_changed.bind(_end_color_btn))
-	_solid_color_btn.color_changed.connect(_on_color_picker_changed.bind(_solid_color_edit))
-	_solid_color_edit.text_changed.connect(_on_hex_color_changed.bind(_solid_color_btn))
+	%StartColorPicker.color_changed.connect(_on_color_picker_changed.bind(%StartColorHex))
+	%StartColorHex.text_changed.connect(_on_hex_color_changed.bind(%StartColorPicker))
+	%EndColorPicker.color_changed.connect(_on_color_picker_changed.bind(%EndColorHex))
+	%EndColorHex.text_changed.connect(_on_hex_color_changed.bind(%EndColorPicker))
+	%SolidColorPicker.color_changed.connect(_on_color_picker_changed.bind(%SolidColorHex))
+	%SolidColorHex.text_changed.connect(_on_hex_color_changed.bind(%SolidColorPicker))
 	# 统一取色器弹层形态。背景色需要透明度滑条，故 edit_alpha=true。
 	# HexColor 输入框是场景里自带的（不走 attach_hex_edit），这里只统一弹层内容。
-	for picker in [_start_color_btn, _end_color_btn, _solid_color_btn]:
+	for picker in [%StartColorPicker, %EndColorPicker, %SolidColorPicker]:
 		ThemeMGR.setup_color_picker(picker, true)
 
 ## 由 PopupWindow.show_image_adjust 调用：
@@ -69,12 +39,12 @@ func init_adjust(view_name: String = "", allow_cover: bool = false) -> void:
 	# 刷新图片文件列表
 	_refresh_image_options()
 	# 根据 allow_cover 启用/禁用"封面"选项（item_3）
-	_img_type_btn.set_item_disabled(IMG_TYPE_COVER, not allow_cover)
+	%ImgType.set_item_disabled(IMG_TYPE_COVER, not allow_cover)
 	# 从 ThemeManager 读取当前配置初始化控件
 	_init_image_controls_from_theme(view_name)
 	# 若禁用且当前选中是封面，切回"跟随主题"
-	if not allow_cover and _img_type_btn.selected == IMG_TYPE_COVER:
-		_img_type_btn.selected = IMG_TYPE_DEFAULT
+	if not allow_cover and %ImgType.selected == IMG_TYPE_COVER:
+		%ImgType.selected = IMG_TYPE_DEFAULT
 	_update_image_options_visibility()
 	_update_image_preview()
 
@@ -91,29 +61,29 @@ func init_adjust(view_name: String = "", allow_cover: bool = false) -> void:
 ##   "cover_blur": float (封面模糊强度 0~1)
 ##   "cover_style": String (封面模糊算法名，见 ViewBackground.COVER_BLUR_STYLES)
 func get_result() -> Dictionary:
-	var img_type := _img_type_btn.selected
+	var img_type = %ImgType.selected
 	return {
 		"type": img_type,
 		# 图片模式
-		"image_file": _img_name_btn.get_item_text(_img_name_btn.selected) if _img_name_btn.item_count > 0 else "",
-		"fill_mode": _img_fill_mode_btn.selected,
+		"image_file": %ImgName.get_item_text(%ImgName.selected) if %ImgName.item_count > 0 else "",
+		"fill_mode": %ImgFillMode.selected,
 		# 渐变模式
-		"start_color": _start_color_btn.color,
-		"end_color": _end_color_btn.color,
+		"start_color": %StartColorPicker.color,
+		"end_color": %EndColorPicker.color,
 		"from": Vector2(
-			float(_from_x_edit.text) if _from_x_edit.text.is_valid_float() else 0.0,
-			float(_from_y_edit.text) if _from_y_edit.text.is_valid_float() else 0.0
+			float(%FromXEdit.text) if %FromXEdit.text.is_valid_float() else 0.0,
+			float(%FromYEdit.text) if %FromYEdit.text.is_valid_float() else 0.0
 		),
 		"to": Vector2(
-			float(_to_x_edit.text) if _to_x_edit.text.is_valid_float() else 1.0,
-			float(_to_y_edit.text) if _to_y_edit.text.is_valid_float() else 1.0
+			float(%ToXEdit.text) if %ToXEdit.text.is_valid_float() else 1.0,
+			float(%ToYEdit.text) if %ToYEdit.text.is_valid_float() else 1.0
 		),
 		# 纯色模式
-		"solid_color": _solid_color_btn.color,
+		"solid_color": %SolidColorPicker.color,
 		# 封面模式
-		"cover_blur": float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8,
+		"cover_blur": float(%CoverBlurEdit.text) if %CoverBlurEdit.text.is_valid_float() else 0.8,
 		"cover_style": ViewBackground.COVER_BLUR_STYLES[
-			clampi(_cover_style_btn.selected, 0, ViewBackground.COVER_BLUR_STYLES.size() - 1)
+			clampi(%CoverStyleOption.selected, 0, ViewBackground.COVER_BLUR_STYLES.size() - 1)
 		],
 	}
 
@@ -139,9 +109,9 @@ func _scan_background_images() -> Array[String]:
 ## 刷新图片文件下拉选项
 func _refresh_image_options() -> void:
 	var image_files := _scan_background_images()
-	_img_name_btn.clear()
+	%ImgName.clear()
 	for f in image_files:
-		_img_name_btn.add_item(f)
+		%ImgName.add_item(f)
 
 ## 切换图片类型：控制相关字段显隐 + 更新预览
 func _on_img_type_selected(_index: int) -> void:
@@ -150,34 +120,34 @@ func _on_img_type_selected(_index: int) -> void:
 
 ## 更新 OtherOptions 中各控件的显隐（根据当前 ImgType）
 func _update_image_options_visibility() -> void:
-	var img_type := _img_type_btn.selected
-	var show_image := img_type == IMG_TYPE_IMAGE
-	var show_gradient := img_type == IMG_TYPE_GRADIENT
-	var show_solid := img_type == IMG_TYPE_SOLID
-	var show_cover := img_type == IMG_TYPE_COVER
+	var img_type = %ImgType.selected
+	var show_image = img_type == IMG_TYPE_IMAGE
+	var show_gradient = img_type == IMG_TYPE_GRADIENT
+	var show_solid = img_type == IMG_TYPE_SOLID
+	var show_cover = img_type == IMG_TYPE_COVER
 	# 跟随主题：不显示任何参数
 	# 图片模式
-	_img_name_label.visible = show_image
-	_img_name_btn.visible = show_image
-	_img_fill_mode_label.visible = show_image
-	_img_fill_mode_btn.visible = show_image
+	%ImgNameLabel.visible = show_image
+	%ImgName.visible = show_image
+	%ImgFillModeLabel.visible = show_image
+	%ImgFillMode.visible = show_image
 	# 渐变模式
-	_start_color_label.visible = show_gradient
-	_start_color_container.visible = show_gradient
-	_end_color_label.visible = show_gradient
-	_end_color_container.visible = show_gradient
-	_from_x_container.visible = show_gradient
-	_from_y_container.visible = show_gradient
-	_to_x_container.visible = show_gradient
-	_to_y_container.visible = show_gradient
+	%StartColorLabel.visible = show_gradient
+	%StartColorRow.visible = show_gradient
+	%EndColorLabel.visible = show_gradient
+	%EndColorRow.visible = show_gradient
+	%FromXRow.visible = show_gradient
+	%FromYRow.visible = show_gradient
+	%ToXRow.visible = show_gradient
+	%ToYRow.visible = show_gradient
 	# 纯色模式
-	_solid_color_label.visible = show_solid
-	_solid_color_container.visible = show_solid
+	%SolidColorLabel.visible = show_solid
+	%SolidColorRow.visible = show_solid
 	# 封面模式（仅 cover 显示模糊强度 + 算法）
-	_cover_blur_label.visible = show_cover
-	_cover_blur_edit.visible = show_cover
-	_cover_style_label.visible = show_cover
-	_cover_style_btn.visible = show_cover
+	%CoverBlurLabel.visible = show_cover
+	%CoverBlurEdit.visible = show_cover
+	%CoverStyleLabel.visible = show_cover
+	%CoverStyleOption.visible = show_cover
 
 ## 创建纯色纹理（1x1 白色像素，通过 modulate 着色）
 func _create_solid_texture() -> ImageTexture:
@@ -203,58 +173,58 @@ func _create_gradient_texture(start: Color, end: Color, from: Vector2, to: Vecto
 
 ## 更新图片预览（根据当前 ImgType 和控件值）
 func _update_image_preview() -> void:
-	var img_type := _img_type_btn.selected
+	var img_type = %ImgType.selected
 	# 默认清除模糊 shader，仅 cover 分支重新设置
-	_image_texture_rect.material = null
+	%ImagePreviewTexture.material = null
 	match img_type:
 		IMG_TYPE_DEFAULT:
 			# 跟随主题：直接预览主题衍生的默认背景
-			_image_texture_rect.texture = ThemeMGR.get_default_background_texture()
-			_image_texture_rect.stretch_mode = TextureRect.STRETCH_SCALE
-			_image_texture_rect.modulate = Color.WHITE
+			%ImagePreviewTexture.texture = ThemeMGR.get_default_background_texture()
+			%ImagePreviewTexture.stretch_mode = TextureRect.STRETCH_SCALE
+			%ImagePreviewTexture.modulate = Color.WHITE
 		IMG_TYPE_IMAGE:
-			if _img_name_btn.item_count > 0:
-				var file_name := _img_name_btn.get_item_text(_img_name_btn.selected)
+			if %ImgName.item_count > 0:
+				var file_name = %ImgName.get_item_text(%ImgName.selected)
 				if not file_name.is_empty():
 					var tex: Texture2D = ThemeMGR.load_background_image(file_name)
 					if tex:
-						_image_texture_rect.texture = tex
+						%ImagePreviewTexture.texture = tex
 			# 填充方式：0=覆盖（等比放大完全覆盖预览框，类似 CSS cover）
 			#           1=适应（保证图片完全可见，类似 CSS contain）
-			_image_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED if _img_fill_mode_btn.selected == 0 else TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			_image_texture_rect.modulate = Color.WHITE
+			%ImagePreviewTexture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED if %ImgFillMode.selected == 0 else TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			%ImagePreviewTexture.modulate = Color.WHITE
 		IMG_TYPE_GRADIENT:
-			var start := _start_color_btn.color
-			var end := _end_color_btn.color
+			var start = %StartColorPicker.color
+			var end = %EndColorPicker.color
 			# fill_from / fill_to 用 Godot 原生 0~1 归一化坐标：(0,0)=左上, (1,1)=右下
 			var from := Vector2(
-				clampf(float(_from_x_edit.text) if _from_x_edit.text.is_valid_float() else 0.0, 0.0, 1.0),
-				clampf(float(_from_y_edit.text) if _from_y_edit.text.is_valid_float() else 0.0, 0.0, 1.0)
+				clampf(float(%FromXEdit.text) if %FromXEdit.text.is_valid_float() else 0.0, 0.0, 1.0),
+				clampf(float(%FromYEdit.text) if %FromYEdit.text.is_valid_float() else 0.0, 0.0, 1.0)
 			)
 			var to := Vector2(
-				clampf(float(_to_x_edit.text) if _to_x_edit.text.is_valid_float() else 1.0, 0.0, 1.0),
-				clampf(float(_to_y_edit.text) if _to_y_edit.text.is_valid_float() else 1.0, 0.0, 1.0)
+				clampf(float(%ToXEdit.text) if %ToXEdit.text.is_valid_float() else 1.0, 0.0, 1.0),
+				clampf(float(%ToYEdit.text) if %ToYEdit.text.is_valid_float() else 1.0, 0.0, 1.0)
 			)
-			_image_texture_rect.texture = _create_gradient_texture(start, end, from, to)
-			_image_texture_rect.modulate = Color.WHITE
+			%ImagePreviewTexture.texture = _create_gradient_texture(start, end, from, to)
+			%ImagePreviewTexture.modulate = Color.WHITE
 		IMG_TYPE_SOLID:
-			var color := _solid_color_btn.color
-			_image_texture_rect.texture = _create_solid_texture()
-			_image_texture_rect.modulate = color
+			var color = %SolidColorPicker.color
+			%ImagePreviewTexture.texture = _create_solid_texture()
+			%ImagePreviewTexture.modulate = color
 		IMG_TYPE_COVER:
 			# 封面模式预览：随机取一个已渲染的专辑封面 + 模糊 shader
 			# 预览用"适应"（保持比例、完整可见），避免"覆盖"裁切导致预览效果不佳
 			var cover_tex := _get_preview_cover_texture()
 			if cover_tex:
-				_image_texture_rect.texture = cover_tex
-				_image_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-				_image_texture_rect.modulate = Color.WHITE
-				var blur_strength := float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8
-				_apply_preview_cover_blur(blur_strength, _cover_style_btn.selected)
+				%ImagePreviewTexture.texture = cover_tex
+				%ImagePreviewTexture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				%ImagePreviewTexture.modulate = Color.WHITE
+				var blur_strength := float(%CoverBlurEdit.text) if %CoverBlurEdit.text.is_valid_float() else 0.8
+				_apply_preview_cover_blur(blur_strength, %CoverStyleOption.selected)
 			else:
 				# 无封面可用，显示占位
-				_image_texture_rect.texture = null
-				_image_texture_rect.modulate = Color(0.2, 0.2, 0.3, 1.0)
+				%ImagePreviewTexture.texture = null
+				%ImagePreviewTexture.modulate = Color(0.2, 0.2, 0.3, 1.0)
 
 ## 图片文件选择变化
 func _on_img_name_selected(_index: int) -> void:
@@ -292,15 +262,15 @@ func _on_gradient_coords_changed(_new_text: String) -> void:
 ## 封面模糊强度变化（仅占位，实际值在关闭弹窗时返回）
 func _on_cover_blur_changed(_new_text: String) -> void:
 	# 仅在当前预览为封面模式时实时刷新模糊强度
-	if _img_type_btn.selected == IMG_TYPE_COVER:
-		var blur_strength := float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8
-		_apply_preview_cover_blur(blur_strength, _cover_style_btn.selected)
+	if %ImgType.selected == IMG_TYPE_COVER:
+		var blur_strength := float(%CoverBlurEdit.text) if %CoverBlurEdit.text.is_valid_float() else 0.8
+		_apply_preview_cover_blur(blur_strength, %CoverStyleOption.selected)
 
 ## 封面模糊算法切换
 func _on_cover_style_selected(_index: int) -> void:
-	if _img_type_btn.selected == IMG_TYPE_COVER:
-		var blur_strength := float(_cover_blur_edit.text) if _cover_blur_edit.text.is_valid_float() else 0.8
-		_apply_preview_cover_blur(blur_strength, _cover_style_btn.selected)
+	if %ImgType.selected == IMG_TYPE_COVER:
+		var blur_strength := float(%CoverBlurEdit.text) if %CoverBlurEdit.text.is_valid_float() else 0.8
+		_apply_preview_cover_blur(blur_strength, %CoverStyleOption.selected)
 
 ## 获取一个可用于预览的封面（随机从 AlbumList 已渲染的列表项中取一个封面纹理）
 ## 优先用界面已加载的封面，避免重复 IO；AlbumList 不可用时回退到数据层取第一个
@@ -315,8 +285,8 @@ func _get_preview_cover_texture() -> Texture2D:
 				var item: Node = container.get_child(i)
 				if not is_instance_valid(item):
 					continue
-				# AlbumListItem 的封面在 $cover TextureRect
-				var cover_rect: TextureRect = item.get_node_or_null("cover")
+				# AlbumListItem 的封面在 $Cover TextureRect
+				var cover_rect: TextureRect = item.get_node_or_null("Cover")
 				if cover_rect and cover_rect.texture:
 					covers.append(cover_rect.texture)
 			if not covers.is_empty():
@@ -342,15 +312,15 @@ func _get_preview_cover_texture() -> Texture2D:
 func _apply_preview_cover_blur(blur_strength: float, style: int = 1) -> void:
 	var shader := load(_PREVIEW_BG_BLUR_SHADER_PATH)
 	if shader == null:
-		_image_texture_rect.material = null
+		%ImagePreviewTexture.material = null
 		return
 	# shader 靠 textureLod 做大半径降采样，纹理必须先有 mipmap
-	_image_texture_rect.texture = _ensure_preview_mipmap(_image_texture_rect.texture)
+	%ImagePreviewTexture.texture = _ensure_preview_mipmap(%ImagePreviewTexture.texture)
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
 	mat.set_shader_parameter("style", style)
 	mat.set_shader_parameter("blur_strength", clampf(blur_strength, 0.0, 1.0))
-	_image_texture_rect.material = mat
+	%ImagePreviewTexture.material = mat
 
 ## 预览用：原纹理没有 mipmap 时生成一份带 mip 的副本（只影响预览，不动共享纹理）
 func _ensure_preview_mipmap(tex: Texture2D) -> Texture2D:
@@ -413,46 +383,46 @@ func _init_image_controls_from_theme(view_name: String) -> void:
 	# color_changed / text_changed，下面 8 处赋值会让 _update_image_preview 连跑 8 次
 	# （每次都重建渐变纹理与模糊 shader）。屏蔽后末尾统一刷一次。
 	var touched: Array[Control] = [
-		_img_type_btn, _img_name_btn, _img_fill_mode_btn,
-		_solid_color_btn, _start_color_btn, _end_color_btn,
-		_from_x_edit, _from_y_edit, _to_x_edit, _to_y_edit, _cover_blur_edit, _cover_style_btn,
+		%ImgType, %ImgName, %ImgFillMode,
+		%SolidColorPicker, %StartColorPicker, %EndColorPicker,
+		%FromXEdit, %FromYEdit, %ToXEdit, %ToYEdit, %CoverBlurEdit, %CoverStyleOption,
 	]
 	for c in touched:
 		c.set_block_signals(true)
 
-	_img_type_btn.selected = type_idx
+	%ImgType.selected = type_idx
 
 	# 设置图片文件下拉：尝试选中 image_path
 	var img_idx := -1
-	for i in range(_img_name_btn.item_count):
-		if _img_name_btn.get_item_text(i) == image_path:
+	for i in range(%ImgName.item_count):
+		if %ImgName.get_item_text(i) == image_path:
 			img_idx = i
 			break
 	if img_idx >= 0:
-		_img_name_btn.selected = img_idx
-	elif _img_name_btn.item_count > 0:
-		_img_name_btn.selected = 0
+		%ImgName.selected = img_idx
+	elif %ImgName.item_count > 0:
+		%ImgName.selected = 0
 
 	# 设置填充方式：cover→0, 其它→1
-	_img_fill_mode_btn.selected = 0 if image_stretch == "cover" else 1
+	%ImgFillMode.selected = 0 if image_stretch == "cover" else 1
 
 	# 设置颜色
 	if solid_color.is_valid_html_color():
-		_solid_color_btn.color = Color(solid_color)
+		%SolidColorPicker.color = Color(solid_color)
 	if gradient_top.is_valid_html_color():
-		_start_color_btn.color = Color(gradient_top)
+		%StartColorPicker.color = Color(gradient_top)
 	if gradient_bottom.is_valid_html_color():
-		_end_color_btn.color = Color(gradient_bottom)
+		%EndColorPicker.color = Color(gradient_bottom)
 
 	# 设置渐变坐标（Godot 原生 0~1 归一化）
-	_from_x_edit.text = str(gradient_from.x)
-	_from_y_edit.text = str(gradient_from.y)
-	_to_x_edit.text = str(gradient_to.x)
-	_to_y_edit.text = str(gradient_to.y)
+	%FromXEdit.text = str(gradient_from.x)
+	%FromYEdit.text = str(gradient_from.y)
+	%ToXEdit.text = str(gradient_to.x)
+	%ToYEdit.text = str(gradient_to.y)
 
 	# 设置封面模糊强度 + 算法
-	_cover_blur_edit.text = str(cover_blur)
-	_cover_style_btn.selected = ViewBackground.cover_blur_style_index(cover_style)
+	%CoverBlurEdit.text = str(cover_blur)
+	%CoverStyleOption.selected = ViewBackground.cover_blur_style_index(cover_style)
 
 	for c in touched:
 		c.set_block_signals(false)

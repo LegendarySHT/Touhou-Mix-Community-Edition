@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://bhrv8p4ecl6nw" path="res://UI/Views/SettingView/SettingView.gd" id="1_4walt"]
 [ext_resource type="Script" uid="uid://cgxt234w25s7r" path="res://UI/Views/SettingView/SettingList.gd" id="2_3x48f"]
 [ext_resource type="Texture2D" uid="uid://co5g8aknrygoc" path="res://Resources/icon/android/adaptive_foreground.svg" id="3_s6epo"]
-[ext_resource type="PackedScene" path="res://UI/Views/ResourceView/ResourceView.tscn" id="5_resourceview"]
+[ext_resource type="PackedScene" uid="uid://b5wmiaj6qs14m" path="res://UI/Views/ResourceView/ResourceView.tscn" id="5_resourceview"]
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_tf36t"]
 
@@ -24,8 +24,10 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_4walt")
+view_layer = 0
 
-[node name="HBoxC" type="HBoxContainer" parent="." unique_id=1982912626]
+[node name="SettingView" type="HBoxContainer" parent="." unique_id=1982912626]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -34,7 +36,8 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 160
 
-[node name="ShortCut" type="VBoxContainer" parent="HBoxC" unique_id=1510637142]
+[node name="ShortCutBtns" type="VBoxContainer" parent="SettingView" unique_id=1510637142]
+unique_name_in_owner = true
 z_index = 2
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
@@ -44,7 +47,7 @@ offset_transform_visual_only = false
 focus_mode = 1
 alignment = 1
 
-[node name="Btn1" type="Button" parent="HBoxC/ShortCut" unique_id=156541801]
+[node name="Btn1" type="Button" parent="SettingView/ShortCutBtns" unique_id=156541801]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
@@ -53,7 +56,7 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
 text = "常规"
 
-[node name="Btn2" type="Button" parent="HBoxC/ShortCut" unique_id=1013103172]
+[node name="Btn2" type="Button" parent="SettingView/ShortCutBtns" unique_id=1013103172]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
@@ -61,7 +64,7 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
 text = "音频"
 
-[node name="Btn3" type="Button" parent="HBoxC/ShortCut" unique_id=619785561]
+[node name="Btn3" type="Button" parent="SettingView/ShortCutBtns" unique_id=619785561]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
@@ -69,7 +72,7 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
 text = "生成"
 
-[node name="Btn4" type="Button" parent="HBoxC/ShortCut" unique_id=1115311117]
+[node name="Btn4" type="Button" parent="SettingView/ShortCutBtns" unique_id=1115311117]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
@@ -77,7 +80,7 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
 text = "演奏"
 
-[node name="Btn5" type="Button" parent="HBoxC/ShortCut" unique_id=1128822496]
+[node name="Btn5" type="Button" parent="SettingView/ShortCutBtns" unique_id=1128822496]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
@@ -85,7 +88,7 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
 text = "外观"
 
-[node name="Btn6" type="Button" parent="HBoxC/ShortCut" unique_id=1692895041]
+[node name="Btn6" type="Button" parent="SettingView/ShortCutBtns" unique_id=1692895041]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
@@ -93,7 +96,7 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
 text = "界面"
 
-[node name="Btn7" type="Button" parent="HBoxC/ShortCut" unique_id=1566842465]
+[node name="Btn7" type="Button" parent="SettingView/ShortCutBtns" unique_id=1566842465]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 focus_neighbor_right = NodePath("../../SettingList/GridC")
@@ -102,7 +105,8 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_tf36t")
 text = "关于"
 
-[node name="SettingList" type="ScrollContainer" parent="HBoxC" unique_id=864187716]
+[node name="SettingList" type="ScrollContainer" parent="SettingView" unique_id=864187716]
+unique_name_in_owner = true
 z_index = 1
 custom_minimum_size = Vector2(800, 0)
 clip_contents = false
@@ -117,7 +121,7 @@ script = ExtResource("2_3x48f")
 container_path = NodePath("GridC")
 list_item_class = "res://UI/Views/SettingView/SettingListItem.tscn"
 
-[node name="GridC" type="GridContainer" parent="HBoxC/SettingList" unique_id=397882809]
+[node name="GridC" type="GridContainer" parent="SettingView/SettingList" unique_id=397882809]
 propagate_maximum_size = false
 layout_mode = 2
 size_flags_horizontal = 3
@@ -128,7 +132,8 @@ theme_override_constants/h_separation = 60
 theme_override_constants/v_separation = 20
 columns = 2
 
-[node name="AboutPage" type="Panel" parent="HBoxC" unique_id=702840665]
+[node name="AboutPage" type="Panel" parent="SettingView" unique_id=702840665]
+unique_name_in_owner = true
 visible = false
 z_index = 1
 custom_minimum_size = Vector2(800, 0)
@@ -138,7 +143,7 @@ size_flags_stretch_ratio = 5.0
 offset_transform_enabled = true
 theme_override_styles/panel = SubResource("StyleBoxFlat_xkn3i")
 
-[node name="Project" type="HBoxContainer" parent="HBoxC/AboutPage" unique_id=392165728]
+[node name="Project" type="HBoxContainer" parent="SettingView/AboutPage" unique_id=392165728]
 custom_minimum_size = Vector2(0, 250)
 layout_mode = 1
 anchors_preset = -1
@@ -149,7 +154,7 @@ offset_bottom = 250.0
 grow_horizontal = 2
 alignment = 1
 
-[node name="Icon" type="TextureRect" parent="HBoxC/AboutPage/Project" unique_id=2089133608]
+[node name="Icon" type="TextureRect" parent="SettingView/AboutPage/Project" unique_id=2089133608]
 custom_minimum_size = Vector2(250, 250)
 layout_mode = 2
 offset_transform_enabled = true
@@ -159,24 +164,24 @@ texture = ExtResource("3_s6epo")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Info" type="VBoxContainer" parent="HBoxC/AboutPage/Project" unique_id=166152430]
+[node name="Info" type="VBoxContainer" parent="SettingView/AboutPage/Project" unique_id=166152430]
 custom_minimum_size = Vector2(600, 0)
 layout_mode = 2
 theme_override_constants/separation = 30
 alignment = 1
 
-[node name="Name" type="Label" parent="HBoxC/AboutPage/Project/Info" unique_id=504147345]
+[node name="Name" type="Label" parent="SettingView/AboutPage/Project/Info" unique_id=504147345]
 layout_mode = 2
 theme_override_font_sizes/font_size = 45
 text = "TouHou Mix Cumunity Edition"
 
-[node name="Version" type="Label" parent="HBoxC/AboutPage/Project/Info" unique_id=740686161]
+[node name="Version" type="Label" parent="SettingView/AboutPage/Project/Info" unique_id=740686161]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "v1.0.0.645"
 horizontal_alignment = 2
 
-[node name="Line" type="PanelContainer" parent="HBoxC/AboutPage" unique_id=1810988007]
+[node name="Line" type="PanelContainer" parent="SettingView/AboutPage" unique_id=1810988007]
 custom_minimum_size = Vector2(0, 4)
 layout_mode = 1
 anchors_preset = -1
@@ -189,7 +194,7 @@ size_flags_horizontal = 4
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_2rkhg")
 
-[node name="TabContainer" type="TabContainer" parent="HBoxC/AboutPage" unique_id=2082593045]
+[node name="TabContainer" type="TabContainer" parent="SettingView/AboutPage" unique_id=2082593045]
 propagate_maximum_size = false
 clip_contents = true
 layout_mode = 1
@@ -207,13 +212,13 @@ tab_0/title = "关于项目"
 tab_1/title = "许可证"
 tab_2/title = "版本历史"
 
-[node name="About" type="ScrollContainer" parent="HBoxC/AboutPage/TabContainer" unique_id=1371600096]
+[node name="About" type="ScrollContainer" parent="SettingView/AboutPage/TabContainer" unique_id=1371600096]
 layout_mode = 2
 horizontal_scroll_mode = 0
 metadata/_tab_index = 0
 metadata/_tab_name = "关于项目"
 
-[node name="Margin" type="MarginContainer" parent="HBoxC/AboutPage/TabContainer/About" unique_id=919635480]
+[node name="Margin" type="MarginContainer" parent="SettingView/AboutPage/TabContainer/About" unique_id=919635480]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/margin_left = 24
@@ -221,31 +226,32 @@ theme_override_constants/margin_top = 16
 theme_override_constants/margin_right = 24
 theme_override_constants/margin_bottom = 24
 
-[node name="text" type="RichTextLabel" parent="HBoxC/AboutPage/TabContainer/About/Margin" unique_id=919635479]
+[node name="AboutProjectText" type="RichTextLabel" parent="SettingView/AboutPage/TabContainer/About/Margin" unique_id=919635479]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-mouse_filter = 0
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
-autowrap_mode = 3
 
-[node name="License" type="ScrollContainer" parent="HBoxC/AboutPage/TabContainer" unique_id=1468964403]
+[node name="License" type="ScrollContainer" parent="SettingView/AboutPage/TabContainer" unique_id=1468964403]
 visible = false
 layout_mode = 2
 metadata/_tab_index = 1
 metadata/_tab_name = "许可证"
 
-[node name="text" type="RichTextLabel" parent="HBoxC/AboutPage/TabContainer/License" unique_id=1219638257]
+[node name="LicenseText" type="RichTextLabel" parent="SettingView/AboutPage/TabContainer/License" unique_id=1219638257]
+unique_name_in_owner = true
 layout_mode = 2
 
-[node name="History" type="Panel" parent="HBoxC/AboutPage/TabContainer" unique_id=1475621820]
+[node name="History" type="Panel" parent="SettingView/AboutPage/TabContainer" unique_id=1475621820]
 visible = false
 layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxEmpty_2rkhg")
 metadata/_tab_index = 2
+metadata/_tab_name = "版本历史"
 
-[node name="Update" type="HBoxContainer" parent="HBoxC/AboutPage/TabContainer/History" unique_id=892804860]
+[node name="Update" type="HBoxContainer" parent="SettingView/AboutPage/TabContainer/History" unique_id=892804860]
 custom_minimum_size = Vector2(0, 50)
 layout_mode = 1
 anchors_preset = -1
@@ -257,26 +263,29 @@ grow_horizontal = 2
 theme_override_constants/separation = 25
 alignment = 2
 
-[node name="Status" type="Label" parent="HBoxC/AboutPage/TabContainer/History/Update" unique_id=892804861]
+[node name="UpdateStatusText" type="Label" parent="SettingView/AboutPage/TabContainer/History/Update" unique_id=892804861]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 24
 vertical_alignment = 1
 
-[node name="AutoUpdate" type="Button" parent="HBoxC/AboutPage/TabContainer/History/Update" unique_id=1877191385]
+[node name="AutoUpdateBtn" type="Button" parent="SettingView/AboutPage/TabContainer/History/Update" unique_id=1877191385]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 toggle_mode = true
 text = "自动检查更新"
 
-[node name="ManualUpdate" type="Button" parent="HBoxC/AboutPage/TabContainer/History/Update" unique_id=1792173923]
+[node name="ManualUpdateBtn" type="Button" parent="SettingView/AboutPage/TabContainer/History/Update" unique_id=1792173923]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "手动检查更新"
 
-[node name="Content" type="ScrollContainer" parent="HBoxC/AboutPage/TabContainer/History" unique_id=793487029]
+[node name="Content" type="ScrollContainer" parent="SettingView/AboutPage/TabContainer/History" unique_id=793487029]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -289,7 +298,7 @@ grow_horizontal = 2
 grow_vertical = 2
 horizontal_scroll_mode = 0
 
-[node name="Margin" type="MarginContainer" parent="HBoxC/AboutPage/TabContainer/History/Content" unique_id=1893114995]
+[node name="Margin" type="MarginContainer" parent="SettingView/AboutPage/TabContainer/History/Content" unique_id=1893114995]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/margin_left = 8
@@ -297,22 +306,17 @@ theme_override_constants/margin_top = 8
 theme_override_constants/margin_right = 8
 theme_override_constants/margin_bottom = 8
 
-[node name="RichTextLabel" type="RichTextLabel" parent="HBoxC/AboutPage/TabContainer/History/Content/Margin" unique_id=1893114994]
+[node name="VersionHistoryText" type="RichTextLabel" parent="SettingView/AboutPage/TabContainer/History/Content/Margin" unique_id=1893114994]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-mouse_filter = 0
 bbcode_enabled = true
 fit_content = true
 scroll_active = false
-autowrap_mode = 3
 
-[node name="ResourceView" parent="." instance=ExtResource("5_resourceview")]
+[node name="ResourceView" parent="." unique_id=1766938644 instance=ExtResource("5_resourceview")]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
 offset_left = -1920.0
 offset_right = -1920.0
-grow_horizontal = 2
-grow_vertical = 2

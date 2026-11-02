@@ -115,7 +115,7 @@ func _format_created_at(value: String) -> String:
 func setup_avatar(avatar_url: String) -> void:
 	if avatar_url.is_empty() or NetManager.instance == null or not NetManager.instance.is_online:
 		return
-	var img_node := get_node_or_null("HBox/Avator/img")
+	var img_node := get_node_or_null("HBox/Avator/Img")
 	if img_node == null:
 		return
 	var full_url := "%s%s" % [NetManager.instance.server_url, avatar_url]

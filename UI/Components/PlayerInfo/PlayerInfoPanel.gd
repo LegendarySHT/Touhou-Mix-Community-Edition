@@ -27,17 +27,10 @@ const TAB_OFFSET_TOP_COLLAPSED := 10.0
 # TabC 右侧预留（给 RB_Btn 等留位置）
 const TAB_RIGHT_RESERVE_NORM := 150.0
 
-# ========== 节点 ==========
-@onready var info_panel_btn: SkewButton = $InfoPanelBtn
-@onready var info_tab_c: PlayerInfoContent = $InfoPanelBtn/TabC
-@onready var _btn_styleboxes: Array[StyleBoxFlat] = [
-	info_panel_btn.get_theme_stylebox("normal"),
-	info_panel_btn.get_theme_stylebox("pressed"),
-	info_panel_btn.get_theme_stylebox("hover"),
-]
-@onready var shader_overlay: ColorRect = $ExpandPanelShader
-@onready var shortcut_menu = get_node_or_null(PathRegistry.SHORTCUT_MENU)
-@onready var rb_btn = get_node_or_null(PathRegistry.RB_BTN)
+# 外部引用
+@onready var info_panel_btn: Button = %InfoPanelBtn
+@onready var shortcut_menu := Shortcut_Menu.instance
+@onready var rb_btn := RB_Btn.instance
 
 # ========== 运行时 ==========
 var _state: State = State.LOGGED_OUT
@@ -47,9 +40,9 @@ var _saved_rb_stat = -1
 
 func _ready() -> void:
 	# 跨场景信号：内容容器的登录提交 / 登出 / 详情切换 → 状态机
-	info_tab_c.login_submitted.connect(set_logged_in)
-	info_tab_c.logout_submitted.connect(set_logged_out)
-	info_tab_c.expand_toggled.connect(_on_expand_toggled)
+	%Tabs.login_submitted.connect(set_logged_in)
+	%Tabs.logout_submitted.connect(set_logged_out)
+	%Tabs.expand_toggled.connect(_on_expand_toggled)
 	# 监听认证状态变化（AuthManager 在 Main._ready 中才创建，
 	# 其 _ready 恢复会话后 emit auth_changed，此处需要响应）
 	if not EvtBus.auth_changed.is_connected(_on_auth_changed):
@@ -130,20 +123,20 @@ func _animate_to_state(s: State) -> void:
 func _is_expanded(s: State) -> bool:
 	return s == State.EXPANDED or s == State.LOGGED_IN_EXPANDED or s == State.FULL_EXPANDED
 
-## 内容切换：MiniInfo / LogIn / Summary 用 TabContainer.current_tab 切换；
+## 内容切换：MiniInfo / LogInPage / Summary 用 TabContainer.current_tab 切换；
 ## 全屏详情由 Main 下的独立 ProfileView 承担，此时 TabC 整体隐藏，只露出面板底色。
 func _apply_content_visibility(s: State) -> void:
-	info_tab_c.visible = s != State.FULL_EXPANDED
+	%Tabs.visible = s != State.FULL_EXPANDED
 	if not _is_expanded(s):
 		# 收起状态：MiniInfo (tab 0)
-		info_tab_c.current_tab = 0
-		info_tab_c.apply_mini_visibility(s == State.LOGGED_OUT)
+		%Tabs.current_tab = 0
+		%Tabs.apply_mini_visibility(s == State.LOGGED_OUT)
 	elif s == State.EXPANDED:
 		# 登录/注册表单 (tab 1)
-		info_tab_c.current_tab = 1
+		%Tabs.current_tab = 1
 	else:
 		# LOGGED_IN_EXPANDED → tab 2 概要页；FULL_EXPANDED → 概要页留在下面，由 ProfileView 覆盖
-		info_tab_c.apply_profile_visibility(s == State.FULL_EXPANDED)
+		%Tabs.apply_profile_visibility(s == State.FULL_EXPANDED)
 
 # ========== 面板几何 ==========
 
@@ -191,50 +184,49 @@ func _get_geometry_params(s: State) -> Dictionary:
 
 func _animate_panel_geometry(s: State, t: Tween) -> void:
 	var p := _get_geometry_params(s)
-	t.tween_property(info_panel_btn, "offset_transform_position", Vector2(p.margin, 0), ANIM_DURATION)
-	t.tween_property(info_panel_btn, "offset_left", p.offset.x-10, ANIM_DURATION)
-	t.tween_property(info_panel_btn, "offset_top", p.offset.y, ANIM_DURATION)
-	for sb in _btn_styleboxes:
+	t.tween_property(%InfoPanelBtn, "offset_transform_position", Vector2(p.margin, 0), ANIM_DURATION)
+	t.tween_property(%InfoPanelBtn, "offset_left", p.offset.x-10, ANIM_DURATION)
+	t.tween_property(%InfoPanelBtn, "offset_top", p.offset.y, ANIM_DURATION)
+	for sb in [%InfoPanelBtn.get_theme_stylebox("normal"),
+			%InfoPanelBtn.get_theme_stylebox("pressed"),
+			%InfoPanelBtn.get_theme_stylebox("hover")]:
 		t.tween_property(sb, "skew", Vector2(p.skew, 0), ANIM_DURATION)
-	t.tween_property(info_panel_btn, "skew_x", p.skew, ANIM_DURATION)
-	t.tween_property(info_tab_c, "offset_top", p.tab_top, ANIM_DURATION)
-	t.tween_property(info_tab_c, "offset_bottom", 0, ANIM_DURATION)
-	t.tween_property(info_tab_c, "offset_left", p.margin + p.tab_left_extra, ANIM_DURATION)
-	t.tween_property(info_tab_c, "offset_right", -p.margin - max(TAB_RIGHT_RESERVE_NORM, p.tab_left_extra), ANIM_DURATION)
+	t.tween_property(%InfoPanelBtn, "skew_x", p.skew, ANIM_DURATION)
+	t.tween_property(%Tabs, "offset_top", p.tab_top, ANIM_DURATION)
+	t.tween_property(%Tabs, "offset_bottom", 0, ANIM_DURATION)
+	t.tween_property(%Tabs, "offset_left", p.margin + p.tab_left_extra, ANIM_DURATION)
+	t.tween_property(%Tabs, "offset_right", -p.margin - max(TAB_RIGHT_RESERVE_NORM, p.tab_left_extra), ANIM_DURATION)
 
 # ========== Tip ==========
 
 func _animate_tip(s: State, t: Tween) -> void:
 	match s:
 		State.LOGGED_OUT:
-			t.tween_property(info_tab_c.tip, "custom_minimum_size:x", TIP_WIDTH_LOGGED_OUT, ANIM_DURATION)
+			t.tween_property(%Tabs.tip, "custom_minimum_size:x", TIP_WIDTH_LOGGED_OUT, ANIM_DURATION)
 		State.LOGGED_IN:
-			t.tween_property(info_tab_c.tip, "custom_minimum_size:x", TIP_WIDTH_LOGGED_IN, ANIM_DURATION)
+			t.tween_property(%Tabs.tip, "custom_minimum_size:x", TIP_WIDTH_LOGGED_IN, ANIM_DURATION)
 		_:
 			pass
 
 # ========== 遮罩 ==========
 
 func _animate_overlay(s: State, t: Tween) -> void:
-	if not shader_overlay:
-		return
 	if _is_expanded(s):
-		shader_overlay.visible = true
-		t.tween_property(shader_overlay, "modulate:a", 1.0, ANIM_DURATION)
+		%ExpandPanelShader.visible = true
+		t.tween_property(%ExpandPanelShader, "modulate:a", 1.0, ANIM_DURATION)
 	else:
-		t.tween_property(shader_overlay, "modulate:a", 0.0, ANIM_DURATION)
+		t.tween_property(%ExpandPanelShader, "modulate:a", 0.0, ANIM_DURATION)
 		t.chain().tween_callback(func() -> void:
-			if not _is_expanded(_state) and shader_overlay:
-				shader_overlay.visible = false
+			if not _is_expanded(_state):
+				%ExpandPanelShader.visible = false
 		)
 
 # ========== ShortCutMenu 联动 ==========
 
 func _play_shortcut_menu_exit() -> void:
 	# 若快捷菜单内部面板（排序/收藏页）已展开，先自动收起再整体退场
-	if shortcut_menu and shortcut_menu.has_method("collapse_panel"):
-		shortcut_menu.collapse_panel()
-	if shortcut_menu and shortcut_menu.visible and shortcut_menu.has_method("play_transition_animation"):
+	shortcut_menu.collapse_panel()
+	if shortcut_menu.visible:
 		shortcut_menu.play_transition_animation(true)
 
 func _play_shortcut_menu_enter() -> void:
@@ -244,7 +236,7 @@ func _play_shortcut_menu_enter() -> void:
 	var st := UiStatMGR.current_state
 	if st != UIStateManager.UIState.ALBUM_VIEW and st != UIStateManager.UIState.SONG_VIEW and st != UIStateManager.UIState.SORTED_VIEW:
 		return
-	if shortcut_menu and not shortcut_menu.visible and shortcut_menu.has_method("play_transition_animation"):
+	if not shortcut_menu.visible:
 		shortcut_menu.play_transition_animation(false)
 
 # ========== RB_Btn 联动 ==========
@@ -335,4 +327,4 @@ func expand_full() -> void:
 
 ## 更新玩家数据并刷新显示
 func update_player_data(data: Dictionary) -> void:
-	info_tab_c.update_player_data(data)
+	%Tabs.update_player_data(data)

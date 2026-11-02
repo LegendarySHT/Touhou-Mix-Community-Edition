@@ -42,15 +42,6 @@ var _lib_data_fields: Array = [
 var _last_sort_sig := ""
 var _open: bool = false
 
-@onready var _search_edit: LineEdit = $SearchRow/SearchEdit
-@onready var _search_icon: TextureRect = $SearchRow/SearchEdit/SearchBtn
-@onready var _filter_status_btn: Button = $SearchRow/FilterStatusBtn
-@onready var _filter_data_btn: Button = $SearchRow/FilterDataBtn
-@onready var _sort_order_btn: Button = $SearchRow/SortOrderBtn
-@onready var _library_empty: Label = $LibraryList/ListContent/ListEmpty
-@onready var _lib_scroll: ScrollContainer = $LibraryList
-@onready var _list_content: Control = $LibraryList/ListContent
-
 func _ready() -> void:
 	ThemeMGR.register_theme_applier(self)
 	apply_theme()
@@ -65,8 +56,7 @@ func apply_theme() -> void:
 	if sb != null:
 		sb.bg_color = ThemeMGR.get_color("surface", sb.bg_color)
 	# TextureButton 没有 icon_*_color 主题项，放大镜贴图只能逐节点染色
-	if _search_icon != null:
-		_search_icon.self_modulate = ThemeMGR.get_color("text_primary", Color.WHITE)
+	%SearchIcon.self_modulate = ThemeMGR.get_color("text_primary", Color.WHITE)
 
 ## 页面激活时预载：池子 + 首次排序请求（异步）。不提前做的话，点曲库那一刻
 ## 卡片实例化 + DB 查询全挤在一帧，音频会卡一下导致人声/MIDI 错位。
@@ -132,8 +122,6 @@ func _animate_closed() -> void:
 func _ensure_library_pool() -> void:
 	if _vlist != null:
 		return
-	if _lib_scroll == null or _list_content == null:
-		return
 	_vlist = VirtualListLib.new()
 	_vlist.columns = LIBRARY_COLUMNS
 	_vlist.row_gap = LIBRARY_ROW_GAP
@@ -141,7 +129,7 @@ func _ensure_library_pool() -> void:
 	_vlist.margin_rows = LIBRARY_MARGIN_ROWS
 	_vlist.on_row_ready = _on_card_ready
 	_vlist.on_row_bind = _on_card_bind
-	_vlist.setup(_lib_scroll, _list_content, CARD_SCENE)
+	_vlist.setup(%LibraryScroll, %LibraryListContent, CARD_SCENE)
 
 
 ## 池卡首次创建：只连信号（位置/尺寸/offset_transform 由 VirtualList 统一接管）
@@ -192,20 +180,14 @@ func _on_filter_data_pressed() -> void:
 	_apply_sort_icon()
 	_request_sort()
 
-## 按当前状态刷新三个按钮的图标（AtlasTexture.region 切换，同 ShortCutMenu）
+## 按当前状态刷新三个按钮的图标（AtlasTexture.region 切换）
 func _apply_sort_icon() -> void:
-	var st := _filter_status_btn.icon as AtlasTexture
-	if st != null:
-		st.region = STATUS_REGION[_lib_status]
-	var dt := _filter_data_btn.icon as AtlasTexture
-	if dt != null:
-		dt.region = DATA_REGION[_lib_field]
-	var ot := _sort_order_btn.icon as AtlasTexture
-	if ot != null:
-		ot.region = ASC_REGION if _lib_direction == SortingEngine.SortDirection.ASCENDING 			else DESC_REGION
+	%FilterStatusBtn.icon.region = STATUS_REGION[_lib_status]
+	%FilterDataBtn.icon.region = DATA_REGION[_lib_field]
+	%SortOrderBtn.icon.region = ASC_REGION if _lib_direction == SortingEngine.SortDirection.ASCENDING else DESC_REGION
 
 func _request_sort() -> void:
-	var q := _search_edit.text.strip_edges()
+	var q: String = %SearchEdit.text.strip_edges()
 	var sig := "%d|%d|%d|%s" % [_lib_status, _lib_field, _lib_direction, q]
 	if sig == _last_sort_sig and not _lib_items.is_empty():
 		return
@@ -219,7 +201,7 @@ func _request_sort() -> void:
 ## （照 SortedMidiView 的 refecth 分支——增量对齐会残留旧数据）
 func _on_library_items_ready() -> void:
 	_lib_items = SortEngine.get_items()
-	_library_empty.visible = _lib_items.is_empty()
+	%LibraryEmpty.visible = _lib_items.is_empty()
 	if _vlist == null:
 		return
 	# reset_scroll=true：内容换了一批，带着旧滚动位置会停在莫名其妙的段；再全量重绑（含入场动画）

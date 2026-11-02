@@ -4,15 +4,26 @@
 class_name AlbumListItem
 extends CoverListItemBase
 
-## 引用节点路径
+## 引用节点
 @onready var album_name_label: Label = $AlbumName
 @onready var abbr_label: Label = $Abbr
 @onready var line: Control = $Line
-@onready var song_count_label: Label = $SongCount
+@onready var song_count_label: Label = %SongCount
 # cover_texture 继承自 CoverListItemBase，在 _ready() 中赋值
 
 ## 专辑轻量投影数据（ChartDB.GetSortedAlbumItems 返回的字典）
 var item_dict: Dictionary = {}
+
+## 歌曲计数圆形标签的背景色（列表容器按主题写入）
+## 场景内联 StyleBox 跨实例共享，写任意一个列表项即同步全部专辑列表项与 SelectedAlbum 头部卡片
+var song_count_accent: Color = Color.WHITE:
+	set(value):
+		song_count_accent = value
+		if song_count_label == null:
+			return
+		var sb := song_count_label.get_theme_stylebox("normal") as StyleBoxFlat
+		if sb:
+			sb.bg_color = value
 
 ## 展开动画补间
 var expand_tween: Tween
@@ -21,7 +32,7 @@ var expand_tween: Tween
 var _has_ready: bool = false
 
 func _ready() -> void:
-	cover_texture = $C/cover
+	cover_texture = $C/Cover
 	# 显示填充由 fill_display() 统一驱动（Phase B），_ready 不再阻塞等待信号
 	if name == "SelectedAlbum" and self.button_pressed:
 		on_item_button_toggled(true)

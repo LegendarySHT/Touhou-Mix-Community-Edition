@@ -34,7 +34,8 @@ toggle_mode = true
 script = ExtResource("1_t5w3i")
 metadata/index = 0
 
-[node name="cover" type="TextureRect" parent="." unique_id=1008069035]
+[node name="Cover" type="TextureRect" parent="." unique_id=1008069035]
+unique_name_in_owner = true
 show_behind_parent = true
 custom_minimum_size = Vector2(0, 150)
 layout_mode = 1
@@ -60,6 +61,7 @@ grow_vertical = 0
 mouse_filter = 2
 
 [node name="MidiName" type="Label" parent="VBoxC" unique_id=2113026606]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(700, 45)
 layout_mode = 2
 size_flags_vertical = 8
@@ -85,6 +87,7 @@ size_flags_horizontal = 4
 mouse_filter = 2
 
 [node name="Author" type="Label" parent="VBoxC/HBoxC" unique_id=282130580]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 8
@@ -97,7 +100,8 @@ text = "Midi Author"
 vertical_alignment = 2
 clip_text = true
 
-[node name="status" type="Label" parent="VBoxC/HBoxC" unique_id=362322097]
+[node name="State" type="Label" parent="VBoxC/HBoxC" unique_id=362322097]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 8
@@ -109,6 +113,7 @@ text = "Pending"
 horizontal_alignment = 2
 
 [node name="UploadInfo" type="Label" parent="." unique_id=1065861902]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 1
 anchors_preset = -1

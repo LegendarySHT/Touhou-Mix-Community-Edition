@@ -1,10 +1,9 @@
-## 顶部横幅通知（Main 常驻，PathRegistry.NOTI_BANNER）
+## 顶部横幅通知
 ## 收到消息后从屏幕上方下滑入场 → 停留 HOLD_DURATION 秒 → 上滑出场。
 ## 显示期间再来消息则排队，等上一条走完依次弹出；鼠标悬停时暂停倒计时。
 ##
-## 外部调用（二选一）：
+## 外部调用：
 ##   EvtBus.notify("已保存", func(): print("clicked"))
-##   get_node_or_null(PathRegistry.NOTI_BANNER).notify("已保存", func(): print("clicked"))
 extends PanelContainer
 
 ## 点击横幅（回调之外额外广播，便于埋点/联动）
@@ -27,8 +26,6 @@ const MAX_WIDTH_RATIO := 0.8
 const BTN_CORNER_RADIUS := 18
 const BTN_STATE_ALPHA := {"hover": 0.06, "pressed": 0.12, "hover_pressed": 0.08}
 
-@onready var btn: Button = $btn
-
 ## 场景里配置的默认图标
 var _default_icon: Texture2D = null
 ## 当前显示中的条目 {text, on_click, icon}
@@ -42,12 +39,12 @@ var _playing := false
 var _clickable := false
 
 func _ready() -> void:
-	_default_icon = btn.icon
+	_default_icon = %NotiBannerBtn.icon
 	visible = false
 	offset_transform_position = Vector2.ZERO
-	btn.pressed.connect(_on_btn_pressed)
-	btn.mouse_entered.connect(_pause_tween)
-	btn.mouse_exited.connect(_resume_tween)
+	%NotiBannerBtn.pressed.connect(_on_btn_pressed)
+	%NotiBannerBtn.mouse_entered.connect(_pause_tween)
+	%NotiBannerBtn.mouse_exited.connect(_resume_tween)
 	EvtBus.notify_requested.connect(_on_notify_requested)
 	ThemeMGR.register_theme_applier(self)
 	apply_theme()
@@ -86,10 +83,10 @@ func apply_theme() -> void:
 		flat.set_border_width_all(1)
 		add_theme_stylebox_override("panel", flat)
 	_apply_btn_states()
-	btn.add_theme_color_override("font_color", ThemeMGR.get_color("text_primary"))
-	btn.add_theme_color_override("font_hover_color", ThemeMGR.get_color("text_primary"))
-	btn.add_theme_color_override("font_pressed_color", ThemeMGR.get_color("primary_light"))
-	btn.add_theme_color_override("font_focus_color", ThemeMGR.get_color("text_primary"))
+	%NotiBannerBtn.add_theme_color_override("font_color", ThemeMGR.get_color("text_primary"))
+	%NotiBannerBtn.add_theme_color_override("font_hover_color", ThemeMGR.get_color("text_primary"))
+	%NotiBannerBtn.add_theme_color_override("font_pressed_color", ThemeMGR.get_color("primary_light"))
+	%NotiBannerBtn.add_theme_color_override("font_focus_color", ThemeMGR.get_color("text_primary"))
 
 # ========== 内部 ==========
 
@@ -99,12 +96,12 @@ func _on_notify_requested(text: String, on_click: Callable) -> void:
 func _play_item(item: Dictionary) -> void:
 	_playing = true
 	_current = item
-	btn.text = str(item["text"])
+	%NotiBannerBtn.text = str(item["text"])
 	var icon: Texture2D = item["icon"]
-	btn.icon = icon if icon != null else _default_icon
+	%NotiBannerBtn.icon = icon if icon != null else _default_icon
 	var cb: Variant = item["on_click"]
 	_clickable = cb is Callable and cb.is_valid()
-	btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if _clickable else Control.CURSOR_ARROW
+	%NotiBannerBtn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if _clickable else Control.CURSOR_ARROW
 	_apply_btn_states()
 	visible = true
 	_apply_text_layout(str(item["text"]))
@@ -160,17 +157,18 @@ func _resume_tween() -> void:
 
 ## 按视口比例限制宽度，超长文本用省略号截断
 func _apply_text_layout(text: String) -> void:
-	var font := btn.get_theme_font("font")
-	var font_size := btn.get_theme_font_size("font_size")
+	var _btn: Button = %NotiBannerBtn
+	var font := _btn.get_theme_font("font")
+	var font_size := _btn.get_theme_font_size("font_size")
 	var text_w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-	var icon_w: float = float(btn.icon.get_width() + btn.get_theme_constant("h_separation")) if btn.icon != null else 0.0
+	var icon_w: float = float(_btn.icon.get_width() + _btn.get_theme_constant("h_separation")) if _btn.icon != null else 0.0
 	var padding := get_theme_stylebox("panel").get_minimum_size().x
 	var max_w := get_viewport_rect().size.x * MAX_WIDTH_RATIO
 	if text_w + icon_w + padding > max_w:
-		btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		_btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		size = Vector2(max_w, size.y)
 	else:
-		btn.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+		_btn.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
 		reset_size()
 
 ## flat 按钮在 hover/pressed 仍会画主题方角样式，统一换成贴合胶囊的圆角高亮。
@@ -182,6 +180,6 @@ func _apply_btn_states() -> void:
 			var flat := StyleBoxFlat.new()
 			flat.set_corner_radius_all(BTN_CORNER_RADIUS)
 			flat.bg_color = Color(tint.r, tint.g, tint.b, BTN_STATE_ALPHA[state])
-			btn.add_theme_stylebox_override(state, flat)
+			%NotiBannerBtn.add_theme_stylebox_override(state, flat)
 		else:
-			btn.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+			%NotiBannerBtn.add_theme_stylebox_override(state, StyleBoxEmpty.new())
