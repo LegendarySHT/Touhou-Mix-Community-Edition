@@ -69,17 +69,26 @@ static func get_category_name(category: int) -> String:
 static var _display_regex: RegEx = null
 
 ## 解析 "乐器名 (BX:PY)" 显示名，返回 {name, bank, program}
+## 显示名 → 解析结果。RegEx 搜索是这条路径的唯一开销，而同一批显示名每条轨道都会重解析一遍
+## （130+ 项 × N 条轨道）。显示名集合只在换音源时变，条目量级很小，缓存只增不减。
+## 返回的是共享实例，调用方只读不写（当前全部调用点都是 get）。
+static var _display_cache: Dictionary = {}
+
 static func parse_display_name(display: String) -> Dictionary:
+	if _display_cache.has(display):
+		return _display_cache[display] as Dictionary
 	if _display_regex == null:
 		_display_regex = RegEx.create_from_string(r"^(.*)\(B(\d+):P(\d+)\)$")
+	var result := {}
 	var m := _display_regex.search(display)
 	if m:
-		return {
+		result = {
 			"name": m.get_string(1).strip_edges(),
 			"bank": int(m.get_string(2)),
 			"program": int(m.get_string(3)),
 		}
-	return {}
+	_display_cache[display] = result
+	return result
 
 # 从显示名直接查大类索引（解析失败归为 Piano）
 static func get_category_from_display(display: String) -> int:

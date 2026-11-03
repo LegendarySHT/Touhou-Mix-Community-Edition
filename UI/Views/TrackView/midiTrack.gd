@@ -14,29 +14,11 @@ class_name MidiTrack
 @onready var reset_btn: TextureButton = %ResetBtn
 @onready var volume_slider: HSlider = %VolumeSlider
 @onready var volume_label: Label = %VolumeText
-# 乐器两级选择菜单：大类(MenuButton) → 具体乐器(子菜单)
-@onready var instruments_btn: MenuButton = %InstrumentBtn
+# 乐器两级选择菜单的入口按钮；真正的菜单是 TrackView 共用的 InstrumentMenu（按下时弹过来）
+@onready var instruments_btn: Button = %InstrumentBtn
 
-# category(int) -> Array[String] 该类下的乐器 display_name（由 instrument_options 分组）
-var _category_items: Dictionary = {}
 # 当前菜单按钮显示的乐器名（完整 display_name）
 var _current_display_name: String = ""
-# popup -> bool 滚动拖拽中标志（用于区分"点击选中"与"拖拽滚动"）
-var _drag_flags: Dictionary = {}
-# 主菜单（大类）滚动挂钩是否已完成（防止 rebuild 时重复连接信号）
-var _main_menu_hooked := false
-# 主菜单 ScrollContainer 缓存（子菜单弹出时复位其拖拽跟随状态）
-var _main_scroll: ScrollContainer = null
-# 主菜单拖拽中标志：区分"点击展开子菜单"与"拖拽滚动"，仅点击时才复位滚动，避免拖拽被中断
-var _main_dragging := false
-# 提前收起子菜单机制：子菜单打开后，主菜单（大类列表）失活收不到输入，
-# 点击只会被用于激活/收起子菜单而无法直接拖拽。因此当鼠标回到大类列表区域时
-# 主动收起子菜单，让主菜单恢复活性，下一次按下即可直接拖拽滚动。
-var _last_submenu_open_ms := 0      # 最近一次子菜单弹出的时间戳(ms)，防刚弹开就被悬停误关
-var _active_submenu: PopupMenu = null   # 当前打开的子菜单
-var _submenu_open := false          # 是否有任一子菜单打开
-# 子菜单弹出后停留的最短时长(ms)：此窗口期内即便鼠标在列表区域也不收起（防刚点开即关闭）
-const _SUBMENU_AUTOCLOSE_DELAY_MS := 200
 
 # 初始化时需要调节颜色的节点 除下面的之外还有self和enable_btn
 @onready var track_panel: Panel = %TrackPanel
@@ -81,12 +63,7 @@ func _ready():
 		push_error("轨道 %d 初始化失败: 无可用乐器选项" % track_index)
 		return
 
-	# 构建两级乐器菜单：大类 → 具体乐器（大类子菜单节点急切创建，具体乐器项首次打开时惰性填充）
-	if instruments_btn.get_popup().item_count == 0:
-		_build_category_items()
-		_build_instrument_menus()
-
-	GLogger.info("Track %d initialized with %d instrument categories" % [track_index, _category_items.size()], "MidiTrack")
+	GLogger.info("Track %d initialized with %d instrument options" % [track_index, instrument_options.size()], "MidiTrack")
 
 	# 从MidiData读取启用状态
 	if midi_data:
@@ -244,6 +221,7 @@ func set_instrument_category(category: int) -> void:
 
 func _connect_signals():
 	enable_btn.toggled.connect(_on_enable_toggled)
+	instruments_btn.pressed.connect(_on_instrument_pressed)
 	mute_btn.toggled.connect(_on_mute_toggled)
 	solo_btn.toggled.connect(_on_solo_toggled)
 
@@ -295,253 +273,30 @@ func setup_track(parent: Node, index: int, track_name: String, instruments: Arra
 		else:
 			instrument_options = instruments  # fallback
 
-	# 两级乐器菜单在 _ready 构建
 	_init_fin.emit()
 
-# 按大类把 instrument_options 分组成 _category_items（instrument_options 已按大类排序）
-func _build_category_items() -> void:
-	_category_items.clear()
-	for display in instrument_options:
-		var info := InstrumentCategory.parse_display_name(display)
-		var cat := InstrumentCategory.get_category(info.get("bank", 0), info.get("program", 0))
-		if not _category_items.has(cat):
-			_category_items[cat] = []
-		_category_items[cat].append(display)
+## 乐器按钮：把菜单请求转给 TrackView 共用的那个 InstrumentMenu（全页只有一个实例）。
+## 弹出位置由本行的按钮决定，选中结果回到 apply_instrument_selection。
+func _on_instrument_pressed() -> void:
+	if instrument_options.is_empty():
+		return   # 乐器表还没就绪（音源未完成加载）：弹一个空菜单没有意义
+	if parent_node == null or not parent_node.has_method("request_instrument_menu"):
+		return
+	parent_node.request_instrument_menu(self, instruments_btn, instrument_options,
+		_current_display_name)
 
-# 用 enable_btn.icon 的同源图集生成某个大类的菜单图标
-func _make_cat_icon(category: int) -> Texture2D:
-	var icon_tex := enable_btn.icon as AtlasTexture
-	if icon_tex == null or icon_tex.atlas == null:
+## 大类菜单图标用的图集（与启用按钮同源，所有音轨一致）
+func get_icon_atlas() -> Texture2D:
+	var tex := enable_btn.icon as AtlasTexture
+	if tex == null:
 		return null
-	var at := AtlasTexture.new()
-	at.atlas = icon_tex.atlas
-	at.region = InstrumentCategory.get_icon_region(category)
-	return at
+	return tex.atlas
 
-# 构建大类主菜单 + 各具体乐器子菜单。
-# 子菜单全部复用 TrackView 持有的全局共享 PopupMenu（add_submenu_item 要求节点构建时已是本弹窗的子元素，
-# 故在 _attach_shared_submenu 中 reparent 到本弹窗下；打开时的归属按当前音轨由 _on_main_menu_about_to_popup 决定）。
-func _build_instrument_menus() -> void:
-	var popup := instruments_btn.get_popup()
-	popup.clear()
-	_release_submenus()
-	_main_dragging = false
-
-	# 大类主菜单滚动支持（16 类超出屏幕时可触摸拖动滚动）
-	_setup_main_menu_scroll(popup)
-	# 主菜单弹出前把共享子菜单 reparent 到本弹窗并预填当前轨乐器项（此时才确定活动音轨）
-	if not popup.is_connected("about_to_popup", Callable(self, "_on_main_menu_about_to_popup")):
-		popup.about_to_popup.connect(_on_main_menu_about_to_popup)
-
-	# 禁用 hover 自动展开子菜单：仅点击大类项时才打开子菜单。
-	# 默认 hover 0.3s 就切换子菜单，拖拽滚动经过各分类项时频繁切换会打断/卡顿拖动；
-	# 设大延迟后鼠标未 hover 触发也能流畅拖动（点击仍由引擎 _activate_submenu 原生展开）。
-	popup.submenu_popup_delay = 100.0
-
-	popup.set_block_signals(true)
-	var idx := 0
-	for cat in _category_items.keys():
-		# 复用全局共享子菜单（reparent 到本弹窗下，供 add_submenu_item 相对名解析 + 引擎内嵌）
-		var sub : PopupMenu = parent_node.get_shared_submenu(cat)
-		_attach_shared_submenu(sub, cat)
-		popup.add_submenu_item(InstrumentCategory.CATEGORY_NAMES[cat], sub.name)
-		popup.set_item_id(idx, cat)
-		var icon := _make_cat_icon(cat)
-		if icon:
-			popup.set_item_icon(idx, icon)
-		idx += 1
-	popup.set_block_signals(false)
-
-# 归属共享子菜单：reparent 到本轨弹窗、清掉上一音轨遗留乐器项改装当前音轨、接管信号接线。
-# category meta 供选中回调定位大类（每个子菜单实例固定对应一个大类）。
-func _attach_shared_submenu(sub: PopupMenu, cat: int) -> void:
-	var popup := instruments_btn.get_popup()
-	if sub.get_parent() != popup:
-		# add_child 不能直接 reparent，须先从旧父（其它轨/本视图）摘下再挂到本弹窗
-		if sub.get_parent():
-			sub.get_parent().remove_child(sub)
-		popup.add_child(sub)
-	sub.clear()
-	sub.set_meta("category", cat)
-	var list: Array = _category_items.get(cat, [])
-	for i in list.size():
-		sub.add_item(list[i], i)
-	# 打开菜单即接管接线
-	_claim_submenu_wiring(sub)
-
-## 弹出菜单即接管共享子菜单的信号接线：先摘旧连接，再接本实例
-func _claim_submenu_wiring(sub: PopupMenu) -> void:
-	# 摘旧连接：只摘 MidiTrack 接过的。引擎自身也会给子菜单接 popup_hide（父弹窗的
-	# _submenu_hidden 子菜单状态跟踪，见 popup_menu.cpp add_submenu_item 等，已实测确认），
-	# 无脑全断会把引擎内部接线也杀掉，故按接收者类型过滤。
-	for sig in ["about_to_popup", "id_pressed", "popup_hide"]:
-		for c in sub.get_signal_connection_list(sig):
-			if c["callable"].get_object() is MidiTrack:
-				sub.disconnect(sig, c["callable"])
-	# 触摸滚动配置（与 TouchScrollOptionButton 机制一致）：PopupMenu 的内部 ScrollContainer
-	# 构造时即创建（引擎 popup_menu.cpp），此刻已可找到。
-	var scroll := _find_scroll_container(sub)
-	if scroll:
-		# 事件穿透到 ScrollContainer 实现原生触摸拖拽
-		_set_mouse_filter_recursive(scroll, Control.MOUSE_FILTER_PASS, true)
-		for c in scroll.get_signal_connection_list("gui_input"):
-			if c["callable"].get_object() is MidiTrack:
-				scroll.disconnect("gui_input", c["callable"])
-		scroll.gui_input.connect(_on_menu_scroll_gui_input.bind(sub))
-	sub.about_to_popup.connect(_on_submenu_about_to_popup.bind(sub))
-	sub.id_pressed.connect(_on_submenu_item_selected.bind(sub))
-	sub.popup_hide.connect(_on_submenu_hidden.bind(sub, scroll))
-
-# 主菜单弹出前，把所有共享子菜单 reparent 到本轨弹窗并预填本轨乐器项
-func _on_main_menu_about_to_popup() -> void:
-	if parent_node == null or not parent_node.has_method("get_shared_submenu"):
-		return
-	for cat in _category_items.keys():
-		var sub : PopupMenu = parent_node.get_shared_submenu(cat)
-		_attach_shared_submenu(sub, cat)
-
-# 共享子菜单不销毁，只从本弹窗移除交还 TrackView 持有，供其它音轨复用
-func _release_submenus() -> void:
-	if parent_node and parent_node.has_method("_reclaim_shared_submenus"):
-		parent_node._reclaim_shared_submenus()
-	_drag_flags.clear()
-
-# 大类主菜单（MenuButton popup）触摸滚动配置
-func _setup_main_menu_scroll(popup: PopupMenu) -> void:
-	if _main_menu_hooked:
-		return
-	_main_menu_hooked = true
-	var scroll := _find_scroll_container(popup)
-	if scroll == null:
-		return
-	_main_scroll = scroll
-	# 事件穿透到 ScrollContainer 实现原生触摸拖拽
-	_set_mouse_filter_recursive(scroll, Control.MOUSE_FILTER_IGNORE, true)
-	scroll.gui_input.connect(_on_main_scroll_gui_input)
-	popup.popup_hide.connect(_on_menu_hide.bind(popup, scroll))
-
-func _on_menu_scroll_gui_input(event: InputEvent, sub: PopupMenu) -> void:
-	# 新一轮按下开始时重置拖拽标志：上一次"拖拽滚动但未选中项"的标记不应残留到后续点击，
-	# 否则后续点击都会被误判成拖拽松手而无法选中（表现为按钮无效但 hover 正常）。
-	if (event is InputEventMouseButton or event is InputEventScreenTouch) and event.pressed:
-		_drag_flags[sub] = false
-	elif event is InputEventScreenDrag:
-		_drag_flags[sub] = true
-	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT):
-		_drag_flags[sub] = true
-
-# 主菜单拖拽检测：有拖拽位移时标记 _main_dragging，_on_submenu_about_to_popup 据此跳过复位；
-# 松手时清除标志并复位卡住的拖拽跟随（主菜单打开子菜单时自身不关闭，popup_hide 不会触发，
-# 只能靠松手事件里 set_v_scroll 内部 _cancel_drag() 停住"松手后还滚动"的残留跟随）
-func _on_main_scroll_gui_input(event: InputEvent) -> void:
-	if event is InputEventScreenDrag:
-		_main_dragging = true
-	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT):
-		_main_dragging = true
-	elif (event is InputEventMouseButton or event is InputEventScreenTouch) and not event.pressed:
-		_main_dragging = false
-		if _main_scroll:
-			_main_scroll.set_v_scroll(_main_scroll.get_v_scroll())
-
-# 子菜单弹出时复位大类菜单 ScrollContainer 的拖拽跟随状态。
-# 松手弹出子菜单后，主菜单可能收不到松开事件导致 drag_touching 卡住，一直跟随鼠标滚动；
-# set_v_scroll(get_v_scroll()) 内部会 _cancel_drag() 停止跟随。
-# 仅"点击展开子菜单"（非拖拽）时复位：拖拽滚动中悬浮切到其它大类也会触发弹出，此时复位会中断拖拽。
-# 同时记录打开的子菜单并启用"提前收起"轮询：鼠标一回到大类列表区域就收起子菜单，主菜单即可直接拖拽。
-func _on_submenu_about_to_popup(sub: PopupMenu) -> void:
-	if _main_scroll and not _main_dragging:
-		_main_scroll.set_v_scroll(_main_scroll.get_v_scroll())
-	_active_submenu = sub
-	_submenu_open = true
-	_last_submenu_open_ms = Time.get_ticks_msec()
-	set_process(true)
-
-# 主菜单关闭时清除拖拽标志 + 重置 ScrollContainer 卡住的拖拽状态。
-# 主弹窗（instruments_btn 的 popup）随本轨场景创建/释放，popup_hide 接在本实例上不存在跨代际问题；
-# 共享子菜单的接线无需在此断：本轨释放时引擎自动摘除，换轨打开时由 _claim_submenu_wiring 摘旧接新。
-func _on_menu_hide(popup: PopupMenu, scroll: ScrollContainer) -> void:
-	# 主菜单关闭必然同时收起所有子菜单（popup 即本轨主弹窗）
-	_drag_flags.erase(popup)
-	_main_dragging = false
-	if _active_submenu:
-		_active_submenu = null
-	_submenu_open = false
-	set_process(false)
-	scroll.set_v_scroll(scroll.get_v_scroll())
-
-# 共享子菜单被收起（接线归本轨，回调即本实例；scroll 为接管接线时找到的内部
-# ScrollContainer，未找到时为 null）。仅清拖拽标志，不断接线——主菜单还开着，
-# 用户可能继续选其它大类，下次打开同一子菜单要还能用。
-func _on_submenu_hidden(sub: PopupMenu, scroll: ScrollContainer) -> void:
-	_drag_flags.erase(sub)
-	if _active_submenu == sub:
-		_active_submenu = null
-		_submenu_open = false
-		set_process(false)
-	if scroll:
-		scroll.set_v_scroll(scroll.get_v_scroll())
-
-# 提前收起子菜单轮询：仅当有子菜单打开时才运行（set_process 动态启停）。
-# 鼠标回到大类列表区域（主菜单窗口内、且不在子菜单窗口内）且超过最短停留时长后，
-# 主动收起子菜单，让主菜单恢复活性，下一次按下即可直接拖拽滚动。
-func _process(_delta: float) -> void:
-	if not _submenu_open or _active_submenu == null or _active_submenu.is_embedded():
-		set_process(false)
-		return
-	var now := Time.get_ticks_msec()
-	if now - _last_submenu_open_ms < _SUBMENU_AUTOCLOSE_DELAY_MS:
-		return
-	# 仍停留在"刚点开子菜单"所在行附近时不收起（避免误关）：用子菜单的纵向跨度作缓冲带
-	var popup := instruments_btn.get_popup()
-	var mouse := DisplayServer.mouse_get_position()
-	if not _window_contains(popup, mouse):
-		return
-	if _window_contains(_active_submenu, mouse):
-		return
-	# 鼠标已明确回到大类列表的其它区域 → 收起子菜单
-	_active_submenu.hide()
-
-# 判断某原生弹窗窗口是否包含某全局(OS)坐标点
-func _window_contains(win: Window, point: Vector2) -> bool:
-	return Rect2(Vector2(win.position), Vector2(win.size)).has_point(point)
-
-func _find_scroll_container(node: Node) -> ScrollContainer:
-	for child in node.get_children(true):
-		if child is ScrollContainer:
-			return child
-		var found := _find_scroll_container(child)
-		if found:
-			return found
-	return null
-
-func _set_mouse_filter_recursive(node: Node, filter: int, skip_root: bool = false) -> void:
-	if not skip_root and node is Control:
-		node.mouse_filter = filter
-	for child in node.get_children(true):
-		_set_mouse_filter_recursive(child, filter, false)
-
-# 选中某大类下的具体乐器，更新按钮显示并通知父节点应用（接线归本轨，回调即本实例）
-func _on_submenu_item_selected(id: int, sub: PopupMenu) -> void:
-	var category := int(sub.get_meta("category", -1))
-	var list: Array = _category_items.get(category, [])
-	if id < 0 or id >= list.size():
-		return
-	# 拖拽滚动后松手：不选中、不关闭（与 TouchScrollOptionButton 一致）
-	if _drag_flags.get(sub, false):
-		return
-	var display: String = list[id]
+## 共用菜单选中了某个乐器：更新本行显示，并把结果交给 TrackView 应用
+func apply_instrument_selection(display: String) -> void:
 	current_instrument = display
 	_current_display_name = display
 	instruments_btn.text = display
-	# 勾选切换到当前大类
-	var popup = instruments_btn.get_popup()
-	for i in popup.item_count:
-		popup.set_item_checked(i, false)
-	var cat_idx = popup.get_item_index(category)
-	if cat_idx >= 0:
-		popup.set_item_checked(cat_idx, true)
-	# hide_on_item_selection=false，需手动关闭子菜单
-	sub.hide()
 	if parent_node and parent_node.has_method("_on_track_instrument_changed"):
 		var info := InstrumentCategory.parse_display_name(display)
 		parent_node._on_track_instrument_changed(
@@ -551,26 +306,22 @@ func _on_submenu_item_selected(id: int, sub: PopupMenu) -> void:
 			info.get("program", 0),
 			info.get("name", ""))
 
-# 由外部设置当前显示的乐器并高亮对应大类（默认显示使用中的乐器，与原来 OptionButton 一致）
-func set_current_instrument(category: int, display_name: String) -> void:
+# 由外部设置当前显示的乐器（默认显示使用中的乐器，与原来 OptionButton 一致）。
+# 大类高亮由共用的 InstrumentMenu 在打开时按 _current_display_name 现算，这里不用管。
+func set_current_instrument(_category: int, display_name: String) -> void:
 	instruments_btn.text = display_name
 	current_instrument = display_name
 	_current_display_name = display_name
-	# 大类高亮通过勾选标记体现（PopupMenu 无 select，用 set_item_checked）
-	var popup := instruments_btn.get_popup()
-	var idx := popup.get_item_index(category)
-	if idx >= 0:
-		popup.set_item_checked(idx, true)
 
-# 外部（SoundFont 变更等）更新本轨道的乐器选项并重建两级菜单，保持当前乐器选中
+# 外部（SoundFont 变更等）更新本轨道的乐器选项，并保持当前乐器选中。
+# 菜单本身由共用的 InstrumentMenu 在下次打开时按新集合重建，这里不碰它。
 func refresh_instrument_options(regular: Array, drum: Array) -> void:
 	if track_channel == 9 and not drum.is_empty():
 		instrument_options = drum
 	elif not regular.is_empty():
 		instrument_options = regular
 
-	_build_category_items()
-	_build_instrument_menus()
+	# 菜单是 TrackView 共用的那一个，打开时会按乐器集合指纹自行重建，这里不用动它
 	_refresh_current_highlight()
 
 # 重建后重新应用当前乐器的显示与对应大类高亮

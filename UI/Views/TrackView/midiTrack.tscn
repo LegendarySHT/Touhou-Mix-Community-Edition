@@ -466,14 +466,14 @@ texture_pressed = SubResource("AtlasTexture_kpleu")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="InstrumentBtn" type="MenuButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=673420758]
+[node name="InstrumentBtn" type="Button" parent="HBoxC/MC/ControlPanel/GridC" unique_id=673420758]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(250, 50)
 layout_mode = 2
 size_flags_horizontal = 3
 focus_mode = 0
 theme_override_font_sizes/font_size = 32
-switch_on_hover = true
+flat = true
 
 [node name="ResetBtn" type="TextureButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=955571887]
 unique_name_in_owner = true

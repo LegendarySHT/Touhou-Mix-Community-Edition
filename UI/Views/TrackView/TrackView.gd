@@ -48,12 +48,10 @@ var instrument_options: Array = [] # 全局乐器列表（会被 _extract_instru
 var regular_instruments: Array = []  # 常规乐器
 var drum_instruments: Array = []     # GM/GS/GM2 鼓组 bank（B120+）
 
-# 全局共享的乐器子菜单（16 大类各一套，跨所有音轨复用），挂在本视图下避免随轨道场景释放。
-# 打开某轨主菜单时经 midiTrack._on_main_menu_about_to_popup reparent 到该轨弹窗下（见 get_shared_submenu），
-# 并由该轨接管信号接线（打开时接、关闭时断，见 midiTrack._claim_submenu_wiring）。
-var _shared_instrument_submenus: Dictionary = {}
-# 人声音频路径存在时相关组件会显示
-# vocal_file_path 现由 _vocal_controller 管理
+# 全页唯一的乐器两级菜单（大类 + 16 子菜单都在它下面）。各音轨行只在自己的按钮按下时
+# 请求它弹到自己下方，选中结果再回到那一行 —— 子菜单不再在弹窗之间搬家。
+const InstrumentMenuLib := preload("res://UI/Views/TrackView/InstrumentMenu.gd")
+var _instrument_menu: InstrumentMenuLib = null
 
 # 子系统控制器
 var _vocal_controller: VocalTrackController = null
@@ -154,9 +152,6 @@ func _load_midi(midi: MidiData) -> void:
 	# 清空独奏状态
 	solo_pairs.clear()
 	solo_mute_snapshot.clear()
-
-	# 收回全局共享的乐器子菜单（避免随旧轨道场景一起被释放）
-	_reclaim_shared_submenus()
 
 	# 清空现有的轨道
 	clear_items()
@@ -1352,31 +1347,16 @@ func _refresh_all_track_instruments() -> void:
 			item.refresh_instrument_options(regular_instruments, drum_instruments)
 			GLogger.info("Updated instrument options for track %d channel %d" % [item.track_index, item.track_channel], "TrackView")
 
-# ===== 全局共享的乐器子菜单 =====
-# 16 大类子菜单全程只创建一套（挂在 TrackView 下），所有音轨共用；
-# 打开某轨主菜单时由 midiTrack._ensure_submenus_attached reparent 到该轨弹窗下。
+# ===== 全页唯一的乐器菜单 =====
 
-## 取全局共享子菜单（不存在则创建一个裸 PopupMenu 挂在本视图下），category 为乐器大类号。
-## 本视图只负责"持有"让子菜单活得过轨道场景；信号接线由打开菜单的那个音轨接管
-func get_shared_submenu(category: int) -> PopupMenu:
-	if _shared_instrument_submenus.has(category):
-		var existing = _shared_instrument_submenus[category]
-		if existing != null and is_instance_valid(existing):
-			return existing
-	var sub := PopupMenu.new()
-	sub.name = "SharedSubmenu_%d" % category
-	sub.hide_on_item_selection = false  # 选中项由 MidiTrack 手动控制关闭
-	add_child(sub)  # 本视图持有；绑定到某轨弹窗后需调 _reclaim_shared_submenus 收回
-	_shared_instrument_submenus[category] = sub
-	return sub
-
-## 把共享子菜单从轨道弹窗收回本视图持有（不销毁），防止换谱/清轨时随轨道场景被释放
-func _reclaim_shared_submenus() -> void:
-	for cat in _shared_instrument_submenus:
-		var sub = _shared_instrument_submenus[cat]
-		if sub == null or not is_instance_valid(sub):
-			_shared_instrument_submenus[cat] = null
-			continue
-		if sub.get_parent() != self:
-			sub.get_parent().remove_child(sub)
-			add_child(sub)
+## 音轨行按下乐器按钮时调用：把共用菜单弹到那个按钮下方。
+## options 是该行当前可用的乐器列表（鼓轨与常规轨可能不同），菜单按它的指纹决定要不要重建。
+func request_instrument_menu(track: Node, anchor: Control, options: Array,
+		current_display: String) -> void:
+	if track == null or anchor == null:
+		return
+	if _instrument_menu == null or not is_instance_valid(_instrument_menu):
+		_instrument_menu = InstrumentMenuLib.new()
+		_instrument_menu.name = "InstrumentMenu"
+		add_child(_instrument_menu)
+	_instrument_menu.open_for(track, anchor, options, current_display)
