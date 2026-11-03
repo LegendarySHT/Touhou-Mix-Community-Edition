@@ -192,6 +192,7 @@ func _load_midi(midi: MidiData) -> void:
 	# 更新进度条最大范围
 	if midi.duration_ms > 0:
 		_set_display_total_time(midi.duration_ms)
+	midi_playback_manager.begin_preview_session(midi_playback_manager.chart_key_of(midi))
 	midi_playback_manager.claim_session(self)
 
 	# 新增：从加载的 MIDI 和 SoundFont 提取可用乐器选项
