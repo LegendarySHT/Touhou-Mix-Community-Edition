@@ -562,10 +562,37 @@ public partial class ChartDb : Node
         return doc == null ? "" : BsonConvert.GetStr(doc, "audio_path");
     }
 
+    /// <summary>中央封面目录：封面按 {coverHash}.{ext} 存于 res://，导入后为压缩纹理。</summary>
+    private const string CentralCoverDir = "res://Resources/Covers/";
+    /// <summary>中央封面的扩展名候选（coverHash 本身不带扩展名）。</summary>
+    private static readonly string[] CentralCoverExts = { "jpg", "jpeg", "png", "webp" };
+    /// <summary>coverHash → 解析结果（中央路径或回退路径），避免滚动时反复做存在性检查。</summary>
+    private readonly ConcurrentDictionary<string, string> _centralCoverMemo = new();
+
     public string GetCoverPath(string key)
     {
         var doc = FindDoc(key);
-        return doc == null ? "" : BsonConvert.GetStr(doc, "cover_path");
+        return doc == null ? "" : PreferCentralCover(doc, BsonConvert.GetStr(doc, "cover_path"));
+    }
+
+    /// <summary>
+    /// 优先返回中央封面目录里的已导入压缩纹理（res://Resources/Covers/{coverHash}.{ext}）：
+    /// 免运行时解码、显存更小；中央不存在时回退谱面自带的 cover_path（user:// 曲包内 cover.jpg）。
+    /// </summary>
+    private string PreferCentralCover(BsonDocument chart, string fallback)
+    {
+        var hash = BsonConvert.GetStr(chart, "coverHash");
+        if (string.IsNullOrEmpty(hash)) return fallback;
+        if (_centralCoverMemo.TryGetValue(hash, out var cached)) return cached;
+        string found = null;
+        foreach (var ext in CentralCoverExts)
+        {
+            var p = CentralCoverDir + hash + "." + ext;
+            if (ResourceLoader.Exists(p)) { found = p; break; }
+        }
+        found ??= fallback;
+        _centralCoverMemo[hash] = found;
+        return found;
     }
 
     /// <summary>
@@ -814,7 +841,7 @@ public partial class ChartDb : Node
                 return "";
             var firstMidiId = mv.AsArray[0].AsString;
             var chart = _charts.FindById(firstMidiId);
-            return chart == null ? "" : BsonConvert.GetStr(chart, "cover_path");
+            return chart == null ? "" : PreferCentralCover(chart, BsonConvert.GetStr(chart, "cover_path"));
         }
     }
 
@@ -831,7 +858,7 @@ public partial class ChartDb : Node
                 return "";
             var firstMidiId = mv.AsArray[0].AsString;
             var chart = _charts.FindById(firstMidiId);
-            return chart == null ? "" : BsonConvert.GetStr(chart, "cover_path");
+            return chart == null ? "" : PreferCentralCover(chart, BsonConvert.GetStr(chart, "cover_path"));
         }
     }
 

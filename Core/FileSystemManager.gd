@@ -2243,10 +2243,18 @@ func default_cover_if_missing(path: String) -> String:
 	_cover_exists_memo[path] = resolved
 	return resolved
 
-## 封面查询公共实现：按 file_hash / midi_id 反查 charts_index，返回封面路径
-## 未命中或为空返回默认封面路径；user:// 路径校验文件存在性
+## 封面查询公共实现：优先 DB 直查（ChartDB.GetCoverPath 会优先中央目录的已导入压缩纹理），
+## 回退内存 charts_index。未命中或为空返回默认封面路径；user:// 路径校验文件存在性
 func _cover_path_from_chart(file_hash: String, midi_id: String) -> String:
-	# 优先用 file_hash 反向索引查找
+	# 优先问 DB：中央目录 res://Resources/Covers/{coverHash} 的封面是已导入的压缩纹理，
+	# 加载免运行时解码、显存更小；只有中央封面不存在时 DB 才回退曲包内 user:// cover.jpg。
+	# 结果由 _cover_path_memo 记住，每个谱面只走一次 DB。
+	var db_key := file_hash if not file_hash.is_empty() else midi_id
+	if not db_key.is_empty():
+		var db_path := str(ChartDB.GetCoverPath(db_key))
+		if not db_path.is_empty():
+			return default_cover_if_missing(db_path)
+	# DB 未打开/未命中：回退内存索引
 	var result = lookup_chart(file_hash)
 	if result.is_empty():
 		result = lookup_chart(midi_id)
