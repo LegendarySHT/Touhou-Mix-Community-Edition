@@ -59,7 +59,7 @@ func _ready() -> void:
 
 	# 连接事件
 	eb.search_query_changed.connect(_on_search_query_changed)
-	eb.sort_finished.connect(_load_sorted_midis)
+	eb.sort_finished.connect(_on_sort_finished)
 	sm.state_changed.connect(_hide_label)
 	eb.favorite_selected_for_browse.connect(_on_favorite_selected_for_browse)
 
@@ -73,6 +73,10 @@ func _on_state_changed(old_state: UIStateManager.UIState, new_state: UIStateMana
 		clear_items()
 		current_items.clear()
 		_favorites_mode = false
+	# 离开期间攒下的排序结果：进页时补建（见 _on_sort_finished）
+	if new_state == work_state and _dirty_on_enter:
+		_dirty_on_enter = false
+		_rebuild_after_enter()
 
 func _process(delta):
 	super._process(delta)
@@ -89,6 +93,22 @@ func on_item_button_confirmed(index: int) -> void:
 	if midi and eb:
 		sm.change_state(UIStateManager.UIState.MIDI_VIEW)
 		eb.emit_midi_selected(midi.id, midi)
+
+## 排序结果回来时用户不一定在排序页：曲库 / MidiView 的筛选走同一个 SortEngine
+var _dirty_on_enter: bool = false
+
+func _on_sort_finished(refectch: bool = true) -> void:
+	if sm.current_state != work_state:
+		_dirty_on_enter = true
+		return
+	_load_sorted_midis(refectch)
+
+## 进页补建：延后一帧再建，让转场动画先起步（建列表是本页最贵的一帧）
+func _rebuild_after_enter() -> void:
+	await get_tree().process_frame
+	if not is_inside_tree() or sm.current_state != work_state:
+		return
+	_load_sorted_midis(true)
 
 ## 加载排序的MIDI列表（重建列表，切换筛选时跳回顶部并播放入场动画）
 func _load_sorted_midis(refectch: bool = true) -> void:

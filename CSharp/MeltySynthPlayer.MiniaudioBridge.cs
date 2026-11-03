@@ -68,6 +68,11 @@ public partial class MeltySynthPlayer
 			// 【跨线程】主线程 Play/Stop 写，后台换曲线程经 IsPlaying 读（决定换曲后要不要重新拉起
 			// 设备）。陈旧读会让设备该起不起 → 换完曲彻底静音，故 volatile。
 			private volatile bool _playing = false;
+			// 【跨线程】换曲静默门：主线程/后台换曲线程置位，音频回调读。
+			// 置位期间设备继续跑（不关流），但回调只出衰减静音、完全不碰 sequencer/合成器，
+			// 于是主线程可以在不关设备的前提下安全地换 sequencer 内容。
+			// volatile：陈旧 false 会让回调在换曲中途渲染半成品（爆音/幽灵音），必须保证可见。
+			private volatile bool _renderMuted = false;
 			// 【跨线程】主线程在 seek 后设置（PostSeekSilenceFrames），音频回调读取并递减。
 			// 无可见性保证时那次"seek 后静音"可能整段丢失 → seek 会听到瞬态攻击音。
 			// 递减方只有回调自己（单回调线程），偶发丢一次递减只是多静音一个 period（无害）。
@@ -950,6 +955,12 @@ public void ResetEndOfSequence()
 
 			public bool IsPlaying => _playing;
 
+			/// <summary>换曲静默门：true 期间设备保持运行、回调只出衰减静音。
+			/// 语义等价于「关设备的静默期」，但不付 ma_bridge_stop/start 的关流开流代价。
+			/// 置位后回调不再触碰 sequencer/合成器，换曲方可在锁内随意替换它们。</summary>
+			public void SetRenderMuted(bool muted) => _renderMuted = muted;
+			public bool RenderMuted => _renderMuted;
+
 			// ====================================================================
 			// 音符事件
 			// ====================================================================
@@ -1153,6 +1164,16 @@ public void ResetEndOfSequence()
 				{
 					lock (_synthLock)
 					{
+						// 换曲静默窗：设备还在跑，但 sequencer/合成器这一窗归换曲线程独占。
+						// FillWithSilence 自带指数衰减，硬切处不会爆音；位置不推进，
+						// 新曲起播时 sequencer 仍从 0 开始。
+						if (_renderMuted)
+						{
+							FillWithSilence(pOutput, framesRequested);
+							_lastRenderTimestampTicks = Stopwatch.GetTimestamp();
+							return;
+						}
+
 						if (_sequencer == null || _autoSynth == null)
 						{
 							FillWithSilence(pOutput, framesRequested);

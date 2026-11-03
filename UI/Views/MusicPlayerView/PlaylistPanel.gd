@@ -65,9 +65,19 @@ var _vlist: VirtualListLib = null
 ## 列表总条目数（跟随逻辑用；池的 total 由 _sync_row_window 按 manager 校正）
 var _playlist_total: int = 0
 
+## 首次 open 才做的初始化（虚列表 / 状态信号）。
+## 面板在进页那一帧是隐藏的，这些活压在建页帧上只是拖慢转场启动；
+## 挪到用户按下「播放列表」时做，代价转移到只有本面板受益的那一帧。
+var _setup_done: bool = false
+
 func _ready() -> void:
-	ThemeMGR.register_theme_applier(self)
-	apply_theme()
+	if not visible:
+		TextScrollMGR.suspend_page(self)
+
+func _ensure_setup() -> void:
+	if _setup_done:
+		return
+	_setup_done = true
 	_vlist = VirtualListLib.new()
 	_vlist.setup(_pl_scroll, _pl_list, PL_ITEM_SCENE)
 	_vlist.margin_rows = POOL_MARGIN_ROWS
@@ -86,7 +96,6 @@ func _ready() -> void:
 		mgr.playlist_changed.connect(_on_playlist_list_changed)
 		# 打乱按钮只在随机模式下显示（顺序/循环模式下没有意义）
 		mgr.repeat_mode_changed.connect(_on_repeat_mode_changed)
-		_refresh_mode_ui()
 	# 收藏夹是异步就绪的（先发 favorites_loaded 占位、扫描完再发 favorites_updated）：
 	# 期间重建下拉会找不到当前来源歌单的条目，于是选择框停在「未选择歌单」，
 	# 而列表内容仍是那个歌单的 —— 看起来就是"默认显示了别的歌单"。故跟着一起重建
@@ -97,8 +106,6 @@ func _ready() -> void:
 	EvtBus.favorite_list_created.connect(_rebuild_fav_select)
 	EvtBus.favorite_list_deleted.connect(_rebuild_fav_select)
 	EvtBus.favorite_list_renamed.connect(_rebuild_fav_select)
-	if not visible:
-		TextScrollMGR.suspend_page(self)
 
 ## 打乱按钮跟随播放模式显隐。
 ## 播放模式存在盘里、由 MidiCore 懒加载读回，所以本面板建好那一刻读到的可能还是默认模式；
@@ -116,13 +123,10 @@ func _on_reshuffle_pressed() -> void:
 	if mgr != null:
 		mgr.shuffle_playlist_from_head()
 
-func apply_theme() -> void:
-	if ThemeMGR == null:
-		return
-	var sb := get_theme_stylebox("panel") as StyleBoxFlat
-	if sb != null:
-		sb.bg_color = ThemeMGR.get_color("surface", sb.bg_color)
-		sb.border_color = ThemeMGR.get_color("border_soft", sb.border_color)
+## 本面板不需要 apply_theme：它没有自己的 StyleBox，`get_theme_stylebox("panel")` 拿到的是
+## MainTheme.tres 里全场景共享的 `Panel/panel`，而主题本来就把它设成 surface + border_soft ——
+## 原实现等于把同样的颜色往共享实例上再写一遍（改的其实是所有面板，且写一次就要全场景重排）。
+## 外观完全由主题决定，故不再注册主题应用者。
 
 func _process(delta: float) -> void:
 	if not visible:
@@ -184,6 +188,7 @@ func _on_scroll_moved(_value: float) -> void:
 	_sync_row_window()
 
 func open() -> void:
+	_ensure_setup()
 	visible = true
 	TextScrollMGR.resume_page(self)
 	_refresh_mode_ui()
@@ -487,6 +492,8 @@ func _stop_all_dragging() -> void:
 	_pl_dragging = false
 	_stop_pl_fling()
 	_pl_list.end_handle_drag()   # 拖拽状态在列表上，面板收起时一并收尾
+	if _vlist == null:
+		return
 	# 遍历整个池：正在被拖动的行可能刚好在收起前滚出窗口而解绑
 	for item in _vlist.pool:
 		item.cancel_drag()

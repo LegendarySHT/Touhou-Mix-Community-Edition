@@ -57,6 +57,9 @@ var max_slots: int = DEFAULT_MAX_SLOTS
 ## 单列时是否把池项宽度铺满 list（多列时宽度由列锚点决定，此项无关）。
 ## 关掉用于「项自带固定宽度」的列表（SortedMidiView 的项宽 900 由场景定）
 var stretch_width: bool = true
+## 单次建池最多 instantiate 多少个池项（0 = 不限）
+## 只影响「建节点」，绑定数据仍由各次 sync 按窗口进行。
+var grow_budget: int = 0
 
 var scroll: ScrollContainer
 var list: Control
@@ -79,6 +82,12 @@ var pool: Array[Control] = []
 var free_slots: Array = []
 ## 占用表：槽位下标 → 数据索引。槽位与数据无固定对应（自由槽位模式）
 var occupied: Dictionary = {}
+
+## 分帧建池：还有槽位被预算推迟到下一帧 / 已排了一次续建
+var _grow_pending: bool = false
+var _grow_scheduled: bool = false
+## 已销毁：在途的续建直接放弃（避免释放后又被建回一堆节点）
+var _disposed: bool = false
 
 
 func setup(p_scroll: ScrollContainer, p_list: Control, p_row_scene: PackedScene) -> void:
@@ -231,6 +240,8 @@ func clear() -> void:
 
 ## 销毁池
 func release() -> void:
+	_disposed = true
+	_grow_pending = false
 	for node in pool:
 		if is_instance_valid(node):
 			node.queue_free()
@@ -272,12 +283,20 @@ func _clamp_scroll(v: float) -> float:
 ## 池大小对齐视窗。只增不减：窗口拉大时补槽，缩小时靠 sync 的窗口判定隐藏多余槽位即可，
 ## 无需真去裁剪（裁了以后再拉大还要重建，节点身份一换信号就得重连）。
 ## 槽位下标稳定不变，on_row_ready 里连的信号因此一直有效
+##
+## grow_budget > 0 时本次最多建这么多个，剩下的排到下一帧继续（见 _grow_continue）。
 func _grow() -> void:
-	if row_stride <= 0.0 or list == null or row_scene == null or scroll == null:
+	if _disposed or row_stride <= 0.0 or list == null or row_scene == null or scroll == null:
 		return
 	var need := (int(ceil(scroll.size.y / row_stride)) + 1 + margin_rows * 2) * maxi(1, columns)
 	need = clampi(need, 1, max_slots)
+	_grow_pending = false
+	var created := 0
 	while pool.size() < need:
+		if grow_budget > 0 and created >= grow_budget:
+			_grow_pending = true
+			_schedule_grow_continue()
+			break
 		var node := row_scene.instantiate() as Control
 		if node == null:
 			break
@@ -287,6 +306,29 @@ func _grow() -> void:
 			on_row_ready.call(node)
 		pool.append(node)
 		free_slots.append(pool.size() - 1)
+		created += 1
+
+
+## 预算用尽：排到下一帧接着建。用 call_deferred 而不是 Timer——
+## deferred 排在渲染前、只晚一帧，滚动补位不会明显落后于布局。
+func _schedule_grow_continue() -> void:
+	if _grow_scheduled or _disposed:
+		return
+	_grow_scheduled = true
+	call_deferred("_grow_continue")
+
+
+func _grow_continue() -> void:
+	_grow_scheduled = false
+	if _disposed or scroll == null or list == null \
+			or not is_instance_valid(scroll) or not is_instance_valid(list):
+		_grow_pending = false
+		return
+	_grow()
+	if _grow_pending:
+		return
+	# 池建齐了：把新槽位补绑上数据（已绑定的槽位不受影响）
+	sync(false)
 
 
 ## 池项基础态：矩形尺寸钉一次，位置起始为 0（之后全靠 offset_transform 搬）

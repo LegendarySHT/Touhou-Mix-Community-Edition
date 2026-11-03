@@ -53,7 +53,6 @@ func _on_view_ready() -> void:
 		%VocalVolSlider.value = mgr.get_player_vocal_db()
 		%MidiVolSlider.set_block_signals(false)
 		%VocalVolSlider.set_block_signals(false)
-		mgr.set_player_volumes(%MidiVolSlider.value, %VocalVolSlider.value)
 
 	_apply_stage_mode()
 	# 懒加载视图的 _ready 可能晚于 state_changed，两处都调 _activate_page（幂等）
@@ -160,11 +159,11 @@ func _activate_page() -> void:
 	_sync_progress_range()
 	if mgr != null:
 		%NoteRollView.bind(mgr.current_midi_data)
-	# 预载曲库（池子 + 首次排序），逻辑在 LibraryLayer
-	%LibraryLayer.prewarm()
+	# 曲库不再预载：池子/排序/封面全部推迟到用户按下「曲库」，且建卡按帧摊开
+	# （LibraryLayer.LIBRARY_GROW_BUDGET）。进页时预热等于在用户没看曲库的时候
+	# 白建一屏卡片 + 白解码一屏封面，代价却落在刚进页面、还在看封面的那一秒。
 
-## 接入主题色：页面背景 / 底栏。曲库与播放列表面板各自的主题在
-## LibraryLayer.apply_theme / PlaylistPanel.apply_theme。
+## 接入主题色：页面背景 / 底栏。曲库层的样式在 LibraryLayer.apply_theme。
 ## tscn 里的颜色只是占位，运行时以主题 token 为准。
 func apply_theme() -> void:
 	if ThemeMGR == null:

@@ -85,6 +85,15 @@ var _cover_hash_to_path: Dictionary = {}
 var _chart_id_to_folder: Dictionary = {}
 ## {file_hash: folder_name}
 var _hash_to_folder: Dictionary = {}
+## 封面路径查询结果记忆 {file_hash\u0001midi_id: path}。
+## 列表滚动时同一批 ids 会被反复问（每次卡片绑定都问一次），而反向索引没命中时
+## lookup_chart 会退化成 charts_index 全表线性扫描（2000+ 项），不记下来就是每帧几十次全扫。
+## charts_index / 反向索引变化处一并清空（见 _clear_chart_reverse_index）。
+var _cover_path_memo: Dictionary = {}
+## 封面文件存在性记忆 {path: 最终路径}：`default_cover_if_missing` 的 FileAccess.file_exists
+## 一次约 1.5ms（Android 走 SAF 更贵），而绑定一屏卡片就是几十次同路径询问。
+## 不存在 → 记成 DEFAULT_COVER_PATH，存在 → 记成原路径，两种情况都只需要 stat 一次。
+var _cover_exists_memo: Dictionary = {}
 ## ========== 音频文件索引 ==========
 ## [{file_name, path, format, chart_id, song_name}]
 var audio_files_index: Array[Dictionary] = []
@@ -788,8 +797,7 @@ func _scan_all_resources() -> void:
 
 	# 清空所有索引（主线程，避免 worker 并发写）
 	charts_index.clear()
-	_chart_id_to_folder.clear()
-	_hash_to_folder.clear()
+	_clear_chart_reverse_index()
 	audio_files_index.clear()
 	SkinMGR.clear_index()
 	ParticleMGR.clear_index()
@@ -1130,8 +1138,7 @@ func _await_cache_validation(rw: Dictionary, cached_charts: Dictionary) -> void:
 
 	# 重建 charts_index（主线程）
 	charts_index.clear()
-	_chart_id_to_folder.clear()
-	_hash_to_folder.clear()
+	_clear_chart_reverse_index()
 	# audio_files_index 全部来自 charts，直接 clear 重建
 	audio_files_index.clear()
 	_build_charts_index_from_data(cached_charts, chart_tasks)
@@ -1197,8 +1204,7 @@ func _scan_charts_full_sync(progress_cb: Callable = Callable()) -> float:
 	if all_chart_folders.is_empty():
 		GLogger.info("No charts to scan", "FileSystemMGR")
 		charts_index.clear()
-		_chart_id_to_folder.clear()
-		_hash_to_folder.clear()
+		_clear_chart_reverse_index()
 		audio_files_index.clear()
 		return 0.0
 
@@ -1235,8 +1241,7 @@ func _scan_charts_full_sync(progress_cb: Callable = Callable()) -> float:
 
 	# 重建 charts_index（全量扫描结果）
 	charts_index.clear()
-	_chart_id_to_folder.clear()
-	_hash_to_folder.clear()
+	_clear_chart_reverse_index()
 	audio_files_index.clear()
 	_build_charts_index_from_data(all_charts_data, chart_tasks)
 
@@ -1548,6 +1553,9 @@ func _remove_chart_index(folder_name: String) -> void:
 		if not meta.hash.is_empty() and str(_hash_to_folder.get(meta.hash, "")) == folder_name:
 			_hash_to_folder.erase(meta.hash)
 		charts_index.erase(folder_name)
+		# 封面路径记忆按 id 全局存，删一条就要整体作废（增量删除很少发生，代价可忽略）
+		_cover_path_memo.clear()
+		_cover_exists_memo.clear()
 	vocal_files_index.erase(folder_name)
 
 	var chart_id := folder_name.split("_")[0]
@@ -2078,6 +2086,14 @@ func get_settings_directory() -> String:
 
 ## 通过 chart_id/hash 查找 charts_index 条目（O(1)反向索引，未命中时回退到线性扫描）
 ## 磁盘侧规范解析器：chart 文档规范键 = folder_name；DB 打开时优先经 ChartDB.LookupChartKey 统一解析
+## 清空谱面反向索引。所有重建 charts_index 的地方都要走它：
+## 少清一个就会留下指向已删 folder 的陈旧映射，封面路径记忆还会停在旧结果上。
+func _clear_chart_reverse_index() -> void:
+	_chart_id_to_folder.clear()
+	_hash_to_folder.clear()
+	_cover_path_memo.clear()
+	_cover_exists_memo.clear()
+
 func lookup_chart(chart_id: String) -> Dictionary:
 	# folder_name 直达（chart 文档 _id，与 C# LookupChartKey 别名漏斗第一项一致；
 	# DelView 懒加载以 folder_name 作 key 收集/删除，需支持）
@@ -2093,7 +2109,8 @@ func lookup_chart(chart_id: String) -> Dictionary:
 			if charts_index.has(fn):
 				return {"folder_name": fn, "metadata": charts_index[fn]}
 	# 回退到线性扫描（扁平化字段，不读 data 大块）
-	for folder_name in charts_index.keys():
+	# 直接遍历 dict（GDScript 迭代键不拷贝数组）；keys() 每次会分配 2000+ 元素的数组
+	for folder_name in charts_index:
 		var meta: ChartMetadata = charts_index[folder_name]
 		if meta.id == chart_id:
 			return {"folder_name": folder_name, "metadata": meta}
@@ -2216,9 +2233,15 @@ func get_chart_path(chart_id: String) -> String:
 func default_cover_if_missing(path: String) -> String:
 	if path.is_empty():
 		return DEFAULT_COVER_PATH
-	if not path.begins_with("res://") and not FileAccess.file_exists(path):
-		return DEFAULT_COVER_PATH
-	return path
+	# res:// 内置资源不需要 stat；其余路径（user:// 封面）走一次带记忆的存在性检查
+	if path.begins_with("res://"):
+		return path
+	var memo: Variant = _cover_exists_memo.get(path)
+	if memo != null:
+		return memo
+	var resolved := DEFAULT_COVER_PATH if not FileAccess.file_exists(path) else path
+	_cover_exists_memo[path] = resolved
+	return resolved
 
 ## 封面查询公共实现：按 file_hash / midi_id 反查 charts_index，返回封面路径
 ## 未命中或为空返回默认封面路径；user:// 路径校验文件存在性
@@ -2234,7 +2257,15 @@ func _cover_path_from_chart(file_hash: String, midi_id: String) -> String:
 ## 按 file_hash / midi_id 查询封面文件路径（不读盘，主线程调用，供异步加载器使用）
 ## 与 get_cover_path_by_midiData 行为一致，供轻量投影列表项（无 MidiData 对象）使用
 func get_cover_path_by_ids(file_hash: String, midi_id: String) -> String:
-	return _cover_path_from_chart(file_hash, midi_id)
+	# 列表滚动时同一批 id 会被反复问（每次卡片绑定一次），而反向索引未命中会退化成
+	# charts_index 全表扫描 —— 实测 4ms/次 × 48 张卡就是一次转场卡顿，必须记住结果。
+	var memo_key := file_hash + "\u0001" + midi_id
+	var hit: Variant = _cover_path_memo.get(memo_key)
+	if hit != null:
+		return hit
+	var path := _cover_path_from_chart(file_hash, midi_id)
+	_cover_path_memo[memo_key] = path
+	return path
 
 ## 按 file_hash / midi_id 加载封面 Texture2D（同步，走 load_cover_with_cache）
 func get_cover_by_ids(file_hash: String, midi_id: String) -> Texture2D:

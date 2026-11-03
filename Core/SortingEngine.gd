@@ -267,13 +267,20 @@ func _sort_mode_task(
 
 	# DB 全量排序：状态过滤 + 字段排序 +（可选）搜索词在 C# 一次完成，返回有序轻量投影
 	# 列表项直接消费（不再全量水合 MidiData，点击时才水合单条）
+	# 走线程池版本：2333 项全表查询实测 ~230ms，同步调用会把转场/开曲库那一帧直接卡死
 	var status_str := _get_status_name(status)
-	current_items = ChartDB.GetSortedMidiListItems(status_str, int(sort_field), int(sort_direction), query)
-	GLogger.info("DB 排序返回 %d 个项" % current_items.size(), "SortEngine")
+	ChartDB.RequestSortedMidiListItemsAsync(status_str, int(sort_field), int(sort_direction), query,
+		_on_sorted_items_ready)
 
-	if _is_sort_cancelled(request_id):
+
+## DB 排序结果回到主线程。C# 侧已保证只有最新一次请求会回调（旧任务直接丢弃），
+## 这里不必再有 tag：到达即最新。
+func _on_sorted_items_ready(items: Array) -> void:
+	if not is_inside_tree():
 		return
-	_finish_sort_task(request_id, true)
+	current_items = items
+	GLogger.info("DB 排序返回 %d 个项" % items.size(), "SortEngine")
+	_finish_sort_task(_sort_request_id, true)
 
 ## 发射排序完成信号
 func _emit_sort_finished() -> void:

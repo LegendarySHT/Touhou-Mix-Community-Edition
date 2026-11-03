@@ -18,6 +18,9 @@ const LIBRARY_ROW_GAP := 25.0
 const LIBRARY_COL_GAP := 20.0
 ## 视窗上下各多绑几行卡片（滑得快时不留白）
 const LIBRARY_MARGIN_ROWS := 2
+## 每帧最多 instantiate 几张卡（3 的倍数 = 整行）。
+## 一屏 40+ 张卡一次建完是本页最后一个百毫秒级尖峰，摊成 3 行/帧后单帧只多几毫秒。
+const LIBRARY_GROW_BUDGET := 9
 
 var _lib_items: Array = []
 ## 卡片池（滚动容器 + 内容层 + 自由槽位复用，见 VirtualList 头注释）
@@ -52,18 +55,22 @@ func _ready() -> void:
 func apply_theme() -> void:
 	if ThemeMGR == null:
 		return
-	var sb := get_theme_stylebox("panel") as StyleBoxFlat
-	if sb != null:
-		sb.bg_color = ThemeMGR.get_color("surface", sb.bg_color)
-	# TextureButton 没有 icon_*_color 主题项，放大镜贴图只能逐节点染色
 	%SearchIcon.self_modulate = ThemeMGR.get_color("text_primary", Color.WHITE)
 
-## 页面激活时预载：池子 + 首次排序请求（异步）。不提前做的话，点曲库那一刻
-## 卡片实例化 + DB 查询全挤在一帧，音频会卡一下导致人声/MIDI 错位。
-## 排序本身异步，deferred 摊开开销。
-func prewarm() -> void:
-	_ensure_library_pool.call_deferred()
-	_request_sort.call_deferred()
+## 卡片池：本层完全懒加载 —— 首次 open() 才建，且按帧摊开（见 LIBRARY_GROW_BUDGET）。
+## 进播放器页时不再预载：那会在用户没看曲库的时候白建一屏卡片 + 白解码一屏封面。
+func _ensure_library_pool() -> void:
+	if _vlist != null:
+		return
+	_vlist = VirtualListLib.new()
+	_vlist.columns = LIBRARY_COLUMNS
+	_vlist.row_gap = LIBRARY_ROW_GAP
+	_vlist.col_gap = LIBRARY_COL_GAP
+	_vlist.margin_rows = LIBRARY_MARGIN_ROWS
+	_vlist.grow_budget = LIBRARY_GROW_BUDGET
+	_vlist.on_row_ready = _on_card_ready
+	_vlist.on_row_bind = _on_card_bind
+	_vlist.setup(%LibraryScroll, %LibraryListContent, CARD_SCENE)
 
 ## 后台内存回收用（见 Core/MemoryGC.gd）：把卡片池里所有封面纹理放掉。
 ##
@@ -117,19 +124,6 @@ func _animate_closed() -> void:
 		return
 	visible = false
 	TextScrollMGR.suspend_page(self)
-
-## 节点池：卡片挂在滚动容器的内容层上，只建视窗需要的那些，滚动时换绑数据（见 VirtualList 头注释）
-func _ensure_library_pool() -> void:
-	if _vlist != null:
-		return
-	_vlist = VirtualListLib.new()
-	_vlist.columns = LIBRARY_COLUMNS
-	_vlist.row_gap = LIBRARY_ROW_GAP
-	_vlist.col_gap = LIBRARY_COL_GAP
-	_vlist.margin_rows = LIBRARY_MARGIN_ROWS
-	_vlist.on_row_ready = _on_card_ready
-	_vlist.on_row_bind = _on_card_bind
-	_vlist.setup(%LibraryScroll, %LibraryListContent, CARD_SCENE)
 
 
 ## 池卡首次创建：只连信号（位置/尺寸/offset_transform 由 VirtualList 统一接管）

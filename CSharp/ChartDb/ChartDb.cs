@@ -928,6 +928,46 @@ public partial class ChartDb : Node
     }
 
     /// <summary>
+    /// GetSortedMidiListItems 的线程池版本：整个查询（LiteDB 读全表 + 投影成 Godot 字典）
+    /// 实测 ~230ms，压在主线程就是一次肉眼可见的卡顿（转场/打开曲库时尤其明显）。
+    ///
+    /// 回调签名固定为 func(items: Array)，通过 CallDeferred 回主线程执行。
+    /// 【不要用 Callable.bind / lambda 闭包传参】——实测经 CallDeferred 从 C# 线程回来
+    /// 只有「方法引用」型 Callable 能触发，绑定参数与闭包的都不会被调用。
+    /// 因此过期判定放在这里：连点筛选时只有最新一次请求的结果会回调，旧任务直接丢弃。
+    /// </summary>
+    public void RequestSortedMidiListItemsAsync(string status, int sortField, int direction, string searchQuery, Callable onDone)
+    {
+        int seq = ++_sortSeq;
+        _latestSortSeq = seq;
+        if (!IsOpen())
+        {
+            onDone.CallDeferred(new Godot.Collections.Array());
+            return;
+        }
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            Godot.Collections.Array result;
+            try
+            {
+                result = GetSortedMidiListItems(status, sortField, direction, searchQuery);
+            }
+            catch (System.Exception e)
+            {
+                GD.PushError($"[ChartDb] 异步排序失败: {e}");
+                result = new Godot.Collections.Array();
+            }
+            // 期间又发了新请求 → 这份结果已过期，丢掉，免得旧列表盖掉新列表
+            if (seq != System.Threading.Volatile.Read(ref _latestSortSeq)) return;
+            onDone.CallDeferred(result);
+        });
+    }
+
+    /// <summary>异步排序请求序号（主线程自增；worker 只放行最新一次）</summary>
+    private int _sortSeq;
+    private int _latestSortSeq;
+
+    /// <summary>
     /// 按任意别名键（folder_name / folder_hash / midi_id / file_hash / hash）批量取轻量列表投影。
     /// 收藏夹浏览用：保持传入顺序，跳过失效引用；searchQuery 非空时在收集集内过滤（含简繁日规范化）。
     /// </summary>

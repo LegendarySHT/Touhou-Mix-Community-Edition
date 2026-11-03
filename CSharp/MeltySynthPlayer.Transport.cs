@@ -451,14 +451,18 @@ public partial class MeltySynthPlayer
 	{
 		// path 由壳解析并判空（前台 ResolveMidiPath / 后台 ResolveMidiPathBg，各自日志前缀不同）
 
-		// 换曲先停设备清场（不广播暂停态，避免通知闪烁/封面硬切）
-		stop();
+		// 换曲先清场（不广播暂停态，避免通知闪烁/封面硬切）。用软停：挂渲染静默门
+		// 而不是关音频流 —— 关流/开流在真机上是 100ms 量级，而换曲只需要一段
+		// 「回调不碰 sequencer/合成器」的静默窗。
+		StopForSongSwap();
 		_file = path;
 		LoadMidiFile(path, preferSystemIo);
 		if (_midiFile == null)
 		{
 			// 音源未就绪（soundfont 仍在加载）：core 不碰 playing——恢复语义由壳决定
 			// （后台壳要置回 playing 以便下次轮询重试，前台壳按原语义直接失败返回）。
+			// 静默门必须撤掉，否则设备会一直空转出静音。
+			EndSongSwapSilence();
 			return false;
 		}
 		// 音量按换曲路径选来源，不做优先级链：
@@ -489,6 +493,8 @@ public partial class MeltySynthPlayer
 					_sequencerStarted = true;
 					_hasEnteredTimeline = true;  // 起播 = 进入时间轴
 					ApplyInstrumentOverridesToSynth();
+					// 静默门在同一把锁内撤掉：下一个回调直接渲染新曲，中间不留一帧空白
+					EndSongSwapSilence();
 				});
 			}
 			InvalidateJudgeClock();
@@ -498,9 +504,18 @@ public partial class MeltySynthPlayer
 			}
 			playing = true;
 			_paused = false;
+			// 设备一直在跑（软停没关流），这里是空操作；设备此前确实停着时才会真正拉起
 			RequestAudioOutputPlay();
 			request_startup_align();
 		}
+		else
+		{
+			// 只装配不起播（Performance）：sequencer 已换好，静默门同样要撤，
+			// 否则后续由调用方补的 play() 起跑时还是没有声音
+			EndSongSwapSilence();
+		}
+		// 兜底：任何分支都不允许把静默门留在置位状态（置位 = 永久无声）
+		EndSongSwapSilence();
 		_currentKey = key;
 		return true;
 	}
@@ -716,8 +731,7 @@ public partial class MeltySynthPlayer
 		EmitSignal(SignalName.playlist_changed);
 	}
 
-	public bool ensure_user_playlist()
-	{
+	public bool ensure_user_playlist()	{
 		var core = MidiCore.Instance;
 		if (core == null)
 		{

@@ -1151,11 +1151,21 @@ public partial class MeltySynthPlayer : Node
 		}
 		
 		playing = true;
+		// 兜底撤门：换曲软停若因载入失败残留静默门，起播前必须复位，否则只有画面没有声音
+		EndSongSwapSilence();
 		RequestAudioOutputPlay();
 		return true;
 	}
 
-	public void stop()
+	/// <summary>停止播放并关掉音频流（离开播放页、曲终、显式停止）。</summary>
+	public void stop() => StopCore(stopDevice: true);
+
+	/// <summary>换曲专用软停：语义与 stop() 完全一致，但不关音频流。
+	/// 关流再开流（ma_bridge_stop → ma_bridge_start）在真机上是 100ms 量级的固定开销，
+	/// 换曲只是要一段「回调不碰 sequencer」的静默窗，用渲染静默门就能拿到同样的保证。</summary>
+	private void StopForSongSwap() => StopCore(stopDevice: false);
+
+	private void StopCore(bool stopDevice)
 	{
 		// 记为一次显式停止：曲终信号的同步广播期间被调到时，HandleSongEnded 会据此不再起播
 		Interlocked.Increment(ref _stopGeneration);
@@ -1173,8 +1183,19 @@ public partial class MeltySynthPlayer : Node
 			maClear.ClearPendingNotes();
 		}
 		ResetManualVoices();
-		// ma_bridge_stop 会等待回调完成，必须在锁外调用
-		_audioOutput?.Stop();
+		if (stopDevice)
+		{
+			// ma_bridge_stop 会等待回调完成，必须在锁外调用
+			_audioOutput?.Stop();
+			// 关设备路径顺手撤门：软停若曾因载入失败/异常残留，这里一并复位
+			EndSongSwapSilence();
+		}
+		else if (_audioOutput is MiniaudioAudioOutputBridge maMute)
+		{
+			// 不关设备：换成渲染静默门。必须在下面的 _sequencer.Stop() 之前置位，
+			// 否则回调可能正好渲染到一半、拿到的 sequencer 状态是半停的。
+			maMute.SetRenderMuted(true);
+		}
 		// 人声也要停：旧实现的 stop() 末尾会 stop_vocal_playback()，而 native 的
 		// ma_bridge_vocal_stop 会停掉解码生产线程并把读写位置/已消费帧归零。
 		// 少了这一步，设备再次启动时人声会从"上次停下的位置"继续（与本曲从头开始不一致），
@@ -1194,9 +1215,19 @@ public partial class MeltySynthPlayer : Node
 		{
 			_sequencer?.Stop();
 		});
-	_sequencerStarted = false;  // 重置标志，下次 play() 会重新启动
-	_lastPositionMs = 0.0;  // 重置最后已知位置（stop 语义为回到开头）
+		_sequencerStarted = false;  // 重置标志，下次 play() 会重新启动
+		_lastPositionMs = 0.0;  // 重置最后已知位置（stop 语义为回到开头）
 		InvalidateJudgeClock();
+	}
+
+	/// <summary>撤掉换曲静默门。必须在 sequencer 装好之后调用（否则先放行的回调渲染的是空）。
+	/// 重复调用无害。</summary>
+	private void EndSongSwapSilence()
+	{
+		if (_audioOutput is MiniaudioAudioOutputBridge maMute)
+		{
+			maMute.SetRenderMuted(false);
+		}
 	}
 
 	private void FinishPlayback()
@@ -3080,6 +3111,8 @@ public partial class MeltySynthPlayer : Node
 			});
 
 			playing = true;
+			// 同 play()：兜底撤掉可能残留的换曲静默门
+			EndSongSwapSilence();
 			_audioOutput?.Play();
 
 			// 续播：把暂停瞬间仍在响的音符重新触发（经管道，乐器覆盖等仍生效），

@@ -815,7 +815,14 @@ func _apply_solo_state() -> void:
 
 func _set_note_displayers_process(enable: bool) -> void:
 	# 仅 master 承载 _process；子 displayer 由 master 每帧派发重绘
+	_displayers_active = enable
 	%MasterNoteDisplayer.set_process(enable)
+
+## 音符显示器是否在跑（所有启停都过 _set_note_displayers_process，这里记一份）
+var _displayers_active: bool = false
+## 因页面不可见而被 _process 停掉的显示器：可见时只恢复"自己停的那一次"，
+## 不覆盖暂停 / 换曲 / deferred play 等其它路径的启停决定
+var _hidden_paused_displayers: bool = false
 
 # ============== UI 显示函数 ========================
 
@@ -859,6 +866,23 @@ func _set_display_current_time(current_ms: float) -> void:
 		current_time.text = _format_time(current_ms)
 
 func _process(delta: float) -> void:
+	# 页面不可见（切到播放器页/设置页）时停掉整页每帧工作：音符显示器一次派发重绘
+	# 是 4ms 量级，藏在别的页面后面纯烧 CPU；进度条与时间文本也没人看。
+	# 注意 _process 本身不关（靠它做可见性恢复），只在函数开头短路。
+	if not is_visible_in_tree():
+		if _displayers_active:
+			_set_note_displayers_process(false)
+			_hidden_paused_displayers = true
+		return
+	if _hidden_paused_displayers:
+		_hidden_paused_displayers = false
+		# 离开期间位置可能推进/回绕，回来先对齐基准，否则首帧会被判成整曲回绕而重置显示
+		last_position_ms = midi_playback_manager.position_ms
+		current_tick = int(midi_playback_manager.position)
+		_seek_suppress_loop_frames = 30
+		if midi_playback_manager.is_playing and not midi_playback_manager.deferred_play_pending:
+			_set_note_displayers_process(true)
+
 	if midi_playback_manager.is_playing:
 		var current_position = midi_playback_manager.position_ms
 
