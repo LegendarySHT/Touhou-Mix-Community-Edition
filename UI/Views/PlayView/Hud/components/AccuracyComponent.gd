@@ -76,7 +76,7 @@ func on_state(state: Dictionary) -> void:
 	if txt != _cur_text:
 		_cur_text = txt
 		_num.text = txt
-		apply_layout()
+		apply_layout_on_len(txt)
 	if not new_judge:
 		return
 	_last_seq = seq

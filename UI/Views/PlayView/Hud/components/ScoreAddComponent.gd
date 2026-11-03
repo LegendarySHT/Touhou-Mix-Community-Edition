@@ -64,7 +64,7 @@ func on_state(state: Dictionary) -> void:
 	# 文本变了就刷（编辑模式回填示例值时不带新判定序号）；动画只在真正的新判定上播
 	if txt != _num.text:
 		_num.text = txt
-		apply_layout()
+		apply_layout_on_len(txt)
 	if seq == _last_seq:
 		return
 	_last_seq = seq

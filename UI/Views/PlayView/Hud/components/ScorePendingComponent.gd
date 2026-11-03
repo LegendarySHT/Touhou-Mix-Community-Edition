@@ -62,6 +62,7 @@ func on_state(state: Dictionary) -> void:
 	if v == _cur:
 		return
 	_cur = v
-	_num.text = _format(maxi(v, 0))
+	var txt := _format(maxi(v, 0))
+	_num.text = txt
 	_apply_alpha(v)
-	apply_layout()
+	apply_layout_on_len(txt)

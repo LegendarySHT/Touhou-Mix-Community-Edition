@@ -22,6 +22,8 @@ var _content: Control = null
 
 var _tweens: Dictionary = {}
 var _applying: bool = false
+## apply_layout_on_len 上一次的文本长度
+var _last_text_len: int = -1
 
 
 func _init() -> void:
@@ -53,6 +55,7 @@ func rebuild() -> void:
 		remove_child(c)
 		c.queue_free()
 	_content = null
+	_last_text_len = -1
 	_kill_tweens()
 	_build_content()
 	apply_layout()
@@ -95,11 +98,28 @@ func apply_layout() -> void:
 	_applying = false
 
 
+## 文本类组件的换字入口：只有文本长度变了才重排。
+## 分数 / PP / 连击每秒改几十次，但最小尺寸只在位数变化时才变，
+## 每帧重算等于每帧让 Label 重做一次文字排版（实测 ~16µs/次）。
+func apply_layout_on_len(text: String) -> void:
+	var n := text.length()
+	if n == _last_text_len:
+		return
+	_last_text_len = n
+	apply_layout()
+
+
 func _content_min_size() -> Vector2:
+	# 绝大多数组件只有一个内容节点，直接问它，省掉 get_children() 的数组拷贝
 	var m := Vector2.ZERO
-	for c in get_children():
-		if c is Control:
-			m = m.max((c as Control).get_combined_minimum_size())
+	var one: Control = _content if is_instance_valid(_content) and _content.get_parent() == self else null
+	if one != null:
+		m = one.get_combined_minimum_size()
+	else:
+		for i in get_child_count():
+			var c := get_child(i) as Control
+			if c != null:
+				m = m.max(c.get_combined_minimum_size())
 	if m.x < 1.0:
 		m.x = 1.0
 	if m.y < 1.0:
@@ -108,8 +128,8 @@ func _content_min_size() -> Vector2:
 
 
 func _fill_children() -> void:
-	for c in get_children():
-		var cc := c as Control
+	for i in get_child_count():
+		var cc := get_child(i) as Control
 		if cc == null:
 			continue
 		cc.position = Vector2.ZERO

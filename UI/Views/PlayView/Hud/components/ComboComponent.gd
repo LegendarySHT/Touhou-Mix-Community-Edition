@@ -83,10 +83,11 @@ func on_state(state: Dictionary) -> void:
 	var first := _cur < 0
 	_cur = v
 	_apply_zero_visibility()
-	_num.text = str(v)
+	var txt := str(v)
+	_num.text = txt
 	if first or v <= 0:
 		modulate.a = vis_mul()
-		apply_layout()
+		apply_layout_on_len(txt)
 		return
 	match int(get_param("anim", 1)):
 		1:
@@ -97,7 +98,7 @@ func on_state(state: Dictionary) -> void:
 			_play_slide()
 		_:
 			pass
-	apply_layout()
+	apply_layout_on_len(txt)
 	_restart_fade()
 
 

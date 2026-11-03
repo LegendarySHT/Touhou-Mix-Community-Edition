@@ -31,6 +31,8 @@ const color_map = {
 
 ## 分数补间默认窗口（秒），可被 score 组件的 roll_duration 覆盖
 const SCORE_DRAIN_SEC := 1.0
+## 分数补间每帧要刷的组件（常量，别每帧造字面量）
+const SCORE_REFRESH_IDS := ["score", "score_pending"]
 
 # ---- 组件 ----
 ## 布局数据（与 hud_layout.json 的 components 同构）
@@ -354,7 +356,7 @@ func _drain_score(delta: float) -> void:
 			_score_shown = v
 	_state["score_shown"] = _score_shown
 	_state["pending"] = maxi(_score_target - _score_shown, 0)
-	_refresh(["score", "score_pending"])
+	_refresh(SCORE_REFRESH_IDS)
 
 
 ## 0 立方缓出 / 1 二次缓出 / 2 正弦 / 3 线性

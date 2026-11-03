@@ -69,8 +69,9 @@ func on_state(state: Dictionary) -> void:
 	if v == _cur:
 		return
 	_cur = v
-	_num.text = format_score(v)
-	apply_layout()
+	var txt := format_score(v)
+	_num.text = txt
+	apply_layout_on_len(txt)
 
 
 func format_score(v: int) -> String:
