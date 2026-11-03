@@ -141,6 +141,9 @@ public partial class MeltySynthPlayer : Node
 	public void set_note_generation_lead_ms(double ms) => _noteGenerationLeadMs = ms;
 
 	private double _pendingSeekMs = double.NaN;  // 待处理的 seek 位置（NaN 表示无待处理的 seek）
+	// 起播对齐时人声与 MIDI 位置的容许偏差。两者由同一次起播驱动、共享同一个输出缓冲，
+	// 正常差值在缓冲时长量级；超过它才说明人声真的没跟上。
+	private const double StartupAlignToleranceMs = 60.0;
 	private double _lastPositionMs = 0.0;  // 最后已知播放位置（暂停/seek 后保持，供 get_position_ms 读取）
 	private int _seekPositionHoldFrames = 0;  // seek 后短暂保持目标位置，避免渲染钟未更新瞬回 0
 	// 本会话是否已进入时间轴：起播成功、正数 seek、整桥重建按正数位置恢复均置位；
@@ -977,6 +980,14 @@ public partial class MeltySynthPlayer : Node
 			return;
 		}
 
+		// 起播对齐：音频线程到点后只置标志，真正的人声定位在主线程做（解码器 seek 会停/重启
+		// 生产线程）。这里不动 MIDI 时钟 —— 对 MIDI 而言目标位置就是当前位置，走一次 seek
+		// 只会让合成器 Reset 后补发跨过该时刻的长音，听感是开头那段又响一下。
+		if (_audioOutput is MiniaudioAudioOutputBridge maAlign && maAlign.ConsumeStartupAlignReady())
+		{
+			maAlign.AlignVocalTo(get_position_ms(), StartupAlignToleranceMs);
+		}
+
 	// 【预卷去负化】原 _Process 预卷分支（offset 累加 + 越零自启 sequencer/设备）已删除：
 	// 开局预卷改为 UI 侧主线程倒计时（PlayView._pre_roll_remaining_ms，delta 累加），
 	// 到期由 UI 显式调 play() 从 0 起播。C# 不再有负时间轴，seek 负值直接拒绝。
@@ -1217,6 +1228,9 @@ public partial class MeltySynthPlayer : Node
 		});
 		_sequencerStarted = false;  // 重置标志，下次 play() 会重新启动
 		_lastPositionMs = 0.0;  // 重置最后已知位置（stop 语义为回到开头）
+		// 未落盘的 seek 与位置保持计数一并作废
+		_pendingSeekMs = double.NaN;
+		_seekPositionHoldFrames = 0;
 		InvalidateJudgeClock();
 	}
 
@@ -1255,6 +1269,9 @@ public partial class MeltySynthPlayer : Node
 		_sequencerStarted = false;
 		_hasEnteredTimeline = false;
 		_lastPositionMs = _midiFile != null ? _midiFile.Length.TotalMilliseconds : 0.0;
+		// 同上：曲终后残留的待处理 seek 属于上一首，落到下一首起播的头几帧上就是位置错乱
+		_pendingSeekMs = double.NaN;
+		_seekPositionHoldFrames = 0;
 		InvalidateJudgeClock();
 
 		// 通知 GDScript 侧。**两个信号名都要发**：

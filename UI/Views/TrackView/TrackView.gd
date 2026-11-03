@@ -232,6 +232,11 @@ func _load_midi(midi: MidiData) -> void:
 	# 初始化Latency输入框
 	_init_latency_edit()
 
+	# 起播前无条件把循环检测基线归零并开抑制窗口
+	last_position_ms = 0.0
+	current_tick = 0
+	_seek_suppress_loop_frames = 30
+
 	# 启动播放（UI 已完全加载，避免 _prepare_to_play 阻塞 UI 渲染）
 	#
 	# 三条路：同一首歌在播 → 不动播放；同一首歌暂停 → 只续播；否则重载 + 起播 + 定位。

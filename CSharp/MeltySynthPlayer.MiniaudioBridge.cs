@@ -546,6 +546,8 @@ public void ResetEndOfSequence()
 		/// <summary>起播对齐待计的已渲染帧数（0=无请求）</summary>
 		private long _startupAlignPendingFrames = 0;
 		private volatile bool _startupAlignRequested = false;
+		/// <summary>到点标志：实时线程只置位，落盘交给主线程（解码器 seek 会停/重启生产线程）</summary>
+		private volatile bool _startupAlignReady = false;
 
 		/// <summary>
 		/// 起播后补一次"与拖动进度条等价"的原地 seek：拖动路径会走 MIDI seek
@@ -557,9 +559,10 @@ public void ResetEndOfSequence()
 		{
 			_startupAlignPendingFrames = (long)(_sampleRate * StartupAlignDelaySec);
 			_startupAlignRequested = _startupAlignPendingFrames > 0;
+			_startupAlignReady = false;
 		}
 
-		/// <summary>推进起播对齐计时；到点后排队一次原地 seek（下一次回调开头被消费）</summary>
+		/// <summary>推进起播对齐计时；到点后置标志，由主线程改做人声校正</summary>
 		private void TickStartupAlignInCallback(int framesRequested)
 		{
 			if (!_startupAlignRequested)
@@ -572,9 +575,44 @@ public void ResetEndOfSequence()
 				return;
 			}
 			_startupAlignRequested = false;
-			double posMs = _sequencer.RenderedPosition.TotalMilliseconds;
-			ThreadSafeLog.Print($"[MeltySynthPlayer] start-up align: in-place seek to {posMs:F0} ms");
-			RequestSeek(posMs);
+			// 只置位，不在实时线程里碰解码器：ma_bridge_vocal_seek 要停掉并重启解码生产线程，
+			// 在音频回调里做会直接吃掉这个回调的时隙。
+			_startupAlignReady = true;
+		}
+
+		/// <summary>取走"起播对齐到点"标志（主线程消费，消费即清）</summary>
+		public bool ConsumeStartupAlignReady()
+		{
+			if (!_startupAlignReady)
+			{
+				return false;
+			}
+			_startupAlignReady = false;
+			return true;
+		}
+
+		/// <summary>
+		/// 起播对齐（主线程）：只把人声解码位置拉到 MIDI 当前位置。
+		/// 不去 seek MIDI —— 那条路等价于"原地 seek"：MidiFileSequencer.Seek 会 synthesizer.Reset()
+		/// 再按状态重建补发跨过目标时刻仍在发声的音符，于是 0 时刻起的长音被重新击发一次
+		/// （听感"开头多响一下"）；顺带还会关一次音频流、丢 50ms 静音。
+		/// 偏差在 toleranceMs 内视为已对齐（两者由同一次起播驱动，本就有固定的输出缓冲差）。
+		/// </summary>
+		public void AlignVocalTo(double midiPosMs, double toleranceMs)
+		{
+			if (!IsVocalPlaying())
+			{
+				return;
+			}
+			double vocalMs = GetVocalPositionMs();
+			if (Math.Abs(vocalMs - midiPosMs) <= toleranceMs)
+			{
+				return;
+			}
+			if (SeekVocal(midiPosMs))
+			{
+				ThreadSafeLog.Print($"[MeltySynthPlayer] start-up align: vocal {vocalMs:F0} -> {midiPosMs:F0} ms");
+			}
 		}
 
 		/// <summary>
@@ -1194,8 +1232,7 @@ public void ResetEndOfSequence()
 						// 先冒出一点旧位置的声音"。起播路径尤其明显：`seek(pos)` + `play()` 同帧调用时，
 						// 设备第一份缓冲会先渲染出 0 位置（曲首），然后才跳到 pos（进 TrackView 时
 						// "听到一小段开头"的来源）。这里提前消费，第一份渲染出来的就是目标位置内容。
-						// （`TickStartupAlignInCallback` 在回调末尾排的原地 seek 会顺延到下一次回调，
-						//   只晚一个周期，语义不变。）
+						// （起播对齐不再往这里排 seek：它只由主线程校正人声位置，见 AlignVocalTo。）
 						ProcessPendingSeekInCallback();
 
 						// Post-seek silence: 渲染到 discard 缓冲区消耗瞬态, 输出静音衰减

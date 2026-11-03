@@ -451,6 +451,9 @@ public partial class MeltySynthPlayer
 	{
 		// path 由壳解析并判空（前台 ResolveMidiPath / 后台 ResolveMidiPathBg，各自日志前缀不同）
 
+		// 本次是否真的开了音频流：软停（换曲不关流）时设备一直在跑，起播对齐没有意义。
+		bool deviceWasRunning = _audioOutput != null && _audioOutput.IsPlaying;
+
 		// 换曲先清场（不广播暂停态，避免通知闪烁/封面硬切）。用软停：挂渲染静默门
 		// 而不是关音频流 —— 关流/开流在真机上是 100ms 量级，而换曲只需要一段
 		// 「回调不碰 sequencer/合成器」的静默窗。
@@ -506,7 +509,12 @@ public partial class MeltySynthPlayer
 			_paused = false;
 			// 设备一直在跑（软停没关流），这里是空操作；设备此前确实停着时才会真正拉起
 			RequestAudioOutputPlay();
-			request_startup_align();
+			// 起播对齐只为"刚开流"服务（补偿设备启动延迟）。软切换下设备一直在跑、
+			// sequencer 也从 0 正常推进，再对齐一次就是对着已经播过去的位置做原地 seek。
+			if (!deviceWasRunning)
+			{
+				request_startup_align();
+			}
 		}
 		else
 		{
