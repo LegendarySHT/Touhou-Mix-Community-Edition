@@ -33,6 +33,12 @@ const color_map = {
 const SCORE_DRAIN_SEC := 1.0
 ## 分数补间每帧要刷的组件（常量，别每帧造字面量）
 const SCORE_REFRESH_IDS := ["score", "score_pending"]
+## 判定后要刷新的组件（只有这些组件消费判定数据，信息类 / 自定义文本 / 暂停按钮不刷）
+const JUDGE_UI_REFRESH_IDS := [
+	"combo", "accuracy", "pp", "score_add", "judge", "offset_early", "offset_late",
+]
+## LONG 持续 tick 只改数据类组件，判定指示与偏移指示不重播
+const JUDGE_TICK_REFRESH_IDS := ["combo", "accuracy", "pp", "score_add"]
 
 # ---- 组件 ----
 ## 布局数据（与 hud_layout.json 的 components 同构）
@@ -408,7 +414,7 @@ func _apply_judge_ui() -> void:
 
 	if is_hold_tick:
 		# LONG 持续 tick：只刷数据类组件（不重播判定指示 / 偏移指示 / 背景闪光）
-		_refresh(["combo", "accuracy", "pp", "score_add", "score"])
+		_refresh(JUDGE_TICK_REFRESH_IDS)
 		return
 
 	_state["judge_text"] = result
@@ -419,7 +425,7 @@ func _apply_judge_ui() -> void:
 		_state["early_text"] = ""
 		_state["late_text"] = ""
 
-	_refresh_all()
+	_refresh(JUDGE_UI_REFRESH_IDS)
 	_set_progress_bar_color(cl)
 
 	if result != "Miss":

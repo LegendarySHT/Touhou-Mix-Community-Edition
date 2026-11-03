@@ -1,10 +1,18 @@
 extends HudComponent
 
 ## 判定指示（Perfect / Great / ...）。每次判定重播：随机角度 + 回正 + 缩放脉冲 + 淡出。
+## 判定结果只会是下面几种固定文本，构建时按最宽的一种预留宽度，
+## 之后换结果只改文字与颜色，不必每次判定都重算尺寸重排。
+
+## 判定结果文本（用于预留宽度）
+const RESULT_TEXTS := ["Perfect", "Great", "Good", "Bad", "Miss"]
 
 var _num: Label = null
 var _cur_text: String = ""
+var _cur_color: Color = Color.WHITE
 var _last_seq: int = -1
+## 是否已按最宽文本预留宽度（字体还未就绪时退回逐次重排）
+var _fixed_width: bool = false
 
 
 func get_variants() -> Array:
@@ -63,7 +71,27 @@ func _build_content() -> void:
 			_num.add_theme_constant_override("outline_size", 10)
 	add_child(_num)
 	_content = _num
+	_fixed_width = false
+	_reserve_width(fs)
 	_num.modulate.a = 0.0
+	# 新 Label 还没有颜色覆盖，用无效色占位让下一次判定必然写入
+	_cur_color = Color(-1.0, -1.0, -1.0, -1.0)
+
+
+## 按最宽的判定文本预留宽度，避免每次判定都触发一次整块重排
+func _reserve_width(fs: int) -> void:
+	var font := _num.get_theme_font("font")
+	if font == null:
+		return
+	var upper := bool(get_param("uppercase", false))
+	var w := 0.0
+	for t in RESULT_TEXTS:
+		w = maxf(w, font.get_string_size(t.to_upper() if upper else t,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+	if w <= 0.0:
+		return
+	_fixed_width = true
+	_num.custom_minimum_size.x = w
 
 
 func on_state(state: Dictionary) -> void:
@@ -75,12 +103,15 @@ func on_state(state: Dictionary) -> void:
 	if bool(get_param("uppercase", false)):
 		txt = txt.to_upper()
 	var seq := int(state.get("judge_seq", 0))
-	var changed := txt != _cur_text
-	if changed:
+	if txt != _cur_text:
 		_cur_text = txt
 		_num.text = txt
-		_num.add_theme_color_override("font_color", state.get("judge_color", Color.WHITE))
-		apply_layout()
+		if not _fixed_width:
+			apply_layout()
+	var cl: Color = state.get("judge_color", Color.WHITE)
+	if cl != _cur_color:
+		_cur_color = cl
+		_num.add_theme_color_override("font_color", cl)
 	if seq == _last_seq:
 		return
 	_last_seq = seq
