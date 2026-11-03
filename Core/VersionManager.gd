@@ -1,4 +1,6 @@
-## 版本与更新历史管理器（单例 / 自动加载 VerMGR）
+## 版本与更新历史管理器（懒加载单例 VersionManager.instance）
+##
+## 不是 autoload：只有「关于」页读版本号与更新历史，没必要占启动时的实例化与 JSON 解析。
 ##
 ## 单一事实来源：游戏当前版本 + 更新历史都来自 Resources/Config/version_history.json。
 ## 其它地方（关于页版本号、导出配置里的版本号）一律从这里或这个 JSON 派生，
@@ -11,6 +13,18 @@
 
 class_name VersionManager
 extends Node
+
+# ============ 懒加载单例 ============
+
+## 首次访问时创建并挂入场景树（见 Utilities/LazyService.gd）
+static var instance: VersionManager:
+	get:
+		if _instance == null:
+			_instance = VersionManager.new()
+			LazyService.mount(_instance, "VersionManager")
+		return _instance
+
+static var _instance: VersionManager = null
 
 # ============ 常量 ============
 const HISTORY_PATH := "res://Resources/Config/version_history.json"
@@ -35,7 +49,7 @@ signal update_available(info: Dictionary)
 signal update_check_finished(result: Dictionary)
 
 func _ready() -> void:
-	add_to_group("singletons")
+	add_to_group("singleton")
 	ensure_loaded()
 
 # ============ 加载 ============

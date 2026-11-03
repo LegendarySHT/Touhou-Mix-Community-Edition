@@ -9,7 +9,8 @@ using System.Threading;
 #pragma warning disable CA1416
 
 /// <summary>
-/// 音频输出路由检测器（autoload，参考 ChartDB 注册方式）
+/// 音频输出路由检测器（**不是 autoload**：由 AudioBtDetector 在首次检测时实例化
+/// CSharp/AudioRouteDetector.tscn，见 AudioBtDetector._ensure_windows_detector）
 /// Windows: 通过 WASAPI COM (IMMDeviceEnumerator) 读取默认渲染端点的
 ///           DEVPKEY_Device_EnumeratorName 总线类型，判定蓝牙：
 ///           BTHENUM(经典 A2DP) / BTHHFENUM(HFP) 前缀，以及
@@ -61,12 +62,6 @@ public partial class AudioRouteDetector : Node
 	{
 		var (source, enumerator, name) = DetectFull(refresh);
 		return $"source={source}; enumerator={enumerator}; name={name}";
-	}
-
-	public override void _Ready()
-	{
-		// 启动时检测一次并输出日志，便于验证（检测线程 ~1-5ms）
-		GD.Print($"[AudioRouteDetector] init: {GetDetectionInfo(false)}");
 	}
 
 	// ===== 检测实现 =====

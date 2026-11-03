@@ -1,5 +1,6 @@
 ## 蓝牙音频输出检测（autoload，平台分发 + 结果缓存）
-## - Windows: 调用 C# AudioRouteDetector autoload（COM 读取默认输出端点的总线类型）
+## - Windows: 子节点 C# AudioRouteDetector（COM 读取默认输出端点的总线类型），
+##            **首次检测时才实例化**（CSharp/AudioRouteDetector.tscn），不是 autoload
 ## - Android: AndroidRuntime 插件 + JavaClassWrapper 查询 AudioManager 已连接的输出设备
 ## - 其余平台: 不检测，回退普通延迟预设（不影响现有功能）
 ##
@@ -25,6 +26,9 @@ var _cached_name: String = ""
 var _last_check_ms: float = -1000000.0
 ## 是否已建立平台事件订阅（已建立则消费方无需轮询）
 var _event_listener_ready: bool = false
+
+## Windows 用 C# 检测器（懒实例化，仅首次检测时创建）
+var _windows_detector: Node = null
 
 ## 当前是否使用蓝牙输出音频
 func is_bluetooth_output(force_refresh: bool = false) -> bool:
@@ -112,16 +116,26 @@ func _detect() -> Variant:
 	# iOS / macOS / Linux 等：不检测，回退普通预设
 	return {"is_bt": false, "source": "unsupported_platform", "name": ""}
 
-## Windows: C# AudioRouteDetector autoload（COM 检测，内部自带失败兜底）
+## Windows: C# AudioRouteDetector 子节点（COM 检测，内部自带失败兜底）
 func _detect_windows() -> Dictionary:
-	# autoload 按全局名访问；防御性检查避免 C# 侧未注册/加载失败时中断
-	var detector = get_node_or_null("/root/AudioRouteDetector")
+	var detector := _ensure_windows_detector()
 	if detector == null or not detector.has_method("IsBluetoothOutput"):
 		return {"is_bt": false, "source": "no_detector", "name": ""}
 	# refresh=true：缓存频率由本类 TTL 控制，透传时绕过 C# 侧缓存
 	var is_bt: bool = detector.call("IsBluetoothOutput", true)
 	var dev_name: String = str(detector.call("GetOutputName", true))
 	return {"is_bt": is_bt, "source": "windows_com", "name": dev_name}
+
+## 懒实例化 C# 检测器：只有 Windows 走到这里才会加载 .cs / 建节点。
+## C# 常驻节点，没理由占用每个平台的启动预算。
+func _ensure_windows_detector() -> Node:
+	if _windows_detector != null and is_instance_valid(_windows_detector):
+		return _windows_detector
+	_windows_detector = Node.new()
+	_windows_detector.set_script("res://CSharp/AudioRouteDetector.cs")
+	_windows_detector.name = "AudioRouteDetector"
+	add_child(_windows_detector)
+	return _windows_detector
 
 ## Android: 获取 AudioManager 后检测蓝牙输出。
 ## 获取 Context 的两条路径（按优先级）：

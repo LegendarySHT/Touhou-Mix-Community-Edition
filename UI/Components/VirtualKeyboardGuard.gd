@@ -1,4 +1,5 @@
 extends Node
+class_name VirtualKeyboardGuard
 ## VirtualKeyboardGuard — Android 软键盘遮挡输入框的通用修复
 ##
 ## 背景：导出预设启用了 screen/immersive_mode=true（edge-to-edge），
@@ -11,6 +12,10 @@ extends Node
 ## - 主窗口内的输入框 → 整体上移根 UI（Main），上移量为 0 时不动（上部内容不被顶出屏幕）；
 ## - PopupWindow（PopupPanel 子窗口）内的输入框 → 整体上移弹窗窗口本身（含背景边框）。
 ## 失焦或键盘收起后平滑还原。仅 Android 生效，不影响桌面/其它平台。
+##
+## 生命周期：由 Main 在引导时 `new()` + `add_child` 一次，不再是 autoload。
+## 它没有对外 API（全仓 0 处调用），纯粹是「挂上就开始听焦点变化」的自运行补丁，
+## 全局可见对它没有意义。
 
 ## 键盘上方保留的额外安全间距（设计像素），避免输入框贴边
 const SAFE_MARGIN := 24.0

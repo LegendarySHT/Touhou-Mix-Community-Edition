@@ -41,11 +41,11 @@ func _on_pressed() -> void:
 
 
 ## 按住放大/松手恢复缩放动画
-func _press_scale(is_pressed: bool) -> void:
+func _press_scale(is_pressed_: bool) -> void:
 	if _press_tween and _press_tween.is_valid():
 		_press_tween.kill()
 	offset_transform_enabled = true
 	_press_tween = create_tween()
 	_press_tween.set_trans(Tween.TRANS_CUBIC)
 	_press_tween.set_ease(Tween.EASE_OUT)
-	_press_tween.tween_property(self, "offset_transform_scale", PRESS_SCALE if is_pressed else Vector2.ONE, 0.15)
+	_press_tween.tween_property(self, "offset_transform_scale", PRESS_SCALE if is_pressed_ else Vector2.ONE, 0.15)

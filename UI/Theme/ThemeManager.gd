@@ -17,7 +17,7 @@ extends Node
 const SUBMENU_ARROW_SRC_COLOR := "#b2b2b2"
 
 func _ready() -> void:
-	add_to_group("singletons")
+	add_to_group("singleton")
 	load_theme()
 	apply_clear_color()
 	_apply_boot_background_color()

@@ -31,7 +31,7 @@ static var instance: ConfigManager:
 	get:
 		if _instance == null:
 			_instance = ConfigManager.new()
-			_instance.add_to_group("singletons")
+			_instance.add_to_group("singleton")
 		return _instance
 
 static var _instance: ConfigManager = null

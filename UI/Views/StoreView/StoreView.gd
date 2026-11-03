@@ -7,7 +7,7 @@
 ##   Bottom    歌曲页分页条（进场/退场由本脚本的 _play_enter/_play_exit 驱动）
 ##
 ## 数据：
-##   歌曲来自服务端 ResMGR.get_chart_list（搜索 / 排序 / 分页）
+##   歌曲来自服务端 ResourceManager.instance.get_chart_list（搜索 / 排序 / 分页）
 ##   皮肤 / 特效 / 音源暂取本地资源索引作为预览数据（远端接口未就绪）
 ##   下载管理按本会话经商店发起的下载任务 + 当前页已下载谱面构建
 ##
@@ -76,7 +76,7 @@ var _download_entries: Dictionary = {}
 var _download_rows: Array = []
 var _download_order: int = 0
 var _active_hashes: Dictionary = {}
-## 单曲下载队列：所有下载串行执行（ResMGR 的并行信箱是单实例，不能同时跑两路）
+## 单曲下载队列：所有下载串行执行（ResourceManager 的并行信箱是单实例，不能同时跑两路）
 var _manual_queue: Array = []
 var _manual_running: bool = false
 var _batch_queue: Array = []
@@ -311,7 +311,7 @@ func _load_songs() -> void:
 	_song_req_version += 1
 	var version := _song_req_version
 
-	if ResMGR == null or NetManager.instance == null:
+	if NetManager.instance == null:
 		_show_songs_message("商店服务不可用")
 		return
 	if not NetManager.instance.is_online:
@@ -324,7 +324,7 @@ func _load_songs() -> void:
 	if _song_items.is_empty():
 		_show_songs_message("正在加载…")
 
-	var result: Dictionary = await ResMGR.get_chart_list(
+	var result: Dictionary = await ResourceManager.instance.get_chart_list(
 		_song_page, PAGE_SIZE, _search_text,
 		SORT_FIELDS[_sort_index], _sort_order
 	)
@@ -360,8 +360,8 @@ func _make_song_item(chart: Dictionary) -> Dictionary:
 	if NetManager.instance != null:
 		server = NetManager.instance.server_url
 	var state := int(ResourceManager.DownloadState.NOT_DOWNLOADED)
-	if ResMGR != null and not hash_str.is_empty():
-		state = ResMGR.get_download_state(hash_str)
+	if not hash_str.is_empty():
+		state = ResourceManager.instance.get_download_state(hash_str)
 	return {
 		"kind": "song",
 		"hash": hash_str,
@@ -394,8 +394,8 @@ func _bind_song_card(node, idx: int) -> void:
 	if idx < 0 or idx >= _song_items.size():
 		return
 	var item: Dictionary = _song_items[idx]
-	if ResMGR != null and not str(item.get("hash", "")).is_empty():
-		item["state"] = ResMGR.get_download_state(str(item.get("hash", "")))
+	if not str(item.get("hash", "")).is_empty():
+		item["state"] = ResourceManager.instance.get_download_state(str(item.get("hash", "")))
 	node.call("set_item", item, _bind_animate)
 
 
@@ -788,9 +788,9 @@ func _on_detail_download_requested(item: Dictionary) -> void:
 ## 单曲下载入口：空闲时立刻开跑，忙时排队（批量下载/另一个单曲下载进行中）
 func _request_download(item: Dictionary) -> void:
 	var hash_str := str(item.get("hash", ""))
-	if hash_str.is_empty() or ResMGR == null:
+	if hash_str.is_empty():
 		return
-	if ResMGR.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+	if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 		_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 			ResourceManager.DownloadStage.RESCAN, 1.0)
 		return
@@ -818,7 +818,7 @@ func _run_manual_queue() -> void:
 			break
 		var item: Dictionary = _manual_queue.pop_front()
 		var hash_str := str(item.get("hash", ""))
-		if ResMGR != null and ResMGR.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+		if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
 			continue
@@ -845,11 +845,11 @@ func _is_hash_queue(hash_str: String) -> bool:
 
 func _start_download(item: Dictionary, from_batch: bool = false) -> void:
 	var hash_str := str(item.get("hash", ""))
-	if hash_str.is_empty() or ResMGR == null:
+	if hash_str.is_empty():
 		return
 	if _active_hashes.has(hash_str):
 		return
-	var state := ResMGR.get_download_state(hash_str)
+	var state := ResourceManager.instance.get_download_state(hash_str)
 	if state == ResourceManager.DownloadState.DOWNLOADED:
 		_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 			ResourceManager.DownloadStage.RESCAN, 1.0)
@@ -866,7 +866,7 @@ func _start_download(item: Dictionary, from_batch: bool = false) -> void:
 	if _current_tab == Tab.DOWNLOADS:
 		_refresh_downloads_page(false)
 
-	var result: Dictionary = await ResMGR.download_chart(hash_str,
+	var result: Dictionary = await ResourceManager.instance.download_chart(hash_str,
 		Callable(self, "_on_download_progress").bind(hash_str), _get_download_hint(item))
 
 	_active_hashes.erase(hash_str)
@@ -948,8 +948,7 @@ func _set_entry_state(hash_str: String, state: int, stage: int, percent: float) 
 func _refresh_card_state(hash_str: String) -> void:
 	for item in _song_items:
 		if str(item.get("hash", "")) == hash_str:
-			item["state"] = ResMGR.get_download_state(hash_str) if ResMGR != null \
-				else ResourceManager.DownloadState.NOT_DOWNLOADED
+			item["state"] = ResourceManager.instance.get_download_state(hash_str)
 			break
 	_refresh_bound_card(hash_str)
 	_update_batch_button()
@@ -970,9 +969,9 @@ func _refresh_bound_card(hash_str: String) -> void:
 func _sync_song_states() -> void:
 	for item in _song_items:
 		var hash_str := str(item.get("hash", ""))
-		if hash_str.is_empty() or ResMGR == null:
+		if hash_str.is_empty():
 			continue
-		item["state"] = ResMGR.get_download_state(hash_str)
+		item["state"] = ResourceManager.instance.get_download_state(hash_str)
 
 
 ## 切到下载管理页时，把当前页已经下载的谱面并入记录（只做一次）
@@ -981,7 +980,7 @@ func _seed_download_entries() -> void:
 		var hash_str := str(item.get("hash", ""))
 		if hash_str.is_empty() or _download_entries.has(hash_str):
 			continue
-		if ResMGR != null and ResMGR.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+		if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 			_ensure_download_entry(item, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
 
@@ -997,9 +996,7 @@ func _on_batch_download_pressed() -> void:
 		var hash_str := str(item.get("hash", ""))
 		if hash_str.is_empty() or _download_entries.has(hash_str):
 			continue
-		if ResMGR == null:
-			continue
-		if ResMGR.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+		if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 			continue
 		if _active_hashes.has(hash_str):
 			continue
@@ -1021,7 +1018,7 @@ func _run_batch() -> void:
 		var hash_str := str(item.get("hash", ""))
 		_batch_current = hash_str
 		_update_batch_button()
-		if ResMGR != null and ResMGR.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+		if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
 			continue
@@ -1040,13 +1037,11 @@ func _update_batch_button() -> void:
 
 
 func _has_downloadable_songs() -> bool:
-	if ResMGR == null:
-		return false
 	for item in _song_items:
 		var hash_str := str(item.get("hash", ""))
 		if hash_str.is_empty() or _active_hashes.has(hash_str):
 			continue
-		if ResMGR.get_download_state(hash_str) != ResourceManager.DownloadState.DOWNLOADED:
+		if ResourceManager.instance.get_download_state(hash_str) != ResourceManager.DownloadState.DOWNLOADED:
 			return true
 	return false
 

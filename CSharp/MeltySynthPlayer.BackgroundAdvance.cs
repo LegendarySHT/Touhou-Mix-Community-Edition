@@ -71,7 +71,7 @@ public partial class MeltySynthPlayer
 	/// 供 C# 换曲（含后台线程）与合成器重建使用。
 	///
 	/// 【为什么是"推送"而不是 C# 自己去读】ConfigManager 是 GDScript 懒创建单例，
-	/// 只 `add_to_group("singletons")`、**从不加入场景树**（见 Utilities/ConfigManager.gd 的
+	/// 只 `add_to_group("singleton")`、**从不加入场景树**（见 Utilities/ConfigManager.gd 的
 	/// static instance getter），因此 C# 侧 `GetNodeOrNull("/root/ConfigManager")` 恒为 null。
 	/// 之前那套"每帧从 ConfigManager 读并缓存"的实现**从未生效**，后果是三项设置静默失效：
 	///   - 默认MIDI音量：永远回退 0.5，设置页改了没用；

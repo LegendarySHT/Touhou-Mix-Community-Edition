@@ -16,6 +16,8 @@ var storage_manager: StorageManager
 var net_manager: NetManager
 var memory_gc: MemoryGC
 var import_manager: ImportManager
+## Android 软键盘遮挡修复（自运行补丁，无对外 API
+var vk_guard: VirtualKeyboardGuard
 var _is_reloading_settings: bool = false
 
 # --- 管理器引导（依赖顺序敏感，不要随意调换）---
@@ -147,6 +149,12 @@ func _initialize_core_systems() -> void:
 	logger = GLogger
 	if logger:
 		logger.info("Logger initialized", "Main")
+
+	# 1.1 软键盘遮挡修复：只要"挂着听焦点"就行，没有对外 API，不值得占 autoload 名额。
+	#     必须早于任何输入交互创建（这里紧跟日志，后续都是数据初始化）。
+	vk_guard = VirtualKeyboardGuard.new()
+	vk_guard.name = "VirtualKeyboardGuard"
+	add_child(vk_guard)
 
 	# 1.5. 存储管理器：恢复/解析自定义存储根（必须先于配置加载，因为 settings.ini 随存储根迁移）
 	# 读取迁移日志 / 引导指针处理崩溃恢复，并把最终存储根注入 PathHelper

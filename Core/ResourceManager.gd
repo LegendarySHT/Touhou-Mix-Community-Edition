@@ -2,7 +2,10 @@ extends Node
 class_name ResourceManager
 
 ## 资源下载管理器：管理 MIDI 等资源的下载、状态追踪
-## 通过 project.godot autoload 注册为单例 ResMGR
+## 懒加载单例 `ResourceManager.instance`（见 Utilities/LazyService.gd），不是 autoload：
+## 只有商店页会用到，没必要在启动时就占一个常驻节点。
+## 顺带修正了一个时序问题：autoload 的 _ready 早于 FileSystemManager 建立，
+## 那时的 _refresh_local_states() 恒为空转；改为懒加载后首次访问时索引已经就绪。
 
 ## 下载状态枚举
 enum DownloadState { NOT_DOWNLOADED, DOWNLOADING, DOWNLOADED, FAILED }
@@ -15,7 +18,15 @@ enum DownloadStage { METADATA, COVER, MIDI, JSON, RESCAN, VOCAL }
 ## 只能定时轮询 get_downloaded_bytes() 逼近（完成回调的最大附加延迟即此值）
 const PROGRESS_POLL_INTERVAL := 0.15
 
-static var instance: ResourceManager
+## 懒加载单例：首次访问时创建并挂入场景树（见 Utilities/LazyService.gd）
+static var instance: ResourceManager:
+	get:
+		if _instance == null:
+			_instance = ResourceManager.new()
+			LazyService.mount(_instance, "ResourceManager")
+		return _instance
+
+static var _instance: ResourceManager = null
 
 ## 下载状态缓存 {hash: DownloadState}
 var _download_states: Dictionary = {}
@@ -36,12 +47,8 @@ var _vocal_done := true
 var _vocal_result: Dictionary = {"ok": false, "error": "not_started"}
 
 func _ready() -> void:
-	if instance == null:
-		instance = self
-	else:
-		queue_free()
-		return
-	# 初始化本地已下载状态
+	add_to_group("singleton")
+	# 初始化本地已下载状态（此时 FileSystemManager 必然已建立，索引可读）
 	_refresh_local_states()
 
 ## 刷新本地下载状态：扫描 FileSystemManager._hash_to_folder

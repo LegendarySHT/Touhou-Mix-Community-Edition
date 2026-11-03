@@ -33,7 +33,6 @@ TextScrollMGR="*res://Game/TextScrollMGR.gd"
 AniMGR="*res://UI/Animations/AnimationManager.gd"
 GLogger="*res://Utilities/Logger.gd"
 ThemeMGR="*res://UI/Theme/ThemeManager.gd"
-VerMGR="*res://Core/VersionManager.gd"
 SkinMGR="*res://Core/SkinManager.gd"
 ParticleMGR="*res://Core/ParticleManager.gd"
 CharaMGR="*res://Core/CharaManager.gd"
@@ -42,10 +41,7 @@ MidiCore="*res://CSharp/MidiCore.cs"
 MeltySynth="*res://CSharp/MeltySynthPlayer.tscn"
 PlaybackDisplay="*res://Game/PlaybackDisplay.gd"
 CoverLoader="*res://UI/Components/CoverLoader.gd"
-ResMGR="*res://Core/ResourceManager.gd"
-AudioRouteDetector="*res://CSharp/AudioRouteDetector.cs"
 AudioBtDetector="*res://Utilities/AudioBtDetector.gd"
-VkGuard="*res://UI/Components/VirtualKeyboardGuard.gd"
 
 [display]
 

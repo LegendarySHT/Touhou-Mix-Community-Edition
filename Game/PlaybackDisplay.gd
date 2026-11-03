@@ -103,7 +103,7 @@ func _on_audio_output_changed() -> void:
 
 ## 把全局播放配置推给 C# 播放器（启动、配置加载完成、相关配置变更时调用）。
 ##
-## 【为什么必须"推送"】ConfigManager 是 GDScript 懒创建单例，只 add_to_group("singletons")、
+## 【为什么必须"推送"】ConfigManager 是 GDScript 懒创建单例，只 add_to_group("singleton")、
 ## **从不加入场景树**（见 Utilities/ConfigManager.gd 的 static instance getter）。
 ## C# 侧 `GetNodeOrNull("/root/ConfigManager")` 恒为 null —— 重构时那套"C# 每帧自己读配置并缓存"
 ## 的实现其实从未生效，三项设置因此静默失效：默认MIDI音量（永远 0.5）、

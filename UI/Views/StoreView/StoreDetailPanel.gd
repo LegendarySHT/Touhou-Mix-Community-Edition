@@ -444,8 +444,8 @@ func _apply_download_state() -> void:
 
 	var hash_str := str(_item.get("hash", ""))
 	var state := int(_item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
-	if ResMGR != null and not hash_str.is_empty():
-		state = ResMGR.get_download_state(hash_str)
+	if not hash_str.is_empty():
+		state = ResourceManager.instance.get_download_state(hash_str)
 	var base := ThemeMGR.get_color("primary") if ThemeMGR else Color("#2E55C8")
 	var icon: Texture2D = StoreIconsLib.download()
 	var text := "下载谱面"
@@ -488,8 +488,8 @@ func _set_download_colors(base: Color) -> void:
 func _on_download_pressed() -> void:
 	var state := int(_item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
 	var hash_str := str(_item.get("hash", ""))
-	if ResMGR != null and not hash_str.is_empty():
-		state = ResMGR.get_download_state(hash_str)
+	if not hash_str.is_empty():
+		state = ResourceManager.instance.get_download_state(hash_str)
 	if str(_item.get("kind", "")) != "song" \
 			or state == ResourceManager.DownloadState.DOWNLOADED \
 			or state == ResourceManager.DownloadState.DOWNLOADING:

@@ -49,7 +49,7 @@ func _on_view_ready() -> void:
 	# 从 ConfigLoader 加载配置
 	_load_config_from_file()
 
-	# 关于页动态内容绑定（版本号/关于项目/更新历史，版本以 VerMGR / version_history.json 为准）
+	# 关于页动态内容绑定（版本号/关于项目/更新历史，版本以 VersionManager / version_history.json 为准）
 	refresh_about_page()
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
@@ -363,11 +363,11 @@ func _get_config():
 	var config = %SettingList.get_all_settings_as_json()
 	return config
 
-## 关于页版本号动态绑定（避免硬编码，版本以 VerMGR / version_history.json 为准）
+## 关于页版本号动态绑定（避免硬编码，版本以 VersionManager / version_history.json 为准）
 func _refresh_about_version() -> void:
 	var ver_label := %AboutPage.get_node_or_null("Project/Info/Version")
 	if ver_label is Label:
-		ver_label.text = VerMGR.get_version_label()
+		ver_label.text = VersionManager.instance.get_version_label()
 
 ## 刷新关于页全部动态内容：版本号、关于项目正文、更新历史、链接与更新按钮。
 ## _ready 时调用一次；外部需要时也可再次调用强制刷新。
@@ -422,9 +422,7 @@ func _on_link_clicked(meta: Variant) -> void:
 
 ## 生成版本历史的 BBCode
 func _history_bbcode() -> String:
-	if VerMGR == null:
-		return ""
-	var entries: Array = VerMGR.get_history(true)
+	var entries: Array = VersionManager.instance.get_history(true)
 	if entries.is_empty():
 		return "[i]暂无版本历史[/i]"
 	var blocks := PackedStringArray()
@@ -496,11 +494,9 @@ func _on_auto_update_toggled(on: bool) -> void:
 
 ## 检查更新入口（也供外部调用）。
 func check_for_update(status_label: Label = null) -> void:
-	if VerMGR == null:
-		return
 	if status_label:
 		status_label.text = "正在检查更新…"
-	VerMGR.update_check_finished.connect(func(result: Dictionary) -> void:
+	VersionManager.instance.update_check_finished.connect(func(result: Dictionary) -> void:
 		if status_label == null:
 			return
 		if not result.get("ok", false):
@@ -515,7 +511,7 @@ func check_for_update(status_label: Label = null) -> void:
 		else:
 			status_label.text = "已是最新版本（v%s）" % str(result.get("current", ""))
 	, CONNECT_ONE_SHOT)
-	VerMGR.check_for_updates()
+	VersionManager.instance.check_for_updates()
 
 ## 获取特定设置的值
 ## 此方法由其他模块（如TrackView、PlayView）调用，用于查询当前设置值

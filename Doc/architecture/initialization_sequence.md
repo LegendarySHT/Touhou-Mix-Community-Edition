@@ -10,6 +10,7 @@
 
 ```text
 1.   GameLogger（autoload，已就位）
+1.1  VirtualKeyboardGuard.new() + add_child()   # Android 软键盘遮挡修复，无对外 API
 2.   ConfigManager.instance（懒加载）
 2.5  ConfigManager.clear_cache() + load_and_set_current()   # 关键：其他 Manager 依赖配置
 2.75 ThemeManager（autoload，已就位）— 检查 ThemeMGR.is_loaded() 并打日志
@@ -30,6 +31,9 @@
 ```
 
 > 注：SkinManager（`SkinMGR`）同为 autoload，引擎启动时已就位，不在 `Main._initialize_core_systems()` 中显式调用。
+>
+> 懒加载单例（`VersionManager` / `ResourceManager`）不在本序列里：它们由各自的使用方首次访问
+> `Xxx.instance` 时创建，挂到 `/root/LazyServices` 下。详见 `singleton_pattern_guide.md`。
 
 ## 关键依赖关系
 
