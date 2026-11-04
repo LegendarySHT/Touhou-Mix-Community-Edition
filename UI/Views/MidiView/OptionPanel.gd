@@ -1,4 +1,4 @@
-extends VBoxContainer
+extends Control
 
 const MODE_NORMAL_ID: int = 0
 const MODE_AUTO_ID: int = 1

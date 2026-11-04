@@ -296,6 +296,7 @@ func _show_favor_panel() -> void:
 	tween1.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
 	tween1.tween_property(%OptTabBtns, "modulate:a", 0.0, 0.2)
 	tween1.tween_property(%OptTabBtns, "custom_minimum_size:y", 0, 0.2)
+	tween1.tween_property(%OptTabs, "offset_top", 0, 0.2)
 	if current_page:
 		tween1.tween_property(current_page, "modulate:a", 0.0, 0.2)
 	await tween1.finished
@@ -337,6 +338,7 @@ func _hide_favor_panel(exiting_page: bool = false) -> void:
 	%OptTabBtns.visible = true
 	%OptTabBtns.modulate.a = 1.0 if exiting_page else 0.0
 	%OptTabBtns.custom_minimum_size.y = 120 if exiting_page else 0
+	%OptTabs.offset_top = 120.0 if exiting_page else 0.0
 	
 	target_page.visible = true
 	target_page.modulate.a = 1.0 if exiting_page else 0.0
@@ -345,6 +347,7 @@ func _hide_favor_panel(exiting_page: bool = false) -> void:
 		tween2.set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_CUBIC)
 		tween2.tween_property(%OptTabBtns, "modulate:a", 1.0, 0.25)
 		tween2.tween_property(%OptTabBtns, "custom_minimum_size:y", 120, 0.25)
+		tween2.tween_property(%OptTabs, "offset_top", 120, 0.25)
 		tween2.tween_property(target_page, "modulate:a", 1.0, 0.25)
 		await tween2.finished
 	_is_animating = false

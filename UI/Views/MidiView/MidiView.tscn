@@ -4,9 +4,9 @@
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="2_1rn3q"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="3_qoscg"]
 [ext_resource type="Script" uid="uid://ddhvc24jriuwq" path="res://UI/Views/MidiView/MidiList.gd" id="5_u7brx"]
+[ext_resource type="Script" uid="uid://du6e1o3nahcc1" path="res://UI/Views/MidiView/OptionPanel.gd" id="7_r153q"]
 [ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="8_r153q"]
 [ext_resource type="Theme" uid="uid://clu7eeeh6aitj" path="res://UI/Theme/BtnTheme/R12NoBorder.tres" id="16_qg2wq"]
-[ext_resource type="Script" uid="uid://du6e1o3nahcc1" path="res://UI/Views/MidiView/option_ui.gd" id="18_2bu1o"]
 [ext_resource type="Script" uid="uid://be3a1dinys4ne" path="res://UI/Views/MidiView/ScoreList.gd" id="24_f13vx"]
 [ext_resource type="Script" uid="uid://dhq75pjfp8xyl" path="res://UI/Views/MidiView/MidiFavorPanel.gd" id="30_favor_panel"]
 [ext_resource type="Script" uid="uid://bd2pprcjbk1c6" path="res://UI/Views/MidiView/CommentArea.gd" id="34_y3sh5"]
@@ -304,44 +304,43 @@ size_flags_horizontal = 3
 theme_override_constants/separation = 25
 alignment = 1
 
-[node name="InfoWindow" type="PanelContainer" parent="LeftArea" unique_id=796666651]
+[node name="InfoWindow" type="Panel" parent="LeftArea" unique_id=1479286424]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(950, 400)
 layout_mode = 2
 size_flags_horizontal = 4
+size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_srflm")
 
-[node name="HBoxC" type="HBoxContainer" parent="LeftArea/InfoWindow" unique_id=719007797]
-layout_mode = 2
-theme_override_constants/separation = 0
-alignment = 1
-metadata/_edit_lock_ = true
-
-[node name="Left" type="VBoxContainer" parent="LeftArea/InfoWindow/HBoxC" unique_id=1246220916]
+[node name="Left" type="VBoxContainer" parent="LeftArea/InfoWindow" unique_id=1246220916]
 custom_minimum_size = Vector2(85, 0)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 80.0
+grow_vertical = 2
 theme_override_constants/separation = 0
 alignment = 1
 
-[node name="PreviBtn" type="Button" parent="LeftArea/InfoWindow/HBoxC/Left" unique_id=1931708777]
+[node name="PreviBtn" type="Button" parent="LeftArea/InfoWindow/Left" unique_id=1931708777]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 focus_neighbor_left = NodePath("../../Right/InfoBtn")
 focus_neighbor_bottom = NodePath("../FoldPanel/FoldBtn")
-focus_next = NodePath("../../../../../OptionPanel/VBoxC/OptTabBtns/RankBtn")
-focus_previous = NodePath("../../../../../OptionPanel/VBoxC/OptTabBtns/CommentBtn")
+focus_next = NodePath("../../../../OptionPanel/OptTabBtns/RankBtn")
+focus_previous = NodePath("../../../../OptionPanel/OptTabBtns/CommentBtn")
 theme_override_constants/icon_max_width = 60
 icon = SubResource("AtlasTexture_ewgot")
 icon_alignment = 1
 
-[node name="FoldPanel" type="Panel" parent="LeftArea/InfoWindow/HBoxC/Left" unique_id=320457279]
+[node name="FoldPanel" type="Panel" parent="LeftArea/InfoWindow/Left" unique_id=320457279]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_5h6qm")
 
-[node name="FoldBtn" type="Button" parent="LeftArea/InfoWindow/HBoxC/Left/FoldPanel" unique_id=153442126]
+[node name="FoldBtn" type="Button" parent="LeftArea/InfoWindow/Left/FoldPanel" unique_id=153442126]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -356,23 +355,30 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_u7brx")
 icon = SubResource("AtlasTexture_nq3r2")
 icon_alignment = 1
 
-[node name="NextBtn" type="Button" parent="LeftArea/InfoWindow/HBoxC/Left" unique_id=288120033]
+[node name="NextBtn" type="Button" parent="LeftArea/InfoWindow/Left" unique_id=288120033]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 offset_transform_enabled = true
 offset_transform_rotation = 3.1415927
-focus_neighbor_bottom = NodePath("../../../../MainBtn/TrackViewBtn")
-focus_next = NodePath("../../../../../OptionPanel/VBoxC/OptTabBtns/RankBtn")
+focus_neighbor_bottom = NodePath("../../../MainBtn/TrackViewBtn")
+focus_next = NodePath("../../../../OptionPanel/OptTabBtns/RankBtn")
 theme_override_constants/icon_max_width = 60
 icon = SubResource("AtlasTexture_ewgot")
 icon_alignment = 1
 
-[node name="MidiDescription" type="RichTextLabel" parent="LeftArea/InfoWindow/HBoxC" unique_id=1401665459]
+[node name="MidiDescription" type="RichTextLabel" parent="LeftArea/InfoWindow" unique_id=1401665459]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(750, 0)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 85.0
+offset_right = -85.0
+grow_horizontal = 2
+grow_vertical = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 focus_mode = 2
@@ -385,49 +391,62 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_81q6d")
 theme_override_styles/focus = SubResource("StyleBoxFlat_lxuff")
 bbcode_enabled = true
 
-[node name="MidiList" type="ScrollContainer" parent="LeftArea/InfoWindow/HBoxC" unique_id=43722694]
+[node name="MidiList" type="ScrollContainer" parent="LeftArea/InfoWindow" unique_id=43722694]
 unique_name_in_owner = true
-layout_mode = 2
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 85.0
+offset_right = -85.0
+grow_horizontal = 2
+grow_vertical = 2
 size_flags_horizontal = 3
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 3
 script = ExtResource("5_u7brx")
 container_path = NodePath("VBOX")
 list_item_class = "res://UI/Views/MidiView/midiNode.tscn"
-metadata/_edit_lock_ = true
 
-[node name="VBOX" type="VBoxContainer" parent="LeftArea/InfoWindow/HBoxC/MidiList" unique_id=545536108]
+[node name="VBOX" type="VBoxContainer" parent="LeftArea/InfoWindow/MidiList" unique_id=545536108]
 layout_mode = 2
 size_flags_vertical = 2
 theme_override_constants/separation = 0
 alignment = 1
 
-[node name="Right" type="VBoxContainer" parent="LeftArea/InfoWindow/HBoxC" unique_id=1009054736]
+[node name="Right" type="VBoxContainer" parent="LeftArea/InfoWindow" unique_id=1009054736]
 custom_minimum_size = Vector2(85, 0)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -80.0
+grow_horizontal = 0
+grow_vertical = 2
 theme_override_constants/separation = 0
 alignment = 1
 
-[node name="InfoBtn" type="Button" parent="LeftArea/InfoWindow/HBoxC/Right" unique_id=1857789919]
+[node name="InfoBtn" type="Button" parent="LeftArea/InfoWindow/Right" unique_id=1857789919]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 focus_neighbor_top = NodePath("../DeleteBtn")
-focus_neighbor_right = NodePath("../../../../../OptionPanel/VBoxC/OptTabBtns/RankBtn")
+focus_neighbor_right = NodePath("../../../../OptionPanel/OptTabBtns/RankBtn")
 focus_neighbor_bottom = NodePath("../DeleteBtn")
-focus_next = NodePath("../../../../../OptionPanel/VBoxC/OptTabBtns/RankBtn")
-focus_previous = NodePath("../../../../../OptionPanel/VBoxC/OptTabBtns/CommentBtn")
+focus_next = NodePath("../../../../OptionPanel/OptTabBtns/RankBtn")
+focus_previous = NodePath("../../../../OptionPanel/OptTabBtns/CommentBtn")
 theme_override_constants/icon_max_width = 60
 icon = SubResource("AtlasTexture_0jaji")
 icon_alignment = 1
 
-[node name="Center" type="Panel" parent="LeftArea/InfoWindow/HBoxC/Right" unique_id=355351725]
+[node name="Center" type="Panel" parent="LeftArea/InfoWindow/Right" unique_id=355351725]
 clip_contents = true
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_5h6qm")
 
-[node name="MidiListIndicator" type="VBoxContainer" parent="LeftArea/InfoWindow/HBoxC/Right/Center" unique_id=35138421]
+[node name="MidiListIndicator" type="VBoxContainer" parent="LeftArea/InfoWindow/Right/Center" unique_id=35138421]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(50, 200)
 clip_contents = true
@@ -445,20 +464,20 @@ theme_override_constants/separation = 9
 alignment = 1
 metadata/_edit_use_anchors_ = true
 
-[node name="DeleteBtn" type="Button" parent="LeftArea/InfoWindow/HBoxC/Right" unique_id=1190126601]
+[node name="DeleteBtn" type="Button" parent="LeftArea/InfoWindow/Right" unique_id=1190126601]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 focus_neighbor_top = NodePath("../InfoBtn")
-focus_neighbor_right = NodePath("../../../../../OptionPanel/VBoxC/OptTabBtns/RankBtn")
-focus_neighbor_bottom = NodePath("../../../../MainBtn/FavorListBtn")
-focus_next = NodePath("../../../../../OptionPanel/VBoxC/OptTabBtns/RankBtn")
-focus_previous = NodePath("../../../../../OptionPanel/VBoxC/OptTabBtns/CommentBtn")
+focus_neighbor_right = NodePath("../../../../OptionPanel/OptTabBtns/RankBtn")
+focus_neighbor_bottom = NodePath("../../../MainBtn/FavorListBtn")
+focus_next = NodePath("../../../../OptionPanel/OptTabBtns/RankBtn")
+focus_previous = NodePath("../../../../OptionPanel/OptTabBtns/CommentBtn")
 theme_override_constants/icon_max_width = 60
 icon = SubResource("AtlasTexture_na1rg")
 icon_alignment = 1
 
-[node name="DetailData" type="VBoxContainer" parent="LeftArea" unique_id=2074526545]
+[node name="DetailData" type="Control" parent="LeftArea" unique_id=1910408262]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(900, 350)
 layout_mode = 2
@@ -467,15 +486,15 @@ size_flags_vertical = 6
 size_flags_stretch_ratio = 3.0
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, 30)
-theme_override_constants/separation = -30
-alignment = 1
 
 [node name="ForePanel" type="PanelContainer" parent="LeftArea/DetailData" unique_id=46322881]
 unique_name_in_owner = true
-layout_mode = 2
+custom_minimum_size = Vector2(900, 190)
+layout_mode = 0
+offset_top = 10.0
+offset_right = 900.0
+offset_bottom = 200.0
 size_flags_vertical = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(0, 10)
 theme_override_styles/panel = SubResource("StyleBoxFlat_i6pqd")
 
 [node name="BasicData" type="HBoxContainer" parent="LeftArea/DetailData/ForePanel" unique_id=239490255]
@@ -567,10 +586,13 @@ vertical_alignment = 1
 [node name="BackPanel" type="PanelContainer" parent="LeftArea/DetailData" unique_id=876880271]
 unique_name_in_owner = true
 z_index = -1
-layout_mode = 2
+custom_minimum_size = Vector2(900, 190)
+layout_mode = 0
+offset_left = 20.0
+offset_top = 100.0
+offset_right = 920.0
+offset_bottom = 290.0
 size_flags_vertical = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(20, -60)
 theme_override_styles/panel = SubResource("StyleBoxFlat_iygje")
 
 [node name="FileData" type="HBoxContainer" parent="LeftArea/DetailData/BackPanel" unique_id=682764807]
@@ -649,8 +671,8 @@ offset_transform_enabled = true
 offset_transform_position = Vector2(5, 0)
 offset_transform_visual_only = false
 focus_neighbor_left = NodePath("../FavorListBtn")
-focus_neighbor_top = NodePath("../../InfoWindow/HBoxC/Left/NextBtn")
-focus_next = NodePath("../../../OptionPanel/VBoxC/OptTabBtns/RankBtn")
+focus_neighbor_top = NodePath("../../InfoWindow/Left/NextBtn")
+focus_next = NodePath("../../../OptionPanel/OptTabBtns/RankBtn")
 icon = SubResource("AtlasTexture_tn4wv")
 icon_alignment = 1
 expand_icon = true
@@ -661,7 +683,7 @@ z_index = 1
 custom_minimum_size = Vector2(300, 200)
 layout_mode = 2
 size_flags_horizontal = 3
-focus_next = NodePath("../../../OptionPanel/VBoxC/OptTabBtns/RankBtn")
+focus_next = NodePath("../../../OptionPanel/OptTabBtns/RankBtn")
 theme_override_colors/icon_normal_color = Color(1, 1, 1, 1)
 theme_override_colors/icon_hover_color = Color(1, 1, 1, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_btcpj")
@@ -680,38 +702,34 @@ size_flags_vertical = 4
 offset_transform_enabled = true
 offset_transform_position = Vector2(-5, 0)
 offset_transform_visual_only = false
-focus_neighbor_top = NodePath("../../InfoWindow/HBoxC/Right/DeleteBtn")
-focus_neighbor_right = NodePath("../../../OptionPanel/VBoxC/OptTabBtns/RankBtn")
-focus_next = NodePath("../../../OptionPanel/VBoxC/OptTabBtns/RankBtn")
+focus_neighbor_top = NodePath("../../InfoWindow/Right/DeleteBtn")
+focus_neighbor_right = NodePath("../../../OptionPanel/OptTabBtns/RankBtn")
+focus_next = NodePath("../../../OptionPanel/OptTabBtns/RankBtn")
 icon = SubResource("AtlasTexture_ghrq3")
 icon_alignment = 1
 expand_icon = true
 
-[node name="Control" type="Control" parent="LeftArea" unique_id=1136873940]
-visible = false
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="OptionPanel" type="PanelContainer" parent="." unique_id=1504818877]
+[node name="OptionPanel" type="Panel" parent="." unique_id=1188763556]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(600, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_fx5ny")
+script = ExtResource("7_r153q")
 
-[node name="VBoxC" type="VBoxContainer" parent="OptionPanel" unique_id=327543443]
-layout_mode = 2
-theme_override_constants/separation = -1
-script = ExtResource("18_2bu1o")
-
-[node name="OptTabBtns" type="HBoxContainer" parent="OptionPanel/VBoxC" unique_id=339701538]
+[node name="OptTabBtns" type="HBoxContainer" parent="OptionPanel" unique_id=339701538]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(600, 120)
-layout_mode = 2
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 16.0
+grow_horizontal = 2
 offset_transform_enabled = true
 theme_override_constants/separation = 0
 alignment = 1
 
-[node name="RankBtn" type="Button" parent="OptionPanel/VBoxC/OptTabBtns" unique_id=1349029556]
+[node name="RankBtn" type="Button" parent="OptionPanel/OptTabBtns" unique_id=1349029556]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 7
@@ -725,7 +743,7 @@ icon_alignment = 1
 expand_icon = true
 metadata/id = 1
 
-[node name="ModeBtn" type="Button" parent="OptionPanel/VBoxC/OptTabBtns" unique_id=452346499]
+[node name="ModeBtn" type="Button" parent="OptionPanel/OptTabBtns" unique_id=452346499]
 layout_mode = 2
 size_flags_horizontal = 7
 theme_override_colors/icon_pressed_color = Color(1, 1, 1, 1)
@@ -737,7 +755,7 @@ icon_alignment = 1
 expand_icon = true
 metadata/id = 2
 
-[node name="CommentBtn" type="Button" parent="OptionPanel/VBoxC/OptTabBtns" unique_id=2029033822]
+[node name="CommentBtn" type="Button" parent="OptionPanel/OptTabBtns" unique_id=2029033822]
 layout_mode = 2
 size_flags_horizontal = 7
 theme_override_colors/icon_pressed_color = Color(1, 1, 1, 1)
@@ -749,22 +767,28 @@ icon_alignment = 1
 expand_icon = true
 metadata/id = 3
 
-[node name="OptTabs" type="TabContainer" parent="OptionPanel/VBoxC" unique_id=1154304984]
+[node name="OptTabs" type="TabContainer" parent="OptionPanel" unique_id=1154304984]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(600, 778)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 120.0
+grow_horizontal = 2
+grow_vertical = 2
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxEmpty_dnql7")
 current_tab = 0
 tabs_visible = false
 
-[node name="RankPanel" type="PanelContainer" parent="OptionPanel/VBoxC/OptTabs" unique_id=1031929289]
+[node name="RankPanel" type="PanelContainer" parent="OptionPanel/OptTabs" unique_id=1031929289]
 self_modulate = Color(1, 1, 1, 0)
 layout_mode = 2
 mouse_filter = 2
 metadata/_tab_index = 0
 
-[node name="Total" type="Label" parent="OptionPanel/VBoxC/OptTabs/RankPanel" unique_id=2038863637]
+[node name="Total" type="Label" parent="OptionPanel/OptTabs/RankPanel" unique_id=2038863637]
 layout_mode = 2
 size_flags_vertical = 0
 offset_transform_enabled = true
@@ -773,7 +797,7 @@ theme_override_font_sizes/font_size = 19
 text = "游玩次数 999 | 平均成绩 99999 | 平均PP 99.99 | 平均准度 99.99%"
 horizontal_alignment = 1
 
-[node name="ScoreList" type="ScrollContainer" parent="OptionPanel/VBoxC/OptTabs/RankPanel" unique_id=1921750512]
+[node name="ScoreList" type="ScrollContainer" parent="OptionPanel/OptTabs/RankPanel" unique_id=1921750512]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
@@ -782,14 +806,14 @@ script = ExtResource("24_f13vx")
 container_path = NodePath("VBox")
 list_item_class = "res://UI/Views/MidiView/scoreNode.tscn"
 
-[node name="VBox" type="VBoxContainer" parent="OptionPanel/VBoxC/OptTabs/RankPanel/ScoreList" unique_id=374945097]
+[node name="VBox" type="VBoxContainer" parent="OptionPanel/OptTabs/RankPanel/ScoreList" unique_id=374945097]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 15
 alignment = 1
 
-[node name="ModePanel" type="PanelContainer" parent="OptionPanel/VBoxC/OptTabs" unique_id=290841234]
+[node name="ModePanel" type="PanelContainer" parent="OptionPanel/OptTabs" unique_id=290841234]
 unique_name_in_owner = true
 visible = false
 self_modulate = Color(1, 1, 1, 0)
@@ -798,13 +822,13 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxEmpty_8q3pc")
 metadata/_tab_index = 1
 
-[node name="HFlowC" type="HFlowContainer" parent="OptionPanel/VBoxC/OptTabs/ModePanel" unique_id=689612215]
+[node name="HFlowC" type="HFlowContainer" parent="OptionPanel/OptTabs/ModePanel" unique_id=689612215]
 layout_mode = 2
 theme_override_constants/h_separation = 20
 theme_override_constants/v_separation = 20
 alignment = 1
 
-[node name="DifficultySelect" type="OptionButton" parent="OptionPanel/VBoxC/OptTabs/ModePanel/HFlowC" unique_id=1847448867]
+[node name="DifficultySelect" type="OptionButton" parent="OptionPanel/OptTabs/ModePanel/HFlowC" unique_id=1847448867]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 88)
 custom_maximum_size = Vector2(350, 120)
@@ -828,7 +852,7 @@ popup/item_3/id = 3
 popup/item_4/text = "Custom"
 popup/item_4/id = 4
 
-[node name="LimitSelect" type="OptionButton" parent="OptionPanel/VBoxC/OptTabs/ModePanel/HFlowC" unique_id=1131758216]
+[node name="LimitSelect" type="OptionButton" parent="OptionPanel/OptTabs/ModePanel/HFlowC" unique_id=1131758216]
 unique_name_in_owner = true
 custom_maximum_size = Vector2(350, 120)
 layout_mode = 2
@@ -851,7 +875,7 @@ popup/item_2/text = "All Perfect"
 popup/item_2/icon = SubResource("AtlasTexture_vyv6b")
 popup/item_2/id = 2
 
-[node name="ModeSelect" type="OptionButton" parent="OptionPanel/VBoxC/OptTabs/ModePanel/HFlowC" unique_id=1997638858]
+[node name="ModeSelect" type="OptionButton" parent="OptionPanel/OptTabs/ModePanel/HFlowC" unique_id=1997638858]
 unique_name_in_owner = true
 custom_maximum_size = Vector2(350, 120)
 layout_mode = 2
@@ -871,7 +895,7 @@ popup/item_1/text = "Auto Mode"
 popup/item_1/icon = SubResource("AtlasTexture_r153q")
 popup/item_1/id = 1
 
-[node name="GameModeSelect" type="OptionButton" parent="OptionPanel/VBoxC/OptTabs/ModePanel/HFlowC" unique_id=872825176]
+[node name="GameModeSelect" type="OptionButton" parent="OptionPanel/OptTabs/ModePanel/HFlowC" unique_id=872825176]
 unique_name_in_owner = true
 custom_maximum_size = Vector2(350, 120)
 layout_mode = 2
@@ -890,7 +914,7 @@ popup/item_1/text = "Scan Line"
 popup/item_1/icon = SubResource("AtlasTexture_ch7ig")
 popup/item_1/id = 1
 
-[node name="CommentPanel" type="VBoxContainer" parent="OptionPanel/VBoxC/OptTabs" unique_id=1141009423]
+[node name="CommentPanel" type="VBoxContainer" parent="OptionPanel/OptTabs" unique_id=1141009423]
 unique_name_in_owner = true
 visible = false
 self_modulate = Color(1, 1, 1, 0)
@@ -899,7 +923,7 @@ mouse_filter = 2
 script = ExtResource("34_y3sh5")
 metadata/_tab_index = 2
 
-[node name="Top" type="HBoxContainer" parent="OptionPanel/VBoxC/OptTabs/CommentPanel" unique_id=1404014134]
+[node name="Top" type="HBoxContainer" parent="OptionPanel/OptTabs/CommentPanel" unique_id=1404014134]
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 offset_transform_enabled = true
@@ -908,7 +932,7 @@ offset_transform_visual_only = false
 theme_override_constants/separation = 10
 alignment = 1
 
-[node name="Label" type="Label" parent="OptionPanel/VBoxC/OptTabs/CommentPanel/Top" unique_id=472438170]
+[node name="Label" type="Label" parent="OptionPanel/OptTabs/CommentPanel/Top" unique_id=472438170]
 custom_minimum_size = Vector2(250, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -916,7 +940,7 @@ theme_override_font_sizes/font_size = 32
 text = "是否推荐此歌曲"
 horizontal_alignment = 1
 
-[node name="Like" type="Button" parent="OptionPanel/VBoxC/OptTabs/CommentPanel/Top" unique_id=431887046]
+[node name="Like" type="Button" parent="OptionPanel/OptTabs/CommentPanel/Top" unique_id=431887046]
 custom_minimum_size = Vector2(150, 70)
 layout_mode = 2
 size_flags_vertical = 4
@@ -933,7 +957,7 @@ text = "0"
 icon = SubResource("AtlasTexture_qoscg")
 expand_icon = true
 
-[node name="Dislike" type="Button" parent="OptionPanel/VBoxC/OptTabs/CommentPanel/Top" unique_id=739043967]
+[node name="Dislike" type="Button" parent="OptionPanel/OptTabs/CommentPanel/Top" unique_id=739043967]
 custom_minimum_size = Vector2(150, 70)
 layout_mode = 2
 size_flags_vertical = 4
@@ -951,7 +975,7 @@ text = "0"
 icon = SubResource("AtlasTexture_1vlqv")
 expand_icon = true
 
-[node name="Comments" type="ScrollContainer" parent="OptionPanel/VBoxC/OptTabs/CommentPanel" unique_id=245176123]
+[node name="Comments" type="ScrollContainer" parent="OptionPanel/OptTabs/CommentPanel" unique_id=245176123]
 layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("36_gjqh3")
@@ -959,17 +983,17 @@ container_path = NodePath("VBox")
 list_item_class = "res://UI/Views/MidiView/commentItem.tscn"
 metadata/_custom_type_script = "uid://5bvwaglh3ekw"
 
-[node name="VBox" type="VBoxContainer" parent="OptionPanel/VBoxC/OptTabs/CommentPanel/Comments" unique_id=1218827053]
+[node name="VBox" type="VBoxContainer" parent="OptionPanel/OptTabs/CommentPanel/Comments" unique_id=1218827053]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="Bottom" type="HBoxContainer" parent="OptionPanel/VBoxC/OptTabs/CommentPanel" unique_id=76515684]
+[node name="Bottom" type="HBoxContainer" parent="OptionPanel/OptTabs/CommentPanel" unique_id=76515684]
 custom_minimum_size = Vector2(0, 100)
 layout_mode = 2
 theme_override_constants/separation = 30
 
-[node name="LineEdit" type="LineEdit" parent="OptionPanel/VBoxC/OptTabs/CommentPanel/Bottom" unique_id=936299093]
+[node name="LineEdit" type="LineEdit" parent="OptionPanel/OptTabs/CommentPanel/Bottom" unique_id=936299093]
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -981,7 +1005,7 @@ placeholder_text = "发表评论..."
 max_length = 500
 editable = false
 
-[node name="Button" type="Button" parent="OptionPanel/VBoxC/OptTabs/CommentPanel/Bottom" unique_id=1704251894]
+[node name="Button" type="Button" parent="OptionPanel/OptTabs/CommentPanel/Bottom" unique_id=1704251894]
 custom_minimum_size = Vector2(120, 80)
 layout_mode = 2
 size_flags_horizontal = 4
@@ -993,7 +1017,7 @@ theme_override_font_sizes/font_size = 36
 disabled = true
 text = "发送"
 
-[node name="FavorPanel" type="PanelContainer" parent="OptionPanel/VBoxC/OptTabs" unique_id=203199523]
+[node name="FavorPanel" type="PanelContainer" parent="OptionPanel/OptTabs" unique_id=203199523]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
@@ -1002,29 +1026,29 @@ theme_override_styles/panel = SubResource("StyleBoxEmpty_qg2wq")
 script = ExtResource("30_favor_panel")
 metadata/_tab_index = 3
 
-[node name="VBoxC" type="VBoxContainer" parent="OptionPanel/VBoxC/OptTabs/FavorPanel" unique_id=1820391247]
+[node name="VBoxC" type="VBoxContainer" parent="OptionPanel/OptTabs/FavorPanel" unique_id=1820391247]
 layout_mode = 2
 theme_override_constants/separation = 30
 
-[node name="FavorList" type="ScrollContainer" parent="OptionPanel/VBoxC/OptTabs/FavorPanel/VBoxC" unique_id=936505813]
+[node name="FavorList" type="ScrollContainer" parent="OptionPanel/OptTabs/FavorPanel/VBoxC" unique_id=936505813]
 custom_minimum_size = Vector2(0, 500)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 theme_override_styles/panel = SubResource("StyleBoxEmpty_vqh6o")
 
-[node name="VBoxC" type="VBoxContainer" parent="OptionPanel/VBoxC/OptTabs/FavorPanel/VBoxC/FavorList" unique_id=253766444]
+[node name="VBoxC" type="VBoxContainer" parent="OptionPanel/OptTabs/FavorPanel/VBoxC/FavorList" unique_id=253766444]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 20
 
-[node name="CreateList" type="VBoxContainer" parent="OptionPanel/VBoxC/OptTabs/FavorPanel/VBoxC" unique_id=1667524261]
+[node name="CreateList" type="VBoxContainer" parent="OptionPanel/OptTabs/FavorPanel/VBoxC" unique_id=1667524261]
 layout_mode = 2
 size_flags_horizontal = 4
 mouse_filter = 2
 alignment = 1
 
-[node name="AddBtn" type="Button" parent="OptionPanel/VBoxC/OptTabs/FavorPanel/VBoxC/CreateList" unique_id=675184273]
+[node name="AddBtn" type="Button" parent="OptionPanel/OptTabs/FavorPanel/VBoxC/CreateList" unique_id=675184273]
 custom_minimum_size = Vector2(80, 80)
 layout_mode = 2
 theme_override_styles/normal = SubResource("StyleBoxEmpty_f13vx")
@@ -1035,7 +1059,7 @@ icon = SubResource("AtlasTexture_0mqhb")
 icon_alignment = 1
 expand_icon = true
 
-[node name="FailMessage" type="Label" parent="OptionPanel/VBoxC/OptTabs" unique_id=1287461938]
+[node name="FailMessage" type="Label" parent="OptionPanel/OptTabs" unique_id=1287461938]
 visible = false
 custom_minimum_size = Vector2(600, 0)
 layout_mode = 2
@@ -1049,22 +1073,18 @@ vertical_alignment = 1
 autowrap_mode = 1
 metadata/_tab_index = 4
 
-[connection signal="pressed" from="LeftArea/InfoWindow/HBoxC/Left/PreviBtn" to="LeftArea/InfoWindow/HBoxC/MidiList" method="_previous"]
-[connection signal="pressed" from="LeftArea/InfoWindow/HBoxC/Left/FoldPanel/FoldBtn" to="LeftArea/InfoWindow/HBoxC/MidiList" method="_show_midi_list"]
-[connection signal="pressed" from="LeftArea/InfoWindow/HBoxC/Left/NextBtn" to="LeftArea/InfoWindow/HBoxC/MidiList" method="_next"]
-[connection signal="selection_changed" from="LeftArea/InfoWindow/HBoxC/MidiList" to="." method="_on_selection_changed"]
-[connection signal="pressed" from="LeftArea/InfoWindow/HBoxC/Right/InfoBtn" to="." method="_on_info_btn_pressed"]
-[connection signal="pressed" from="LeftArea/InfoWindow/HBoxC/Right/DeleteBtn" to="." method="_on_del_btn_pressed"]
+[connection signal="pressed" from="LeftArea/InfoWindow/Left/PreviBtn" to="LeftArea/InfoWindow/MidiList" method="_previous"]
+[connection signal="pressed" from="LeftArea/InfoWindow/Left/FoldPanel/FoldBtn" to="LeftArea/InfoWindow/MidiList" method="_show_midi_list"]
+[connection signal="pressed" from="LeftArea/InfoWindow/Left/NextBtn" to="LeftArea/InfoWindow/MidiList" method="_next"]
+[connection signal="selection_changed" from="LeftArea/InfoWindow/MidiList" to="." method="_on_selection_changed"]
+[connection signal="pressed" from="LeftArea/InfoWindow/Right/InfoBtn" to="." method="_on_info_btn_pressed"]
+[connection signal="pressed" from="LeftArea/InfoWindow/Right/DeleteBtn" to="." method="_on_del_btn_pressed"]
 [connection signal="pressed" from="LeftArea/RedirectButtons/CheckinWebBtn" to="." method="_on_click_checkin_web_btn"]
 [connection signal="pressed" from="LeftArea/RedirectButtons/UploadSongBtn" to="." method="_on_click_upload_song_btn"]
 [connection signal="pressed" from="LeftArea/MainBtn/TrackViewBtn" to="." method="_on_click_track_btn"]
 [connection signal="pressed" from="LeftArea/MainBtn/PlayBtn" to="." method="_on_click_start_btn"]
 [connection signal="pressed" from="LeftArea/MainBtn/FavorListBtn" to="." method="_on_click_favor_list_btn"]
-[connection signal="item_selected" from="OptionPanel/VBoxC/OptTabs/ModePanel/HFlowC/DifficultySelect" to="OptionPanel/VBoxC" method="_on_difficulty_selected"]
-[connection signal="item_selected" from="OptionPanel/VBoxC/OptTabs/ModePanel/HFlowC/LimitSelect" to="OptionPanel/VBoxC" method="_on_limit_selected"]
-[connection signal="item_selected" from="OptionPanel/VBoxC/OptTabs/ModePanel/HFlowC/ModeSelect" to="OptionPanel/VBoxC" method="_on_mode_selected"]
-[connection signal="item_selected" from="OptionPanel/VBoxC/OptTabs/ModePanel/HFlowC/GameModeSelect" to="OptionPanel/VBoxC" method="_on_game_mode_selected"]
-[connection signal="pressed" from="OptionPanel/VBoxC/OptTabs/CommentPanel/Top/Like" to="OptionPanel/VBoxC/OptTabs/CommentPanel" method="_on_like_pressed"]
-[connection signal="pressed" from="OptionPanel/VBoxC/OptTabs/CommentPanel/Top/Dislike" to="OptionPanel/VBoxC/OptTabs/CommentPanel" method="_on_dislike_pressed"]
-[connection signal="text_submitted" from="OptionPanel/VBoxC/OptTabs/CommentPanel/Bottom/LineEdit" to="OptionPanel/VBoxC/OptTabs/CommentPanel" method="_on_send_pressed"]
-[connection signal="pressed" from="OptionPanel/VBoxC/OptTabs/CommentPanel/Bottom/Button" to="OptionPanel/VBoxC/OptTabs/CommentPanel" method="_on_send_pressed"]
+[connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Top/Like" to="OptionPanel/OptTabs/CommentPanel" method="_on_like_pressed"]
+[connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Top/Dislike" to="OptionPanel/OptTabs/CommentPanel" method="_on_dislike_pressed"]
+[connection signal="text_submitted" from="OptionPanel/OptTabs/CommentPanel/Bottom/LineEdit" to="OptionPanel/OptTabs/CommentPanel" method="_on_send_pressed"]
+[connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Bottom/Button" to="OptionPanel/OptTabs/CommentPanel" method="_on_send_pressed"]
