@@ -207,6 +207,7 @@ func set_current(midi_data: MidiData) -> bool:
 		midi_data.bpm_timeline = bpm_timeline.duplicate()
 		midi_data.midi_timebase = midi_timebase
 		midi_data.max_end_tick = MidiCore.GetMaxEndTick(pp["key"])
+		midi_data.max_note_duration_ticks = MidiCore.GetMaxDurationTicks(pp["key"])
 		midi_data.track_channel_instruments = MidiCore.GetTrackInstruments(pp["key"])
 		duration_ms = midi_data.duration_ms
 
@@ -287,6 +288,7 @@ func ensure_parsed(midi_data: MidiData) -> bool:
 	midi_data.track_count = MidiCore.GetTrackCount(pp["key"])
 	midi_data.duration_ms = MidiCore.GetDurationMs(pp["key"])
 	midi_data.max_end_tick = MidiCore.GetMaxEndTick(pp["key"])
+	midi_data.max_note_duration_ticks = MidiCore.GetMaxDurationTicks(pp["key"])
 	cached_track_channel_instruments = MidiCore.GetTrackInstruments(pp["key"])
 	midi_data.track_channel_instruments = cached_track_channel_instruments.duplicate(true)
 	_instr_cache_chart_key = _key_of(midi_data)

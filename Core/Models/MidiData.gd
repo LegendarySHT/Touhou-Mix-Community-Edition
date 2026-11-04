@@ -135,9 +135,12 @@ var bpm_timeline: Array = []
 var midi_timebase: int = 480
 
 ## MIDI 最大 end_tick（所有音符结束 tick 的最大值，解析后缓存）
-## 用于 NoteDisplayer ct 异常保护，避免循环播放时 ct 越界导致 active_notes 累积
-## 类型为 float 与 NoteEvent.start_time / NoteState.start_tick 对齐，避免比较时隐式转换
+## 用于 NoteDisplayer ct 异常保护，避免循环播放时 ct 越界导致窗口内容累积
+## 类型为 float 与音符 start_tick/end_tick 对齐，避免比较时隐式转换
 var max_end_tick: float = 0.0
+
+## 全曲最大音符时长（tick，解析后缓存；音符窗口回溯用）
+var max_note_duration_ticks: float = 0.0
 
 ## MIDI 解析时提取的 (track, channel) → {bank, program} 乐器映射（运行时缓存，不持久化）
 ## 由 C# MidiParserNative 一次性提取，替代原 extract_track_channel_instruments 的 GDScript 遍历

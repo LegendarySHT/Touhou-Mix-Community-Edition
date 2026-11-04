@@ -162,6 +162,10 @@ func _tick_to_ms(tick: float) -> float:
 	var entry = _bpm_lookup[lo]
 	return entry[2] + (tick - entry[0]) * ((60000.0 / entry[1]) / float(_timebase))
 
+## 供外部把 tick 换算成 ms（内部实现见 _tick_to_ms）
+func tick_to_ms(tick: float) -> float:
+	return _tick_to_ms(tick)
+
 ## ===================== 分组（索引化 runtime_track_channel_notes） =====================
 
 ## 构建 { "track:channel": PackedInt32Array（SOA 索引）}，取代旧的 object 分组。

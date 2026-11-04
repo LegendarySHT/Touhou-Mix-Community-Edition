@@ -538,7 +538,11 @@ func _on_vocal_enable_btn_toggled(toggle_on: bool) -> void:
 
 func _on_expand_master_area_btn_toggled(is_expanded: bool) -> void:
 	var expd_y:int = int(get_viewport().get_visible_rect().size.y) - 50
-	
+
+	# 先把目标车道数的几何重画完，高度变化期间由音符显示器纵向拉伸铺满
+	%MasterNoteDisplayer.lane_count = 88 if is_expanded else 24
+	%MasterNoteDisplayer.refresh_notes_lane(%MasterNoteDisplayer.lane_count)
+
 	var tween: Tween = AniMGR.create_managed_tween(self)
 	tween.pause()
 	tween.set_parallel(true)
@@ -550,7 +554,6 @@ func _on_expand_master_area_btn_toggled(is_expanded: bool) -> void:
 	await get_tree().process_frame
 	
 	tween.tween_property(self, "scroll_vertical", 0, 0.2)
-	tween.tween_property(%MasterNoteDisplayer, "lane_count", 88 if is_expanded else 24, 0.2)
 	
 	tween.play()
 	await tween.finished
@@ -1002,6 +1005,11 @@ func _build_buckets() -> void:
 	if groups.is_empty() and use_soa:
 		groups = soa.grouped_indices()
 		current_midi_data.runtime_track_channel_notes = groups
+	# 每个 (track, channel) 的最大音符时长（tick）：供每桶收紧窗口回溯下限
+	var group_max_dur: Dictionary = {}
+	var parse_key: String = current_midi_data.midi_file_path
+	if not parse_key.is_empty() and MidiCore != null and MidiCore.HasParsed(parse_key):
+		group_max_dur = MidiCore.GetGroupMaxDurationTicks(parse_key)
 	for key in groups:
 		var parts = key.split(":")
 		var track_idx = int(parts[0])
@@ -1013,6 +1021,7 @@ func _build_buckets() -> void:
 		bucket.channel = channel
 		bucket.hue = MidiTrack.colors_set[track_idx % MidiTrack.colors_set.size()].h
 		bucket.color = Color.from_hsv(bucket.hue, 1, 0.9, 0.8)
+		bucket.max_duration_ticks = float(group_max_dur.get(key, 0))
 		# 统一透传到 bucket：soa != null 时 indices 为 PackedInt32Array（SOA 索引），显示路径
 		# 只读直引 bucket.soa，不物化全量 22w NoteEvent（音符数据唯一来源仍是 SOA）
 		bucket.notes = indices

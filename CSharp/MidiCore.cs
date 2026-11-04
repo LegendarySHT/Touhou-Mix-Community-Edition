@@ -1053,6 +1053,46 @@ public partial class MidiCore : Node
         }
     }
 
+    /// <summary>最大音符时长（tick，0 = 未知）。窗口回溯用。任意线程可读。</summary>
+    public double GetMaxDurationTicks(string path)
+    {
+        lock (_parseLock)
+        {
+            if (!_parseCache.TryGetValue(path ?? "", out var e) || e.Du == null) return 0.0;
+            int max = 0;
+            for (int i = 0; i < e.Du.Length; i++)
+            {
+                if (e.Du[i] > max) max = e.Du[i];
+            }
+            return max;
+        }
+    }
+
+    /// <summary>每个 (track, channel) 分组的最大音符时长（tick，键 "track:channel"，0 = 未知）。
+    /// 供 TrackView 每桶收紧窗口回溯下限，避免用全曲最大值在多轨谱面上回溯过多音符。任意线程可读。</summary>
+    public Godot.Collections.Dictionary GetGroupMaxDurationTicks(string path)
+    {
+        var result = new Godot.Collections.Dictionary();
+        lock (_parseLock)
+        {
+            if (!_parseCache.TryGetValue(path ?? "", out var e) || e.Du == null) return result;
+            if (e.GroupKeys == null || e.GroupOffsets == null || e.GroupIndices == null) return result;
+            for (int g = 0; g < e.GroupKeys.Length; g++)
+            {
+                int max = 0;
+                int end = e.GroupOffsets[g + 1];
+                for (int i = e.GroupOffsets[g]; i < end; i++)
+                {
+                    int d = e.Du[e.GroupIndices[i]];
+                    if (d > max) max = d;
+                }
+                int key = e.GroupKeys[g];
+                result[$"{key >> 8}:{key & 0xFF}"] = max;
+            }
+        }
+        return result;
+    }
+
     private static int[] BuildPairsFlat(ParseEntry e)
     {
         var seen = new HashSet<int>();
