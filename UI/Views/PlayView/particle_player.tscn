@@ -1,6 +1,0 @@
-[gd_scene format=3 uid="uid://cx3nanq2v7dp1"]
-
-[ext_resource type="Script" path="res://UI/Views/PlayView/particle_player.gd" id="1_x"]
-
-[node name="ParticleBatchDrawer" type="Node2D"]
-script = ExtResource("1_x")

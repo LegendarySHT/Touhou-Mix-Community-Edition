@@ -1,5 +1,5 @@
+extends Control
 class_name GlowLayer
-extends Node2D
 
 ## NoteBatchDrawer 的光效子层
 ## 使用加色混合（BLEND_MODE_ADD）绘制 glow 纹理

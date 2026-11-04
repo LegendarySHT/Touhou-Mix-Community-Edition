@@ -11,9 +11,9 @@ const JUDGE_TYPES: Array[String] = ["Perfect", "Great", "Good", "Bad"]
 var _base_presets: Array[String] = ["None"]
 var _emitter_presets: Array[String] = ["None"]
 ## 粒子预览场景（精灵图序列帧批绘节点）
-var _particle_scene: PackedScene = preload("res://UI/Views/PlayView/particle_player.tscn")
-## 常驻批绘节点（预览粒子全部由单个 Node2D 统一绘制）
-var _particle_drawer: Node2D = null
+var _particle_script: Script = preload("res://UI/Views/PlayView/particle_player.gd")
+## 常驻批绘节点（预览粒子全部由单个 Control 统一绘制）
+var _particle_drawer: Control = null
 ## 预览循环定时器
 var _particle_preview_timer: Timer = null
 ## 粒子预览自动播放间隔（秒）
@@ -38,7 +38,8 @@ func _ready() -> void:
 	for i in JUDGE_TYPES.size():
 		judge_btns[i].pressed.connect(_on_judge_pressed.bind(JUDGE_TYPES[i]))
 	# 常驻单个批绘节点，预览粒子由它统一绘制
-	_particle_drawer = _particle_scene.instantiate()
+	_particle_drawer = Control.new()
+	_particle_drawer.set_script(_particle_script)
 	%ParticlePreview.add_child(_particle_drawer)
 	_init_particle_preview()
 	_init_value_debounce()

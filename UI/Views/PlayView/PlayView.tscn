@@ -4,9 +4,9 @@
 [ext_resource type="Script" uid="uid://d1iexilqlavwd" path="res://UI/Views/PlayView/FlowArea.gd" id="2_jlvmc"]
 [ext_resource type="Script" uid="uid://da4iihe2e4ool" path="res://UI/Views/PlayView/LaneEffect.gd" id="3_kvdpo"]
 [ext_resource type="Script" uid="uid://b47npyuqw7acg" path="res://UI/Views/PlayView/NoteBatchDrawer.gd" id="4_8x7c2"]
-[ext_resource type="PackedScene" uid="uid://cx3nanq2v7dp1" path="res://UI/Views/PlayView/particle_player.tscn" id="5_ptcl"]
 [ext_resource type="Script" uid="uid://cq7vbk2mxn3dr" path="res://UI/Theme/ViewBackground.gd" id="6_bgctrl"]
 [ext_resource type="Script" uid="uid://c1jieae2d3edr" path="res://UI/Views/PlayView/PlayHud.gd" id="7_hud"]
+[ext_resource type="Script" uid="uid://hcvruiair004" path="res://UI/Views/PlayView/particle_player.gd" id="7_i1we6"]
 [ext_resource type="Script" uid="uid://cbp1sof2efk35" path="res://UI/Views/PlayView/GlowLayer.gd" id="8_glow"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="9_q4lmo"]
 [ext_resource type="Theme" uid="uid://clu7eeeh6aitj" path="res://UI/Theme/BtnTheme/R12NoBorder.tres" id="10_q4lmo"]
@@ -20,8 +20,6 @@ colors = PackedColorArray(0.0627451, 0.08627451, 0.16470589, 1, 0.02745098, 0.03
 gradient = SubResource("Gradient_7ak4s")
 fill_to = Vector2(1, 1)
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_50kwk"]
-
 [sub_resource type="StyleBoxLine" id="StyleBoxLine_uj6qe"]
 color = Color(1, 1, 1, 0.35)
 thickness = 2
@@ -31,6 +29,8 @@ blend_mode = 1
 
 [sub_resource type="FontVariation" id="FontVariation_v7581"]
 variation_embolden = 0.5
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_50kwk"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jlvmc"]
 bg_color = Color(0.0941, 0.1176, 0.1686, 0.55)
@@ -71,7 +71,6 @@ view_layer = 1
 
 [node name="Background" type="TextureRect" parent="." unique_id=1298054889]
 unique_name_in_owner = true
-modulate = Color(1, 1, 1, 1)
 texture_filter = 4
 layout_mode = 1
 anchors_preset = 15
@@ -84,30 +83,27 @@ script = ExtResource("6_bgctrl")
 view_name = "play"
 use_dim = true
 
-[node name="LaneEffect" type="Control" parent="." unique_id=2025598350]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-pivot_offset = Vector2(78, 707)
-mouse_filter = 2
-script = ExtResource("3_kvdpo")
-
-[node name="FlowArea" type="Panel" parent="." unique_id=14663010]
+[node name="FlowArea" type="Control" parent="." unique_id=641645674]
 unique_name_in_owner = true
 self_modulate = Color(1, 1, 1, 0)
-z_index = 1
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_styles/panel = SubResource("StyleBoxEmpty_50kwk")
 script = ExtResource("2_jlvmc")
+
+[node name="LaneEffect" type="Control" parent="FlowArea" unique_id=2025598350]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("3_kvdpo")
 
 [node name="JudgeLine" type="HSeparator" parent="FlowArea" unique_id=1743550222]
 unique_name_in_owner = true
@@ -122,19 +118,41 @@ grow_vertical = 0
 mouse_filter = 2
 theme_override_styles/separator = SubResource("StyleBoxLine_uj6qe")
 
-[node name="NoteBatchDrawer" type="Node2D" parent="FlowArea" unique_id=1935847162]
+[node name="NoteBatchDrawer" type="Control" parent="FlowArea" unique_id=2008677223]
 unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 script = ExtResource("4_8x7c2")
 
-[node name="GlowLayer" type="Node2D" parent="FlowArea/NoteBatchDrawer" unique_id=1886617382]
+[node name="GlowLayer" type="Control" parent="FlowArea" unique_id=671733202]
 unique_name_in_owner = true
 visible = false
 z_index = -1
 material = SubResource("CanvasItemMaterial_glow")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 script = ExtResource("8_glow")
 
-[node name="ParticleBatchDrawer" parent="FlowArea" unique_id=-936790854 instance=ExtResource("5_ptcl")]
+[node name="ParticleBatchDrawer" type="Control" parent="FlowArea" unique_id=1460369187]
 unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("7_i1we6")
 
 [node name="AutoLabel" type="Label" parent="." unique_id=1190176837]
 unique_name_in_owner = true
@@ -163,6 +181,7 @@ vertical_alignment = 1
 unique_name_in_owner = true
 z_index = 2
 layout_mode = 1
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 10.0

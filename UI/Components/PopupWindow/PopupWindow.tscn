@@ -587,8 +587,14 @@ offset_transform_visual_only = false
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxEmpty_fanli")
 
-[node name="NoteLongDrawer" type="Node2D" parent="Tabs/NoteSkinAdjust/NotePreviewPanel/NotePreviewRow/NoteLong" unique_id=1671766112]
+[node name="NoteLongDrawer" type="Control" parent="Tabs/NoteSkinAdjust/NotePreviewPanel/NotePreviewRow/NoteLong" unique_id=1867363950]
 unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("23_drawer")
 
 [node name="NoteLongGlowTail" type="ColorRect" parent="Tabs/NoteSkinAdjust/NotePreviewPanel/NotePreviewRow/NoteLong" unique_id=1991995202]

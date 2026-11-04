@@ -4,7 +4,7 @@
 ## 供 PlayView 判定特效与 ParticleAdjust 预览共用
 ## 一次特效 = 基础粒子层（可选）+ 发射器/散射粒子层（可选），两层各自独立推进帧
 ## （两层来自不同粒子包时 fps/帧数/网格可能不同，不再强制同网格）
-extends Node2D
+extends Control
 
 class_name ParticleBatchDrawer
 

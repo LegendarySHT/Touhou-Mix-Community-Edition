@@ -1,4 +1,4 @@
-extends Node2D
+extends Control
 class_name NoteBatchDrawer
 
 ## Block/Slide/Long 音符批量绘制器
@@ -271,8 +271,8 @@ func _compute_tex_height(tex: Texture2D) -> float:
 		return _note_width
 	return float(tex.get_height())
 
-func _create_transparent_texture(size: int = 64) -> Texture2D:
-	var image = Image.create(size, size, false, Image.FORMAT_RGBA8)
+func _create_transparent_texture(img_size: int = 64) -> Texture2D:
+	var image = Image.create(img_size, img_size, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0, 0, 0, 0))
 	return ImageTexture.create_from_image(image)
 
@@ -281,13 +281,13 @@ func _create_transparent_texture(size: int = 64) -> Texture2D:
 ## σ 由 _glow_size 映射（1~30 → σ 0.6~1.5，音符半高单位），最大时衰减仍在纹理内结束，不裁边
 ## 峰值 GLOW_PEAK 直接烤入：保持高斯平滑形状（无平台），加色叠加也不易爆白
 func _bake_glow_texture() -> void:
-	var size = 128
-	var img = Image.create(size, size, false, Image.FORMAT_RGBA8)
-	var center = size * 0.5
-	var note_half = size / 6.0  # note_uv_half = 0.1667 ≈ 1/6（dist 单位：音符半高）
+	var img_size = 128
+	var img = Image.create(img_size, img_size, false, Image.FORMAT_RGBA8)
+	var center = img_size * 0.5
+	var note_half = img_size / 6.0  # note_uv_half = 0.1667 ≈ 1/6（dist 单位：音符半高）
 	var sigma = 0.6 + _glow_size * (1.5 - 0.6) / 30.0
-	for y in range(size):
-		for x in range(size):
+	for y in range(img_size):
+		for x in range(img_size):
 			var nx = (x - center) / note_half
 			var ny = (y - center) / note_half
 			var dist = sqrt(nx * nx + ny * ny)

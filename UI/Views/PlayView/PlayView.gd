@@ -9,7 +9,7 @@ const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
 signal retry_pressed
 
 # 音符显示区
-@onready var flow_area: Panel = %FlowArea
+@onready var flow_area: Control = %FlowArea
 # 背景节点自管（ViewBackground 脚本挂在 Background 上）：封面/模糊/暗化/闪光都在那边
 @onready var bg: ViewBackground = %Background
 
