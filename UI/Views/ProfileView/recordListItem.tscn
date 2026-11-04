@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://cjgolmmrnft4n"]
 
 [ext_resource type="Script" uid="uid://bnunrurnc8gvb" path="res://UI/Views/ProfileView/recordListItem.gd" id="1_v8uxu"]
+[ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="2_76847"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="3_e3e5v"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ng81m"]
@@ -15,28 +16,45 @@ corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
-[node name="RecordListItem" type="PanelContainer" unique_id=1058775657]
-custom_minimum_size = Vector2(0, 150)
+[node name="RecordListItem" type="Panel" unique_id=992292245]
+custom_minimum_size = Vector2(0, 130)
 clip_contents = true
+offset_right = 1585.0
+offset_bottom = 130.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_ng81m")
 script = ExtResource("1_v8uxu")
 
-[node name="HBox" type="HBoxContainer" parent="." unique_id=1448104784]
-layout_mode = 2
-mouse_filter = 2
+[node name="Button" type="Button" parent="." unique_id=155156319]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+flat = true
 
-[node name="Cover" type="TextureRect" parent="HBox" unique_id=1349898086]
+[node name="Cover" type="TextureRect" parent="." unique_id=1349898086]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(300, 0)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+grow_vertical = 2
 mouse_filter = 2
 expand_mode = 3
 stretch_mode = 6
+script = ExtResource("2_76847")
 
-[node name="Info" type="VBoxContainer" parent="HBox" unique_id=727404601]
-custom_maximum_size = Vector2(450, -1)
+[node name="Info" type="VBoxContainer" parent="." unique_id=727404601]
 clip_contents = true
-layout_mode = 2
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 0.6
+anchor_bottom = 1.0
+offset_left = 310.0
+grow_vertical = 2
 size_flags_horizontal = 3
 offset_transform_enabled = true
 offset_transform_position = Vector2(15, 0)
@@ -44,26 +62,41 @@ mouse_filter = 2
 theme_override_constants/separation = 0
 alignment = 1
 
-[node name="MidiName" type="Label" parent="HBox/Info" unique_id=747897909]
+[node name="MidiName" type="Label" parent="Info" unique_id=747897909]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "Midi Name"
 vertical_alignment = 1
 script = ExtResource("3_e3e5v")
+end_padding = 0.0
 
-[node name="MidiAuthor" type="Label" parent="HBox/Info" unique_id=165219667]
+[node name="MidiAuthor" type="Label" parent="Info" unique_id=165219667]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "Midi Author"
 vertical_alignment = 1
 script = ExtResource("3_e3e5v")
+end_padding = 0.0
 
-[node name="Date" type="Label" parent="HBox/Info" unique_id=924962951]
+[node name="RecordDate" type="Label" parent="Info" unique_id=924962951]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 24
 text = "2026-01-01 19:00:00"
 vertical_alignment = 1
+
+[node name="HBox" type="HBoxContainer" parent="." unique_id=1448104784]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.6
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 0
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="VBox" type="VBoxContainer" parent="HBox" unique_id=1312746905]
 layout_mode = 2
@@ -79,6 +112,7 @@ mouse_filter = 2
 theme_override_constants/separation = 20
 
 [node name="Score" type="Label" parent="HBox/VBox/Score" unique_id=744592564]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 5
@@ -89,6 +123,7 @@ horizontal_alignment = 2
 vertical_alignment = 2
 
 [node name="PP" type="Label" parent="HBox/VBox/Score" unique_id=704681004]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 0)
 layout_mode = 2
 size_flags_vertical = 5
@@ -103,6 +138,7 @@ size_flags_vertical = 3
 mouse_filter = 2
 
 [node name="MaxCombo" type="Label" parent="HBox/VBox/Count" unique_id=1548668064]
+unique_name_in_owner = true
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -125,6 +161,7 @@ text = "Max Combo"
 horizontal_alignment = 1
 
 [node name="Perfect" type="Label" parent="HBox/VBox/Count" unique_id=1721687760]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.9999998, 0.31206748, 0.9932019, 1)
@@ -134,6 +171,7 @@ horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="Great" type="Label" parent="HBox/VBox/Count" unique_id=2015801480]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(1, 0.4627451, 0, 1)
@@ -143,6 +181,7 @@ horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="Bad" type="Label" parent="HBox/VBox/Count" unique_id=881208724]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.10980392, 0.6901961, 1, 1)
@@ -152,6 +191,7 @@ horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="Good" type="Label" parent="HBox/VBox/Count" unique_id=1931795913]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.03793709, 0.87704253, 0, 1)
@@ -161,6 +201,7 @@ horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="Miss" type="Label" parent="HBox/VBox/Count" unique_id=1845181464]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.8627, 0.2039, 0.3137, 1)
@@ -170,7 +211,8 @@ horizontal_alignment = 2
 vertical_alignment = 1
 
 [node name="MainInfo" type="Label" parent="HBox" unique_id=1529464611]
-custom_minimum_size = Vector2(150, 0)
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 100)
 layout_mode = 2
 theme_override_font_sizes/font_size = 42
 text = "111"

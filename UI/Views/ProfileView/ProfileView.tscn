@@ -5,6 +5,7 @@
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="3_71xqf"]
 [ext_resource type="Script" uid="uid://g8pqawth7e6o" path="res://UI/Views/ProfileView/AvatarPreview.gd" id="4_sgab8"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="5_l4gu6"]
+[ext_resource type="PackedScene" uid="uid://drhaatgwaxfor" path="res://UI/Components/ChartDetailPanel.tscn" id="6_xsa8c"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_3y6u5"]
 
@@ -151,6 +152,8 @@ shadow_color = Color(0, 0, 0, 0.3)
 shadow_size = 10
 shadow_offset = Vector2(0, 3)
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_7fsko"]
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1pkam"]
 content_margin_left = 0.0
 content_margin_top = 0.0
@@ -166,6 +169,8 @@ corner_radius_top_left = 75
 corner_radius_top_right = 75
 corner_radius_bottom_right = 75
 corner_radius_bottom_left = 75
+shadow_color = Color(0, 0, 0, 0.35686275)
+shadow_size = 15
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_history_topbar"]
 content_margin_left = 60.0
@@ -262,8 +267,6 @@ expand_margin_right = 40.0
 expand_margin_bottom = 6.0
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_3y6u5"]
-
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_7fsko"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ng81m"]
 
@@ -392,10 +395,11 @@ offset_bottom = -170.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxEmpty_3y6u5")
-current_tab = 0
+current_tab = 1
 tabs_visible = false
 
 [node name="Profile" type="HBoxContainer" parent="PageContent" unique_id=572518356]
+visible = false
 layout_mode = 2
 metadata/_tab_index = 0
 
@@ -712,15 +716,67 @@ size_flags_vertical = 3
 [node name="PlayRecordList" type="VBoxContainer" parent="PageContent/Profile/Data/DataColumn/RecentPlayPanel/PlayColumn/List" unique_id=615279763]
 layout_mode = 2
 
-[node name="History" type="VBoxContainer" parent="PageContent" unique_id=1290400202]
-visible = false
+[node name="History" type="Control" parent="PageContent" unique_id=1889094256]
 layout_mode = 2
 metadata/_tab_index = 1
+
+[node name="HistoryTabs" type="TabContainer" parent="PageContent/History" unique_id=697349407]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 140.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxEmpty_7fsko")
+current_tab = 0
+tabs_visible = false
+
+[node name="RecentPlay" type="ScrollContainer" parent="PageContent/History/HistoryTabs" unique_id=81773539]
+layout_mode = 2
+size_flags_vertical = 3
+metadata/_tab_index = 0
+
+[node name="RecentPlayList" type="VBoxContainer" parent="PageContent/History/HistoryTabs/RecentPlay" unique_id=1646692693]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 15
+
+[node name="BestPlay" type="ScrollContainer" parent="PageContent/History/HistoryTabs" unique_id=1054082970]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+metadata/_tab_index = 1
+
+[node name="BestPlayList" type="VBoxContainer" parent="PageContent/History/HistoryTabs/BestPlay" unique_id=888654210]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 15
+
+[node name="MostPlay" type="ScrollContainer" parent="PageContent/History/HistoryTabs" unique_id=1909620862]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+metadata/_tab_index = 2
+
+[node name="MostPlayList" type="VBoxContainer" parent="PageContent/History/HistoryTabs/MostPlay" unique_id=2052768632]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 15
 
 [node name="HistoryPanel" type="PanelContainer" parent="PageContent/History" unique_id=415150945]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 125)
-layout_mode = 2
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 84.0
+grow_horizontal = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_1pkam")
 
 [node name="TopBar" type="HBoxContainer" parent="PageContent/History/HistoryPanel" unique_id=2039044189]
@@ -750,6 +806,7 @@ vertical_alignment = 2
 [node name="GradeHeaderS" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=2014034047]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_7fsko")
 text = "S"
@@ -779,6 +836,7 @@ vertical_alignment = 1
 [node name="GradeHeaderC" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1616333252]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_6jr7o")
 text = "C"
@@ -788,6 +846,7 @@ vertical_alignment = 1
 [node name="GradeHeaderD" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1618589507]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_1myf0")
 text = "D"
@@ -797,6 +856,7 @@ vertical_alignment = 1
 [node name="GradeHeaderF" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1552353533]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
+theme_override_colors/font_color = Color(0.949, 0.961, 0.984, 1)
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_2oogn")
 text = "F"
@@ -931,49 +991,6 @@ text = "最多游玩"
 custom_minimum_size = Vector2(40, 0)
 layout_mode = 2
 mouse_filter = 2
-
-[node name="HistoryTabs" type="TabContainer" parent="PageContent/History" unique_id=697349407]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_vertical = 3
-theme_override_styles/panel = SubResource("StyleBoxEmpty_7fsko")
-current_tab = 0
-tabs_visible = false
-
-[node name="RecentPlay" type="ScrollContainer" parent="PageContent/History/HistoryTabs" unique_id=81773539]
-layout_mode = 2
-size_flags_vertical = 3
-metadata/_tab_index = 0
-
-[node name="RecentPlayList" type="VBoxContainer" parent="PageContent/History/HistoryTabs/RecentPlay" unique_id=1646692693]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 15
-
-[node name="BestPlay" type="ScrollContainer" parent="PageContent/History/HistoryTabs" unique_id=1054082970]
-visible = false
-layout_mode = 2
-size_flags_vertical = 3
-metadata/_tab_index = 1
-
-[node name="BestPlayList" type="VBoxContainer" parent="PageContent/History/HistoryTabs/BestPlay" unique_id=888654210]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 15
-
-[node name="MostPlay" type="ScrollContainer" parent="PageContent/History/HistoryTabs" unique_id=1909620862]
-visible = false
-layout_mode = 2
-size_flags_vertical = 3
-metadata/_tab_index = 2
-
-[node name="MostPlayList" type="VBoxContainer" parent="PageContent/History/HistoryTabs/MostPlay" unique_id=2052768632]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 15
 
 [node name="Edit" type="PanelContainer" parent="PageContent" unique_id=638331925]
 visible = false
@@ -1218,6 +1235,10 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_ag846")
 icon = SubResource("AtlasTexture_p7r7c")
 icon_alignment = 1
+
+[node name="DetailLayer" parent="." unique_id=1131119634 instance=ExtResource("6_xsa8c")]
+unique_name_in_owner = true
+layout_mode = 1
 
 [connection signal="pressed" from="PageContent/Edit/EditRow/ProfileEditColumn/Nickname/NicknameConfirmBtn" to="." method="_on_save_nickname_btn_pressed"]
 [connection signal="pressed" from="PageContent/Edit/EditRow/ProfileEditColumn/DescBox/DescConfirmBtn" to="." method="_on_save_desc_btn_pressed"]

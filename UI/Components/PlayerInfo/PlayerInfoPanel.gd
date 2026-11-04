@@ -91,7 +91,6 @@ func _animate_to_state(s: State) -> void:
 
 	_apply_content_visibility(s)
 	_animate_panel_geometry(s, _tween)
-	_animate_tip(s, _tween)
 	_animate_overlay(s, _tween)
 
 	match s:
@@ -200,17 +199,6 @@ func _animate_panel_geometry(s: State, t: Tween) -> void:
 	t.tween_property(%Tabs, "offset_bottom", 0, ANIM_DURATION)
 	t.tween_property(%Tabs, "offset_left", p.margin + p.tab_left_extra, ANIM_DURATION)
 	t.tween_property(%Tabs, "offset_right", -p.margin - max(TAB_RIGHT_RESERVE_NORM, p.tab_left_extra), ANIM_DURATION)
-
-# ========== Tip ==========
-
-func _animate_tip(s: State, t: Tween) -> void:
-	match s:
-		State.LOGGED_OUT:
-			t.tween_property(%Tabs.tip, "custom_minimum_size:x", TIP_WIDTH_LOGGED_OUT, ANIM_DURATION)
-		State.LOGGED_IN:
-			t.tween_property(%Tabs.tip, "custom_minimum_size:x", TIP_WIDTH_LOGGED_IN, ANIM_DURATION)
-		_:
-			pass
 
 # ========== 遮罩 ==========
 

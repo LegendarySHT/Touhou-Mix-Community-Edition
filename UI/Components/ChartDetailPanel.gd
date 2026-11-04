@@ -1,21 +1,27 @@
-## 商店详情弹窗：从卡片矩形“放大”成整块面板（共享元素展开动画），关闭时缩回卡片。
+## 谱面详情弹窗（通用组件）：从列表项矩形「放大」成整块面板，关闭时缩回。
 ##
-## 结构：左上封面 + 封面下的排行榜 / 右上简介 + 底部点赞与下载操作。
-## 歌曲的排行榜与下载状态取真实服务；皮肤/特效/音源等本地分类条目走「资源信息」占位，
-## 详情布局与动画完全一致。
-class_name StoreDetailPanel
+## 结构：左上封面 + 封面下的排行榜 / 右上简介 + 底部统计与操作按钮。
+## 打开/关闭动画、封面与排行榜拉取、角按钮离台、返回键消费、跳 MIDI_VIEW 都在组件内完成，
+## 宿主只需 open(item, source_rect) 并按需接下面三个信号；任何视图都能直接实例化本场景。
+##
+## Mode.STORE   商店：按钮承载下载状态机，未下载时发 download_requested 交由宿主处理
+## Mode.LIBRARY 曲库 / 游玩记录等非商店入口：不发起下载，仅当谱面在本地时提供跳转
+class_name ChartDetailPanel
 extends Control
 
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 
 signal download_requested(item: Dictionary)
-## 已下载谱面的按钮改为跳转：请求在曲库中打开该谱面
+## 即将跳转 MIDI_VIEW 时通知宿主（跳转本身由组件完成，宿主无需再实现）
 signal open_requested(item: Dictionary)
 signal closed
+
+enum Mode { STORE, LIBRARY }
 
 const DETAIL_SIZE := Vector2(1280, 760)
 
 var _item: Dictionary = {}
+var _mode: int = Mode.STORE
 var _open := false
 var _source_rect := Rect2()
 var _open_target_rect := Rect2()
@@ -66,15 +72,19 @@ func is_open() -> bool:
 	return _open
 
 
-## 从卡片矩形展开到居中的详情面板。source_rect 为卡片的全局矩形（本层与商店同坐标）
+## 从列表项矩形展开到居中的详情面板。source_rect 为源节点的全局矩形。
+## p_mode 决定底部按钮语义，见文件头 Mode 说明。
 ##
 ## 用「整块面板缩放」而不是「改面板尺寸」做展开：
 ##   面板始终按目标尺寸布局（子节点不重排、文本不回流），只把 offset_transform 的
 ##   位置/缩放从卡片矩形补到零。这样动画期间内容不会溢出面板、也没有每帧重排的开销。
-func open(p_item: Dictionary, source_rect: Rect2) -> void:
+func open(p_item: Dictionary, source_rect: Rect2, p_mode: int = Mode.STORE) -> void:
 	_req_version += 1
 	_item = p_item
-	# 卡片矩形是全局坐标；本层铺满商店，换算成本层局部坐标后才能做共享元素动画
+	_mode = p_mode
+	# 右下 / 左上全局角按钮 z_index 高于本层，打开期间先播退场移开
+	_set_nav_buttons_hidden(true)
+	# 卡片矩形是全局坐标；本层铺满宿主视图，换算成本层局部坐标后才能做共享元素动画
 	var origin := get_global_rect().position
 	_source_rect = Rect2(source_rect.position - origin, source_rect.size)
 	# 目标矩形先算出来：下面要用它判断源矩形是不是「宽条」
@@ -165,7 +175,32 @@ func _finish_close() -> void:
 	%Panel.size = DETAIL_SIZE
 	%Panel.offset_transform_position = Vector2.ZERO
 	%Panel.offset_transform_scale = Vector2.ONE
+	_set_nav_buttons_hidden(false)
 	closed.emit()
+
+
+## 立即收起（不播动画）：跳转视图后兜底，宿主未关时避免详情残留
+func _close_now() -> void:
+	if not _open:
+		return
+	_open = false
+	_req_version += 1
+	_finish_close()
+
+
+## 宿主的全局返回键钩子：详情打开时先关详情，返回 true 表示事件已被消费
+func handle_back_request() -> bool:
+	if not _open:
+		return false
+	close()
+	return true
+
+
+## 模态离台 / 回台交给角按钮自己的位移补间，直接改 visible 会突兀消失
+func _set_nav_buttons_hidden(need_hidden: bool) -> void:
+	for btn in [GlobalNodes.rb_btn, GlobalNodes.lt_btn]:
+		if is_instance_valid(btn) and btn.has_method("set_modal_hidden"):
+			btn.set_modal_hidden(need_hidden)
 
 
 func _target_rect() -> Rect2:
@@ -436,6 +471,9 @@ func refresh_download_state() -> void:
 func _apply_download_state() -> void:
 	if not is_inside_tree():
 		return
+	if _mode == Mode.LIBRARY:
+		_apply_library_action()
+		return
 	var is_song := str(_item.get("kind", "")) == "song"
 	if not is_song:
 		%DownloadBtn.text = "已安装"
@@ -494,8 +532,23 @@ func _set_download_colors(base: Color) -> void:
 		_dl_focus.shadow_color = Color(base.r, base.g, base.b, 0.4)
 
 
+## 非商店入口：不参与下载状态机，只按本地曲库有无该谱面决定按钮是否可跳
+func _apply_library_action() -> void:
+	var hash_str := str(_item.get("hash", ""))
+	var available := not hash_str.is_empty() and DataMGR.get_midi_by_id(hash_str) != null
+	%DownloadBtn.disabled = not available
+	%DownloadBtn.text = "查看谱面" if available else "本地没有该谱面"
+	%DownloadBtn.icon = StoreIconsLib.song() if available else StoreIconsLib.close()
+	%DownloadBtn.tooltip_text = "在曲库中打开该谱面" if available else "该谱面不在本地曲库中"
+	if available:
+		_set_download_colors(ThemeMGR.get_color("success") if ThemeMGR else Color("#2FA66A"))
+
+
 func _on_download_pressed() -> void:
 	if str(_item.get("kind", "")) != "song":
+		return
+	if _mode == Mode.LIBRARY:
+		_open_midi_view()
 		return
 	var state := int(_item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
 	var hash_str := str(_item.get("hash", ""))
@@ -504,9 +557,33 @@ func _on_download_pressed() -> void:
 	if state == ResourceManager.DownloadState.DOWNLOADING:
 		return
 	if state == ResourceManager.DownloadState.DOWNLOADED:
-		open_requested.emit(_item)
+		_open_midi_view()
 		return
 	download_requested.emit(_item)
+
+
+## 按 hash 反查本地曲库后进 MIDI_VIEW。有专辑 / 歌曲归属时走标准导航，
+## 让 MidiView 带出同歌曲的其它谱面并把返回链落在歌曲 / 专辑层级；
+## 归属失效时退回直达路径，保证点击一定有响应
+func _open_midi_view() -> void:
+	var hash_str := str(_item.get("hash", ""))
+	if hash_str.is_empty():
+		return
+	var midi: MidiData = DataMGR.get_midi_by_id(hash_str)
+	if midi == null:
+		GLogger.warning("谱面已标记本地可用但曲库查不到: %s" % hash_str, "ChartDetailPanel")
+		return
+	open_requested.emit(_item)
+	if not midi.album_id.is_empty() and not midi.song_id.is_empty():
+		UiStatMGR.navigate_to_album_song(midi.album_id, midi.song_id, midi.id)
+		if UiStatMGR.current_state != UIStateManager.UIState.MIDI_VIEW:
+			UiStatMGR.change_state(UIStateManager.UIState.MIDI_VIEW)
+			EvtBus.emit_midi_selected(midi.id, midi)
+	else:
+		UiStatMGR.change_state(UIStateManager.UIState.MIDI_VIEW)
+		EvtBus.emit_midi_selected(midi.id, midi)
+	# 收起放到帧末：宿主在状态切换时已自行关闭，这里只兜底没有关闭机制的第三方使用方
+	_close_now.call_deferred()
 
 
 func _on_dim_input(event: InputEvent) -> void:
@@ -533,22 +610,20 @@ func apply_theme() -> void:
 		else ThemeMGR.get_color("text_dim")
 
 	var bg_sb := %BG.get_theme_stylebox("panel") as StyleBoxFlat
-	if bg_sb:
-		bg_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.98)
-		bg_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.55 if is_light else 0.45)
-		bg_sb.shadow_color = Color(0, 0, 0, 0.45 if is_light else 0.55)
+	bg_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.98)
+	bg_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.55 if is_light else 0.45)
+	bg_sb.shadow_color = Color(0, 0, 0, 0.45 if is_light else 0.55)
+
 	var accent_sb := %Accent.get_theme_stylebox("panel") as StyleBoxFlat
-	if accent_sb:
-		accent_sb.bg_color = accent_text
+	accent_sb.bg_color = accent_text
 
 	var cover_sb := %CoverWrap.get_theme_stylebox("panel") as StyleBoxFlat
-	if cover_sb:
-		cover_sb.bg_color = surface_high if is_light else surface_low
-		cover_sb.border_color = border
+	cover_sb.bg_color = surface_high if is_light else surface_low
+	cover_sb.border_color = border
+
 	var rank_sb := %RankBox.get_theme_stylebox("panel") as StyleBoxFlat
-	if rank_sb:
-		rank_sb.bg_color = surface_low
-		rank_sb.border_color = ThemeMGR.get_color("border_soft")
+	rank_sb.bg_color = surface_low
+	rank_sb.border_color = ThemeMGR.get_color("border_soft")
 
 	%Kind.add_theme_color_override("font_color", muted_text)
 	%Desc.add_theme_color_override("default_color", ThemeMGR.get_color("text_secondary"))
@@ -565,13 +640,11 @@ func apply_theme() -> void:
 	# 详情里的按钮样式按主题重新着色（与卡片独立的资源，直接改色安全）
 	for btn in [%CloseBtn]:
 		var btn_sb := (btn as Button).get_theme_stylebox("normal") as StyleBoxFlat
-		if btn_sb:
-			btn_sb.bg_color = surface_low
-			btn_sb.border_color = border
+		btn_sb.bg_color = surface_low
+		btn_sb.border_color = border
 		var hover_sb := (btn as Button).get_theme_stylebox("hover") as StyleBoxFlat
-		if hover_sb:
-			hover_sb.bg_color = ThemeMGR.get_color("surface_hover")
-			hover_sb.border_color = primary
+		hover_sb.bg_color = ThemeMGR.get_color("surface_hover")
+		hover_sb.border_color = primary
 	# 关闭按钮/赞踩按钮的图标是白色贴图：浅色模式下不染色会直接消失
 	%CloseBtn.add_theme_color_override("icon_normal_color", ThemeMGR.get_color("text_secondary"))
 	%CloseBtn.add_theme_color_override("icon_hover_color", ThemeMGR.get_color("text_primary"))

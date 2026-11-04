@@ -4,7 +4,7 @@
 ##   TopBar    左侧搜索 / 排序 / 批量下载 / 人声开关，右侧五个标签页（歌曲 / 皮肤 / 特效 / 音源 / 下载管理）
 ##   Tabs      TabContainer（tabs_visible=false）：四个列表页（ScrollContainer → ListContent → VirtualList 池）
 ##             → 共享空状态页 → 下载管理页；切换标签只改 current_tab，空状态靠切到共享页表达
-##   DetailLayer 卡片展开式详情弹窗（StoreDetailPanel）
+##   DetailLayer 卡片展开式详情弹窗（通用组件 ChartDetailPanel，默认 STORE 模式）
 ##   Bottom    歌曲页分页条（进场/退场由本脚本的 _play_enter/_play_exit 驱动）
 ##
 ## 数据：
@@ -26,7 +26,6 @@ const VirtualListLib := preload("res://UI/Components/VirtualList.gd")
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 const CategoryCardLib := preload("res://UI/Views/StoreView/StoreCategoryCard.gd")
 const DownloadRowLib := preload("res://UI/Views/StoreView/StoreDownloadRow.gd")
-const DetailPanelLib := preload("res://UI/Views/StoreView/StoreDetailPanel.gd")
 
 enum Tab { SONGS, SKINS, EFFECTS, SOUNDFONTS, DOWNLOADS }
 
@@ -183,7 +182,6 @@ func _connect_ui() -> void:
 	%NextBtn.pressed.connect(_on_next_pressed)
 	%DetailLayer.closed.connect(_on_detail_closed)
 	%DetailLayer.download_requested.connect(_on_detail_download_requested)
-	%DetailLayer.open_requested.connect(_on_detail_open_requested)
 	# 空状态提示兼作「手动重载」入口：加载失败 / 无内容时点一下重新拉取当前标签页
 	# （列表页共用一个空状态页，下载管理有自己的空提示）
 	%PageEmpty.gui_input.connect(_on_empty_gui_input)
@@ -453,28 +451,10 @@ func _on_card_ready(node) -> void:
 func _on_detail_requested(item: Dictionary, source_rect: Rect2) -> void:
 	_detail_source_node = _find_bound_node_for_item(item)
 	_detail_source_item = item
-	_hide_nav_buttons()
 	%DetailLayer.open(item, source_rect)
 
 
-## 详情是商店内部的模态层，但右下返回键 z_index=99 会压在它上面（还能点）。
-## 打开期间让两个角按钮播退场动画离台，关闭时再入场；直接改 visible 会突兀消失
-func _hide_nav_buttons() -> void:
-	_set_nav_buttons_hidden(true)
-
-
-func _restore_nav_buttons() -> void:
-	_set_nav_buttons_hidden(false)
-
-
-func _set_nav_buttons_hidden(need_hidden: bool) -> void:
-	for btn in [GlobalNodes.rb_btn, GlobalNodes.lt_btn]:
-		if is_instance_valid(btn):
-			btn.set_modal_hidden(need_hidden)
-
-
 func _on_detail_closed() -> void:
-	_restore_nav_buttons()
 	var source := _detail_source_node
 	var source_item := _detail_source_item
 	_detail_source_node = null
@@ -816,32 +796,6 @@ func _on_card_download_requested(item: Dictionary) -> void:
 
 func _on_detail_download_requested(item: Dictionary) -> void:
 	_request_download(item)
-
-
-## 详情里「查看谱面」：谱面已在本地，按 hash 反查曲库条目后进 MIDI_VIEW
-func _on_detail_open_requested(item: Dictionary) -> void:
-	var hash_str := str(item.get("hash", ""))
-	if hash_str.is_empty():
-		return
-	var midi: MidiData = DataMGR.get_midi_by_id(hash_str)
-	if midi == null:
-		# 下载的收尾扫描还没把该谱面写进索引时会走到这里
-		GLogger.warning("商店谱面已下载但曲库查不到: %s" % hash_str, "StoreView")
-		return
-	_open_midi_view(midi)
-
-
-## 进 MIDI_VIEW。有专辑 / 歌曲归属时走标准导航：MidiView 能带出同歌曲的其它谱面，
-## 返回链也落在歌曲 / 专辑层级（商店属「非专辑入口」，由 navigate_to_album_song 统一构造）；
-## 散装谱面缺少归属时只能直接切视图并塞入单条
-func _open_midi_view(midi: MidiData) -> void:
-	if not midi.album_id.is_empty() and not midi.song_id.is_empty():
-		UiStatMGR.navigate_to_album_song(midi.album_id, midi.song_id, midi.id)
-		if UiStatMGR.current_state == UIStateManager.UIState.MIDI_VIEW:
-			return
-	# 归属已失效（专辑 / 歌曲被删）：退回直达路径，保证点击一定有响应
-	UiStatMGR.change_state(UIStateManager.UIState.MIDI_VIEW)
-	EvtBus.emit_midi_selected(midi.id, midi)
 
 
 ## 单曲下载入口：空闲时立刻开跑，忙时排队（批量下载/另一个单曲下载进行中）
@@ -1333,19 +1287,14 @@ func _on_state_changed(old_state: UIStateManager.UIState,
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not %DetailLayer.is_open():
-		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-		%DetailLayer.close()
-		get_viewport().set_input_as_handled()
+		if %DetailLayer.handle_back_request():
+			get_viewport().set_input_as_handled()
 
 
 ## Main 的全局返回键调用：详情打开时先关详情，返回 true 表示事件已被消费
 func handle_back_request() -> bool:
-	if %DetailLayer.is_open():
-		%DetailLayer.close()
-		return true
-	return false
+	return %DetailLayer.handle_back_request()
 
 
 ## FocusManager 的商店页焦点落点：当前页第一张可见卡片，没有卡片就聚焦当前标签

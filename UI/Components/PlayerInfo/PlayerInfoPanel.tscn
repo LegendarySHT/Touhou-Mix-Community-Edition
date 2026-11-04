@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://c24k3xb5msmbw" path="res://UI/Components/PlayerInfo/PlayerInfoContent.gd" id="3_cw7x2"]
 [ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ImgRoundCorner.gdshader" id="4_3xusd"]
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="5_eo2i6"]
+[ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="6_au6ng"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3ccbu"]
 skew = Vector2(0.268, 0)
@@ -73,7 +74,6 @@ expand_margin_right = 15.0
 expand_margin_bottom = 10.0
 
 [node name="PlayerInfo" type="Control" unique_id=1535960465]
-visible = false
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -134,20 +134,14 @@ current_tab = 0
 tabs_visible = false
 script = ExtResource("3_cw7x2")
 
-[node name="MiniInfo" type="HBoxContainer" parent="InfoPanelBtn/Tabs" unique_id=1772097877]
+[node name="MiniInfo" type="Control" parent="InfoPanelBtn/Tabs" unique_id=1278975286]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
-theme_override_constants/separation = 20
 metadata/_tab_index = 0
 
-[node name="MiniTip" type="Control" parent="InfoPanelBtn/Tabs/MiniInfo" unique_id=1293447054]
-unique_name_in_owner = true
-layout_mode = 2
-mouse_filter = 2
-
-[node name="TipText" type="Label" parent="InfoPanelBtn/Tabs/MiniInfo/MiniTip" unique_id=1332056517]
+[node name="TipText" type="Label" parent="InfoPanelBtn/Tabs/MiniInfo" unique_id=1332056517]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 2
@@ -160,14 +154,18 @@ offset_bottom = 13.0
 grow_vertical = 0
 rotation = -1.0471976
 offset_transform_enabled = true
-offset_transform_position = Vector2(-25, -45)
+offset_transform_position = Vector2(0, -45)
 text = "点击登录"
 
 [node name="MiniAvatar" type="Panel" parent="InfoPanelBtn/Tabs/MiniInfo" unique_id=1975925770]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(150, 150)
-layout_mode = 2
+layout_mode = 0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 170.0
+offset_bottom = 170.0
 size_flags_horizontal = 4
 size_flags_vertical = 4
 mouse_filter = 2
@@ -192,7 +190,10 @@ stretch_mode = 5
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(0, 160)
-layout_mode = 2
+layout_mode = 0
+offset_left = 190.0
+offset_right = 441.0
+offset_bottom = 190.0
 size_flags_horizontal = 3
 mouse_filter = 2
 alignment = 1
@@ -300,15 +301,10 @@ text = "没有账号？前往网页注册"
 visible = false
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 15
+theme_override_constants/separation = 20
 metadata/_tab_index = 2
 
-[node name="ProfileHeader" type="HBoxContainer" parent="InfoPanelBtn/Tabs/Summary" unique_id=1827199432]
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/separation = 30
-
-[node name="ProfileAvatarPanel" type="Panel" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader" unique_id=288038191]
+[node name="ProfileAvatarPanel" type="Panel" parent="InfoPanelBtn/Tabs/Summary" unique_id=288038191]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 200)
 layout_mode = 2
@@ -316,47 +312,70 @@ size_flags_vertical = 4
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_hhcpw")
 
-[node name="ProfileAvatar" type="TextureRect" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/ProfileAvatarPanel" unique_id=1217097568]
+[node name="ProfileAvatar" type="TextureRect" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel" unique_id=1217097568]
 unique_name_in_owner = true
 material = SubResource("ShaderMaterial_yverd")
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
+anchors_preset = 9
 anchor_bottom = 1.0
-grow_horizontal = 2
+offset_right = 200.0
 grow_vertical = 2
 mouse_filter = 2
 texture = ExtResource("5_eo2i6")
 expand_mode = 3
 stretch_mode = 5
 
-[node name="NameLevelBox" type="VBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader" unique_id=412340895]
-layout_mode = 2
+[node name="NameLevelBox" type="VBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel" unique_id=412340895]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 230.0
+offset_right = -20.0
+grow_vertical = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="ProfileName" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox" unique_id=1139186740]
+[node name="ProfileName" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox" unique_id=1139186740]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "Anonymous Player"
 vertical_alignment = 1
+script = ExtResource("6_au6ng")
 
-[node name="NameRow" type="HBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox" unique_id=1666975059]
+[node name="ProfileRank" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox/ProfileName" unique_id=1477374343]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -138.0
+offset_top = 4.0
+grow_horizontal = 0
+grow_vertical = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 32
+text = "Unranked"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="NameRow" type="HBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox" unique_id=1666975059]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="BioColumn" type="VBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow" unique_id=1540988350]
+[node name="BioColumn" type="VBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox/NameRow" unique_id=1540988350]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 3.0
 theme_override_constants/separation = 0
 
-[node name="ProfileBio" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow/BioColumn" unique_id=2047924668]
+[node name="ProfileBio" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox/NameRow/BioColumn" unique_id=2047924668]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(350, 0)
 layout_mode = 2
@@ -365,13 +384,15 @@ size_flags_vertical = 3
 theme_override_font_sizes/font_size = 24
 theme_override_styles/normal = SubResource("StyleBoxFlat_3y6u5")
 text = "个人简介"
+horizontal_alignment = 1
+vertical_alignment = 1
 autowrap_mode = 1
 
-[node name="LevelRow" type="HBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow/BioColumn" unique_id=360823389]
+[node name="LevelRow" type="HBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox/NameRow/BioColumn" unique_id=360823389]
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="ProfileLevel" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow/BioColumn/LevelRow" unique_id=43860547]
+[node name="ProfileLevel" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox/NameRow/BioColumn/LevelRow" unique_id=43860547]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -380,7 +401,7 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_3y6u5")
 text = "Level 1"
 horizontal_alignment = 1
 
-[node name="ProfilePp" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow/BioColumn/LevelRow" unique_id=1485913361]
+[node name="ProfilePp" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox/NameRow/BioColumn/LevelRow" unique_id=1485913361]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -388,15 +409,6 @@ theme_override_font_sizes/font_size = 28
 theme_override_styles/normal = SubResource("StyleBoxFlat_3y6u5")
 text = "0 pp"
 horizontal_alignment = 1
-
-[node name="ProfileRank" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileHeader/NameLevelBox/NameRow" unique_id=1477374343]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 32
-text = "Unranked"
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="ProfileProgress" type="ProgressBar" parent="InfoPanelBtn/Tabs/Summary" unique_id=1220632323]
 unique_name_in_owner = true

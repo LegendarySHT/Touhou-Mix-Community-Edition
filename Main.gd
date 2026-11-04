@@ -125,9 +125,11 @@ func _handle_back_request() -> void:
 	elif state_manager.current_state == UIStateManager.UIState.PLAY_VIEW:
 		get_node_or_null("PlayView").show_or_hide_menu()
 
-	# 商店页：详情弹窗打开时先关弹窗，不再直接退出商店
-	elif state_manager.current_state == UIStateManager.UIState.STORE_VIEW:
-		if state_manager.get_loaded_view(UIStateManager.UIState.STORE_VIEW).handle_back_request():
+	# 商店 / 个人资料页：详情弹窗打开时先关弹窗，不再直接退出页面
+	elif state_manager.current_state in [UIStateManager.UIState.STORE_VIEW,
+			UIStateManager.UIState.PROFILE_VIEW]:
+		var view := state_manager.get_loaded_view(state_manager.current_state)
+		if view and view.has_method("handle_back_request") and view.handle_back_request():
 			return
 		state_manager.go_back()
 

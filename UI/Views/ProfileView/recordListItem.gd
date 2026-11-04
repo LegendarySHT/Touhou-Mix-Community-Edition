@@ -7,30 +7,24 @@ class_name RecordListItem
 ## 记录列表类型（对应 History/List 的三个 tab）
 enum RecordMode { RECENT, BEST, MOST }
 
-# ========== 显示节点 ==========
-@onready var cover_rect: TextureRect = $HBox/Cover
-@onready var midi_name_label: Label = $HBox/Info/MidiName
-@onready var midi_author_label: Label = $HBox/Info/MidiAuthor
-@onready var date_label: Label = $HBox/Info/Date
-@onready var score_label: Label = $HBox/VBox/Score/Score
-@onready var pp_label: Label = $HBox/VBox/Score/PP
-@onready var max_combo_label: Label = $HBox/VBox/Count/MaxCombo
-@onready var perfect_label: Label = $HBox/VBox/Count/Perfect
-@onready var great_label: Label = $HBox/VBox/Count/Great
-@onready var bad_label: Label = $HBox/VBox/Count/Bad
-@onready var good_label: Label = $HBox/VBox/Count/Good
-@onready var miss_label: Label = $HBox/VBox/Count/Miss
-@onready var main_info_label: Label = $HBox/MainInfo
+## 点击整行：请求查看该条记录对应谱面的详情（source_rect 供展开动画，source 供关闭后还焦点）
+signal detail_requested(record: Dictionary, source_rect: Rect2, source: Control)
 
 ## 当前列表类型：决定 MainInfo 显示内容与 PP 标签可见性
 var record_mode: int = RecordMode.RECENT
 ## 当前记录的 MidiHash（用于下载封面）
 var _midi_hash: String = ""
+## 当前绑定的原始记录（点击时原样带回，避免从控件反查字段）
+var _record: Dictionary = {}
 
 func _ready() -> void:
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
+	%Button.pressed.connect(_on_detail_pressed)
+
+func _on_detail_pressed() -> void:
+	detail_requested.emit(_record, get_global_rect(), %Button)
 
 ## 应用主题色：根面板随主题翻浅/翻深（否则浅色模式下会残留写死的深色卡片）
 func apply_theme() -> void:
@@ -65,22 +59,23 @@ func setup_record(data: Dictionary, mode: int = -1) -> void:
 	if mode >= 0:
 		record_mode = mode
 
+	_record = data
 	_midi_hash = str(data.get("midiHash", ""))
 
-	midi_name_label.set_scroll_text(_pick_str(data, ["midiName", "songName"], "—"))
-	midi_author_label.set_scroll_text(_pick_str(data, ["midiAuthor"], "—"))
-	date_label.text = _format_played_at(_pick_str(data, ["playedAt"], ""))
+	%MidiName.set_scroll_text(_pick_str(data, ["midiName", "songName"], "—"))
+	%MidiAuthor.set_scroll_text(_pick_str(data, ["midiAuthor"], "—"))
+	%RecordDate.text = _format_played_at(_pick_str(data, ["playedAt"], ""))
 
-	score_label.text = _format_number(int(_pick(data, ["totalScore", "score"], 0)))
+	%Score.text = _format_number(int(_pick(data, ["totalScore", "score"], 0)))
 	var pp := float(data.get("pp", 0.0))
-	pp_label.text = "%.2f pp" % pp
+	%PP.text = "%.2f pp" % pp
 
-	max_combo_label.text = str(int(data.get("maxCombo", 0)))
-	perfect_label.text = str(int(data.get("perfectCount", 0)))
-	great_label.text = str(int(data.get("greatCount", 0)))
-	bad_label.text = str(int(data.get("badCount", 0)))
-	good_label.text = str(int(data.get("goodCount", 0)))
-	miss_label.text = str(int(data.get("missCount", 0)))
+	%MaxCombo.text = str(int(data.get("maxCombo", 0)))
+	%Perfect.text = str(int(data.get("perfectCount", 0)))
+	%Great.text = str(int(data.get("greatCount", 0)))
+	%Bad.text = str(int(data.get("badCount", 0)))
+	%Good.text = str(int(data.get("goodCount", 0)))
+	%Miss.text = str(int(data.get("missCount", 0)))
 
 	# W 评级（中途退出）整体半透明
 	set_withdraw_state(str(data.get("rank", "")) == "W")
@@ -100,13 +95,13 @@ func _load_remote_cover(chart_hash: String) -> void:
 	if NetManager.instance == null or not NetManager.instance.is_online:
 		return
 	# 先隐藏默认封面，避免加载失败时显示占位图
-	cover_rect.texture = null
+	%Cover.texture = null
 	var cover_url := "%s/api/charts/%s/cover" % [NetManager.instance.server_url, chart_hash]
 	HttpImageLoader.load(cover_url, self, func(tex: Texture2D) -> void:
 		if not is_instance_valid(self):
 			return
 		if tex:
-			cover_rect.texture = tex
+			%Cover.texture = tex
 	)
 
 ## 按 RecordMode 调整 MainInfo 显示内容与 PP 标签可见性
@@ -114,18 +109,18 @@ func _update_main_info(pp: float, play_count: int) -> void:
 	match record_mode:
 		RecordMode.RECENT:
 			# 最近游玩：右侧不显示额外信息
-			main_info_label.visible = false
-			pp_label.visible = true
+			%MainInfo.visible = false
+			%PP.visible = true
 		RecordMode.BEST:
 			# 最佳记录：分数旁不再重复显示 pp，改用 MainInfo 显示
-			pp_label.visible = false
-			main_info_label.visible = true
-			main_info_label.text = "%.2f pp" % pp
+			%PP.visible = false
+			%MainInfo.visible = true
+			%MainInfo.text = "%.2f pp" % pp
 		RecordMode.MOST:
 			# 最多游玩：MainInfo 只显示游玩次数
-			pp_label.visible = true
-			main_info_label.visible = true
-			main_info_label.text = "%d 次" % play_count
+			%PP.visible = true
+			%MainInfo.visible = true
+			%MainInfo.text = "%d 次" % play_count
 
 ## 取 data 中第一个存在的键值（Variant）
 func _pick(data: Dictionary, keys: Array, default: Variant) -> Variant:

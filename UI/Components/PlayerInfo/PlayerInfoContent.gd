@@ -36,7 +36,6 @@ func get_player_data() -> Dictionary:
 	return _player_data.duplicate()
 
 # 被外部引用
-@onready var tip: Control = %MiniTip
 @onready var mini_avatar_rect: TextureRect = %MiniAvatarTexture
 
 # ProfileView（Main 下的独立全屏详情视图，懒加载：首次进入详情页才实例化）
