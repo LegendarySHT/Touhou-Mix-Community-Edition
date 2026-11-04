@@ -1478,16 +1478,33 @@ public partial class MeltySynthPlayer
 		}
 	}
 
+	/// <summary>
+	/// 读封面位图。res:// 下的封面是**已导入**资源（导出包里没有原始 jpg），
+	/// 统一走 ResourceLoader 取纹理再拿图：编辑器与导出包都成立。
+	/// 取不到图（未导入的裸文件等）才退回按文件读；user:// 与绝对路径直接读文件。
+	///
+	/// 不能对 res:// 调 GlobalizePath：它会把 res:// 拼成磁盘路径，
+	/// 导出包里那条路径根本不存在，Image 直接打不开。
+	/// </summary>
+	private static Image LoadCoverImage(string path)
+	{
+		if (path.StartsWith("res://"))
+		{
+			var img = ResourceLoader.Load<Texture2D>(path)?.GetImage();
+			if (img != null)
+			{
+				return img;
+			}
+		}
+		return Image.LoadFromFile(path);
+	}
+
 	private byte[] ResolveCoverPng(ChartDb db, string key)
 	{
 		string path = db != null ? db.GetCoverPath(key) : "";
 		if (string.IsNullOrEmpty(path))
 		{
 			return Array.Empty<byte>();
-		}
-		if (path.StartsWith("user://") || path.StartsWith("res://"))
-		{
-			path = ProjectSettings.GlobalizePath(path);
 		}
 		if (_lastPushedCoverPath == path && _lastPushedCover.Length > 0)
 		{
@@ -1501,7 +1518,7 @@ public partial class MeltySynthPlayer
 		}
 		try
 		{
-			var img = Image.LoadFromFile(path);
+			var img = LoadCoverImage(path);
 			if (img == null)
 			{
 				return Array.Empty<byte>();

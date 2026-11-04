@@ -11,38 +11,47 @@ mouse_filter = 1
 toggle_mode = true
 script = ExtResource("1_item")
 
-[node name="HBox" type="HBoxContainer" parent="." unique_id=1977100613]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_constants/separation = 8
-
-[node name="DragBtn" type="Button" parent="HBox" unique_id=725974266]
+[node name="DragBtn" type="Button" parent="." unique_id=725974266]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(35, 0)
-layout_mode = 2
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 52.0
+grow_vertical = 2
 size_flags_horizontal = 0
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 32
 text = "≡"
 
-[node name="TitleText" type="Label" parent="HBox" unique_id=880093056]
+[node name="TitleText" type="Label" parent="." unique_id=880093056]
 unique_name_in_owner = true
-layout_mode = 2
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 60.0
+offset_top = 8.0
+offset_right = -60.0
+offset_bottom = -8.0
 size_flags_horizontal = 3
 text = "歌名"
 vertical_alignment = 1
 clip_text = true
 script = ExtResource("2_3hfq4")
+end_padding = 10.0
 
-[node name="RemoveBtn" type="Button" parent="HBox" unique_id=2014382139]
+[node name="RemoveBtn" type="Button" parent="." unique_id=2014382139]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(40, 0)
-layout_mode = 2
+custom_minimum_size = Vector2(50, 0)
+layout_mode = 1
+anchors_preset = 11
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -38.0
+grow_horizontal = 0
+grow_vertical = 2
 size_flags_vertical = 4
 theme_override_font_sizes/font_size = 30
 text = "✕"

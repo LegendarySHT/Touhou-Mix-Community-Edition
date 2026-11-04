@@ -128,7 +128,7 @@ func _animate_closed() -> void:
 
 ## 池卡首次创建：只连信号（位置/尺寸/offset_transform 由 VirtualList 统一接管）
 func _on_card_ready(node) -> void:
-	var card: PanelContainer = node
+	var card: Panel = node
 	card.play_next_requested.connect(_on_card_play_next)
 	card.add_to_playlist_requested.connect(_on_card_add)
 	card.add_to_favorite_requested.connect(_on_card_favorite)
@@ -136,7 +136,7 @@ func _on_card_ready(node) -> void:
 
 ## 换绑到数据索引：定位由模块做，这里只填内容
 func _on_card_bind(node, idx: int) -> void:
-	var card: PanelContainer = node
+	var card: Panel = node
 	if idx >= _lib_items.size():
 		return
 	card.setup_with(_lib_items[idx] as Dictionary, idx, _lib_animate_next)

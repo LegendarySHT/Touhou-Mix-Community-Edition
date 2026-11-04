@@ -23,7 +23,7 @@ class_name CoverLoaderClass
 ## 后台线程数（Android 8 核够用，2 个即可消费封面加载任务）
 const THREAD_COUNT := 2
 
-## 默认封面路径（res:// 走 ResourceLoader，由调用方处理同步加载分支）
+## 默认封面路径（res:// 已导入资源，request_load 内部走主线程同步加载）
 const DEFAULT_COVER_PATH := "res://Resources/song_cover/1.jpg"
 
 
@@ -78,7 +78,7 @@ func _ready() -> void:
 
 ## 请求加载封面（主线程调用）
 ## item_id: 列表项标识（用于回调校验和取消）
-## path: 封面文件绝对路径
+## path: 封面路径（user:// / 绝对路径走后台线程读盘；res:// 已导入资源在主线程同步取纹理）
 ## callback: 签名 func(path: String, texture: Texture2D, version: int) -> void
 ## 按路径去重：同一 path 只入队一个后台任务；后续请求登记为等待者，
 ## 任务完成时主线程统一创建一份纹理并广播给该路径所有等待者
@@ -87,6 +87,14 @@ func request_load(item_id: String, path: String, callback: Callable) -> void:
 	var version: int = int(_item_versions.get(item_id, 0)) + 1
 	_item_versions[item_id] = version
 	_pending_callbacks[item_id] = callback
+
+	# res:// 是**已导入**资源：后台线程既不能 load()，也读不到 PCK 内的原始图片
+	# （_load_image 对 res:// 直接返回 null，表现为「没有报错，但封面空白」）。
+	# 这类路径在主线程同步取纹理，回调仍按异步语义延后一帧投递
+	if path.begins_with("res://"):
+		var res_tex := _load_res_texture(path)
+		_deliver_callback.call_deferred(item_id, version, path, res_tex)
+		return
 
 	# 登记为该路径等待者（主线程访问）
 	if not _path_requests.has(path):
@@ -111,6 +119,20 @@ func request_load(item_id: String, path: String, callback: Callable) -> void:
 	_mutex.unlock()
 
 	_semaphore.post()
+
+
+## 主线程同步加载 res:// 封面（已导入的压缩纹理）
+## 先查共享 WeakRef 缓存，命中零开销；未命中 load() 一次并回写缓存
+func _load_res_texture(path: String) -> Texture2D:
+	var fs_mgr := FileSystemManager.instance
+	if fs_mgr:
+		var cached := fs_mgr.get_cached_cover_texture(path)
+		if cached:
+			return cached
+	var tex := load(path) as Texture2D
+	if tex and fs_mgr:
+		fs_mgr._cache_cover_texture(path, tex)
+	return tex
 
 
 ## 取消在途任务（主线程调用）

@@ -402,7 +402,8 @@ public partial class MidiCore : Node
         }
     }
 
-    /// <summary>移除指定下标。移除的是当前曲时，索引落到接管其位置的那首（末首被移除则退一位）。</summary>
+    /// <summary>移除指定下标。移除的是当前曲时，索引落到接管其位置的那首（末首被移除则退一位）；
+    /// 移除点在当前曲之前时索引跟着左移，保证它仍指着同一首（否则界面高亮会落到下一首）。</summary>
     public void RemoveAt(int i)
     {
         lock (_playlistLock)
@@ -413,6 +414,7 @@ public partial class MidiCore : Node
             _keys.RemoveAt(i);
             if (_keys.Count == 0) _index = -1;
             else if (wasCurrent) _index = Mathf.Clamp(i, 0, _keys.Count - 1);
+            else if (i < _index) _index -= 1;
             else if (_index >= _keys.Count) _index = _keys.Count - 1;
             Save();
             PublishSnapshot();

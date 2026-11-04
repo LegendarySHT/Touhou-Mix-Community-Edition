@@ -1,4 +1,4 @@
-extends PanelContainer
+extends Panel
 ## 曲库网格中的单首歌曲卡片：左封面 / 中信息 / 右上中下三个操作按钮
 
 const COVER_ITEM_PREFIX := "music_player_card_"
