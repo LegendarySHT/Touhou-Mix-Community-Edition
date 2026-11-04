@@ -26,6 +26,10 @@ var _album_build_bg: ButtonGroup
 ## 当前就地搜索词（非空时 _load_albums 过滤专辑）
 var _search_query: String = ""
 
+## 预热目标：直达导航（商店跳转 / 启动恢复 / 外部导入）不经过本页的选中流程，
+## 由 album_selected 记下目标专辑，进 SongView 时统一把选中项/滚动/封面摆好
+var _warmup_album_id: String = ""
+
 func _ready() -> void:
 	if not data_manager or not event_bus:
 		push_error("AlbumView: Missing manager instances")
@@ -50,7 +54,11 @@ func _ready() -> void:
 	# 覆盖"结构变化但 charts_cache_validated/data_loaded 未触发 AlbumView 重建"的边角场景
 	event_bus.charts_structure_changed.connect(_load_albums)
 	event_bus.config_changed.connect(_on_config_changed)
-	event_bus.album_selected.connect(func(album_id): _last_opened_album_id = String(album_id))
+	event_bus.album_selected.connect(func(album_id):
+		_last_opened_album_id = String(album_id)
+		# 直达路径会在本页背面把上下文切走，目标专辑先记下来，等进 SongView 再预热
+		_warmup_album_id = String(album_id)
+	)
 	# 回到 AlbumView 时补检空列表（midi_deleted 在不活跃时触发刷新，不会显示 NoItems）
 	UiStatMGR.state_changed.connect(func(old, new):
 		if new == UIStateManager.UIState.ALBUM_VIEW:
@@ -58,7 +66,14 @@ func _ready() -> void:
 			_prev_state_on_return = old
 			# 进入专辑视图：应用当前共享搜索词（跨视图就地筛选持久化，仅 SORTED_VIEW 清空）
 			_search_query = EvtBus.current_search_query
-			call_deferred("_load_albums")
+			# 从子视图退回时保留当前选中专辑：重建会把它清成 -1，
+			# 于是选中项先收起、过渡结束后再展开，看起来像跳了一下
+			var keep: bool = old in [UIStateManager.UIState.SONG_VIEW,
+				UIStateManager.UIState.MIDI_VIEW, UIStateManager.UIState.TRACK_VIEW]
+			call_deferred("_load_albums", keep)
+		elif new == UIStateManager.UIState.SONG_VIEW and old != UIStateManager.UIState.ALBUM_VIEW:
+			# 从 MidiView 退回 SongView：下一步多半是退回本页，趁视图不可见先把位置和封面备好
+			_apply_warmup()
 	)
 	# 就地搜索：当前为专辑视图时过滤当前列表
 	event_bus.search_query_changed.connect(_on_search_query_changed)
@@ -95,19 +110,23 @@ func _exit_tree() -> void:
 		ThemeMGR.unregister_theme_applier(self)
 
 ## 加载专辑数据（异步，避免阻塞主线程）
-func _load_albums() -> void:
+## keep_selection：按 id 保留当前选中专辑（从子视图退回时用，避免选中项收起再展开的跳动）
+func _load_albums(keep_selection: bool = false) -> void:
 	if not data_manager:
 		return
 
 	_search_query = EvtBus.current_search_query
 	# 递增 generation，使之前在途的加载循环自动失效（旧循环检测到不匹配后 return）
 	_load_generation += 1
+	var keep_album_id := ""
+	if keep_selection and selected_item >= 0 and selected_item < list_items.size():
+		keep_album_id = list_items[selected_item].item_id
 	current_albums = data_manager.get_sorted_albums()
 	# 就地搜索：命中专辑 id 集合与当前列表取交集，保留原排序
 	if not _search_query.is_empty():
 		_apply_album_search_filter()
 
-	await _refresh_display_async(_load_generation)
+	await _refresh_display_async(_load_generation, keep_album_id)
 
 ## 就地搜索词变化：当前为专辑视图时才过滤当前列表
 func _on_search_query_changed(query: String) -> void:
@@ -140,7 +159,8 @@ func _on_config_changed(key: String, _value: Variant) -> void:
 ##   —— 项高固定（tscn custom_minimum_size），滚动条长度只由 add_child 时机决定，一帧完成即立即稳定
 ## Phase B（异步）：每帧分批填充显示（fill_display：标签/封面/名称滚动），ChartDB 封面查询摊到帧间
 ## generation 守卫与复用逻辑保持不变（避免 clear_items 全清重建造成的闪烁 + 封面重载）
-func _refresh_display_async(my_generation: int) -> void:
+## keep_album_id：Phase A 之后按 id 重新选中该专辑（Phase B 填充时 keep_expanded 会保住它的展开态）
+func _refresh_display_async(my_generation: int, keep_album_id: String = "") -> void:
 	var is_active := UiStatMGR.current_state == UIStateManager.UIState.ALBUM_VIEW
 	
 	if current_albums.is_empty():
@@ -203,6 +223,13 @@ func _refresh_display_async(my_generation: int) -> void:
 		if counter == 0:
 			_apply_item_accent()
 		counter += 1
+
+	# 保留原有选中（返回本页时）：必须在 Phase B 之前选中，
+	# 否则 fill_display 会先把该项按折叠态复位，画面上一收一张
+	if not keep_album_id.is_empty():
+		var keep_idx := _album_index(keep_album_id)
+		if keep_idx >= 0:
+			select_item(keep_idx)
 
 	# ===== Phase B：异步分批填充显示 =====
 	const FILL_BATCH_SIZE := 6
@@ -293,6 +320,59 @@ func _restore_scroll_to_index(index: int) -> void:
 		# 从远处恢复：预置滚动到目标前一屏，再由 force_snap_to 短吸附补完最后这段
 		scroll_vertical = maxi(target_scroll - int(size.y), 0)
 	force_snap_to(index)
+
+## 预热返回位置：把选中项、滚动位置与视窗封面提前摆好。
+## 只在视图不可见时被调用（从 MidiView 退回 SongView），所以全部按"立即置位、不播动画"处理；
+## 真正退回 AlbumView 时就不会再从旧位置大跳一次、封面也不会现加载。
+## 同时把选中项切到目标专辑：AnimationManager 取 SelectedAlbum 头卡数据时优先读它，
+## 直达路径（商店跳转 / 启动恢复 / 外部导入）原来会停在旧专辑上。
+func _apply_warmup() -> void:
+	if _warmup_album_id.is_empty():
+		return
+	# 列表可能还在分帧构建（启动直达路径）：等它就绪，避免在残缺列表上算位置
+	var wait := 0
+	while list_items.size() != current_albums.size() and wait < 10:
+		if not is_inside_tree():
+			return
+		await get_tree().process_frame
+		wait += 1
+	if list_items.is_empty() or list_items.size() != current_albums.size():
+		return
+	var idx := _album_index(_warmup_album_id)
+	if idx < 0:
+		return  # 目标专辑被删，或当前搜索词把它过滤掉了
+	select_item(idx)
+	preset_scroll_vertical(_scroll_value_for_album(idx))
+	# 选中项的展开 / 旧选中项的收起会改项高（±250px），布局稳定后按最终位置再校一次
+	await get_tree().create_timer(0.2).timeout
+	# 只在仍停在 SongView 时补第二次：已经回到本页就交给吸附，中途又去了别的页也不必预热
+	if not is_inside_tree() or UiStatMGR.current_state != UIStateManager.UIState.SONG_VIEW:
+		return
+	preset_scroll_vertical(_scroll_value_for_album(idx))
+	_preload_album_covers(idx)
+
+func _album_index(album_id: String) -> int:
+	for i in current_albums.size():
+		if String(current_albums[i].get("id", "")) == album_id:
+			return i
+	return -1
+
+## 目标滚动值：项顶部对齐到吸附偏移。与吸附同一口径（用内容坐标，与当前滚动值无关）
+func _scroll_value_for_album(idx: int) -> int:
+	if idx < 0 or idx >= list_items.size() or container == null \
+			or idx >= container.get_child_count():
+		return scroll_vertical
+	var item: Control = container.get_child(idx)
+	if item == null:
+		return scroll_vertical
+	return maxi(int(item.position.y) - int(snap_offset_y), 0)
+
+## 预热目标附近的封面：只补一两屏，多了会和 SongView 自己的封面加载抢队列
+func _preload_album_covers(idx: int) -> void:
+	if list_items.is_empty():
+		return
+	_load_covers_in_range(maxi(idx - 1, 0), mini(idx + 4, list_items.size() - 1),
+		_cover_chain_generation)
 
 func on_item_button_confirmed(index: int):
 	var album_id: String = String(current_albums[index].get("id", ""))

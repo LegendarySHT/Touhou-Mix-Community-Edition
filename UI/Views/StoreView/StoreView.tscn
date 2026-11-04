@@ -1,13 +1,13 @@
 [gd_scene format=3 uid="uid://dvvggbuqsfxbw"]
 
 [ext_resource type="Script" uid="uid://dbgwcersgki3c" path="res://UI/Views/StoreView/StoreView.gd" id="1_store"]
-[ext_resource type="Script" uid="uid://cq7vbk2mxn3dr" path="res://UI/Theme/ViewBackground.gd" id="8_vbg"]
-[ext_resource type="PackedScene" path="res://UI/Views/StoreView/StoreDetailPanel.tscn" id="2_detail"]
+[ext_resource type="PackedScene" uid="uid://drhaatgwaxfor" path="res://UI/Views/StoreView/StoreDetailPanel.tscn" id="2_detail"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="3_set1"]
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="4_set2"]
 [ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="5_set3"]
 [ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="6_round"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="7_scroll"]
+[ext_resource type="Script" uid="uid://cq7vbk2mxn3dr" path="res://UI/Theme/ViewBackground.gd" id="8_vbg"]
 
 [sub_resource type="Gradient" id="Grad_bg"]
 interpolation_mode = 2
@@ -211,6 +211,8 @@ corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_2rkhg"]
+
 [sub_resource type="StyleBoxEmpty" id="SB_list_empty"]
 
 [sub_resource type="StyleBoxFlat" id="SB_hero"]
@@ -326,31 +328,27 @@ offset_bottom = 118.0
 grow_horizontal = 2
 theme_override_styles/panel = SubResource("SB_topbar")
 
-[node name="HeaderMargin" type="MarginContainer" parent="TopBar" unique_id=1188136361]
+[node name="Row" type="HBoxContainer" parent="TopBar" unique_id=1063502605]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 36.0
+offset_top = 18.0
+offset_right = -36.0
+offset_bottom = -12.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/margin_left = 36
-theme_override_constants/margin_top = 16
-theme_override_constants/margin_right = 36
-theme_override_constants/margin_bottom = 12
-
-[node name="Row" type="HBoxContainer" parent="TopBar/HeaderMargin" unique_id=1063502605]
-layout_mode = 2
-mouse_filter = 2
 theme_override_constants/separation = 22
 
-[node name="Toolbar" type="HBoxContainer" parent="TopBar/HeaderMargin/Row" unique_id=2066017376]
+[node name="Toolbar" type="HBoxContainer" parent="TopBar/Row" unique_id=2066017376]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 12
 
-[node name="SearchEdit" type="LineEdit" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=1192628260]
+[node name="SearchEdit" type="LineEdit" parent="TopBar/Row/Toolbar" unique_id=1192628260]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(260, 76)
 layout_mode = 2
@@ -361,7 +359,7 @@ theme_override_styles/normal = SubResource("SB_search")
 theme_override_styles/focus = SubResource("SB_search_focus")
 placeholder_text = "搜索谱面 / 作者 / 专辑"
 
-[node name="SearchIcon" type="TextureRect" parent="TopBar/HeaderMargin/Row/Toolbar/SearchEdit" unique_id=985218826]
+[node name="SearchIcon" type="TextureRect" parent="TopBar/Row/Toolbar/SearchEdit" unique_id=985218826]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
@@ -379,7 +377,7 @@ texture = SubResource("Atlas_search")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="FilterDataBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=423131846]
+[node name="FilterDataBtn" type="Button" parent="TopBar/Row/Toolbar" unique_id=423131846]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(76, 76)
 layout_mode = 2
@@ -393,7 +391,7 @@ theme_override_styles/focus = SubResource("SB_tool_focus")
 icon = SubResource("Atlas_data_download")
 icon_alignment = 1
 
-[node name="SortOrderBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=799784552]
+[node name="SortOrderBtn" type="Button" parent="TopBar/Row/Toolbar" unique_id=799784552]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(76, 76)
 layout_mode = 2
@@ -407,7 +405,7 @@ theme_override_styles/focus = SubResource("SB_tool_focus")
 icon = SubResource("Atlas_desc")
 icon_alignment = 1
 
-[node name="BatchDownloadBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=1330030490]
+[node name="BatchDownloadBtn" type="Button" parent="TopBar/Row/Toolbar" unique_id=1330030490]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 76)
 layout_mode = 2
@@ -423,7 +421,7 @@ theme_override_styles/focus = SubResource("SB_tool_focus")
 text = "批量下载"
 icon = SubResource("Atlas_cloud")
 
-[node name="VocalBtn" type="Button" parent="TopBar/HeaderMargin/Row/Toolbar" unique_id=825044778]
+[node name="VocalBtn" type="Button" parent="TopBar/Row/Toolbar" unique_id=825044778]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 76)
 layout_mode = 2
@@ -441,12 +439,12 @@ toggle_mode = true
 text = "下载人声"
 icon = SubResource("Atlas_mic")
 
-[node name="TabBar" type="HBoxContainer" parent="TopBar/HeaderMargin/Row" unique_id=1456142379]
+[node name="TabBar" type="HBoxContainer" parent="TopBar/Row" unique_id=1456142379]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 6
 
-[node name="TabSongBtn" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=689949741]
+[node name="TabSongBtn" type="Button" parent="TopBar/Row/TabBar" unique_id=689949741]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -465,7 +463,7 @@ button_group = SubResource("BG_tabs")
 text = "歌曲"
 icon = SubResource("Atlas_tab_song")
 
-[node name="TabSkinBtn" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=746944903]
+[node name="TabSkinBtn" type="Button" parent="TopBar/Row/TabBar" unique_id=746944903]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -483,7 +481,7 @@ button_group = SubResource("BG_tabs")
 text = "皮肤"
 icon = SubResource("Atlas_tab_skin")
 
-[node name="TabEffectBtn" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=618875605]
+[node name="TabEffectBtn" type="Button" parent="TopBar/Row/TabBar" unique_id=618875605]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -501,7 +499,7 @@ button_group = SubResource("BG_tabs")
 text = "特效"
 icon = SubResource("Atlas_tab_effect")
 
-[node name="TabSoundfontBtn" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1466761850]
+[node name="TabSoundfontBtn" type="Button" parent="TopBar/Row/TabBar" unique_id=1466761850]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -519,7 +517,7 @@ button_group = SubResource("BG_tabs")
 text = "音源"
 icon = SubResource("Atlas_tab_sf")
 
-[node name="TabDownloadBtn" type="Button" parent="TopBar/HeaderMargin/Row/TabBar" unique_id=1840244665]
+[node name="TabDownloadBtn" type="Button" parent="TopBar/Row/TabBar" unique_id=1840244665]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -546,223 +544,105 @@ offset_bottom = 118.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_underline")
 
-[node name="Pages" type="Control" parent="." unique_id=1071051225]
+[node name="Tabs" type="TabContainer" parent="." unique_id=1384563560]
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = 118.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 1
-
-[node name="SongsPage" type="Control" parent="Pages" unique_id=461393091]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 1
-
-[node name="SongsScroll" type="ScrollContainer" parent="Pages/SongsPage" unique_id=1576611662]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
+anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 36.0
-offset_top = 18.0
+offset_top = 134.0
 offset_right = -36.0
-offset_bottom = -96.0
+offset_bottom = -20.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxEmpty_2rkhg")
+current_tab = 0
+tabs_visible = false
+
+[node name="SongsScroll" type="ScrollContainer" parent="Tabs" unique_id=1576611662]
+unique_name_in_owner = true
+layout_mode = 2
 theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
+metadata/_tab_index = 0
 
-[node name="SongsListContent" type="Control" parent="Pages/SongsPage/SongsScroll" unique_id=2105553316]
+[node name="SongsListContent" type="Control" parent="Tabs/SongsScroll" unique_id=2105553316]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="SongsEmpty" type="Label" parent="Pages/SongsPage" unique_id=848771213]
+[node name="SkinsScroll" type="ScrollContainer" parent="Tabs" unique_id=324994638]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = 120.0
-offset_bottom = -80.0
-grow_horizontal = 2
-grow_vertical = 2
+visible = false
+layout_mode = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+metadata/_tab_index = 1
+
+[node name="SkinsListContent" type="Control" parent="Tabs/SkinsScroll" unique_id=1524149009]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="EffectsScroll" type="ScrollContainer" parent="Tabs" unique_id=1088512918]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+metadata/_tab_index = 2
+
+[node name="EffectsListContent" type="Control" parent="Tabs/EffectsScroll" unique_id=279928611]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="SoundfontsScroll" type="ScrollContainer" parent="Tabs" unique_id=1550550384]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_styles/panel = SubResource("SB_list_empty")
+follow_focus = true
+horizontal_scroll_mode = 0
+metadata/_tab_index = 3
+
+[node name="SoundfontsListContent" type="Control" parent="Tabs/SoundfontsScroll" unique_id=1051727023]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="PageEmpty" type="Label" parent="Tabs" unique_id=848771213]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+tooltip_text = "点击重新加载"
+mouse_filter = 0
+mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 34
 text = "正在加载…"
 horizontal_alignment = 1
 vertical_alignment = 1
+metadata/_tab_index = 4
 
-[node name="SkinsPage" type="Control" parent="Pages" unique_id=248845126]
+[node name="DownloadsPage" type="Control" parent="Tabs" unique_id=926959622]
 unique_name_in_owner = true
 visible = false
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 1
-
-[node name="SkinsScroll" type="ScrollContainer" parent="Pages/SkinsPage" unique_id=324994638]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 36.0
-offset_top = 18.0
-offset_right = -36.0
-offset_bottom = -30.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("SB_list_empty")
-follow_focus = true
-horizontal_scroll_mode = 0
-
-[node name="SkinsListContent" type="Control" parent="Pages/SkinsPage/SkinsScroll" unique_id=1524149009]
-unique_name_in_owner = true
 layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-mouse_filter = 2
-
-[node name="SkinsEmpty" type="Label" parent="Pages/SkinsPage" unique_id=2059499396]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = 120.0
-offset_bottom = -80.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_font_sizes/font_size = 34
-text = "没有找到皮肤"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="EffectsPage" type="Control" parent="Pages" unique_id=2071108405]
-unique_name_in_owner = true
-visible = false
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
 mouse_filter = 1
+metadata/_tab_index = 5
 
-[node name="EffectsScroll" type="ScrollContainer" parent="Pages/EffectsPage" unique_id=1088512918]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 36.0
-offset_top = 18.0
-offset_right = -36.0
-offset_bottom = -30.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("SB_list_empty")
-follow_focus = true
-horizontal_scroll_mode = 0
-
-[node name="EffectsListContent" type="Control" parent="Pages/EffectsPage/EffectsScroll" unique_id=279928611]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-mouse_filter = 2
-
-[node name="EffectsEmpty" type="Label" parent="Pages/EffectsPage" unique_id=778589629]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = 120.0
-offset_bottom = -80.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_font_sizes/font_size = 34
-text = "没有找到特效"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="SoundfontsPage" type="Control" parent="Pages" unique_id=1474860878]
-unique_name_in_owner = true
-visible = false
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 1
-
-[node name="SoundfontsScroll" type="ScrollContainer" parent="Pages/SoundfontsPage" unique_id=1550550384]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 36.0
-offset_top = 18.0
-offset_right = -36.0
-offset_bottom = -30.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_styles/panel = SubResource("SB_list_empty")
-follow_focus = true
-horizontal_scroll_mode = 0
-
-[node name="SoundfontsListContent" type="Control" parent="Pages/SoundfontsPage/SoundfontsScroll" unique_id=1051727023]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-mouse_filter = 2
-
-[node name="SoundfontsEmpty" type="Label" parent="Pages/SoundfontsPage" unique_id=1206908615]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = 120.0
-offset_bottom = -80.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_font_sizes/font_size = 34
-text = "没有找到音源"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="DownloadsPage" type="Control" parent="Pages" unique_id=926959622]
-unique_name_in_owner = true
-visible = false
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 1
-
-[node name="HeroPanel" type="Panel" parent="Pages/DownloadsPage" unique_id=2078691219]
+[node name="HeroPanel" type="Panel" parent="Tabs/DownloadsPage" unique_id=2078691219]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
@@ -775,35 +655,42 @@ grow_horizontal = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_hero")
 
-[node name="HeroMargin" type="MarginContainer" parent="Pages/DownloadsPage/HeroPanel" unique_id=1355749005]
+[node name="HeroEmpty" type="Label" parent="Tabs/DownloadsPage/HeroPanel" unique_id=14532917]
+unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -902.0
+offset_top = -16.5
+offset_right = 902.0
+offset_bottom = 16.5
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 2
-theme_override_constants/margin_left = 20
-theme_override_constants/margin_top = 20
-theme_override_constants/margin_right = 24
-theme_override_constants/margin_bottom = 20
-
-[node name="HeroEmpty" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin" unique_id=14532917]
-unique_name_in_owner = true
-layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "暂无正在下载的任务"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="HeroBody" type="HBoxContainer" parent="Pages/DownloadsPage/HeroPanel/HeroMargin" unique_id=22146838]
+[node name="HeroBody" type="HBoxContainer" parent="Tabs/DownloadsPage/HeroPanel" unique_id=22146838]
 unique_name_in_owner = true
 visible = false
-layout_mode = 2
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -24.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 theme_override_constants/separation = 20
 
-[node name="CoverWrapPanel" type="Panel" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody" unique_id=1087600478]
+[node name="CoverWrapPanel" type="Panel" parent="Tabs/DownloadsPage/HeroPanel/HeroBody" unique_id=1087600478]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(162, 162)
 layout_mode = 2
@@ -811,7 +698,7 @@ size_flags_vertical = 4
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_hero_cover")
 
-[node name="CoverImage" type="TextureRect" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/CoverWrapPanel" unique_id=859794609]
+[node name="CoverImage" type="TextureRect" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/CoverWrapPanel" unique_id=859794609]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -825,7 +712,7 @@ stretch_mode = 6
 script = ExtResource("6_round")
 corner_radius = 12.0
 
-[node name="CoverPlaceholder" type="TextureRect" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/CoverWrapPanel" unique_id=701149981]
+[node name="CoverPlaceholder" type="TextureRect" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/CoverWrapPanel" unique_id=701149981]
 unique_name_in_owner = true
 modulate = Color(1, 1, 1, 0.4)
 custom_minimum_size = Vector2(70, 70)
@@ -846,14 +733,14 @@ texture = SubResource("Atlas_cloud")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Info" type="VBoxContainer" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody" unique_id=915531185]
+[node name="Info" type="VBoxContainer" parent="Tabs/DownloadsPage/HeroPanel/HeroBody" unique_id=915531185]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 mouse_filter = 2
 theme_override_constants/separation = 6
 
-[node name="TitleText" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Info" unique_id=1553902158]
+[node name="TitleText" type="Label" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/Info" unique_id=1553902158]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -863,21 +750,21 @@ clip_text = true
 script = ExtResource("7_scroll")
 end_padding = 0.0
 
-[node name="StageText" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Info" unique_id=1089921538]
+[node name="StageText" type="Label" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/Info" unique_id=1089921538]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 21
 text = "正在下载 MIDI"
 
-[node name="HeroProgress" type="ProgressBar" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Info" unique_id=1142858393]
+[node name="HeroProgress" type="ProgressBar" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/Info" unique_id=1142858393]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
 mouse_filter = 2
 show_percentage = false
 
-[node name="MetaText" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Info" unique_id=1169156944]
+[node name="MetaText" type="Label" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/Info" unique_id=1169156944]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -887,21 +774,21 @@ script = ExtResource("7_scroll")
 theme_color_key = "text_secondary"
 end_padding = 0.0
 
-[node name="Right" type="VBoxContainer" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody" unique_id=1179139092]
+[node name="Right" type="VBoxContainer" parent="Tabs/DownloadsPage/HeroPanel/HeroBody" unique_id=1179139092]
 custom_minimum_size = Vector2(190, 0)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="PercentText" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Right" unique_id=1977867687]
+[node name="PercentText" type="Label" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/Right" unique_id=1977867687]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 38
 text = "0%"
 horizontal_alignment = 2
 
-[node name="DetailText" type="Label" parent="Pages/DownloadsPage/HeroPanel/HeroMargin/HeroBody/Right" unique_id=735257953]
+[node name="DetailText" type="Label" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/Right" unique_id=735257953]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 19
@@ -909,7 +796,7 @@ text = "123 MB / 456 MB"
 horizontal_alignment = 2
 clip_text = true
 
-[node name="RecentTitleText" type="Label" parent="Pages/DownloadsPage" unique_id=287180004]
+[node name="RecentTitleText" type="Label" parent="Tabs/DownloadsPage" unique_id=287180004]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
@@ -922,7 +809,7 @@ grow_horizontal = 2
 theme_override_font_sizes/font_size = 24
 text = "下载记录"
 
-[node name="DownloadsScroll" type="ScrollContainer" parent="Pages/DownloadsPage" unique_id=240579188]
+[node name="DownloadsScroll" type="ScrollContainer" parent="Tabs/DownloadsPage" unique_id=240579188]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -938,14 +825,14 @@ theme_override_styles/panel = SubResource("SB_list_empty")
 follow_focus = true
 horizontal_scroll_mode = 0
 
-[node name="DownloadsListContent" type="Control" parent="Pages/DownloadsPage/DownloadsScroll" unique_id=1806885259]
+[node name="DownloadsListContent" type="Control" parent="Tabs/DownloadsPage/DownloadsScroll" unique_id=1806885259]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="DownloadsEmpty" type="Label" parent="Pages/DownloadsPage" unique_id=696217958]
+[node name="DownloadsEmpty" type="Label" parent="Tabs/DownloadsPage" unique_id=696217958]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -955,6 +842,9 @@ offset_top = 300.0
 offset_bottom = -60.0
 grow_horizontal = 2
 grow_vertical = 2
+tooltip_text = "点击重新加载"
+mouse_filter = 0
+mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 30
 text = "还没有下载记录"
 horizontal_alignment = 1

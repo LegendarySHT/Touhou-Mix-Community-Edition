@@ -2,7 +2,8 @@
 ##
 ## 结构：
 ##   TopBar    左侧搜索 / 排序 / 批量下载 / 人声开关，右侧五个标签页（歌曲 / 皮肤 / 特效 / 音源 / 下载管理）
-##   Pages     每个标签页独立的虚拟列表（ScrollContainer → ListContent → VirtualList 池）
+##   Tabs      TabContainer（tabs_visible=false）：四个列表页（ScrollContainer → ListContent → VirtualList 池）
+##             → 共享空状态页 → 下载管理页；切换标签只改 current_tab，空状态靠切到共享页表达
 ##   DetailLayer 卡片展开式详情弹窗（StoreDetailPanel）
 ##   Bottom    歌曲页分页条（进场/退场由本脚本的 _play_enter/_play_exit 驱动）
 ##
@@ -29,6 +30,11 @@ const DetailPanelLib := preload("res://UI/Views/StoreView/StoreDetailPanel.gd")
 
 enum Tab { SONGS, SKINS, EFFECTS, SOUNDFONTS, DOWNLOADS }
 
+## TabContainer 的下标布局：四个列表页与 Tab 前四项一一对应，
+## 其后依次是「共享空状态页」和下载管理页（下载管理的空提示在自己页面里，不占共享页）
+const EMPTY_TAB_INDEX := 4
+const DOWNLOADS_TAB_INDEX := 5
+
 const TAB_PLACEHOLDERS := [
 	"搜索谱面 / 作者 / 专辑",
 	"搜索皮肤",
@@ -49,10 +55,19 @@ const GRID_MARGIN_ROWS := 2
 
 var work_state: UIStateManager.UIState = UIStateManager.UIState.STORE_VIEW
 
+## 页面容器（内部只有一页可见，切换 content tab 即切页）
+@onready var _tabs: TabContainer = $Tabs
+
 # ── 标签 / 页面 ───────────────────────────────────────
 var _current_tab: int = Tab.SONGS
 var _tab_buttons: Array[Button] = []
-var _pages: Array[Control] = []
+## 各列表页的空状态文案（空串 = 有内容，显示列表页；非空 = 切到共享空状态页）
+var _empty_text: Dictionary = {
+	Tab.SONGS: "正在加载…",
+	Tab.SKINS: "",
+	Tab.EFFECTS: "",
+	Tab.SOUNDFONTS: "",
+}
 
 # ── 歌曲页状态 ────────────────────────────────────────
 var _song_items: Array = []
@@ -86,7 +101,6 @@ var _hero_hash: String = ""
 var _hero_cover_version: int = 0
 
 ## 详情弹窗打开期间记录被临时隐藏的导航按钮（RB_Btn z=99，会盖在弹窗之上）
-var _saved_nav_visible: Dictionary = {}
 ## 打开详情的那张卡片/下载行：关闭时把焦点还给原项，而不是跳回列表第一项
 var _detail_source_node: Control = null
 var _detail_source_item: Dictionary = {}
@@ -109,13 +123,6 @@ func _on_view_ready() -> void:
 		%TabEffectBtn,
 		%TabSoundfontBtn,
 		%TabDownloadBtn,
-	]
-	_pages = [
-		%SongsPage,
-		%SkinsPage,
-		%EffectsPage,
-		%SoundfontsPage,
-		%DownloadsPage,
 	]
 	_category_scrolls = [
 		null, %SkinsScroll, %EffectsScroll, %SoundfontsScroll, null,
@@ -176,6 +183,11 @@ func _connect_ui() -> void:
 	%NextBtn.pressed.connect(_on_next_pressed)
 	%DetailLayer.closed.connect(_on_detail_closed)
 	%DetailLayer.download_requested.connect(_on_detail_download_requested)
+	%DetailLayer.open_requested.connect(_on_detail_open_requested)
+	# 空状态提示兼作「手动重载」入口：加载失败 / 无内容时点一下重新拉取当前标签页
+	# （列表页共用一个空状态页，下载管理有自己的空提示）
+	%PageEmpty.gui_input.connect(_on_empty_gui_input)
+	%DownloadsEmpty.gui_input.connect(_on_empty_gui_input)
 	%TopBar.resized.connect(func() -> void: _update_tab_underline(true))
 
 
@@ -214,11 +226,10 @@ func _select_tab(tab: int, instant: bool) -> void:
 	_current_tab = tab
 	for i in _tab_buttons.size():
 		_tab_buttons[i].set_pressed_no_signal(i == tab)
-	for i in _pages.size():
-		_pages[i].visible = i == tab
+	_show_page(tab)
 	if not instant:
-		TextScrollMGR.suspend_page(_pages[old_tab])
-	TextScrollMGR.resume_page(_pages[tab])
+		TextScrollMGR.suspend_page(_page_node(old_tab))
+	TextScrollMGR.resume_page(_page_node(tab))
 
 	%SearchEdit.placeholder_text = TAB_PLACEHOLDERS[tab]
 	%Bottom.visible = tab == Tab.SONGS
@@ -234,8 +245,44 @@ func _select_tab(tab: int, instant: bool) -> void:
 		_refresh_downloads_page(true)
 	_update_batch_button()
 
+	# 上面的构建可能把页面换成共享空状态页，动画只作用于最后真正显示的那一页
 	if not instant:
-		_animate_page_in(_pages[tab])
+		_animate_page_in(_shown_page())
+
+
+## 逻辑标签页 → TabContainer 下标（列表页与 Tab 前四项同序，下载管理排最后）
+func _page_index(tab: int) -> int:
+	return DOWNLOADS_TAB_INDEX if tab == Tab.DOWNLOADS else clampi(tab, 0, EMPTY_TAB_INDEX - 1)
+
+
+## 逻辑标签页对应的内容节点（TextScrollMGR 挂起/恢复用）
+func _page_node(tab: int) -> Control:
+	return _tabs.get_child(_page_index(tab)) as Control
+
+
+## 当前真正显示在容器里的页面（可能是共享空状态页）
+func _shown_page() -> Control:
+	return _tabs.get_child(_tabs.current_tab) as Control
+
+
+## 按逻辑标签页摆好容器：有内容→列表页，无内容→共享空状态页
+func _show_page(tab: int) -> void:
+	if tab == Tab.DOWNLOADS:
+		_tabs.current_tab = DOWNLOADS_TAB_INDEX
+		return
+	var text := str(_empty_text.get(tab, ""))
+	if text.is_empty():
+		_tabs.current_tab = _page_index(tab)
+		return
+	%PageEmpty.text = text
+	_tabs.current_tab = EMPTY_TAB_INDEX
+
+
+## 设置列表页空状态（text 为空 = 有内容）。非当前标签页只记状态，不动显示
+func _set_empty(tab: int, text: String) -> void:
+	_empty_text[tab] = text
+	if tab == _current_tab:
+		_show_page(tab)
 
 
 func _apply_toolbar_for_tab() -> void:
@@ -344,8 +391,7 @@ func _load_songs() -> void:
 		if chart is Dictionary:
 			_song_items.append(_make_song_item(chart))
 
-	%SongsEmpty.visible = _song_items.is_empty()
-	%SongsEmpty.text = "没有找到谱面"
+	_set_empty(Tab.SONGS, "" if not _song_items.is_empty() else "没有找到谱面")
 	_update_pager()
 	_bind_animate = true
 	_song_vlist.set_total(_song_items.size(), true)
@@ -411,21 +457,20 @@ func _on_detail_requested(item: Dictionary, source_rect: Rect2) -> void:
 	%DetailLayer.open(item, source_rect)
 
 
-## 详情是商店内部的模态层，但右下返回键 z_index=99 会压在它上面（还能点），
-## 打开期间先藏起来，关闭时按原可见性还原
+## 详情是商店内部的模态层，但右下返回键 z_index=99 会压在它上面（还能点）。
+## 打开期间让两个角按钮播退场动画离台，关闭时再入场；直接改 visible 会突兀消失
 func _hide_nav_buttons() -> void:
-	_saved_nav_visible.clear()
-	for btn in [GlobalNodes.rb_btn, GlobalNodes.lt_btn]:
-		if btn is CanvasItem:
-			_saved_nav_visible[btn] = (btn as CanvasItem).visible
-			(btn as CanvasItem).visible = false
+	_set_nav_buttons_hidden(true)
 
 
 func _restore_nav_buttons() -> void:
-	for btn in _saved_nav_visible:
-		if is_instance_valid(btn) and btn is CanvasItem:
-			(btn as CanvasItem).visible = bool(_saved_nav_visible[btn])
-	_saved_nav_visible.clear()
+	_set_nav_buttons_hidden(false)
+
+
+func _set_nav_buttons_hidden(need_hidden: bool) -> void:
+	for btn in [GlobalNodes.rb_btn, GlobalNodes.lt_btn]:
+		if is_instance_valid(btn):
+			btn.set_modal_hidden(need_hidden)
 
 
 func _on_detail_closed() -> void:
@@ -541,8 +586,7 @@ func _show_songs_message(text: String) -> void:
 	_song_total = 0
 	if _song_vlist != null:
 		_song_vlist.clear()
-	%SongsEmpty.visible = true
-	%SongsEmpty.text = text
+	_set_empty(Tab.SONGS, text)
 	_update_pager()
 	_update_batch_button()
 
@@ -722,9 +766,8 @@ func _rebuild_category(tab: int) -> void:
 	_bind_animate = true
 	vl.set_total(view.size(), true)
 	_bind_animate = false
-	var empty: Label = _empty_for_tab(tab)
-	empty.visible = view.is_empty()
-	empty.text = "没有找到%s" % ["皮肤", "特效", "音源"][clampi(tab - Tab.SKINS, 0, 2)]
+	_set_empty(tab, "" if not view.is_empty() \
+		else "没有找到%s" % ["皮肤", "特效", "音源"][clampi(tab - Tab.SKINS, 0, 2)])
 
 
 func _filtered_category(tab: int) -> Array:
@@ -755,16 +798,6 @@ func _bind_category_card(node, idx: int, tab: int) -> void:
 	node.call("set_item", view[idx], _bind_animate)
 
 
-func _empty_for_tab(tab: int) -> Label:
-	match tab:
-		Tab.SONGS: return %SongsEmpty
-		Tab.SKINS: return %SkinsEmpty
-		Tab.EFFECTS: return %EffectsEmpty
-		Tab.SOUNDFONTS: return %SoundfontsEmpty
-		Tab.DOWNLOADS: return %DownloadsEmpty
-	return %SongsEmpty
-
-
 func _on_resources_ready() -> void:
 	# 资源扫描在商店打开后才完成（极少见）：作废本地分类缓存，下次进入时重建
 	for tab in [Tab.SKINS, Tab.EFFECTS, Tab.SOUNDFONTS]:
@@ -783,6 +816,32 @@ func _on_card_download_requested(item: Dictionary) -> void:
 
 func _on_detail_download_requested(item: Dictionary) -> void:
 	_request_download(item)
+
+
+## 详情里「查看谱面」：谱面已在本地，按 hash 反查曲库条目后进 MIDI_VIEW
+func _on_detail_open_requested(item: Dictionary) -> void:
+	var hash_str := str(item.get("hash", ""))
+	if hash_str.is_empty():
+		return
+	var midi: MidiData = DataMGR.get_midi_by_id(hash_str)
+	if midi == null:
+		# 下载的收尾扫描还没把该谱面写进索引时会走到这里
+		GLogger.warning("商店谱面已下载但曲库查不到: %s" % hash_str, "StoreView")
+		return
+	_open_midi_view(midi)
+
+
+## 进 MIDI_VIEW。有专辑 / 歌曲归属时走标准导航：MidiView 能带出同歌曲的其它谱面，
+## 返回链也落在歌曲 / 专辑层级（商店属「非专辑入口」，由 navigate_to_album_song 统一构造）；
+## 散装谱面缺少归属时只能直接切视图并塞入单条
+func _open_midi_view(midi: MidiData) -> void:
+	if not midi.album_id.is_empty() and not midi.song_id.is_empty():
+		UiStatMGR.navigate_to_album_song(midi.album_id, midi.song_id, midi.id)
+		if UiStatMGR.current_state == UIStateManager.UIState.MIDI_VIEW:
+			return
+	# 归属已失效（专辑 / 歌曲被删）：退回直达路径，保证点击一定有响应
+	UiStatMGR.change_state(UIStateManager.UIState.MIDI_VIEW)
+	EvtBus.emit_midi_selected(midi.id, midi)
 
 
 ## 单曲下载入口：空闲时立刻开跑，忙时排队（批量下载/另一个单曲下载进行中）
@@ -1214,6 +1273,43 @@ func _stage_text(stage: int) -> String:
 
 
 # ══════════════════════════════════════════════════════
+#  空状态点击重载
+# ══════════════════════════════════════════════════════
+
+## 空状态 Label 收到点击 → 当前标签页重新加载（各页加载失败后就地重试的唯一入口）
+func _on_empty_gui_input(event: InputEvent) -> void:
+	if not event is InputEventMouseButton:
+		return
+	var mb := event as InputEventMouseButton
+	if not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	_reload_page(_current_tab)
+
+
+func _reload_page(tab: int) -> void:
+	match tab:
+		Tab.SONGS:
+			_song_page = 1
+			_load_songs()
+		Tab.DOWNLOADS:
+			_sync_song_states()
+			_seed_download_entries()
+			_refresh_downloads_page(true)
+		_:
+			_reload_local_category(tab)
+
+
+## 皮肤 / 特效 / 音源页的重载入口。
+## 这三页目前只读本地资源索引（远端分类接口未就绪），这里先作废旧缓存再按最新索引重建；
+## 等远端接口可用后，换成本函数内发起重新拉取即可，调用方无需改动。
+func _reload_local_category(tab: int) -> void:
+	if tab < Tab.SKINS or tab > Tab.SOUNDFONTS:
+		return
+	_category_loaded[tab] = false
+	_rebuild_category(tab)
+
+
+# ══════════════════════════════════════════════════════
 #  状态 / 焦点 / 返回
 # ══════════════════════════════════════════════════════
 
@@ -1423,7 +1519,7 @@ func apply_theme() -> void:
 	%CoverPlaceholder.modulate = muted_text
 	%CoverPlaceholder.modulate.a = 0.35
 	%RecentTitleText.add_theme_color_override("font_color", text_secondary)
-	for label in [%SongsEmpty, %SkinsEmpty, %EffectsEmpty, %SoundfontsEmpty, %DownloadsEmpty]:
+	for label in [%PageEmpty, %DownloadsEmpty]:
 		label.add_theme_color_override("font_color", muted_text)
 
 	_refresh_hero()

@@ -510,23 +510,26 @@ func get_comp(ui_part_name: String) -> Node:
 
 var tan15 = tan(deg_to_rad(15))
 
-## 当前要展示在 SelectedAlbum 头部卡片上的专辑数据（选中项优先；恢复/直达路径回退到 SongView 当前专辑）
+## 当前要展示在 SelectedAlbum 头部卡片上的专辑数据。
+## 以 SongView 的 current_album_id 为权威：直达路径（商店跳转 / 启动恢复 / 外部导入）不经过
+## AlbumView 的选中流程，selected_item / out_item_idx 可能还停在上次浏览的专辑上，
+## 用它们会让头卡显示成另一张专辑（名称 / 封面与 SongView 对不上）。
+## 只有 SongView 没有专辑上下文时才回退到列表选中项。
 func _get_selected_album_data() -> Dictionary:
 	var album_list: AlbumView = get_comp("Album_List")
 	if album_list == null or album_list.current_albums.is_empty():
 		return {}
-	var idx := album_list.selected_item
-	if idx < 0 or idx >= album_list.current_albums.size():
-		idx = out_item_idx
-	if idx >= 0 and idx < album_list.current_albums.size():
-		return album_list.current_albums[idx]
-	# 回退：按 SongView 当前专辑 id 在专辑投影中查找（导航恢复等直达路径 selected_item 为 -1）
 	var song_list_ref: SongView = get_comp("Song_List")
 	var target_id := song_list_ref.current_album_id if song_list_ref else ""
 	if target_id != "":
 		for d in album_list.current_albums:
 			if str(d.get("id", "")) == target_id:
 				return d
+	var idx := album_list.selected_item
+	if idx < 0 or idx >= album_list.current_albums.size():
+		idx = out_item_idx
+	if idx >= 0 and idx < album_list.current_albums.size():
+		return album_list.current_albums[idx]
 	return {}
 
 ## 页面组件退出动画

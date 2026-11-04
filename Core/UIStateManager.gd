@@ -51,7 +51,7 @@ const MAX_HISTORY_DEPTH: int = 10
 ## 可懒加载的视图路径（UIState → PackedScene 路径）
 const LAZY_VIEW_PATHS := {
 	UIState.MIDI_VIEW: "res://UI/Views/MidiView/MidiView.tscn",
-	UIState.STORE_VIEW: "res://UI/Views/StoreView/MidiStore.tscn",
+	UIState.STORE_VIEW: "res://UI/Views/StoreView/StoreView.tscn",
 	UIState.TRACK_VIEW: "res://UI/Views/TrackView/TrackView.tscn",
 	UIState.SETTINGS_VIEW: "res://UI/Views/SettingView/SettingView.tscn",
 	UIState.PLAY_VIEW: "res://UI/Views/PlayView/PlayView.tscn",

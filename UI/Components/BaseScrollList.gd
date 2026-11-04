@@ -618,6 +618,21 @@ func force_snap_to(index: int) -> void:
 	# 立即激活吸附：跳过 _process 中"滚动速度快 → reset_selection"分支对本次选中的清除
 	_snap_active = true
 
+## 预设滚动位置（视图仍不可见时的预热用）：直接置位，同时把滚动状态机一并同步。
+## 不同步的话，下次 _process 会把这次跳变当成"用户快速滚动"，
+## 触发 reset_selection / 打断吸附，把预热好的选中项又清掉。
+func preset_scroll_vertical(value: int) -> void:
+	scroll_vertical = maxi(value, 0)
+	_prev_scroll_vertical = scroll_vertical
+	_scroll_speed = 0.0
+	_scroll_stable = true
+	_drag_scrolling = false
+	_pointer_pressed = false
+	_pointer_release_observed = false
+	_is_dragging_bar = false
+	if _scroll_stable_timer and not _scroll_stable_timer.is_stopped():
+		_scroll_stable_timer.stop()
+
 func get_selected_node() -> Control:
 	if selected_item == -1:
 		return null

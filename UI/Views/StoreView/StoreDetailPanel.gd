@@ -9,6 +9,8 @@ extends Control
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 
 signal download_requested(item: Dictionary)
+## 已下载谱面的按钮改为跳转：请求在曲库中打开该谱面
+signal open_requested(item: Dictionary)
 signal closed
 
 const DETAIL_SIZE := Vector2(1280, 760)
@@ -438,6 +440,7 @@ func _apply_download_state() -> void:
 	if not is_song:
 		%DownloadBtn.text = "已安装"
 		%DownloadBtn.icon = StoreIconsLib.check()
+		%DownloadBtn.tooltip_text = "本地资源已安装"
 		%DownloadBtn.disabled = true
 		_set_download_colors(ThemeMGR.get_color("success") if ThemeMGR else Color("#2FA66A"))
 		return
@@ -449,22 +452,28 @@ func _apply_download_state() -> void:
 	var base := ThemeMGR.get_color("primary") if ThemeMGR else Color("#2E55C8")
 	var icon: Texture2D = StoreIconsLib.download()
 	var text := "下载谱面"
+	var tip := "下载该谱面"
 	%DownloadBtn.disabled = false
 	match state:
 		ResourceManager.DownloadState.DOWNLOADING:
 			base = ThemeMGR.get_color("warning") if ThemeMGR else Color("#D89A2A")
 			icon = StoreIconsLib.download_cloud()
 			text = "正在下载…"
+			tip = "正在下载…"
 		ResourceManager.DownloadState.DOWNLOADED:
+			# 本地已有：按钮改成「进入曲库查看」，不再是终止态
 			base = ThemeMGR.get_color("success") if ThemeMGR else Color("#2FA66A")
-			icon = StoreIconsLib.check()
-			text = "已下载"
+			icon = StoreIconsLib.song()
+			text = "查看谱面"
+			tip = "在曲库中打开该谱面"
 		ResourceManager.DownloadState.FAILED:
 			base = ThemeMGR.get_color("danger") if ThemeMGR else Color("#C7303F")
 			icon = StoreIconsLib.close()
 			text = "重试下载"
+			tip = "下载失败，点击重试"
 	%DownloadBtn.text = text
 	%DownloadBtn.icon = icon
+	%DownloadBtn.tooltip_text = tip
 	_set_download_colors(base)
 
 
@@ -486,13 +495,16 @@ func _set_download_colors(base: Color) -> void:
 
 
 func _on_download_pressed() -> void:
+	if str(_item.get("kind", "")) != "song":
+		return
 	var state := int(_item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
 	var hash_str := str(_item.get("hash", ""))
 	if not hash_str.is_empty():
 		state = ResourceManager.instance.get_download_state(hash_str)
-	if str(_item.get("kind", "")) != "song" \
-			or state == ResourceManager.DownloadState.DOWNLOADED \
-			or state == ResourceManager.DownloadState.DOWNLOADING:
+	if state == ResourceManager.DownloadState.DOWNLOADING:
+		return
+	if state == ResourceManager.DownloadState.DOWNLOADED:
+		open_requested.emit(_item)
 		return
 	download_requested.emit(_item)
 

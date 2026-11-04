@@ -40,6 +40,23 @@ func get_current_stat() -> ShowStat:
 
 var _visible: bool = true
 
+## 模态层临时隐藏叠加位：只影响台面上的位置，不动 _current_stat / 图标偏移 / 快捷键。
+## 与 _visible 分开记，解锁时按 _visible 决定是否重新入场
+var _modal_hidden: bool = false
+
+## 临时离台 / 回台（带位移补间）。商店详情这类内部模态层用：
+## 直接改 visible 会让按钮突兀消失，这里复用框架自身的出入场位移
+func set_modal_hidden(need_hidden: bool) -> void:
+	if need_hidden == _modal_hidden:
+		return
+	_modal_hidden = need_hidden
+	if need_hidden:
+		if _visible:
+			AniMGR.animate_offset_to(self, Vector2(500, 134), 0.28, "RB_VISBLE")
+	elif _visible:
+		AniMGR.animate_offset_back(self, 0.28, "RB_VISBLE")
+
+
 # 文本输入时禁用快捷键，避免字母键触发跳转（由 LeftTopBtn 统一驱动）
 var _saved_shortcut: Shortcut = null
 
@@ -63,6 +80,9 @@ func switch_display(content_to_show: ShowStat = ShowStat.NONE):
 		content_to_show = ShowStat.CHARA_BTN
 	if content_to_show == _current_stat:
 		return
+
+	# 框架自己接管出入场：模态层的临时隐藏作废，避免关闭时重复播一次入场
+	_modal_hidden = false
 
 	# 控制按钮框架是否可见
 	if content_to_show == ShowStat.NONE:
