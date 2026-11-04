@@ -140,9 +140,6 @@ shadow_offset = Vector2(0, 3)
 color = Color(1, 1, 1, 0.25)
 thickness = 8
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_c3ket"]
-draw_center = false
-
 [sub_resource type="AtlasTexture" id="AtlasTexture_0arlv"]
 resource_local_to_scene = true
 atlas = ExtResource("2_phpps")
@@ -262,26 +259,15 @@ text = "Track 1"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="HBoxC" type="HBoxContainer" parent="." unique_id=327389710]
-custom_minimum_size = Vector2(1080, 0)
-layout_mode = 1
-anchors_preset = -1
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 150.0
-offset_top = 20.0
-offset_right = -50.0
-offset_bottom = -20.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_constants/separation = -4
-
-[node name="EnableBtn" type="Button" parent="HBoxC" unique_id=888662538]
+[node name="EnableBtn" type="Button" parent="." unique_id=888662538]
 unique_name_in_owner = true
 z_index = 1
 custom_minimum_size = Vector2(280, 180)
-layout_mode = 2
+layout_mode = 0
+offset_left = 150.0
+offset_top = 20.0
+offset_right = 430.0
+offset_bottom = 200.0
 size_flags_vertical = 4
 focus_mode = 0
 theme_override_colors/font_color = Color(0.875, 0.875, 0.875, 1)
@@ -302,28 +288,38 @@ text = "已启用"
 icon = SubResource("AtlasTexture_7rc5s")
 expand_icon = true
 
-[node name="MC" type="MarginContainer" parent="HBoxC" unique_id=1795218493]
-layout_mode = 2
-size_flags_horizontal = 3
+[node name="HBoxC" type="Control" parent="." unique_id=2115125034]
+layout_mode = 1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 430.0
+offset_top = 45.0
+offset_right = -40.0
+offset_bottom = -45.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/margin_top = 25
-theme_override_constants/margin_bottom = 25
 
-[node name="NoteDisplay" type="HBoxContainer" parent="HBoxC/MC" unique_id=1152135973]
+[node name="NoteDisplay" type="HBoxContainer" parent="HBoxC" unique_id=1152135973]
 unique_name_in_owner = true
-layout_mode = 2
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 theme_override_constants/separation = 0
 script = ExtResource("2_7rc5s")
 
-[node name="NoteFlowArea" type="Panel" parent="HBoxC/MC/NoteDisplay" unique_id=938369012]
+[node name="NoteFlowArea" type="Panel" parent="HBoxC/NoteDisplay" unique_id=938369012]
 custom_minimum_size = Vector2(940, 160)
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxTexture_kgiiq")
 
-[node name="NoteCanvas" type="Control" parent="HBoxC/MC/NoteDisplay/NoteFlowArea" unique_id=877753186]
+[node name="NoteCanvas" type="Control" parent="HBoxC/NoteDisplay/NoteFlowArea" unique_id=877753186]
 unique_name_in_owner = true
 clip_contents = true
 layout_mode = 1
@@ -334,14 +330,14 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="NoteCounterPanel" type="Panel" parent="HBoxC/MC/NoteDisplay" unique_id=876599378]
+[node name="NoteCounterPanel" type="Panel" parent="HBoxC/NoteDisplay" unique_id=876599378]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 0)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_xcqgn")
 
-[node name="NotePassed" type="Label" parent="HBoxC/MC/NoteDisplay/NoteCounterPanel" unique_id=485936147]
+[node name="NotePassed" type="Label" parent="HBoxC/NoteDisplay/NoteCounterPanel" unique_id=485936147]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
@@ -355,7 +351,7 @@ text = "0"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="HSeparator" type="HSeparator" parent="HBoxC/MC/NoteDisplay/NoteCounterPanel" unique_id=1309576665]
+[node name="HSeparator" type="HSeparator" parent="HBoxC/NoteDisplay/NoteCounterPanel" unique_id=1309576665]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -374,7 +370,7 @@ offset_transform_rotation = -0.2617994
 mouse_filter = 2
 theme_override_styles/separator = SubResource("StyleBoxLine_7vp1s")
 
-[node name="NoteTotal" type="Label" parent="HBoxC/MC/NoteDisplay/NoteCounterPanel" unique_id=884233785]
+[node name="NoteTotal" type="Label" parent="HBoxC/NoteDisplay/NoteCounterPanel" unique_id=884233785]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
@@ -389,28 +385,18 @@ theme_override_font_sizes/font_size = 44
 text = "99999"
 vertical_alignment = 1
 
-[node name="ControlPanel" type="Panel" parent="HBoxC/MC" unique_id=211174657]
+[node name="ControlBtns" type="GridContainer" parent="HBoxC" unique_id=761362062]
 custom_minimum_size = Vector2(600, 0)
-layout_mode = 2
-size_flags_horizontal = 0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_c3ket")
-
-[node name="GridC" type="GridContainer" parent="HBoxC/MC/ControlPanel" unique_id=761362062]
 layout_mode = 1
-anchors_preset = -1
-anchor_right = 1.0
+anchors_preset = 9
 anchor_bottom = 1.0
-offset_left = 5.0
-offset_top = 15.0
-offset_right = 5.0
-offset_bottom = 15.0
+offset_right = 500.0
 grow_vertical = 2
 theme_override_constants/h_separation = 40
 theme_override_constants/v_separation = 20
 columns = 3
 
-[node name="MuteBtn" type="TextureButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=1626224669]
+[node name="MuteBtn" type="TextureButton" parent="HBoxC/ControlBtns" unique_id=1626224669]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
@@ -424,12 +410,12 @@ texture_pressed = SubResource("AtlasTexture_r0ui6")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="Volume" type="HBoxContainer" parent="HBoxC/MC/ControlPanel/GridC" unique_id=34573128]
+[node name="Volume" type="HBoxContainer" parent="HBoxC/ControlBtns" unique_id=34573128]
 custom_minimum_size = Vector2(320, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="VolumeSlider" type="HSlider" parent="HBoxC/MC/ControlPanel/GridC/Volume" unique_id=1999306910]
+[node name="VolumeSlider" type="HSlider" parent="HBoxC/ControlBtns/Volume" unique_id=1999306910]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -440,19 +426,19 @@ theme_override_styles/grabber_area_highlight = SubResource("StyleBoxFlat_slider_
 max_value = 1.0
 step = 0.01
 
-[node name="VolumeText" type="Label" parent="HBoxC/MC/ControlPanel/GridC/Volume" unique_id=592580644]
+[node name="VolumeText" type="Label" parent="HBoxC/ControlBtns/Volume" unique_id=592580644]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 text = "-1.00dB"
 horizontal_alignment = 2
 
-[node name="PlaceHolderBtn" type="TextureButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=1252566824]
+[node name="PlaceHolderBtn" type="TextureButton" parent="HBoxC/ControlBtns" unique_id=1252566824]
 layout_mode = 2
 focus_mode = 0
 disabled = true
 
-[node name="SoloBtn" type="TextureButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=1461801783]
+[node name="SoloBtn" type="TextureButton" parent="HBoxC/ControlBtns" unique_id=1461801783]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2
@@ -466,7 +452,7 @@ texture_pressed = SubResource("AtlasTexture_kpleu")
 ignore_texture_size = true
 stretch_mode = 5
 
-[node name="InstrumentBtn" type="Button" parent="HBoxC/MC/ControlPanel/GridC" unique_id=673420758]
+[node name="InstrumentBtn" type="Button" parent="HBoxC/ControlBtns" unique_id=673420758]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(250, 50)
 layout_mode = 2
@@ -475,7 +461,7 @@ focus_mode = 0
 theme_override_font_sizes/font_size = 32
 flat = true
 
-[node name="ResetBtn" type="TextureButton" parent="HBoxC/MC/ControlPanel/GridC" unique_id=955571887]
+[node name="ResetBtn" type="TextureButton" parent="HBoxC/ControlBtns" unique_id=955571887]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(50, 50)
 layout_mode = 2

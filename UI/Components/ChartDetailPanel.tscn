@@ -246,32 +246,28 @@ grow_horizontal = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_accent")
 
-[node name="Margin" type="MarginContainer" parent="Panel" unique_id=295986665]
+[node name="Content" type="VBoxContainer" parent="Panel" unique_id=595159318]
+unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 32.0
+offset_top = 26.0
+offset_right = -32.0
+offset_bottom = -26.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/margin_left = 32
-theme_override_constants/margin_top = 26
-theme_override_constants/margin_right = 32
-theme_override_constants/margin_bottom = 26
-
-[node name="Content" type="VBoxContainer" parent="Panel/Margin" unique_id=595159318]
-unique_name_in_owner = true
-layout_mode = 2
-mouse_filter = 2
 theme_override_constants/separation = 16
 
-[node name="Header" type="HBoxContainer" parent="Panel/Margin/Content" unique_id=1218772801]
+[node name="Header" type="HBoxContainer" parent="Panel/Content" unique_id=1218772801]
 custom_minimum_size = Vector2(0, 62)
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 20
 
-[node name="Title" type="Label" parent="Panel/Margin/Content/Header" unique_id=994730390]
+[node name="Title" type="Label" parent="Panel/Content/Header" unique_id=994730390]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -281,7 +277,7 @@ clip_text = true
 script = ExtResource("6_scroll")
 end_padding = 0.0
 
-[node name="Kind" type="Label" parent="Panel/Margin/Content/Header" unique_id=1208175417]
+[node name="Kind" type="Label" parent="Panel/Content/Header" unique_id=1208175417]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
@@ -289,7 +285,7 @@ theme_override_font_sizes/font_size = 21
 text = "谱面"
 horizontal_alignment = 2
 
-[node name="CloseBtn" type="Button" parent="Panel/Margin/Content/Header" unique_id=368286247]
+[node name="CloseBtn" type="Button" parent="Panel/Content/Header" unique_id=368286247]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(58, 58)
 layout_mode = 2
@@ -303,27 +299,27 @@ icon = SubResource("Atlas_close")
 icon_alignment = 1
 expand_icon = true
 
-[node name="Body" type="HBoxContainer" parent="Panel/Margin/Content" unique_id=731701955]
+[node name="Body" type="HBoxContainer" parent="Panel/Content" unique_id=731701955]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 2
 theme_override_constants/separation = 26
 
-[node name="LeftCol" type="VBoxContainer" parent="Panel/Margin/Content/Body" unique_id=78636420]
+[node name="LeftCol" type="VBoxContainer" parent="Panel/Content/Body" unique_id=78636420]
 custom_minimum_size = Vector2(390, 0)
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 14
 
-[node name="CoverWrap" type="Panel" parent="Panel/Margin/Content/Body/LeftCol" unique_id=313787893]
+[node name="CoverWrap" type="Panel" parent="Panel/Content/Body/LeftCol" unique_id=313787893]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(390, 390)
 layout_mode = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_cover")
 
-[node name="Cover" type="TextureRect" parent="Panel/Margin/Content/Body/LeftCol/CoverWrap" unique_id=1490627391]
+[node name="Cover" type="TextureRect" parent="Panel/Content/Body/LeftCol/CoverWrap" unique_id=1490627391]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -337,7 +333,7 @@ stretch_mode = 6
 script = ExtResource("2_round")
 corner_radius = 18.0
 
-[node name="Placeholder" type="TextureRect" parent="Panel/Margin/Content/Body/LeftCol/CoverWrap" unique_id=1502065850]
+[node name="Placeholder" type="TextureRect" parent="Panel/Content/Body/LeftCol/CoverWrap" unique_id=1502065850]
 unique_name_in_owner = true
 modulate = Color(1, 1, 1, 0.4)
 custom_minimum_size = Vector2(108, 108)
@@ -358,46 +354,47 @@ texture = SubResource("Atlas_song")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="RankBox" type="PanelContainer" parent="Panel/Margin/Content/Body/LeftCol" unique_id=1270843060]
+[node name="RankBox" type="Panel" parent="Panel/Content/Body/LeftCol" unique_id=1270843060]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_rank")
 
-[node name="RankMargin" type="MarginContainer" parent="Panel/Margin/Content/Body/LeftCol/RankBox" unique_id=378554386]
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 12
-
-[node name="RankCol" type="VBoxContainer" parent="Panel/Margin/Content/Body/LeftCol/RankBox/RankMargin" unique_id=1688223513]
-layout_mode = 2
+[node name="RankCol" type="VBoxContainer" parent="Panel/Content/Body/LeftCol/RankBox" unique_id=1688223513]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 12.0
+offset_right = -16.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 theme_override_constants/separation = 8
 
-[node name="RankTitle" type="Label" parent="Panel/Margin/Content/Body/LeftCol/RankBox/RankMargin/RankCol" unique_id=313546632]
+[node name="RankTitle" type="Label" parent="Panel/Content/Body/LeftCol/RankBox/RankCol" unique_id=313546632]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 23
 text = "排行榜"
 
-[node name="RankList" type="VBoxContainer" parent="Panel/Margin/Content/Body/LeftCol/RankBox/RankMargin/RankCol" unique_id=350727658]
+[node name="RankList" type="VBoxContainer" parent="Panel/Content/Body/LeftCol/RankBox/RankCol" unique_id=350727658]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
 theme_override_constants/separation = 6
 
-[node name="RightCol" type="VBoxContainer" parent="Panel/Margin/Content/Body" unique_id=151502558]
+[node name="RightCol" type="VBoxContainer" parent="Panel/Content/Body" unique_id=151502558]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 10
 
-[node name="Sub" type="Label" parent="Panel/Margin/Content/Body/RightCol" unique_id=541876194]
+[node name="Sub" type="Label" parent="Panel/Content/Body/RightCol" unique_id=541876194]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -408,7 +405,7 @@ script = ExtResource("6_scroll")
 theme_color_key = "text_secondary"
 end_padding = 0.0
 
-[node name="Desc" type="RichTextLabel" parent="Panel/Margin/Content/Body/RightCol" unique_id=1246707755]
+[node name="Desc" type="RichTextLabel" parent="Panel/Content/Body/RightCol" unique_id=1246707755]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 250)
 layout_mode = 2
@@ -419,21 +416,21 @@ theme_override_font_sizes/normal_font_size = 22
 bbcode_enabled = true
 text = "简介占位文本"
 
-[node name="Divider" type="ColorRect" parent="Panel/Margin/Content/Body/RightCol" unique_id=1162896455]
+[node name="Divider" type="ColorRect" parent="Panel/Content/Body/RightCol" unique_id=1162896455]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 1)
 layout_mode = 2
 mouse_filter = 2
 color = Color(0.2, 0.24, 0.32, 0.8)
 
-[node name="Stats" type="HBoxContainer" parent="Panel/Margin/Content/Body/RightCol" unique_id=1319639590]
+[node name="Stats" type="HBoxContainer" parent="Panel/Content/Body/RightCol" unique_id=1319639590]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 16
 
-[node name="LikeBtn" type="Button" parent="Panel/Margin/Content/Body/RightCol/Stats" unique_id=795017511]
+[node name="LikeBtn" type="Button" parent="Panel/Content/Body/RightCol/Stats" unique_id=795017511]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/icon_max_width = 26
@@ -445,7 +442,7 @@ theme_override_styles/focus = SubResource("SB_flat_hover")
 text = "  0"
 icon = SubResource("Atlas_up")
 
-[node name="DislikeBtn" type="Button" parent="Panel/Margin/Content/Body/RightCol/Stats" unique_id=103213101]
+[node name="DislikeBtn" type="Button" parent="Panel/Content/Body/RightCol/Stats" unique_id=103213101]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/icon_max_width = 26
@@ -457,13 +454,13 @@ theme_override_styles/focus = SubResource("SB_flat_hover")
 text = "  0"
 icon = SubResource("Atlas_down")
 
-[node name="Downloads" type="HBoxContainer" parent="Panel/Margin/Content/Body/RightCol/Stats" unique_id=148849777]
+[node name="Downloads" type="HBoxContainer" parent="Panel/Content/Body/RightCol/Stats" unique_id=148849777]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 6
 
-[node name="Icon" type="TextureRect" parent="Panel/Margin/Content/Body/RightCol/Stats/Downloads" unique_id=1977699793]
+[node name="Icon" type="TextureRect" parent="Panel/Content/Body/RightCol/Stats/Downloads" unique_id=1977699793]
 modulate = Color(0.7, 0.76, 0.86, 1)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
@@ -473,19 +470,20 @@ texture = SubResource("Atlas_downloads")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="DownloadsCount" type="Label" parent="Panel/Margin/Content/Body/RightCol/Stats/Downloads" unique_id=946289561]
+[node name="DownloadsCount" type="Label" parent="Panel/Content/Body/RightCol/Stats/Downloads" unique_id=946289561]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "0"
 
-[node name="Plays" type="HBoxContainer" parent="Panel/Margin/Content/Body/RightCol/Stats" unique_id=1462144508]
+[node name="Plays" type="HBoxContainer" parent="Panel/Content/Body/RightCol/Stats" unique_id=1462144508]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
 mouse_filter = 2
 theme_override_constants/separation = 6
 
-[node name="Icon" type="TextureRect" parent="Panel/Margin/Content/Body/RightCol/Stats/Plays" unique_id=1805027525]
+[node name="Icon" type="TextureRect" parent="Panel/Content/Body/RightCol/Stats/Plays" unique_id=1805027525]
 modulate = Color(0.7, 0.76, 0.86, 1)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
@@ -495,31 +493,26 @@ texture = SubResource("Atlas_plays")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="PlaysCount" type="Label" parent="Panel/Margin/Content/Body/RightCol/Stats/Plays" unique_id=1898725087]
+[node name="PlaysCount" type="Label" parent="Panel/Content/Body/RightCol/Stats/Plays" unique_id=1898725087]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "0"
 
-[node name="Spacer" type="Control" parent="Panel/Margin/Content/Body/RightCol/Stats" unique_id=1625105974]
-layout_mode = 2
-size_flags_horizontal = 3
-mouse_filter = 2
-
-[node name="Date" type="Label" parent="Panel/Margin/Content/Body/RightCol/Stats" unique_id=1188870493]
+[node name="Date" type="Label" parent="Panel/Content/Body/RightCol/Stats" unique_id=1188870493]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 19
 text = "上传于 2026-10-30"
 vertical_alignment = 1
 
-[node name="Actions" type="HBoxContainer" parent="Panel/Margin/Content/Body/RightCol" unique_id=171653584]
+[node name="Actions" type="HBoxContainer" parent="Panel/Content/Body/RightCol" unique_id=171653584]
 custom_minimum_size = Vector2(0, 64)
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 16
 
-[node name="SizeLabel" type="Label" parent="Panel/Margin/Content/Body/RightCol/Actions" unique_id=1699689793]
+[node name="SizeLabel" type="Label" parent="Panel/Content/Body/RightCol/Actions" unique_id=1699689793]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -528,7 +521,7 @@ text = "文件 6.2 MB · 含人声"
 vertical_alignment = 1
 clip_text = true
 
-[node name="DownloadBtn" type="Button" parent="Panel/Margin/Content/Body/RightCol/Actions" unique_id=1017878009]
+[node name="DownloadBtn" type="Button" parent="Panel/Content/Body/RightCol/Actions" unique_id=1017878009]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(250, 64)
 layout_mode = 2

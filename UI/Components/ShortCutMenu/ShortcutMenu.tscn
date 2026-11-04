@@ -294,9 +294,10 @@ icon = SubResource("AtlasTexture_4ycmv")
 icon_alignment = 1
 expand_icon = true
 
-[node name="MarginContainer" type="MarginContainer" parent="ShortcutPanel/Clip/PageContent/SortPage/SortButtons" unique_id=552608647]
+[node name="RightGap" type="Control" parent="ShortcutPanel/Clip/PageContent/SortPage/SortButtons" unique_id=552608647]
 layout_mode = 2
-theme_override_constants/margin_right = 20
+custom_minimum_size = Vector2(20, 0)
+mouse_filter = 2
 
 [node name="FavorPage" type="VBoxContainer" parent="ShortcutPanel/Clip/PageContent" unique_id=150447382]
 layout_mode = 2

@@ -146,24 +146,21 @@ theme_override_styles/hover = SubResource("SB_hover")
 theme_override_styles/focus = SubResource("SB_focus")
 script = ExtResource("1_card")
 
-[node name="Margin" type="MarginContainer" parent="." unique_id=739713561]
+[node name="HBox" type="HBoxContainer" parent="." unique_id=725269291]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
-
-[node name="HBox" type="HBoxContainer" parent="Margin" unique_id=725269291]
-layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="CoverWrap" type="Panel" parent="Margin/HBox" unique_id=1224588562]
+[node name="CoverWrap" type="Panel" parent="HBox" unique_id=1224588562]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(196, 196)
 layout_mode = 2
@@ -172,7 +169,7 @@ size_flags_vertical = 4
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_cover")
 
-[node name="Cover" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=479140664]
+[node name="Cover" type="TextureRect" parent="HBox/CoverWrap" unique_id=479140664]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -189,7 +186,7 @@ expand_mode = 1
 stretch_mode = 5
 script = ExtResource("3_round")
 
-[node name="Placeholder" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=268170219]
+[node name="Placeholder" type="TextureRect" parent="HBox/CoverWrap" unique_id=268170219]
 unique_name_in_owner = true
 modulate = Color(1, 1, 1, 0.55)
 custom_minimum_size = Vector2(84, 84)
@@ -210,7 +207,7 @@ texture = SubResource("Atlas_dl")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="KindChip" type="Label" parent="Margin/HBox/CoverWrap" unique_id=652761060]
+[node name="KindChip" type="Label" parent="HBox/CoverWrap" unique_id=652761060]
 unique_name_in_owner = true
 layout_mode = 0
 offset_left = 10.0
@@ -223,20 +220,20 @@ text = "皮肤"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Info" type="VBoxContainer" parent="Margin/HBox" unique_id=1350821341]
+[node name="Info" type="VBoxContainer" parent="HBox" unique_id=1350821341]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 theme_override_constants/separation = 5
 
-[node name="Type" type="Label" parent="Margin/HBox/Info" unique_id=977056720]
+[node name="Type" type="Label" parent="HBox/Info" unique_id=977056720]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 19
 text = "音符皮肤"
 
-[node name="Title" type="Label" parent="Margin/HBox/Info" unique_id=628430569]
+[node name="Title" type="Label" parent="HBox/Info" unique_id=628430569]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -246,7 +243,7 @@ clip_text = true
 script = ExtResource("4_scroll")
 end_padding = 0.0
 
-[node name="Desc" type="Label" parent="Margin/HBox/Info" unique_id=1689798085]
+[node name="Desc" type="Label" parent="HBox/Info" unique_id=1689798085]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
@@ -257,13 +254,13 @@ autowrap_mode = 3
 clip_text = true
 max_lines_visible = 2
 
-[node name="Spacer" type="Control" parent="Margin/HBox/Info" unique_id=1991955546]
+[node name="Spacer" type="Control" parent="HBox/Info" unique_id=1991955546]
 custom_minimum_size = Vector2(0, 4)
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Meta" type="Label" parent="Margin/HBox/Info" unique_id=1672274624]
+[node name="Meta" type="Label" parent="HBox/Info" unique_id=1672274624]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -274,14 +271,14 @@ script = ExtResource("4_scroll")
 theme_color_key = "text_secondary"
 end_padding = 0.0
 
-[node name="RightCol" type="VBoxContainer" parent="Margin/HBox" unique_id=1377217748]
+[node name="RightCol" type="VBoxContainer" parent="HBox" unique_id=1377217748]
 custom_minimum_size = Vector2(92, 0)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="DownloadBtn" type="Button" parent="Margin/HBox/RightCol" unique_id=793160590]
+[node name="DownloadBtn" type="Button" parent="HBox/RightCol" unique_id=793160590]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(80, 80)
 layout_mode = 2
@@ -296,7 +293,7 @@ icon = SubResource("Atlas_dl")
 icon_alignment = 1
 expand_icon = true
 
-[node name="StateLabel" type="Label" parent="Margin/HBox/RightCol" unique_id=1028344926]
+[node name="StateLabel" type="Label" parent="HBox/RightCol" unique_id=1028344926]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(92, 0)
 layout_mode = 2

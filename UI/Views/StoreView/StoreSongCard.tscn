@@ -152,24 +152,21 @@ theme_override_styles/hover = SubResource("SB_hover")
 theme_override_styles/focus = SubResource("SB_focus")
 script = ExtResource("1_card")
 
-[node name="Margin" type="MarginContainer" parent="." unique_id=1404842908]
+[node name="HBox" type="HBoxContainer" parent="." unique_id=2027326736]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 14.0
+offset_top = 14.0
+offset_right = -14.0
+offset_bottom = -14.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/margin_left = 14
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 14
-
-[node name="HBox" type="HBoxContainer" parent="Margin" unique_id=2027326736]
-layout_mode = 2
 theme_override_constants/separation = 18
 
-[node name="CoverWrap" type="Panel" parent="Margin/HBox" unique_id=952050055]
+[node name="CoverWrap" type="Panel" parent="HBox" unique_id=952050055]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(218, 218)
 layout_mode = 2
@@ -178,7 +175,7 @@ size_flags_vertical = 4
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_cover")
 
-[node name="Cover" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=1045383062]
+[node name="Cover" type="TextureRect" parent="HBox/CoverWrap" unique_id=1045383062]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -192,7 +189,7 @@ stretch_mode = 6
 script = ExtResource("3_round")
 corner_radius = 14.0
 
-[node name="Placeholder" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=381031407]
+[node name="Placeholder" type="TextureRect" parent="HBox/CoverWrap" unique_id=381031407]
 unique_name_in_owner = true
 modulate = Color(1, 1, 1, 0.4)
 custom_minimum_size = Vector2(86, 86)
@@ -213,7 +210,7 @@ texture = SubResource("Atlas_note")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Duration" type="Label" parent="Margin/HBox/CoverWrap" unique_id=246903659]
+[node name="Duration" type="Label" parent="HBox/CoverWrap" unique_id=246903659]
 unique_name_in_owner = true
 visible = false
 layout_mode = 0
@@ -228,13 +225,13 @@ theme_override_font_sizes/font_size = 20
 text = "有人声 3:05"
 horizontal_alignment = 2
 
-[node name="Info" type="VBoxContainer" parent="Margin/HBox" unique_id=1237516854]
+[node name="Info" type="VBoxContainer" parent="HBox" unique_id=1237516854]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 theme_override_constants/separation = 3
 
-[node name="Title" type="Label" parent="Margin/HBox/Info" unique_id=710123146]
+[node name="Title" type="Label" parent="HBox/Info" unique_id=710123146]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -244,7 +241,7 @@ clip_text = true
 script = ExtResource("2_scroll")
 end_padding = 0.0
 
-[node name="Author" type="Label" parent="Margin/HBox/Info" unique_id=1593620122]
+[node name="Author" type="Label" parent="HBox/Info" unique_id=1593620122]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -255,7 +252,7 @@ script = ExtResource("2_scroll")
 theme_color_key = "text_secondary"
 end_padding = 0.0
 
-[node name="SongLine" type="Label" parent="Margin/HBox/Info" unique_id=1966012806]
+[node name="SongLine" type="Label" parent="HBox/Info" unique_id=1966012806]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -266,25 +263,25 @@ script = ExtResource("2_scroll")
 theme_color_key = "text_secondary"
 end_padding = 0.0
 
-[node name="Spacer" type="Control" parent="Margin/HBox/Info" unique_id=603282438]
+[node name="Spacer" type="Control" parent="HBox/Info" unique_id=603282438]
 custom_minimum_size = Vector2(0, 4)
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Stats" type="HBoxContainer" parent="Margin/HBox/Info" unique_id=1303345984]
+[node name="Stats" type="HBoxContainer" parent="HBox/Info" unique_id=1303345984]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 16
 
-[node name="Downloads" type="HBoxContainer" parent="Margin/HBox/Info/Stats" unique_id=1253298490]
+[node name="Downloads" type="HBoxContainer" parent="HBox/Info/Stats" unique_id=1253298490]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="Icon" type="TextureRect" parent="Margin/HBox/Info/Stats/Downloads" unique_id=731037946]
+[node name="Icon" type="TextureRect" parent="HBox/Info/Stats/Downloads" unique_id=731037946]
 custom_minimum_size = Vector2(20, 20)
 layout_mode = 2
 size_flags_vertical = 4
@@ -293,19 +290,19 @@ texture = SubResource("Atlas_downloads")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="DownloadsCount" type="Label" parent="Margin/HBox/Info/Stats/Downloads" unique_id=570498012]
+[node name="DownloadsCount" type="Label" parent="HBox/Info/Stats/Downloads" unique_id=570498012]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "0"
 
-[node name="Plays" type="HBoxContainer" parent="Margin/HBox/Info/Stats" unique_id=909176750]
+[node name="Plays" type="HBoxContainer" parent="HBox/Info/Stats" unique_id=909176750]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="Icon" type="TextureRect" parent="Margin/HBox/Info/Stats/Plays" unique_id=1190285574]
+[node name="Icon" type="TextureRect" parent="HBox/Info/Stats/Plays" unique_id=1190285574]
 custom_minimum_size = Vector2(20, 20)
 layout_mode = 2
 size_flags_vertical = 4
@@ -314,19 +311,19 @@ texture = SubResource("Atlas_plays")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="PlaysCount" type="Label" parent="Margin/HBox/Info/Stats/Plays" unique_id=1273419331]
+[node name="PlaysCount" type="Label" parent="HBox/Info/Stats/Plays" unique_id=1273419331]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "0"
 
-[node name="Likes" type="HBoxContainer" parent="Margin/HBox/Info/Stats" unique_id=41642359]
+[node name="Likes" type="HBoxContainer" parent="HBox/Info/Stats" unique_id=41642359]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="Icon" type="TextureRect" parent="Margin/HBox/Info/Stats/Likes" unique_id=268074058]
+[node name="Icon" type="TextureRect" parent="HBox/Info/Stats/Likes" unique_id=268074058]
 custom_minimum_size = Vector2(20, 20)
 layout_mode = 2
 size_flags_vertical = 4
@@ -335,13 +332,13 @@ texture = SubResource("Atlas_likes")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="LikesCount" type="Label" parent="Margin/HBox/Info/Stats/Likes" unique_id=1032969063]
+[node name="LikesCount" type="Label" parent="HBox/Info/Stats/Likes" unique_id=1032969063]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
 text = "0"
 
-[node name="Uploader" type="Label" parent="Margin/HBox/Info" unique_id=157239218]
+[node name="Uploader" type="Label" parent="HBox/Info" unique_id=157239218]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -352,14 +349,14 @@ script = ExtResource("2_scroll")
 theme_color_key = "text_secondary"
 end_padding = 0.0
 
-[node name="RightCol" type="VBoxContainer" parent="Margin/HBox" unique_id=113777054]
+[node name="RightCol" type="VBoxContainer" parent="HBox" unique_id=113777054]
 custom_minimum_size = Vector2(106, 0)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="DownloadBtn" type="Button" parent="Margin/HBox/RightCol" unique_id=176756795]
+[node name="DownloadBtn" type="Button" parent="HBox/RightCol" unique_id=176756795]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(94, 94)
 layout_mode = 2
@@ -374,7 +371,7 @@ icon = SubResource("Atlas_downloads")
 icon_alignment = 1
 expand_icon = true
 
-[node name="StateLabel" type="Label" parent="Margin/HBox/RightCol" unique_id=2108821367]
+[node name="StateLabel" type="Label" parent="HBox/RightCol" unique_id=2108821367]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(106, 0)
 layout_mode = 2

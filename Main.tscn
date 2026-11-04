@@ -381,9 +381,9 @@ metadata/_edit_lock_ = true
 [node name="VBox" type="VBoxContainer" parent="Skew/SkewC/AlbumList" unique_id=1809549679]
 layout_mode = 2
 
-[node name="MarginTop" type="MarginContainer" parent="Skew/SkewC/AlbumList/VBox" unique_id=347624655]
+[node name="MarginTop" type="Control" parent="Skew/SkewC/AlbumList/VBox" unique_id=347624655]
 layout_mode = 2
-theme_override_constants/margin_top = 250
+custom_minimum_size = Vector2(0, 250)
 
 [node name="VBox" type="VBoxContainer" parent="Skew/SkewC/AlbumList/VBox" unique_id=1696024062]
 custom_minimum_size = Vector2(630, 0)
@@ -393,9 +393,9 @@ mouse_filter = 2
 theme_override_constants/separation = 29
 alignment = 1
 
-[node name="MarginBottom" type="MarginContainer" parent="Skew/SkewC/AlbumList/VBox" unique_id=273776046]
+[node name="MarginBottom" type="Control" parent="Skew/SkewC/AlbumList/VBox" unique_id=273776046]
 layout_mode = 2
-theme_override_constants/margin_bottom = 900
+custom_minimum_size = Vector2(0, 900)
 
 [node name="SongList" type="ScrollContainer" parent="Skew/SkewC" unique_id=2135907176]
 unique_name_in_owner = true
