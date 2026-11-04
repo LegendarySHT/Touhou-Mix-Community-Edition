@@ -63,38 +63,37 @@ theme_override_styles/hover = SubResource("SB_hover")
 theme_override_styles/focus = SubResource("SB_focus")
 script = ExtResource("1_row")
 
-[node name="Margin" type="MarginContainer" parent="." unique_id=1673020581]
+[node name="Name" type="Label" parent="." unique_id=1793121931]
+unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 4.0
+offset_right = -55.0
+offset_bottom = -4.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 4
-theme_override_constants/margin_right = 10
-theme_override_constants/margin_bottom = 4
-
-[node name="HBox" type="HBoxContainer" parent="Margin" unique_id=80926693]
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/separation = 10
-
-[node name="Name" type="Label" parent="Margin/HBox" unique_id=1793121931]
-unique_name_in_owner = true
-layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 20
 text = "谱面名称"
+vertical_alignment = 1
 clip_text = true
 script = ExtResource("2_scroll")
 end_padding = 0.0
 
-[node name="RemoveBtn" type="Button" parent="Margin/HBox" unique_id=163936424]
+[node name="RemoveBtn" type="Button" parent="." unique_id=163936424]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(36, 32)
-layout_mode = 2
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = -10.0
+grow_horizontal = 0
+grow_vertical = 2
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 20
 theme_override_styles/normal = SubResource("SB_flat")

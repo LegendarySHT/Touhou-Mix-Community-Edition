@@ -34,9 +34,12 @@ const EMPTY_TEXTS := ["没有找到歌曲", "没有皮肤", "没有特效", "没
 
 var _current_tab: int = Tab.SONGS
 var _tab_buttons: Array[Button] = []
-var _pages: Array[Control] = []
 var _entered: bool = false
 var _busy: bool = false
+
+## 页面容器（TabContainer，内部只有一页可见；下标与 Tab 一致）
+## 场景里没给 Pages 标 unique_name_in_owner，这里按路径取
+@onready var _page_tabs: TabContainer = $Pages
 
 var _search_text: String = ""
 var _search_timer: SceneTreeTimer = null
@@ -68,8 +71,21 @@ var _pending_vlist: VirtualListLib = null
 
 var _bind_animate: bool = false
 
-# 各标签页的空列表提示，下标与 Tab 一致
-var _empty_labels: Array[Label] = []
+## 「池里当前绑定对应哪一份数据/筛选」的签名，下标与 Tab 一致。
+## 切走再切回来时签名不变就整页跳过：卡片节点本来就还留在各自标签页的池里
+var _bound_sig: Dictionary = {}
+## 数据版本：每次重新取数（加载 / 重扫 / 删除）都会 +1，进入签名
+var _data_ver: int = 0
+
+# 各标签页的空状态文案（空串 = 有内容）。五个页面共用同一个 PageEmpty 标签，
+# 切页时按当前标签页的文案刷新，所以不能直接往标签上写状态
+var _empty_text: Dictionary = {
+	Tab.SONGS: "正在加载…",
+	Tab.SKINS: "",
+	Tab.EFFECTS: "",
+	Tab.SOUNDFONTS: "",
+	Tab.BACKGROUNDS: "",
+}
 
 # 各标签页的滚动容器与列表内容，下标与 Tab 一致
 var _resource_scrolls: Array[ScrollContainer] = []
@@ -82,16 +98,6 @@ func _ready() -> void:
 		%EffectsTabBtn,
 		%SoundfontsTabBtn,
 		%BackgroundsTabBtn,
-	]
-	_pages = [
-		%SongsPage,
-		%SkinsPage,
-		%EffectsPage,
-		%SoundfontsPage,
-		%BackgroundsPage,
-	]
-	_empty_labels = [
-		%SongsEmpty, %SkinsEmpty, %EffectsEmpty, %SoundfontsEmpty, %BackgroundsEmpty,
 	]
 	_resource_scrolls = [
 		%SongsScroll, %SkinsScroll, %EffectsScroll, %SoundfontsScroll, %BackgroundsScroll,
@@ -181,7 +187,6 @@ func _connect_ui() -> void:
 
 func on_entered() -> void:
 	_entered = true
-	%PendingBarPanel.visible = _current_tab == Tab.SONGS
 	TextScrollMGR.resume_page(self)
 	var need_load := _current_tab == Tab.SONGS \
 		and (not _song_loaded or _song_applied_query != _search_text.strip_edges())
@@ -197,9 +202,7 @@ func on_entered() -> void:
 
 
 func _show_loading_state(tab: int) -> void:
-	var empty := _empty_label_for(tab)
-	empty.visible = true
-	empty.text = "正在加载…"
+	_set_empty(tab, "正在加载…")
 	%CountText.text = "…"
 
 
@@ -250,6 +253,8 @@ func _release_all() -> void:
 	_resource_view.clear()
 	_pending.clear()
 	_pending_order.clear()
+	# 池已清空：签名同步作废，下次进入必然重建
+	_bound_sig.clear()
 	_set_pending_expanded(false, true)
 	if _song_vlist:
 		_song_vlist.clear()
@@ -280,26 +285,49 @@ func _select_tab(tab: int, instant: bool) -> void:
 		%SearchEdit.text = ""
 	for i in _tab_buttons.size():
 		_tab_buttons[i].set_pressed_no_signal(i == tab)
-	for i in _pages.size():
-		_pages[i].visible = i == tab
+	_page_tabs.current_tab = clampi(tab, 0, TAB_COUNT - 1)
 	if not instant:
-		TextScrollMGR.suspend_page(_pages[old_tab])
-	TextScrollMGR.resume_page(_pages[tab])
+		TextScrollMGR.suspend_page(_page_node(old_tab))
+	TextScrollMGR.resume_page(_page_node(tab))
 	%SearchEdit.placeholder_text = SEARCH_PLACEHOLDERS[tab]
-	%PendingBarPanel.visible = tab == Tab.SONGS
-	if tab != Tab.SONGS:
-		_set_pending_expanded(false, true)
+	# 待操作抽屉现在挂在歌曲页里，切页由容器负责显隐，不再手动开关
+	_sync_empty()
 	_update_tab_underline(instant)
+
+	# 入场动画先起步：列表构建是同步重活（卡片绑定 + 贴图路径解析），
+	# 排在动画前面会把切页那一帧整帧吃掉，看起来就是「卡一下、没有动画」
+	if not instant:
+		_animate_page_in(_page_node(tab))
+
 	if _entered:
 		if _tab_needs_load(tab):
 			_show_loading_state(tab)
 			_schedule_tab_load(tab, 0.26)
-		else:
+		elif instant:
 			_rebuild_current_tab()
+		else:
+			_rebuild_current_tab.call_deferred()
 	else:
 		_update_count_for_current()
-	if not instant:
-		_animate_page_in(_pages[tab])
+
+
+## 逻辑标签页对应的页面节点（TabContainer 子节点，下标与 Tab 一致）
+func _page_node(tab: int) -> Control:
+	return _page_tabs.get_child(clampi(tab, 0, TAB_COUNT - 1)) as Control
+
+
+## 设置某标签页的空状态（text 为空 = 有内容）。共享标签只刷新当前页
+func _set_empty(tab: int, text: String) -> void:
+	_empty_text[tab] = text
+	if tab == _current_tab:
+		_sync_empty()
+
+
+## 把共享空状态标签刷成当前标签页的文案
+func _sync_empty() -> void:
+	var text := str(_empty_text.get(_current_tab, ""))
+	%PageEmpty.text = text
+	%PageEmpty.visible = not text.is_empty()
 
 
 func _tab_needs_load(tab: int) -> bool:
@@ -320,10 +348,22 @@ func _ensure_tab_data(tab: int) -> void:
 
 
 func _rebuild_current_tab() -> void:
-	if _current_tab == Tab.SONGS:
+	_rebuild_tab_cards(_current_tab)
+
+
+## 重建指定标签页的卡片。数据版本与筛选词都没变时直接跳过：
+## 切标签只是把整个池挪出视口，节点、贴图和绑定都还在，
+## 重新 set_total + 全量重绑等于把切页那一帧白送掉
+func _rebuild_tab_cards(tab: int) -> void:
+	var sig := "%d|%s" % [_data_ver, _search_text.strip_edges()]
+	if str(_bound_sig.get(tab, "")) == sig:
+		_update_count_for_current()
+		return
+	_bound_sig[tab] = sig
+	if tab == Tab.SONGS:
 		_rebuild_song_cards()
 	else:
-		_rebuild_resource_cards(_current_tab)
+		_rebuild_resource_cards(tab)
 
 
 func _on_search_changed(text: String) -> void:
@@ -334,7 +374,7 @@ func _on_search_changed(text: String) -> void:
 		_search_timer.timeout.connect(_apply_search)
 	elif _current_tab >= Tab.SKINS:
 		if _entered:
-			_rebuild_resource_cards(_current_tab)
+			_rebuild_tab_cards(_current_tab)
 
 
 func _on_search_submitted(_text: String) -> void:
@@ -347,9 +387,9 @@ func _apply_search() -> void:
 		return
 	if _current_tab == Tab.SONGS:
 		_load_song_items()
-		_rebuild_song_cards()
+		_rebuild_tab_cards(Tab.SONGS)
 	else:
-		_rebuild_resource_cards(_current_tab)
+		_rebuild_tab_cards(_current_tab)
 
 
 func _stop_search_timer() -> void:
@@ -459,6 +499,7 @@ func _process(_delta: float) -> void:
 
 
 func _load_song_items() -> void:
+	_data_ver += 1
 	_refresh_vocal_folders()
 	_song_items.clear()
 	if ChartDB == null or not ChartDB.IsOpen():
@@ -531,8 +572,8 @@ func _rebuild_song_cards() -> void:
 	_bind_animate = true
 	_song_vlist.set_total(_song_items.size(), true)
 	_bind_animate = false
-	_empty_labels[Tab.SONGS].visible = _song_items.is_empty()
-	_empty_labels[Tab.SONGS].text = "没有找到歌曲" if not _search_text.strip_edges().is_empty() else "没有谱面数据"
+	_set_empty(Tab.SONGS, "" if not _song_items.is_empty() else
+		("没有找到歌曲" if not _search_text.strip_edges().is_empty() else "没有谱面数据"))
 	_update_count_for_current()
 	_update_pending_ui()
 
@@ -693,7 +734,7 @@ func _on_delete_vocal_pressed() -> void:
 		_clear_pending()
 		_song_loaded = false
 		_load_song_items()
-		_rebuild_song_cards()
+		_rebuild_tab_cards(Tab.SONGS)
 		await _info("已删除 %d 首歌的人声。" % deleted)
 	else:
 		await _info("没有找到可删除的人声文件。")
@@ -755,7 +796,7 @@ func _on_delete_song_pressed() -> void:
 	_clear_pending()
 	_song_loaded = false
 	_load_song_items()
-	_rebuild_song_cards()
+	_rebuild_tab_cards(Tab.SONGS)
 	await _info("已删除 %d 首歌。" % removed.size())
 
 
@@ -942,6 +983,7 @@ func _build_resource_items(tab: int) -> void:
 	_resource_items[tab] = items
 	_resource_view[tab] = _filter_resource_items(items)
 	_ensure_resource_vlist(tab)
+	_data_ver += 1
 
 
 func _filter_resource_items(items: Array) -> Array:
@@ -975,15 +1017,9 @@ func _rebuild_resource_cards(tab: int) -> void:
 	_bind_animate = true
 	vl.set_total(view.size(), true)
 	_bind_animate = false
-	var empty := _empty_label_for(tab)
-	empty.visible = view.is_empty()
-	empty.text = EMPTY_TEXTS[tab] if _search_text.strip_edges().is_empty() \
-		else "没有匹配的资源"
+	_set_empty(tab, "" if not view.is_empty() else
+		(EMPTY_TEXTS[tab] if _search_text.strip_edges().is_empty() else "没有匹配的资源"))
 	_update_count_for_current()
-
-
-func _empty_label_for(tab: int) -> Label:
-	return _empty_labels[tab]
 
 
 func _confirm_delete_resource(item: Dictionary) -> void:
@@ -1016,7 +1052,7 @@ func _confirm_delete_resource(item: Dictionary) -> void:
 	_resource_loaded[_current_tab] = false
 	_build_resource_items(_current_tab)
 	_resource_loaded[_current_tab] = true
-	_rebuild_resource_cards(_current_tab)
+	_rebuild_tab_cards(_current_tab)
 
 
 func _on_resources_ready() -> void:
@@ -1027,12 +1063,12 @@ func _on_resources_ready() -> void:
 		if _song_loaded:
 			_song_loaded = false
 			_load_song_items()
-			_rebuild_song_cards()
+			_rebuild_tab_cards(Tab.SONGS)
 	else:
 		_resource_loaded[_current_tab] = false
 		_build_resource_items(_current_tab)
 		_resource_loaded[_current_tab] = true
-		_rebuild_resource_cards(_current_tab)
+		_rebuild_tab_cards(_current_tab)
 
 
 # ══════════════════════════════════════════════════════
@@ -1141,8 +1177,7 @@ func apply_theme() -> void:
 	%PendingTitle.add_theme_color_override("font_color", text_primary)
 	%PendingCount.add_theme_color_override("font_color", muted_text)
 	%PendingEmpty.add_theme_color_override("font_color", muted_text)
-	for label in _empty_labels:
-		label.add_theme_color_override("font_color", muted_text)
+	%PageEmpty.add_theme_color_override("font_color", muted_text)
 
 	for btn in [%SelectAllBtn, %ExpandBtn, %DeleteVocalBtn, %DeleteSongBtn,
 			%ResetBtn, %FavBtn, %ClearBtn]:

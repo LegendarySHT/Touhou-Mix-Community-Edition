@@ -37,6 +37,9 @@ const LONG_STRETCH_MODE_LENGTH = "length"
 var skins_index: Dictionary = {}
 ## 皮肤贴图缓存 {skin_name: Dictionary{texture_key: Texture2D}}
 var _skin_textures_cache: Dictionary = {}
+## 皮肤贴图**路径**缓存 {"{皮肤目录}|{逻辑贴图键}": 实际文件路径}（空串表示该皮肤没有这个贴图）
+## 存在性探测是文件系统调用，卡片每次绑定都会问一遍；目录内容只在导入/删除/重扫时变
+var _skin_texture_path_cache: Dictionary = {}
 
 func _ready() -> void:
 	add_to_group("singleton")
@@ -48,12 +51,14 @@ func _ready() -> void:
 ## 避免外部直接写 skins_index.clear()
 func clear_index() -> void:
 	skins_index.clear()
+	_skin_texture_path_cache.clear()
 
 ## 扫描皮肤目录（公共 API，worker 线程扫描）
 ## 同时扫描内置皮肤（res://）和用户皮肤（user://）
 ## 在 worker 中扫描两个目录，主线程合并到 skins_index 并构建 SkinMetadata 对象
 func scan_skins() -> void:
 	skins_index.clear()
+	_skin_texture_path_cache.clear()
 	var t_start := Time.get_ticks_usec()
 	var rw: Dictionary = {}
 	var task_id := WorkerThreadPool.add_task(
@@ -543,17 +548,29 @@ func get_skin_texture_path(skin_name: String, texture_key: String) -> String:
 
 ## 按候选基础名/扩展名解析某个逻辑贴图在皮肤目录下的实际文件路径
 ## res:// 与 user:// 使用各自的存在性判断；全部候选缺失时返回空串（由调用方跳过该贴图）
+##
+## 结果按「目录 + 逻辑键」记忆：皮肤目录的内容只会在导入/删除/重扫时变化，
+## 而卡片每次重新绑定都会问一遍，不记忆就等于把切页那一帧全花在文件系统探测上。
 func _resolve_skin_texture_path(skin_path: String, texture_key: String) -> String:
+	var cache_key := "%s|%s" % [skin_path, texture_key]
+	if _skin_texture_path_cache.has(cache_key):
+		return str(_skin_texture_path_cache[cache_key])
+	var resolved := ""
 	var base_names: Array = SKIN_TEXTURE_BASE_NAMES.get(texture_key, [])
 	for base_name in base_names:
 		for ext in SKIN_TEXTURE_EXTENSIONS:
 			var file_path: String = skin_path.path_join("%s.%s" % [base_name, ext])
 			if file_path.begins_with("res://"):
 				if ResourceLoader.exists(file_path):
-					return file_path
+					resolved = file_path
+					break
 			elif PathHelper.file_exists(file_path):
-				return file_path
-	return ""
+				resolved = file_path
+				break
+		if not resolved.is_empty():
+			break
+	_skin_texture_path_cache[cache_key] = resolved
+	return resolved
 
 ## 清空皮肤贴图缓存（皮肤切换/删除/重扫时调用）
 func clear_skin_cache(skin_name: String = "") -> void:
@@ -561,6 +578,8 @@ func clear_skin_cache(skin_name: String = "") -> void:
 		_skin_textures_cache.clear()
 	else:
 		_skin_textures_cache.erase(skin_name)
+	# 路径缓存跟着一起作废：皮肤目录/文件变了，之前的探测结果不再可信
+	_skin_texture_path_cache.clear()
 
 ## ========== 音符显示颜色解析（运行时与皮肤预览共用的唯一规则来源） ==========
 ## 规则（按优先级）：

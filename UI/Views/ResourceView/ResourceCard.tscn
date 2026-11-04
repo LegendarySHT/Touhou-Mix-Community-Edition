@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://bc2tvdaveqxcg" path="res://UI/Views/ResourceView/ResourceCard.gd" id="1_card"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="2_scroll"]
 [ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="3_round"]
-[ext_resource type="Script" path="res://UI/Views/ResourceView/ResourceSkinPreview.gd" id="4_preview"]
+[ext_resource type="Script" uid="uid://dvvnpbiokn5cb" path="res://UI/Views/ResourceView/ResourceSkinPreview.gd" id="4_preview"]
 
 [sub_resource type="StyleBoxFlat" id="SB_normal"]
 bg_color = Color(0.102, 0.1255, 0.1765, 0.94)
@@ -116,24 +116,20 @@ grow_vertical = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_selected")
 
-[node name="Margin" type="MarginContainer" parent="." unique_id=1559115967]
+[node name="HBox" type="HBoxContainer" parent="." unique_id=1759079422]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = -1
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
-
-[node name="HBox" type="HBoxContainer" parent="Margin" unique_id=1759079422]
-layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="CoverWrap" type="Panel" parent="Margin/HBox" unique_id=1966632862]
+[node name="CoverWrap" type="Panel" parent="HBox" unique_id=1966632862]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(126, 126)
 layout_mode = 2
@@ -141,7 +137,7 @@ size_flags_vertical = 4
 mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_cover")
 
-[node name="Cover" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=244121348]
+[node name="Cover" type="TextureRect" parent="HBox/CoverWrap" unique_id=244121348]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -155,7 +151,7 @@ stretch_mode = 6
 script = ExtResource("3_round")
 corner_radius = 12.0
 
-[node name="Placeholder" type="TextureRect" parent="Margin/HBox/CoverWrap" unique_id=17705918]
+[node name="Placeholder" type="TextureRect" parent="HBox/CoverWrap" unique_id=17705918]
 unique_name_in_owner = true
 modulate = Color(1, 1, 1, 0.45)
 custom_minimum_size = Vector2(58, 58)
@@ -175,7 +171,7 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="NotePreview" type="Control" parent="Margin/HBox/CoverWrap"]
+[node name="NotePreview" type="Control" parent="HBox/CoverWrap" unique_id=884258146]
 unique_name_in_owner = true
 visible = false
 layout_mode = 1
@@ -187,13 +183,13 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("4_preview")
 
-[node name="Info" type="VBoxContainer" parent="Margin/HBox" unique_id=110192363]
+[node name="Info" type="VBoxContainer" parent="HBox" unique_id=110192363]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
 theme_override_constants/separation = 3
 
-[node name="Title" type="Label" parent="Margin/HBox/Info" unique_id=1195004096]
+[node name="Title" type="Label" parent="HBox/Info" unique_id=1195004096]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -203,7 +199,7 @@ clip_text = true
 script = ExtResource("2_scroll")
 end_padding = 0.0
 
-[node name="Sub" type="Label" parent="Margin/HBox/Info" unique_id=552491381]
+[node name="Sub" type="Label" parent="HBox/Info" unique_id=552491381]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -214,7 +210,7 @@ script = ExtResource("2_scroll")
 theme_color_key = "text_secondary"
 end_padding = 0.0
 
-[node name="Meta" type="Label" parent="Margin/HBox/Info" unique_id=1066406590]
+[node name="Meta" type="Label" parent="HBox/Info" unique_id=1066406590]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -225,14 +221,14 @@ script = ExtResource("2_scroll")
 theme_color_key = "text_secondary"
 end_padding = 0.0
 
-[node name="Right" type="VBoxContainer" parent="Margin/HBox" unique_id=2023653273]
+[node name="Right" type="VBoxContainer" parent="HBox" unique_id=2023653273]
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 size_flags_vertical = 4
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="Badge" type="Label" parent="Margin/HBox/Right" unique_id=587554651]
+[node name="Badge" type="Label" parent="HBox/Right" unique_id=587554651]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
@@ -242,7 +238,7 @@ text = "有人声"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="SelectedMark" type="TextureRect" parent="Margin/HBox/Right" unique_id=1410729079]
+[node name="SelectedMark" type="TextureRect" parent="HBox/Right" unique_id=1410729079]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(30, 30)
