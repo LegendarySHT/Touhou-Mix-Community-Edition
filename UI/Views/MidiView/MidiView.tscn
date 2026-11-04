@@ -1088,3 +1088,7 @@ metadata/_tab_index = 4
 [connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Top/Dislike" to="OptionPanel/OptTabs/CommentPanel" method="_on_dislike_pressed"]
 [connection signal="text_submitted" from="OptionPanel/OptTabs/CommentPanel/Bottom/LineEdit" to="OptionPanel/OptTabs/CommentPanel" method="_on_send_pressed"]
 [connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Bottom/Button" to="OptionPanel/OptTabs/CommentPanel" method="_on_send_pressed"]
+[connection signal="item_selected" from="OptionPanel/OptTabs/ModePanel/HFlowC/DifficultySelect" to="OptionPanel" method="_on_difficulty_selected"]
+[connection signal="item_selected" from="OptionPanel/OptTabs/ModePanel/HFlowC/LimitSelect" to="OptionPanel" method="_on_limit_selected"]
+[connection signal="item_selected" from="OptionPanel/OptTabs/ModePanel/HFlowC/ModeSelect" to="OptionPanel" method="_on_mode_selected"]
+[connection signal="item_selected" from="OptionPanel/OptTabs/ModePanel/HFlowC/GameModeSelect" to="OptionPanel" method="_on_game_mode_selected"]

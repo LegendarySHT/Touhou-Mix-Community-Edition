@@ -6,6 +6,16 @@ class_name FlowArea
 
 ########## 配置参数 #############
 var auto_mode: bool = false
+# 游玩限制（0=无限制, 1=Full Combo, 2=All Perfect）：出现会导致重试的判定时冻结演出
+const LIMIT_NONE: int = 0
+const LIMIT_FULL_COMBO: int = 1
+const LIMIT_ALL_PERFECT: int = 2
+var limit_mode: int = LIMIT_NONE
+## 限制失败动画状态
+const _LIMIT_DECEL_SEC: float = 1.6       # 屏幕内音符减速到停的时长（整段动画约 2s，结束由 PlayView 控制）
+var _limit_fail_active: bool = false       # 失败演出接管 _process（不再生成/判定音符）
+var _limit_anim_time_ms: float = 0.0       # 演出期间的模拟渲染时钟（从失败时刻起按减速后的速度推进）
+var _limit_anim_elapsed_sec: float = 0.0   # 演出已进行的真实时长（决定减速曲线进度）
 # 判定有效区时间窗（毫秒），0 = 垂直全幅（筛选音符时不受时间限制）
 var judge_window_ms: int = 0
 # 判定有效区选项 -> 时间窗(ms) 映射（索引与设置页 "judge_window_ms" 选项顺序一致）
@@ -98,6 +108,9 @@ const _JUDGE_TYPES: Array[String] = ["Perfect", "Great", "Good", "Bad"]
 signal note_judged(result: String, offset: String, block_type: int, timing_sec: float, signed_offset_sec: float, long_instance_id: int)
 ## long_holding(long_instance_id: int) - 长条持续加分 tick
 signal long_holding(long_instance_id: int)
+## 游玩限制失败：会导致重试的判定已出现，PlayView 据此停止歌曲并启动重试倒计时。
+## 减速/闪烁演出由本节点接管，详见 _process_limit_fail_animation。
+signal limit_failed
 
 # 音符相关
 var lane_width: float = 0
@@ -343,6 +356,8 @@ func init_flow_area():
 		EvtBus.config_changed.connect(_on_config_changed)
 
 	auto_mode = ConfigManager.instance.get_int("auto_mode") == 1
+	limit_mode = ConfigManager.instance.get_int("limit_mode", LIMIT_NONE)
+	GLogger.info("FlowArea limit mode = %d" % limit_mode, "FlowArea")
 	
 	# 从配置读取判定有效区（时间窗）
 	var judge_window_idx = ConfigManager.instance.get_int("judge_window_ms", 0)
@@ -473,6 +488,9 @@ func _on_config_changed(key: String, value: Variant) -> void:
 		"auto_mode":
 			auto_mode = int(value) == 1
 			GLogger.info("FlowArea auto_mode updated: %s" % ("ON" if auto_mode else "OFF"), "FlowArea")
+		"limit_mode":
+			limit_mode = int(value)
+			GLogger.info("FlowArea limit_mode updated: %d" % limit_mode, "FlowArea")
 		"judge_window_ms":
 			var idx = clampi(int(value), 0, _JUDGE_WINDOW_OPTIONS.size() - 1)
 			judge_window_ms = _JUDGE_WINDOW_OPTIONS[idx]
@@ -645,6 +663,9 @@ func clear_flow_area():
 	note_idx = 0
 	_needs_bucket_sweep = false
 	_reset_seq_arrays()
+	_reset_limit_fail_state()
+	# 清掉上一局可能残留的轨道强制闪烁（失败演出被中途打断时）
+	%LaneEffect.clear_beam()
 
 	# 释放尚未触发的手动 NoteOff（游戏结束/清场时，避免音符一直挂在合成器上）
 	_manual_off_scheduler.process(_synced_current_time, true)
@@ -721,6 +742,64 @@ func _spawn_note(note_index: int) -> void:
 	_add_note_to_lane_index(note_index)
 	_update_block_note_fall(note_index, _synced_current_time, _render_time_ms)
 
+# ========== 游玩限制（Full Combo / All Perfect）失败演出 ==========
+
+## 限制失败动画状态复位（开局/清场时调用）
+func _reset_limit_fail_state() -> void:
+	_limit_fail_active = false
+	_limit_anim_time_ms = 0.0
+	_limit_anim_elapsed_sec = 0.0
+
+## 该判定是否违反当前游玩限制。AUTO 模式的判定不代表玩家失误，不触发重试。
+func _should_limit_fail(result: String) -> bool:
+	if _limit_fail_active:
+		return false
+	if parent_node == null:
+		return false
+	# AUTO 模式由程序自动演奏，判定抖动不代表玩家失误
+	if auto_mode:
+		return false
+	# 曲终等待剩余音符落完时不再触发重试（否则会卡住结算前的清场流程）
+	if parent_node.is_finishing_game():
+		return false
+	match limit_mode:
+		LIMIT_FULL_COMBO:
+			return result == "Bad" or result == "Miss"
+		LIMIT_ALL_PERFECT:
+			return result != "Perfect"
+	return false
+
+## 进入限制失败演出：闪烁失败音符所在轨道（音符本体可能已被判定回收，不再依赖它）。
+func _begin_limit_fail(note_index: int) -> void:
+	if _limit_fail_active:
+		return
+	_limit_fail_active = true
+	_limit_anim_elapsed_sec = 0.0
+	_limit_anim_time_ms = _render_time_ms
+	%LaneEffect.flash_lane(_st_lane[note_index], _rt_color[note_index])
+	limit_failed.emit()
+	GLogger.info("Limit violated by note %d (limit=%d), playing retry animation" % [note_index, limit_mode], "FlowArea")
+
+## 失败演出帧驱动：所有屏幕内音符按平滑降到 0 的速度继续下落（不生成/不判定）
+func _process_limit_fail_animation(delta: float) -> void:
+	_limit_anim_elapsed_sec += delta
+	var t: float = clampf(_limit_anim_elapsed_sec / _LIMIT_DECEL_SEC, 0.0, 1.0)
+	var speed: float = (1.0 - t) * (1.0 - t)
+	_limit_anim_time_ms += delta * 1000.0 * speed
+
+	for type_key in _BLOCK_SLIDE_TYPES:
+		for color_key in _note_buckets[type_key]:
+			for note_index in _note_buckets[type_key][color_key]:
+				_update_block_note_fall(note_index, _limit_anim_time_ms, _limit_anim_time_ms)
+	for color_key in _note_buckets[FlowNote.NoteType.Long]:
+		for note_index in _note_buckets[FlowNote.NoteType.Long][color_key]:
+			_update_long_note_fall(note_index, _limit_anim_time_ms, _limit_anim_time_ms)
+
+	if has_active_notes():
+		_note_drawer.request_redraw()
+	if _needs_bucket_sweep:
+		_sweep_removed_from_buckets()
+
 ## 集中刷新下落常量：距离 / 速度 / 线后速度（判定线 Y、音符尺寸、下落配置变化时调用）
 func _recompute_fall_constants() -> void:
 	_note_fall_distance = _judge_line_y + _note_max_size_y
@@ -793,6 +872,10 @@ func _update_block_note_fall(note_index: int, current_time_ms: float, render_tim
 
 	_rt_cy[note_index] = center_y
 
+	# 限制失败演出：只更新位置（减速下落），不再做判定/漏击处理
+	if _limit_fail_active:
+		return
+
 	# 过线回调: 音符首次到达/超过判定线时触发
 	if not (_rt_flags[note_index] & F_PASSED) and current_time_ms >= judge_time_ms:
 		_rt_flags[note_index] |= F_PASSED
@@ -805,6 +888,9 @@ func _update_block_note_fall(note_index: int, current_time_ms: float, render_tim
 
 	# Miss 判定: 音符超出窗口底部且未被击打 (原第二 Tween.finished 逻辑)
 	if not (_rt_flags[note_index] & F_JUDGED) and not (_rt_flags[note_index] & F_REMOVED) and center_y >= _cached_viewport_height:
+		# 漏击已落到屏幕外：限制失败时闪其轨道，音符照常移除
+		if _should_limit_fail("Miss"):
+			_begin_limit_fail(note_index)
 		_remove_note(note_index)
 		note_judged.emit("Miss", "", _st_type[note_index], 1.0, 0.0, _rt_long_id[note_index])
 
@@ -851,6 +937,10 @@ func _update_long_note_fall(note_index: int, current_time_ms: float, render_time
 	if not _long_connect_center:
 		ref_len -= head_half + tail_half
 	_rt_body_ref_len[note_index] = maxf(ref_len, 1.0)
+
+	# 限制失败演出：只更新位置（减速下落），不再做尾部漏击处理
+	if _limit_fail_active:
+		return
 
 	# 长条双判定（从未击打）：尾部落出屏幕底再计一次尾部 Miss 并移除。
 	# 注意：头部落出屏幕【不】在此判 Miss——长条头部虽已落屏，但尾部尚未到达判定线时，
@@ -1057,7 +1147,7 @@ func _estimate_lane_from_x(x: float) -> int:
 	return clampi(lane, 0, lc - 1)
 
 func _gui_input(event: InputEvent) -> void:
-	if parent_node.is_pause:
+	if parent_node.is_pause or _limit_fail_active:
 		accept_event()
 		return
 
@@ -1095,6 +1185,8 @@ func _input(event: InputEvent) -> void:
 			return
 		accept_event()
 		if event.is_echo():
+			return
+		if _limit_fail_active:
 			return
 
 		if parent_node.key_map and event.keycode in parent_node.key_map:
@@ -1186,6 +1278,9 @@ func _handle_press(touch_id: int, pos: Vector2, input_time_ms: float = -1.0) -> 
 		_judge_note(note_index, true, judge_time_ms)
 	if _st_type[note_index] == FlowNote.NoteType.Long:
 		_hold_long_note(touch_id, note_index, pos.x)
+	# 本次点击已触发限制失败：不再继续判定列内其它滑键
+	if _limit_fail_active:
+		return
 	# 同时视为滑入轨道（rule 3）：接住列内其余已过线仍在 great 窗口的滑键
 	# 完美滑块模式下滑键仅按滑动判定，点击不接
 	if not only_perfect_slides:
@@ -1253,6 +1348,9 @@ func _handle_touch_drag(touch_id: int, pos: Vector2) -> void:
 # 按住长条音符
 # 注意：调用方负责在调用此函数之前已通过 _judge_note() 完成判定
 func _hold_long_note(touch_id: int, note_index: int, press_x: float = NAN) -> void:
+	# 限制失败演出期间不再接管长条按住
+	if _limit_fail_active:
+		return
 	# 兜底：长条进入按住态后不应再走未判定 Miss 分支
 	_rt_flags[note_index] |= F_JUDGED
 	_rt_flags[note_index] |= F_HELD
@@ -1548,6 +1646,9 @@ func _reload_spark_config() -> void:
 ## 核心判定入口（平行数组版）：note_index 为 seq 索引
 func _judge_note(note_index: int, trigger_vibration: bool = false, input_time_ms: float = -1.0,
 		block_type_override: int = -1, result_override: String = ""):
+	# 限制失败演出期间不再接受新判定（同帧后续判定也不处理）
+	if _limit_fail_active:
+		return
 	# 防止重复判定：如果该 note 已被判定过，直接返回
 	if _rt_flags[note_index] & F_JUDGED:
 		return
@@ -1579,6 +1680,10 @@ func _judge_note(note_index: int, trigger_vibration: bool = false, input_time_ms
 	# 标记该 note 已被判定，防止重复
 	_rt_flags[note_index] |= F_JUDGED
 	var hit_pos := Vector2(_rt_cx[note_index], _rt_cy[note_index])
+
+	# 游玩限制：命中后闪烁失败音符所在轨道（音符本身按正常流程回收）
+	if _should_limit_fail(result):
+		_begin_limit_fail(note_index)
 
 	note_judged.emit(result, "%s%.1f ms" % ["+" if time_diff>=0 else "", time_diff],
 		block_type, timing_sec, signed_offset_sec, _rt_long_id[note_index])
@@ -1614,6 +1719,8 @@ func _judge_long_tail(note_index: int, result: String, timing_sec: float = -1.0,
 	if result != "Miss" and signed_offset_sec != 0.0:
 		offset = "%s%.1f ms" % ["+" if signed_offset_sec > 0.0 else "", signed_offset_sec * 1000.0]
 	note_judged.emit(result, offset, FlowNote.NoteType.Long, timing_sec, signed_offset_sec, _rt_long_id[note_index])
+	if _should_limit_fail(result):
+		_begin_limit_fail(note_index)
 
 var _is_pause: bool = false
 var _cached_viewport_height: float = 0.0
@@ -1667,6 +1774,11 @@ func _process(delta: float) -> void:
 	if _is_pause:
 		return
 
+	# 限制失败演出：接管音符更新（减速下落），不生成也不判定
+	if _limit_fail_active:
+		_process_limit_fail_animation(delta)
+		return
+
 	# 驱动手动音符的 NoteOff（按播放位置触发，暂停时自动停）
 	_manual_off_scheduler.process(_synced_current_time)
 
@@ -1698,6 +1810,10 @@ func _process(delta: float) -> void:
 	# 帧末清理已移除音符（延迟到遍历结束后，避免遍历中 mutate 数组）
 	if _needs_bucket_sweep:
 		_sweep_removed_from_buckets()
+
+	# 本帧中途触发限制失败：交给演出流程，跳过按住长条的收尾判定
+	if _limit_fail_active:
+		return
 
 	# 更新长条音符的按住进度和显示
 	for touch_id in active_holds.keys():

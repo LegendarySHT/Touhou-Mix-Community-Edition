@@ -53,6 +53,13 @@ var _game_generation: int = 0
 ## 本次游玩是否开启 AUTO 模式（开局时快照，AUTO 模式成绩不上传）
 var _is_auto_mode_play: bool = false
 
+## 游玩限制（Full Combo / All Perfect）失败后的重试流程：
+## 判定出现会导致重试的结果时，FlowArea 播放减速/闪烁演出，本页停止歌曲并在此倒计时，
+## 动画结束后自动重开本局（不进入结算、不上传成绩）。
+const LIMIT_RETRY_DELAY_SEC: float = 2.0
+var _limit_retry_active: bool = false
+var _limit_retry_elapsed: float = 0.0
+
 ## position stall 检测：当 loop=false 时 MIDI 播放结束后 position 被 clamp 到 midiFile.Length
 ## 若 duration_ms 与 midiFile.Length 不一致，进度条可能永远无法达到 max_value
 ## 通过检测 position 停止增长来触发游戏结束
@@ -139,6 +146,8 @@ func _on_view_ready() -> void:
 
 	flow_area.note_judged.connect(_on_note_judged)
 	flow_area.long_holding.connect(_on_long_holding)
+	if not flow_area.limit_failed.is_connected(_on_limit_failed):
+		flow_area.limit_failed.connect(_on_limit_failed)
 	flow_area.parent_node = self
 
 	# HUD 展示层回调（结算检测 / 背景闪光请求 / 暂停按钮）
@@ -213,6 +222,15 @@ var _accumulated_input_override_active: bool = false
 func _process(delta: float) -> void:
 	# 自定义 HUD 编辑：不推进任何游玩逻辑（不读播放位置、不刷进度条）
 	if _hud_edit_mode:
+		return
+	# 游玩限制失败：歌曲已停，等待演出结束后自动重开
+	if _limit_retry_active:
+		_limit_retry_elapsed += delta
+		if _limit_retry_elapsed >= LIMIT_RETRY_DELAY_SEC:
+			_limit_retry_active = false
+			_limit_retry_elapsed = 0.0
+			GLogger.info("Limit retry animation finished, restarting", "PlayView")
+			_prepare_game()
 		return
 	if not is_pause:
 		if _is_finishing_game:
@@ -406,6 +424,8 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 		# 避免反复重解析/重生成。离开 MidiView 或切换 MidiList 项时才彻底清理
 		# 重置状态，供下次 _prepare_game 使用
 		_is_finishing_game = false
+		_limit_retry_active = false
+		_limit_retry_elapsed = 0.0
 		is_pause = true
 
 	if enable:
@@ -559,6 +579,9 @@ var is_pause: bool = false:
 				_visual_time_needs_anchor = true
 
 func show_or_hide_menu():
+	# 限制失败演出期间不响应暂停菜单，等重试自动开始
+	if _limit_retry_active:
+		return
 	# 自定义 HUD 编辑中：返回键 / 暂停按钮等同于「关闭编辑器」
 	if _hud_edit_mode:
 		if _hud_editor != null and is_instance_valid(_hud_editor):
@@ -645,6 +668,9 @@ func _on_window_focus_exited() -> void:
 func _auto_pause_on_background(reason: String) -> bool:
 	if UiStatMGR.current_state != UIStateManager.UIState.PLAY_VIEW:
 		return false
+	# 限制失败演出期间歌曲已停，不再弹暂停菜单（否则会覆盖重试流程）
+	if _limit_retry_active:
+		return false
 	if playback_mgr and not playback_mgr.is_playing:
 		return false
 	if is_pause:
@@ -710,6 +736,8 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	current_midi = midi
 	play_result = ScoreView.ScoreData.new()
 	_is_finishing_game = false
+	_limit_retry_active = false
+	_limit_retry_elapsed = 0.0
 	_game_started = false
 	# 本局是否已经真正起播过（预卷完成、进入正常播放）。与 _game_started 不同：
 	# 后者在"准备阶段就呼出暂停菜单"那条路上也会被置 true（它表达的是"继续=直接开局"），
@@ -1208,6 +1236,10 @@ func _load_play_mode_setting() -> void:
 ## 应用TrackView中保存的MIDI运行时配置（音量、静音、独奏等）
 ## 游戏结束回调
 func _on_game_finished() -> void:
+	# 限制失败演出期间后端若仍排到曲终信号：忽略，本局会由重试流程直接重开
+	if _limit_retry_active:
+		GLogger.info("Game finished ignored: limit retry animation active", "PlayView")
+		return
 	if _is_finishing_game:
 		return
 	_is_finishing_game = true
@@ -1411,6 +1443,24 @@ func _on_note_judged(result: String, offset: String, block_type: int, timing_sec
 
 	var snap = score_calc.record_judgment(judgment, block_type, timing_sec, signed_offset_sec, false, long_instance_id)
 	%Hud.on_note_judged(result, offset, snap)
+
+## 游玩限制被打破（FlowArea 已开始减速/闪烁演出）：停止歌曲并启动重试倒计时。
+## 本局不结算、不上传：2 秒动画结束后直接 _prepare_game 重开。
+## 模式/曲终等前置条件已由 FlowArea 过滤，这里只保证同一次失败不被重复处理。
+## 注意：这里刻意不置 is_pause（FlowArea 的演出要继续跑），只停音频，
+## 期间的暂停菜单/自动暂停已在对应入口屏蔽。
+func _on_limit_failed() -> void:
+	if _limit_retry_active:
+		return
+	_limit_retry_active = true
+	_limit_retry_elapsed = 0.0
+	if playback_mgr:
+		playback_mgr.pause()
+	GLogger.info("Limit mode violated, stopping song for retry animation", "PlayView")
+
+## FlowArea 查询入口：本局是否已进入结算流程（结算期间不再触发限制重试）
+func is_finishing_game() -> bool:
+	return _is_finishing_game
 
 ## LONG 持续 tick 加分（已委托 ScoreCalculator）
 func _on_long_holding(long_instance_id: int):

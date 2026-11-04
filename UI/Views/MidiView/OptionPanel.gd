@@ -12,9 +12,11 @@ const DIFFICULTY_PRESETS: Dictionary = {
 }
 const DIFFICULTY_CUSTOM_ID: int = 4
 const DIFFICULTY_CFG_KEY: String = "difficulty"
+const LIMIT_CFG_KEY: String = "limit_mode"
 
 var _is_syncing_mode_ui: bool = false
 var _is_syncing_difficulty_ui: bool = false
+var _is_syncing_limit_ui: bool = false
 
 func _ready():
 	# 连接选项卡按钮
@@ -31,6 +33,7 @@ func _ready():
 
 	_sync_mode_from_config()
 	_sync_difficulty_from_config()
+	_sync_limit_from_config()
 
 func _sync_mode_from_config() -> void:
 	var is_auto := ConfigManager.instance.get_int("auto_mode") == 1
@@ -110,6 +113,24 @@ func _on_button_toggled(toggle_on, button):
 func _on_game_mode_selected(_index: int) -> void:
 	pass # Replace with function body.
 
+## 从配置恢复 Limit OptionButton 选中态
+func _sync_limit_from_config() -> void:
+	var limit_id := ConfigManager.instance.get_int(LIMIT_CFG_KEY, 0)
+	var idx: int = %LimitSelect.get_item_index(limit_id)
+	if idx < 0:
+		idx = 0  # 回退无限制
+	_is_syncing_limit_ui = true
+	%LimitSelect.select(idx)
+	_is_syncing_limit_ui = false
 
-func _on_limit_selected(_index: int) -> void:
-	pass # Replace with function body.
+## Limit 切换：写入配置（PlayView 开局时读取并生效）
+func _on_limit_selected(index: int) -> void:
+	if _is_syncing_limit_ui:
+		return
+	var selected_id: int = %LimitSelect.get_item_id(index)
+	ConfigManager.instance.set_value_and_notify(LIMIT_CFG_KEY, selected_id)
+	var save_ok := ConfigManager.instance.save_config(ConfigManager.USER_CONFIG_PATH)
+	if not save_ok:
+		GLogger.warning("Failed to persist limit mode to user config", "OptionUI")
+	else:
+		GLogger.info("Limit mode set to %d" % selected_id, "OptionUI")

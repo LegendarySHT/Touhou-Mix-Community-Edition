@@ -24,6 +24,7 @@ class BeamState:
 	var color: Color = Color.WHITE  # 轨道色（light_lane 设置）
 	var progress: float = 1.0       # 淡出进度 0→1（1=刚点亮，0=熄灭）
 	var active: bool = false        # 是否处于淡出中
+	var alpha_scale: float = -1.0   # <0 = 用全局 _beam_alpha_scale；强制闪烁时固定为 _FORCED_FLASH_ALPHA
 
 var play_view = null
 
@@ -50,6 +51,14 @@ var _center_tex: GradientTexture2D = null
 ## 与原 Tween.TRANS_CUBIC + EASE_IN 驱动 self_modulate:a 的曲线完全一致）
 var _fade_lut: PackedFloat32Array = PackedFloat32Array()
 
+# ===== 强制闪烁（游玩限制失败时提示"出错轨道"）=====
+## 每项：{ "blinks_left": int, "timer": float, "on": bool, "color": Color }
+const _FORCED_FLASH_PERIOD_SEC := 0.18
+## 强制闪烁固定使用的不透明度：不受“光柱不透明度”设置影响
+## （该设置可能为 0，普通光柱不可见，但失败提示必须能看见）
+const _FORCED_FLASH_ALPHA := 0.8
+var _forced_flashes: Dictionary = {}
+
 
 func _ready() -> void:
 	# 默认禁用 _process：无活跃光柱时零开销，light_lane 首个点亮时启用
@@ -62,6 +71,7 @@ func init_beam(lane_count: int, parent_node) -> void:
 	for ch in get_children():
 		ch.free()
 	_key_label_overlay = null
+	_forced_flashes.clear()
 	play_view = parent_node
 	_lane_count = lane_count
 
@@ -258,6 +268,7 @@ func light_lane(lane_index: int, cl: Color = Color.WHITE) -> void:
 	var st: BeamState = _states[lane_index]
 	st.color = Color(cl.r, cl.g, cl.b, 1.0)
 	st.progress = 1.0
+	st.alpha_scale = -1.0
 	if not st.active:
 		st.active = true
 	if not is_processing():
@@ -267,18 +278,61 @@ func light_lane(lane_index: int, cl: Color = Color.WHITE) -> void:
 
 ## 全部熄灭（重初始化/清场时调用）
 func clear_beam() -> void:
+	_forced_flashes.clear()
 	for st in _states:
 		st.active = false
 		st.progress = 0.0
+		st.alpha_scale = -1.0
 	set_process(false)
+	queue_redraw()
+
+
+## 强制闪烁指定轨道（游玩限制失败：失败音符已出屏时用轨道光效提示所在轨道）
+## blinks = 亮灭完整次数；颜色取失败音符颜色，与普通点亮相区分
+func flash_lane(lane_index: int, color: Color = Color.WHITE, blinks: int = 4) -> void:
+	if lane_index < 0 or lane_index >= _states.size():
+		return
+	_forced_flashes[lane_index] = {
+		"blinks_left": maxi(1, blinks) * 2 - 1,
+		"timer": 0.0,
+		"on": true,
+		"color": Color(color.r, color.g, color.b, 1.0),
+	}
+	set_process(true)
 	queue_redraw()
 
 
 # ========== 帧驱动 + 批量绘制 ==========
 
 func _process(delta: float) -> void:
+	# 强制闪烁优先：亮时把光柱钉在全亮，灭时直接熄灭，结束后交回普通淡出
+	if not _forced_flashes.is_empty():
+		for lane in _forced_flashes.keys():
+			var f: Dictionary = _forced_flashes[lane]
+			f["timer"] += delta
+			while f["timer"] >= _FORCED_FLASH_PERIOD_SEC:
+				f["timer"] -= _FORCED_FLASH_PERIOD_SEC
+				f["blinks_left"] -= 1
+				f["on"] = not f["on"]
+			var st: BeamState = _states[lane]
+			if f["blinks_left"] <= 0:
+				st.active = false
+				st.progress = 0.0
+				st.alpha_scale = -1.0
+				_forced_flashes.erase(lane)
+				continue
+			if f["on"]:
+				st.color = f["color"]
+				st.progress = 1.0
+				st.active = true
+				st.alpha_scale = _FORCED_FLASH_ALPHA
+			else:
+				st.active = false
+				st.progress = 0.0
+				st.alpha_scale = -1.0
+
 	var step := delta / _beam_fade_duration_sec
-	var any_active := false
+	var any_active := not _forced_flashes.is_empty()
 	for st in _states:
 		if not st.active:
 			continue
@@ -313,7 +367,8 @@ func _draw() -> void:
 			continue
 		var x := _lane_xs[i]
 		# 淡出曲线查表（EASE_IN cubic，O(1) 无插值；256 项对 0.4s 淡出不可见阶梯）
-		var a := _beam_alpha_scale * _fade_lut[mini(int(st.progress * float(lut_m1)), lut_m1)]
+		var alpha_scale := st.alpha_scale if st.alpha_scale >= 0.0 else _beam_alpha_scale
+		var a := alpha_scale * _fade_lut[mini(int(st.progress * float(lut_m1)), lut_m1)]
 		draw_texture_rect(_outer_tex, Rect2(x, 0.0, bw, bh), false, Color(1.0, 1.0, 1.0, a))
 	# —— 第 2 遍：全部内层着色渐变光柱（颜色走 modulate，同为顶点属性可合批）
 	for i in _states.size():
@@ -321,7 +376,8 @@ func _draw() -> void:
 		if not st.active or st.progress <= 0.0:
 			continue
 		var x := _lane_xs[i]
-		var a := _beam_alpha_scale * _fade_lut[mini(int(st.progress * float(lut_m1)), lut_m1)]
+		var alpha_scale := st.alpha_scale if st.alpha_scale >= 0.0 else _beam_alpha_scale
+		var a := alpha_scale * _fade_lut[mini(int(st.progress * float(lut_m1)), lut_m1)]
 		draw_texture_rect(_center_tex, Rect2(x + inset, 0.0, bw - inset * 2.0, bh), false,
 			Color(st.color.r, st.color.g, st.color.b, a))
 	# —— 第 3 遍：全部底部高亮横条，用纯色矩形代替原 StyleBoxFlat shadow（无 GPU 模糊开销）
@@ -329,7 +385,8 @@ func _draw() -> void:
 		var st: BeamState = _states[i]
 		if not st.active or st.progress <= 0.0:
 			continue
-		var a := _beam_alpha_scale * _fade_lut[mini(int(st.progress * float(lut_m1)), lut_m1)]
+		var alpha_scale := st.alpha_scale if st.alpha_scale >= 0.0 else _beam_alpha_scale
+		var a := alpha_scale * _fade_lut[mini(int(st.progress * float(lut_m1)), lut_m1)]
 		draw_rect(Rect2(_lane_xs[i], bh - light_h, bw, light_h), Color(2.0, 2.0, 2.0, 0.9 * a))
 
 
