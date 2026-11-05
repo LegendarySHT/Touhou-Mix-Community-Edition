@@ -62,9 +62,8 @@ func apply_theme() -> void:
 	# 暗色模式更深、浅色模式更浅，统一取 surface_low（该 token 在两种模式下都更远离 surface：
 	# 暗色 V 更低、浅色 V 更高）。几何与 alpha 沿用 tscn 的 StyleBoxFlat_xkn3i，仅改 RGB。
 	var sb := (%AboutPage as Panel).get_theme_stylebox("panel")
-	if sb is StyleBoxFlat:
-		var c := ThemeMGR.get_color("surface_low")
-		sb.bg_color = Color(c.r, c.g, c.b, sb.bg_color.a)
+	var c := ThemeMGR.get_color("surface_low")
+	sb.bg_color = Color(c.r, c.g, c.b, sb.bg_color.a)
 
 ## 出场：导航栏/设置列表左滑 + 整页淡出。有未保存改动则先落盘。
 ## save_config_to_file 内部已做 soundfont 回退 + 同步应用，磁盘写入与通知推迟到下一帧，

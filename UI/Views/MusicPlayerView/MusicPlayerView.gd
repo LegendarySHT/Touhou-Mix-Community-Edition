@@ -170,11 +170,9 @@ func apply_theme() -> void:
 		return
 	# 本页不再有独立的 Bg 底色矩形：底色交给全局背景（与其它视图一致），
 	# 免得在这里多一个"要跟着主题走"的色块，也少一处要维护的背景设置。
-	var bar := %BottomBar as Panel
-	var sb := bar.get_theme_stylebox("panel") as StyleBoxFlat
-	if sb != null:
-		sb.bg_color = ThemeMGR.get_color("surface_low", sb.bg_color)
-		sb.border_color = ThemeMGR.get_color("border_soft", sb.border_color)
+	var sb: StyleBoxFlat = (%BottomBar as Panel).get_theme_stylebox("panel")
+	sb.bg_color = ThemeMGR.get_color("surface_low", sb.bg_color)
+	sb.border_color = ThemeMGR.get_color("border_soft", sb.border_color)
 	_apply_icon_tints()
 
 ## 出场：整页缩放淡出

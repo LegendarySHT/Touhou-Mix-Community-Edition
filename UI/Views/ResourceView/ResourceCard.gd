@@ -8,8 +8,6 @@ signal clicked(item: Dictionary)
 
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 
-## 同场景实例共享 tscn 子资源，共享样式按主题版本只改一次
-static var _shared_style_revision := -1
 const CardVisualKind := {
 	"song": "song",
 	"skin": "skin",
@@ -152,46 +150,8 @@ func _on_pressed() -> void:
 func apply_theme() -> void:
 	if not _has_ready or not ThemeMGR:
 		return
-	var surface_high := ThemeMGR.get_color("surface_high")
-	var surface_hover := ThemeMGR.get_color("surface_hover")
-	var surface_low := ThemeMGR.get_color("surface_low")
-	var border := ThemeMGR.get_color("border")
-	var primary := ThemeMGR.get_color("primary")
-	var primary_light := ThemeMGR.get_color("primary_light")
-	var primary_dark := ThemeMGR.get_color("primary_dark")
 	var is_light := ThemeMGR.get_appearance() == "light"
-	var accent := primary_dark if is_light else primary_light
-
-	# 共享 StyleBox 只改一次（同一 tscn 的所有卡片共用）
-	if _shared_style_revision != ThemeMGR.theme_revision:
-		_shared_style_revision = ThemeMGR.theme_revision
-		for spec in [
-			["normal", surface_high, border, 0.94],
-			["hover", surface_hover, primary, 0.98],
-			["pressed", surface_low, primary_light, 1.0],
-		]:
-			var sb := get_theme_stylebox(spec[0]) as StyleBoxFlat
-			if sb:
-				sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], spec[3])
-				sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.85)
-		var focus_sb := get_theme_stylebox("focus") as StyleBoxFlat
-		if focus_sb:
-			focus_sb.border_color = ThemeMGR._tint_keep_alpha(accent, 0.9)
-		var cover_sb := %CoverWrap.get_theme_stylebox("panel") as StyleBoxFlat
-		if cover_sb:
-			cover_sb.bg_color = ThemeMGR.get_color("surface_high") if is_light else surface_low
-			cover_sb.border_color = border
-		var border_sb := %SelectedBorder.get_theme_stylebox("panel") as StyleBoxFlat
-		if border_sb:
-			border_sb.border_color = ThemeMGR._tint_keep_alpha(accent, 0.95)
-		var badge_sb := %Badge.get_theme_stylebox("normal") as StyleBoxFlat
-		if badge_sb:
-			badge_sb.bg_color = ThemeMGR._tint_keep_alpha(primary_dark, 0.9)
-
-	# 实例级颜色
-	%Badge.add_theme_color_override("font_color", Color.WHITE)
-	%Placeholder.modulate = ThemeMGR.get_color("text_secondary") if is_light \
-		else ThemeMGR.get_color("text_dim")
+	%Placeholder.modulate = ThemeMGR.get_color("text_secondary") if is_light else ThemeMGR.get_color("text_dim")
 	%Placeholder.modulate.a = 0.5
 	_apply_selected()
 

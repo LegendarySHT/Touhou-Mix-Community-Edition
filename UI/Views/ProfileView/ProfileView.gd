@@ -181,17 +181,14 @@ func _set_panel(node: Control, bg: Color, border: Color) -> void:
 	if not node:
 		return
 	var sb := node.get_theme_stylebox("panel")
-	if sb is StyleBoxFlat:
-		sb.bg_color = bg
-		sb.border_color = border
+	sb.bg_color = bg
+	sb.border_color = border
 
 ## 仅设置面板 border（保留原 bg）
 func _set_panel_border(node: Control, border: Color) -> void:
 	if not node:
 		return
-	var sb := node.get_theme_stylebox("panel")
-	if sb is StyleBoxFlat:
-		sb.border_color = border
+	node.get_theme_stylebox("panel").border_color = border
 
 ## 仅设置面板 border，并保留该 StyleBox 原有的 border alpha。
 ## 头像描边的 alpha 是刻意调过的（头像 0.9 / 角色卡 0.7），刷主题色时不能被冲掉。
@@ -199,8 +196,7 @@ func _set_panel_border_keep_alpha(node: Control, border: Color) -> void:
 	if not node:
 		return
 	var sb := node.get_theme_stylebox("panel")
-	if sb is StyleBoxFlat:
-		sb.border_color = Color(border.r, border.g, border.b, sb.border_color.a)
+	sb.border_color = Color(border.r, border.g, border.b, sb.border_color.a)
 
 ## 头像/角色卡外圈描边的颜色：深色用亮调强调色，浅色用强调色本身
 func _avatar_ring_color() -> Color:
@@ -213,18 +209,15 @@ func _set_btn(btn: Button, state: String, bg: Color, border: Color) -> void:
 	if not btn:
 		return
 	var sb := btn.get_theme_stylebox(state)
-	if sb is StyleBoxFlat:
-		sb.bg_color = bg
-		sb.border_color = border
+	sb.bg_color = bg
+	sb.border_color = border
 
 ## 仅设置按钮某状态的 border（保留原 bg 和 border alpha）
 func _set_btn_border(btn: Button, state: String, border: Color) -> void:
 	if not btn:
 		return
 	var sb := btn.get_theme_stylebox(state)
-	if sb is StyleBoxFlat:
-		var a = sb.border_color.a
-		sb.border_color = Color(border.r, border.g, border.b, a)
+	sb.border_color = Color(border.r, border.g, border.b, sb.border_color.a)
 
 # ========== Navi → PageContent 切换 ==========
 

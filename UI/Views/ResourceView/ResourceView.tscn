@@ -13,82 +13,7 @@ expand_margin_right = 50.0
 shadow_color = Color(0, 0, 0, 0.35)
 shadow_size = 12
 
-[sub_resource type="StyleBoxFlat" id="SB_search"]
-content_margin_left = 22.0
-content_margin_top = 8.0
-content_margin_right = 70.0
-content_margin_bottom = 8.0
-bg_color = Color(0.078, 0.098, 0.14, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.18, 0.22, 0.3, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
 
-[sub_resource type="StyleBoxFlat" id="SB_search_focus"]
-content_margin_left = 22.0
-content_margin_top = 8.0
-content_margin_right = 70.0
-content_margin_bottom = 8.0
-bg_color = Color(0.09, 0.115, 0.165, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.4, 0.58, 1, 0.9)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
-[sub_resource type="StyleBoxFlat" id="SB_tab_normal"]
-content_margin_left = 20.0
-content_margin_top = 8.0
-content_margin_right = 20.0
-content_margin_bottom = 8.0
-bg_color = Color(0, 0, 0, 0)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_tab_pressed"]
-content_margin_left = 20.0
-content_margin_top = 8.0
-content_margin_right = 20.0
-content_margin_bottom = 8.0
-bg_color = Color(0.16, 0.24, 0.5, 0.55)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_tab_hover"]
-content_margin_left = 20.0
-content_margin_top = 8.0
-content_margin_right = 20.0
-content_margin_bottom = 8.0
-bg_color = Color(0.13, 0.165, 0.23, 0.8)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_tab_focus"]
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.58, 0.72, 1, 0.9)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_8w0rt"]
 
@@ -120,66 +45,6 @@ corner_radius_bottom_right = 18
 corner_radius_bottom_left = 18
 shadow_color = Color(0, 0, 0, 0.4)
 shadow_size = 16
-
-[sub_resource type="StyleBoxFlat" id="SB_btn_normal"]
-content_margin_left = 14.0
-content_margin_top = 6.0
-content_margin_right = 14.0
-content_margin_bottom = 6.0
-bg_color = Color(0.09, 0.113, 0.16, 0.95)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.18, 0.22, 0.3, 1)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_btn_pressed"]
-content_margin_left = 14.0
-content_margin_top = 6.0
-content_margin_right = 14.0
-content_margin_bottom = 6.0
-bg_color = Color(0.2, 0.32, 0.7, 0.95)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.55, 0.7, 1, 1)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_btn_hover"]
-content_margin_left = 14.0
-content_margin_top = 6.0
-content_margin_right = 14.0
-content_margin_bottom = 6.0
-bg_color = Color(0.15, 0.2, 0.28, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.4, 0.58, 1, 0.9)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_btn_focus"]
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.58, 0.72, 1, 0.9)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
 
 [node name="ResourceView" type="Control" unique_id=1640547884]
 layout_mode = 3
@@ -221,13 +86,12 @@ mouse_filter = 2
 theme_override_constants/separation = 16
 
 [node name="SearchEdit" type="LineEdit" parent="TopBarPanel/Row/Toolbar" unique_id=1584912614]
+theme_type_variation = &"LineEditSearch"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(260, 76)
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 25
-theme_override_styles/normal = SubResource("SB_search")
-theme_override_styles/focus = SubResource("SB_search_focus")
 placeholder_text = "搜索歌曲 / 作者 / 专辑"
 
 [node name="SearchIcon" type="TextureRect" parent="TopBarPanel/Row/Toolbar/SearchEdit" unique_id=244108115]
@@ -248,6 +112,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="CountText" type="Label" parent="TopBarPanel/Row/Toolbar" unique_id=2016685244]
+theme_type_variation = &"LabelSecondary"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
@@ -262,6 +127,7 @@ mouse_filter = 2
 theme_override_constants/separation = 6
 
 [node name="SongsTabBtn" type="Button" parent="TopBarPanel/Row/TabBar" unique_id=2146251849]
+theme_type_variation = &"ButtonTab"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -269,17 +135,13 @@ mouse_default_cursor_shape = 2
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 40
 theme_override_font_sizes/font_size = 26
-theme_override_styles/normal = SubResource("SB_tab_normal")
-theme_override_styles/pressed = SubResource("SB_tab_pressed")
-theme_override_styles/hover = SubResource("SB_tab_hover")
-theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
-theme_override_styles/focus = SubResource("SB_tab_focus")
 toggle_mode = true
 button_pressed = true
 button_group = SubResource("ButtonGroup_8w0rt")
 text = "歌曲"
 
 [node name="SkinsTabBtn" type="Button" parent="TopBarPanel/Row/TabBar" unique_id=1318609674]
+theme_type_variation = &"ButtonTab"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -287,16 +149,12 @@ mouse_default_cursor_shape = 2
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 40
 theme_override_font_sizes/font_size = 26
-theme_override_styles/normal = SubResource("SB_tab_normal")
-theme_override_styles/pressed = SubResource("SB_tab_pressed")
-theme_override_styles/hover = SubResource("SB_tab_hover")
-theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
-theme_override_styles/focus = SubResource("SB_tab_focus")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_8w0rt")
 text = "皮肤"
 
 [node name="EffectsTabBtn" type="Button" parent="TopBarPanel/Row/TabBar" unique_id=19408384]
+theme_type_variation = &"ButtonTab"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -304,16 +162,12 @@ mouse_default_cursor_shape = 2
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 40
 theme_override_font_sizes/font_size = 26
-theme_override_styles/normal = SubResource("SB_tab_normal")
-theme_override_styles/pressed = SubResource("SB_tab_pressed")
-theme_override_styles/hover = SubResource("SB_tab_hover")
-theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
-theme_override_styles/focus = SubResource("SB_tab_focus")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_8w0rt")
 text = "特效"
 
 [node name="SoundfontsTabBtn" type="Button" parent="TopBarPanel/Row/TabBar" unique_id=301803233]
+theme_type_variation = &"ButtonTab"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -321,16 +175,12 @@ mouse_default_cursor_shape = 2
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 40
 theme_override_font_sizes/font_size = 26
-theme_override_styles/normal = SubResource("SB_tab_normal")
-theme_override_styles/pressed = SubResource("SB_tab_pressed")
-theme_override_styles/hover = SubResource("SB_tab_hover")
-theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
-theme_override_styles/focus = SubResource("SB_tab_focus")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_8w0rt")
 text = "音源"
 
 [node name="BackgroundsTabBtn" type="Button" parent="TopBarPanel/Row/TabBar" unique_id=195846473]
+theme_type_variation = &"ButtonTab"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
@@ -338,11 +188,6 @@ mouse_default_cursor_shape = 2
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 40
 theme_override_font_sizes/font_size = 26
-theme_override_styles/normal = SubResource("SB_tab_normal")
-theme_override_styles/pressed = SubResource("SB_tab_pressed")
-theme_override_styles/hover = SubResource("SB_tab_hover")
-theme_override_styles/hover_pressed = SubResource("SB_tab_pressed")
-theme_override_styles/focus = SubResource("SB_tab_focus")
 toggle_mode = true
 button_group = SubResource("ButtonGroup_8w0rt")
 text = "背景"
@@ -357,6 +202,7 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_underline")
 
 [node name="PageEmpty" type="Label" parent="." unique_id=270067810]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
@@ -441,6 +287,7 @@ theme_override_font_sizes/font_size = 23
 text = "待操作列表"
 
 [node name="PendingCount" type="Label" parent="Pages/SongsPage/PendingBarPanel/VBox/Head" unique_id=1358209129]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
@@ -452,27 +299,21 @@ size_flags_horizontal = 3
 mouse_filter = 2
 
 [node name="SelectAllBtn" type="Button" parent="Pages/SongsPage/PendingBarPanel/VBox/Head" unique_id=1304486890]
+theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 40)
 layout_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 19
-theme_override_styles/normal = SubResource("SB_btn_normal")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "全选"
 
 [node name="ExpandBtn" type="Button" parent="Pages/SongsPage/PendingBarPanel/VBox/Head" unique_id=757407267]
+theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(110, 40)
 layout_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 19
-theme_override_styles/normal = SubResource("SB_btn_normal")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "展开"
 
 [node name="PendingScroll" type="ScrollContainer" parent="Pages/SongsPage/PendingBarPanel/VBox" unique_id=1399726686]
@@ -498,66 +339,52 @@ mouse_filter = 2
 theme_override_constants/separation = 10
 
 [node name="DeleteVocalBtn" type="Button" parent="Pages/SongsPage/PendingBarPanel/VBox/Actions" unique_id=1728154826]
+theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 21
-theme_override_styles/normal = SubResource("SB_btn_normal")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "删除人声"
 
 [node name="DeleteSongBtn" type="Button" parent="Pages/SongsPage/PendingBarPanel/VBox/Actions" unique_id=784537265]
+theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 21
-theme_override_styles/normal = SubResource("SB_btn_normal")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "删除歌曲"
 
 [node name="ResetBtn" type="Button" parent="Pages/SongsPage/PendingBarPanel/VBox/Actions" unique_id=1593740382]
+theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 21
-theme_override_styles/normal = SubResource("SB_btn_normal")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "重置歌曲"
 
 [node name="FavBtn" type="Button" parent="Pages/SongsPage/PendingBarPanel/VBox/Actions" unique_id=365407809]
+theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 21
-theme_override_styles/normal = SubResource("SB_btn_normal")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "加入收藏夹"
 
 [node name="ClearBtn" type="Button" parent="Pages/SongsPage/PendingBarPanel/VBox/Actions" unique_id=1929352891]
+theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 21
-theme_override_styles/normal = SubResource("SB_btn_normal")
-theme_override_styles/pressed = SubResource("SB_btn_pressed")
-theme_override_styles/hover = SubResource("SB_btn_hover")
-theme_override_styles/focus = SubResource("SB_btn_focus")
 text = "清空列表"
 
 [node name="PendingEmpty" type="Label" parent="Pages/SongsPage/PendingBarPanel" unique_id=434566769]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20

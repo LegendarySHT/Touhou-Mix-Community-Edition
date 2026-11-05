@@ -4,23 +4,6 @@
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="2_cmt"]
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="3_xldn0"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_xldn0"]
-content_margin_left = 15.0
-content_margin_top = 10.0
-content_margin_right = 10.0
-content_margin_bottom = 10.0
-bg_color = Color(0.0627, 0.0784, 0.1137, 0.9)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1216, 0.149, 0.2039, 1)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-corner_detail = 5
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_avator"]
 draw_center = false
 border_width_left = 2
@@ -38,11 +21,11 @@ atlas = ExtResource("3_xldn0")
 region = Rect2(0, 0, 80, 80)
 
 [node name="CommentItem" type="PanelContainer" unique_id=158351915]
+theme_type_variation = &"PanelContainerCommentCard"
 custom_minimum_size = Vector2(540, 150)
 offset_right = 540.0
 offset_bottom = 275.0
 mouse_filter = 1
-theme_override_styles/panel = SubResource("StyleBoxFlat_xldn0")
 script = ExtResource("1_cmt")
 
 [node name="HBox" type="HBoxContainer" parent="." unique_id=319000001]

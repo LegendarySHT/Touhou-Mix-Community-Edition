@@ -113,6 +113,7 @@ func _refresh_text_color() -> void:
 			text_color = ThemeMGR.get_color(theme_color_key, get_theme_color("font_color"))
 		else:
 			text_color = get_theme_color("font_color")
+	# 引擎文本靠透明 font_color 隐藏（组件自绘滚动文字，不能让原版白字透出来）
 	add_theme_color_override("font_color", Color(0, 0, 0, 0))
 	end_bulk_theme_override()
 	queue_redraw()

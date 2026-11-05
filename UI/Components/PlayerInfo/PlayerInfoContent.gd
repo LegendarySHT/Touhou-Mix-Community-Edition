@@ -124,8 +124,7 @@ func _apply_register_link_theme() -> void:
 ## 改 panel 描边色，保留原 alpha（tscn 里是 0.9，是刻意调过的，不能被冲掉）
 func _set_border_keep_alpha(node: Control, border: Color) -> void:
 	var sb := node.get_theme_stylebox("panel")
-	if sb is StyleBoxFlat:
-		sb.border_color = Color(border.r, border.g, border.b, sb.border_color.a)
+	sb.border_color = Color(border.r, border.g, border.b, sb.border_color.a)
 
 ## 头像上屏：MiniInfo / Summary，以及已加载的 ProfileView
 func _apply_avatar_texture(tex: Texture2D) -> void:

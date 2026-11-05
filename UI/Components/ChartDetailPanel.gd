@@ -28,44 +28,15 @@ var _open_target_rect := Rect2()
 var _cover_version := 0
 var _req_version := 0
 
-var _dl_normal: StyleBoxFlat
-var _dl_hover: StyleBoxFlat
-var _dl_pressed: StyleBoxFlat
-var _dl_disabled: StyleBoxFlat
-var _dl_focus: StyleBoxFlat
-
-
 func _ready() -> void:
 	visible = false
 	%Panel.pivot_offset = Vector2.ZERO
-	# 下载按钮的状态色随当前谱面状态变化，必须实例独立（场景子资源默认共享）
-	_dl_normal = _duplicate_stylebox(%DownloadBtn, "normal")
-	_dl_hover = _duplicate_stylebox(%DownloadBtn, "hover")
-	_dl_pressed = _duplicate_stylebox(%DownloadBtn, "pressed")
-	_dl_disabled = _duplicate_stylebox(%DownloadBtn, "disabled")
-	_dl_focus = _duplicate_stylebox(%DownloadBtn, "focus")
-	if _dl_normal:
-		%DownloadBtn.add_theme_stylebox_override("normal", _dl_normal)
-	if _dl_hover:
-		%DownloadBtn.add_theme_stylebox_override("hover", _dl_hover)
-	if _dl_pressed:
-		%DownloadBtn.add_theme_stylebox_override("pressed", _dl_pressed)
-	if _dl_disabled:
-		%DownloadBtn.add_theme_stylebox_override("disabled", _dl_disabled)
-	if _dl_focus:
-		%DownloadBtn.add_theme_stylebox_override("focus", _dl_focus)
-
 	%CloseBtn.pressed.connect(close)
 	%DownloadBtn.pressed.connect(_on_download_pressed)
 	%Dim.gui_input.connect(_on_dim_input)
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
-
-
-func _duplicate_stylebox(btn: Button, state: String) -> StyleBoxFlat:
-	var sb := btn.get_theme_stylebox(state) as StyleBoxFlat
-	return sb.duplicate() as StyleBoxFlat if sb else null
 
 
 func is_open() -> bool:
@@ -386,8 +357,7 @@ func _add_rank_message(text: String) -> void:
 	label.add_theme_font_size_override("font_size", 20)
 	var is_light := ThemeMGR != null and ThemeMGR.get_appearance() == "light"
 	label.add_theme_color_override("font_color",
-		ThemeMGR.get_color("text_secondary") if is_light \
-		else (ThemeMGR.get_color("text_dim") if ThemeMGR else Color(0.6, 0.65, 0.72)))
+		ThemeMGR.get_color("text_secondary") if is_light else (ThemeMGR.get_color("text_dim") if ThemeMGR else Color(0.6, 0.65, 0.72)))
 	%RankList.add_child(label)
 
 
@@ -446,8 +416,7 @@ func _add_info_row(key: String, value: String) -> void:
 	key_label.add_theme_font_size_override("font_size", 20)
 	var is_light := ThemeMGR != null and ThemeMGR.get_appearance() == "light"
 	key_label.add_theme_color_override("font_color",
-		ThemeMGR.get_color("text_secondary") if is_light \
-		else (ThemeMGR.get_color("text_dim") if ThemeMGR else Color(0.6, 0.65, 0.72)))
+		ThemeMGR.get_color("text_secondary") if is_light else (ThemeMGR.get_color("text_dim") if ThemeMGR else Color(0.6, 0.65, 0.72)))
 	row.add_child(key_label)
 	var value_label := Label.new()
 	value_label.text = value
@@ -455,8 +424,7 @@ func _add_info_row(key: String, value: String) -> void:
 	value_label.clip_text = true
 	value_label.add_theme_font_size_override("font_size", 20)
 	value_label.add_theme_color_override("font_color",
-		ThemeMGR.get_color("text_primary") if is_light \
-		else (ThemeMGR.get_color("text_secondary") if ThemeMGR else Color(0.8, 0.84, 0.9)))
+		ThemeMGR.get_color("text_primary") if is_light else (ThemeMGR.get_color("text_secondary") if ThemeMGR else Color(0.8, 0.84, 0.9)))
 	row.add_child(value_label)
 	%RankList.add_child(row)
 
@@ -480,56 +448,39 @@ func _apply_download_state() -> void:
 		%DownloadBtn.icon = StoreIconsLib.check()
 		%DownloadBtn.tooltip_text = "本地资源已安装"
 		%DownloadBtn.disabled = true
-		_set_download_colors(ThemeMGR.get_color("success") if ThemeMGR else Color("#2FA66A"))
+		%DownloadBtn.theme_type_variation = &"ButtonDownloadDone"
 		return
 
 	var hash_str := str(_item.get("hash", ""))
 	var state := int(_item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
 	if not hash_str.is_empty():
 		state = ResourceManager.instance.get_download_state(hash_str)
-	var base := ThemeMGR.get_color("primary") if ThemeMGR else Color("#2E55C8")
+	var variant := &"ButtonDownloadIdle"
 	var icon: Texture2D = StoreIconsLib.download()
 	var text := "下载谱面"
 	var tip := "下载该谱面"
 	%DownloadBtn.disabled = false
 	match state:
 		ResourceManager.DownloadState.DOWNLOADING:
-			base = ThemeMGR.get_color("warning") if ThemeMGR else Color("#D89A2A")
+			variant = &"ButtonDownloadBusy"
 			icon = StoreIconsLib.download_cloud()
 			text = "正在下载…"
 			tip = "正在下载…"
 		ResourceManager.DownloadState.DOWNLOADED:
 			# 本地已有：按钮改成「进入曲库查看」，不再是终止态
-			base = ThemeMGR.get_color("success") if ThemeMGR else Color("#2FA66A")
+			variant = &"ButtonDownloadDone"
 			icon = StoreIconsLib.song()
 			text = "查看谱面"
 			tip = "在曲库中打开该谱面"
 		ResourceManager.DownloadState.FAILED:
-			base = ThemeMGR.get_color("danger") if ThemeMGR else Color("#C7303F")
+			variant = &"ButtonDownloadError"
 			icon = StoreIconsLib.close()
 			text = "重试下载"
 			tip = "下载失败，点击重试"
 	%DownloadBtn.text = text
 	%DownloadBtn.icon = icon
 	%DownloadBtn.tooltip_text = tip
-	_set_download_colors(base)
-
-
-func _set_download_colors(base: Color) -> void:
-	if _dl_normal:
-		_dl_normal.bg_color = ThemeMGR._tint_keep_alpha(base.darkened(0.15), 0.92) \
-			if ThemeMGR else base.darkened(0.15)
-		_dl_normal.border_color = base.lightened(0.35)
-	if _dl_hover:
-		_dl_hover.bg_color = base
-		_dl_hover.border_color = base.lightened(0.55)
-	if _dl_pressed:
-		_dl_pressed.bg_color = base.darkened(0.22)
-		_dl_pressed.border_color = base
-	if _dl_focus:
-		var light := ThemeMGR != null and ThemeMGR.get_appearance() == "light"
-		_dl_focus.border_color = base.darkened(0.08) if light else base.lightened(0.5)
-		_dl_focus.shadow_color = Color(base.r, base.g, base.b, 0.4)
+	%DownloadBtn.theme_type_variation = variant
 
 
 ## 非商店入口：不参与下载状态机，只按本地曲库有无该谱面决定按钮是否可跳
@@ -541,7 +492,7 @@ func _apply_library_action() -> void:
 	%DownloadBtn.icon = StoreIconsLib.song() if available else StoreIconsLib.close()
 	%DownloadBtn.tooltip_text = "在曲库中打开该谱面" if available else "该谱面不在本地曲库中"
 	if available:
-		_set_download_colors(ThemeMGR.get_color("success") if ThemeMGR else Color("#2FA66A"))
+		%DownloadBtn.theme_type_variation = &"ButtonDownloadDone"
 
 
 func _on_download_pressed() -> void:
@@ -606,32 +557,26 @@ func apply_theme() -> void:
 	var primary_dark := ThemeMGR.get_color("primary_dark")
 	var is_light := ThemeMGR.get_appearance() == "light"
 	var accent_text := primary_dark if is_light else primary_light
-	var muted_text := ThemeMGR.get_color("text_secondary") if is_light \
-		else ThemeMGR.get_color("text_dim")
+	var muted_text := ThemeMGR.get_color("text_secondary") if is_light else ThemeMGR.get_color("text_dim")
 
-	var bg_sb := %BG.get_theme_stylebox("panel") as StyleBoxFlat
+	var bg_sb: StyleBoxFlat = %BG.get_theme_stylebox("panel")
 	bg_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.98)
 	bg_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.55 if is_light else 0.45)
 	bg_sb.shadow_color = Color(0, 0, 0, 0.45 if is_light else 0.55)
 
-	var accent_sb := %Accent.get_theme_stylebox("panel") as StyleBoxFlat
-	accent_sb.bg_color = accent_text
+	%Accent.get_theme_stylebox("panel").bg_color = accent_text
 
-	var cover_sb := %CoverWrap.get_theme_stylebox("panel") as StyleBoxFlat
+	var cover_sb: StyleBoxFlat = %CoverWrap.get_theme_stylebox("panel")
 	cover_sb.bg_color = surface_high if is_light else surface_low
 	cover_sb.border_color = border
 
-	var rank_sb := %RankBox.get_theme_stylebox("panel") as StyleBoxFlat
+	var rank_sb: StyleBoxFlat = %RankBox.get_theme_stylebox("panel")
 	rank_sb.bg_color = surface_low
 	rank_sb.border_color = ThemeMGR.get_color("border_soft")
 
-	%Kind.add_theme_color_override("font_color", muted_text)
+	# Kind / Date / SizeLabel / DownloadsCount / PlaysCount 走 LabelMuted 变体、
+	# RankTitle 走 LabelAccent 变体（字色在主题里按明暗模式统一给）
 	%Desc.add_theme_color_override("default_color", ThemeMGR.get_color("text_secondary"))
-	%Date.add_theme_color_override("font_color", muted_text)
-	%SizeLabel.add_theme_color_override("font_color", muted_text)
-	%DownloadsCount.add_theme_color_override("font_color", muted_text)
-	%PlaysCount.add_theme_color_override("font_color", muted_text)
-	%RankTitle.add_theme_color_override("font_color", accent_text)
 	%Placeholder.modulate = muted_text
 	%Placeholder.modulate.a = 0.4
 	for icon in %Stats.find_children("*", "TextureRect", true, false):
@@ -639,38 +584,27 @@ func apply_theme() -> void:
 
 	# 详情里的按钮样式按主题重新着色（与卡片独立的资源，直接改色安全）
 	for btn in [%CloseBtn]:
-		var btn_sb := (btn as Button).get_theme_stylebox("normal") as StyleBoxFlat
+		var btn_sb: StyleBoxFlat = (btn as Button).get_theme_stylebox("normal")
 		btn_sb.bg_color = surface_low
 		btn_sb.border_color = border
-		var hover_sb := (btn as Button).get_theme_stylebox("hover") as StyleBoxFlat
+		var hover_sb: StyleBoxFlat = (btn as Button).get_theme_stylebox("hover")
 		hover_sb.bg_color = ThemeMGR.get_color("surface_hover")
 		hover_sb.border_color = primary
+
 	# 关闭按钮/赞踩按钮的图标是白色贴图：浅色模式下不染色会直接消失
 	%CloseBtn.add_theme_color_override("icon_normal_color", ThemeMGR.get_color("text_secondary"))
 	%CloseBtn.add_theme_color_override("icon_hover_color", ThemeMGR.get_color("text_primary"))
 	%CloseBtn.add_theme_color_override("icon_pressed_color", primary)
 	%CloseBtn.add_theme_color_override("icon_focus_color", primary)
-	for btn in [%LikeBtn, %DislikeBtn]:
-		var b := btn as Button
-		b.add_theme_color_override("font_color", ThemeMGR.get_color("text_secondary"))
-		b.add_theme_color_override("font_hover_color", ThemeMGR.get_color("text_primary"))
-		b.add_theme_color_override("icon_normal_color", ThemeMGR.get_color("text_secondary"))
-		b.add_theme_color_override("icon_hover_color", ThemeMGR.get_color("text_primary"))
-		b.add_theme_color_override("icon_pressed_color", primary)
-		b.add_theme_color_override("icon_disabled_color", muted_text)
+	for btn: Button in [%LikeBtn, %DislikeBtn]:
+		btn.add_theme_color_override("font_color", ThemeMGR.get_color("text_secondary"))
+		btn.add_theme_color_override("font_hover_color", ThemeMGR.get_color("text_primary"))
+		btn.add_theme_color_override("icon_normal_color", ThemeMGR.get_color("text_secondary"))
+		btn.add_theme_color_override("icon_hover_color", ThemeMGR.get_color("text_primary"))
+		btn.add_theme_color_override("icon_pressed_color", primary)
+		btn.add_theme_color_override("icon_disabled_color", muted_text)
 
-	# 下载按钮底色是主题色，字与图标统一白色；禁用态（本地分类）走灰底 + 深色字
-	for state in ["font_color", "font_hover_color", "font_pressed_color"]:
-		%DownloadBtn.add_theme_color_override(state, Color.WHITE)
-	for state in ["icon_normal_color", "icon_hover_color", "icon_pressed_color"]:
-		%DownloadBtn.add_theme_color_override(state, Color.WHITE)
-	%DownloadBtn.add_theme_color_override("font_disabled_color",
-		ThemeMGR.get_color("text_secondary") if is_light else ThemeMGR.get_color("text_dim"))
-	%DownloadBtn.add_theme_color_override("icon_disabled_color",
-		ThemeMGR.get_color("text_secondary") if is_light else ThemeMGR.get_color("text_dim"))
-	if _dl_disabled:
-		_dl_disabled.bg_color = surface_high if is_light else surface_low
-		_dl_disabled.border_color = border
+	# 下载按钮：六态样式与白字白图标全在 ButtonDownload* 变体里，这里只需按状态切换变体
 
 	_apply_download_state()
 

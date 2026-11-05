@@ -1357,144 +1357,43 @@ func apply_theme() -> void:
 	var surface := ThemeMGR.get_color("surface")
 	var surface_low := ThemeMGR.get_color("surface_low")
 	var surface_high := ThemeMGR.get_color("surface_high")
-	var surface_hover := ThemeMGR.get_color("surface_hover")
 	var border := ThemeMGR.get_color("border")
-	var border_soft := ThemeMGR.get_color("border_soft")
-	var text_primary := ThemeMGR.get_color("text_primary")
 	var text_secondary := ThemeMGR.get_color("text_secondary")
 	var text_dim := ThemeMGR.get_color("text_dim")
 	var primary := ThemeMGR.get_color("primary")
 	var primary_light := ThemeMGR.get_color("primary_light")
 	var primary_dark := ThemeMGR.get_color("primary_dark")
+	var text_primary := ThemeMGR.get_color("text_primary")
 	var is_light := ThemeMGR.get_appearance() == "light"
-	# 浅色模式下 primary_light 在浅板面上几乎看不见：强调文字统一改用 primary_dark；
 	# 次要文字从 text_dim（浅色下偏灰）提到 text_secondary，保证小字号可读
-	var accent_text := primary_dark if is_light else primary_light
 	var muted_text := text_secondary if is_light else text_dim
 
 	var top_sb: StyleBoxFlat = %TopBar.get_theme_stylebox("panel")
-	if top_sb:
-		top_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.97)
-		top_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.55 if is_light else 0.4)
+	top_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.97)
+	top_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.55 if is_light else 0.4)
 
-	var search_sb: StyleBoxFlat = %SearchEdit.get_theme_stylebox("normal")
-	if search_sb:
-		search_sb.bg_color = surface_low
-		search_sb.border_color = border
-	var search_focus_sb: StyleBoxFlat = %SearchEdit.get_theme_stylebox("focus")
-	if search_focus_sb:
-		search_focus_sb.bg_color = surface_low.lightened(0.04)
-		search_focus_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.9)
-	%SearchEdit.add_theme_color_override("font_color", text_primary)
-	%SearchEdit.add_theme_color_override("font_placeholder_color", muted_text)
-	%SearchEdit.add_theme_color_override("caret_color", primary)
 	%SearchIcon.modulate = text_secondary
-
-	for btn in [%FilterDataBtn, %SortOrderBtn, %BatchDownloadBtn, %VocalBtn]:
-		var b := btn as Button
-		_style_flat_button(b, surface_high, surface_hover, primary_dark, border, text_secondary, text_primary)
-		# 工具按钮按下时（人声是 toggle）底色是深主题色：浅色模式必须用白字，否则深字压深底
-		b.add_theme_color_override("font_pressed_color", Color.WHITE if is_light else primary_light)
-		b.add_theme_color_override("font_hover_pressed_color", Color.WHITE if is_light else primary_light)
-		b.add_theme_color_override("font_focus_color", text_primary)
-		b.add_theme_color_override("icon_normal_color", text_secondary)
-		b.add_theme_color_override("icon_hover_color", text_primary)
-		b.add_theme_color_override("icon_pressed_color", Color.WHITE if is_light else primary_light)
-		b.add_theme_color_override("icon_hover_pressed_color", Color.WHITE if is_light else primary_light)
-		b.add_theme_color_override("icon_focus_color", text_primary)
-		var focus_sb := b.get_theme_stylebox("focus") as StyleBoxFlat
-		if focus_sb:
-			focus_sb.border_color = accent_text
-
-	for btn in _tab_buttons:
-		_style_flat_button(btn, surface_high, surface_hover, primary_dark, border, text_secondary, text_primary)
-		if is_light:
-			# 浅色模式选中标签改成很淡的主题色底 + 深色强调字，避免白字压浅蓝
-			var tab_pressed := btn.get_theme_stylebox("pressed") as StyleBoxFlat
-			if tab_pressed:
-				tab_pressed.bg_color = ThemeMGR._tint_keep_alpha(primary, 0.16)
-				tab_pressed.border_color = primary_dark
-		btn.add_theme_color_override("font_pressed_color", accent_text)
-		btn.add_theme_color_override("font_hover_pressed_color", accent_text)
-		btn.add_theme_color_override("font_focus_color", text_primary)
-		btn.add_theme_color_override("icon_normal_color", text_secondary)
-		btn.add_theme_color_override("icon_hover_color", text_primary)
-		btn.add_theme_color_override("icon_pressed_color", accent_text)
-		btn.add_theme_color_override("icon_hover_pressed_color", accent_text)
-		btn.add_theme_color_override("icon_focus_color", accent_text)
-		var tab_focus := btn.get_theme_stylebox("focus") as StyleBoxFlat
-		if tab_focus:
-			tab_focus.border_color = accent_text
-
 	%TabUnderlinePanel.get_theme_stylebox("panel").bg_color = primary_dark if is_light else primary_light
-	
-	# 工具按钮 / 标签按钮的 disabled 样式：MidiStore.tscn 里没给这四个按钮配 disabled，
-	# 落到 MainTheme 的 Button/disabled（透明底 + 浅色下几乎看不见描边），
-	# 于是「排序字段」在人声页被禁用时看起来跟可用态一模一样。这里补齐本地覆盖。
-	var disabled_bg := surface_low.darkened(0.06) if is_light else surface_low
-	for btn in [%FilterDataBtn, %SortOrderBtn, %BatchDownloadBtn, %VocalBtn] + _tab_buttons:
-		var db := (btn as Button).get_theme_stylebox("normal") as StyleBoxFlat
-		if db == null:
-			continue
-		var d_sb := db.duplicate() as StyleBoxFlat
-		d_sb.bg_color = ThemeMGR._tint_keep_alpha(disabled_bg, db.bg_color.a)
-		d_sb.border_color = ThemeMGR._tint_keep_alpha(border_soft, db.border_color.a)
-		(btn as Button).add_theme_stylebox_override("disabled", d_sb)
 
 	# 分页
 	for btn in [%PreviBtn, %NextBtn]:
 		var b := btn as Button
-		_style_flat_button(b, surface_high, surface_hover, primary_dark, border, text_secondary, text_primary)
+		ThemeMGR.style_flat_button(b)
 		b.add_theme_color_override("icon_normal_color", text_secondary)
 		b.add_theme_color_override("icon_hover_color", text_primary)
 	%PagerText.get_theme_stylebox("normal").bg_color = surface_low
-	%PagerText.add_theme_color_override("font_color", text_secondary)
 
 	# 下载管理
 	var hero_sb: StyleBoxFlat = %HeroPanel.get_theme_stylebox("panel")
-	if hero_sb:
-		hero_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.96)
-		hero_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.45)
+	hero_sb.bg_color = ThemeMGR._tint_keep_alpha(surface, 0.96)
+	hero_sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.45)
 	var hero_cover_sb: StyleBoxFlat = %CoverWrapPanel.get_theme_stylebox("panel")
-	if hero_cover_sb:
-		hero_cover_sb.bg_color = surface_high if is_light else surface_low
-		hero_cover_sb.border_color = border
+	hero_cover_sb.bg_color = surface_high if is_light else surface_low
+	hero_cover_sb.border_color = border
 	%HeroProgress.get_theme_stylebox("background").bg_color = surface_low.darkened(0.15)
 	%HeroProgress.get_theme_stylebox("fill").bg_color = primary
-	%StageText.add_theme_color_override("font_color", accent_text)
-	%PercentText.add_theme_color_override("font_color", text_primary)
-	%DetailText.add_theme_color_override("font_color", muted_text)
-	%HeroEmpty.add_theme_color_override("font_color", muted_text)
 	%CoverPlaceholder.modulate = muted_text
 	%CoverPlaceholder.modulate.a = 0.35
-	%RecentTitleText.add_theme_color_override("font_color", text_secondary)
-	for label in [%PageEmpty, %DownloadsEmpty]:
-		label.add_theme_color_override("font_color", muted_text)
 
 	_refresh_hero()
 	_update_batch_button()
-
-
-## 统一给「扁平按钮」四态样式 + 字色（只改本地覆盖，不动共享 Theme）
-func _style_flat_button(btn: Button, normal_bg: Color, hover_bg: Color, pressed_bg: Color,
-		border: Color, normal_text: Color, hover_text: Color) -> void:
-	var normal_sb := btn.get_theme_stylebox("normal") as StyleBoxFlat
-	if normal_sb:
-		normal_sb.bg_color = ThemeMGR._tint_keep_alpha(normal_bg, normal_sb.bg_color.a)
-		normal_sb.border_color = border
-	var hover_sb := btn.get_theme_stylebox("hover") as StyleBoxFlat
-	if hover_sb:
-		hover_sb.bg_color = ThemeMGR._tint_keep_alpha(hover_bg, hover_sb.bg_color.a)
-		hover_sb.border_color = ThemeMGR.get_color("primary") \
-			if ThemeMGR.get_appearance() == "light" else ThemeMGR.get_color("primary_light")
-	var pressed_sb := btn.get_theme_stylebox("pressed") as StyleBoxFlat
-	if pressed_sb:
-		pressed_sb.bg_color = ThemeMGR._tint_keep_alpha(pressed_bg, pressed_sb.bg_color.a)
-		pressed_sb.border_color = ThemeMGR.get_color("primary_light")
-	btn.add_theme_color_override("font_color", normal_text)
-	btn.add_theme_color_override("font_hover_color", hover_text)
-	# 禁用态统一走 text_disabled（低饱和深灰）。不要再额外降透明度：
-	# 颜色本身已经够"熄火"，再叠 alpha 会淡到看不清
-	var disabled_text: Color = ThemeMGR.get_color("text_disabled")
-	btn.add_theme_color_override("font_disabled_color", disabled_text)
-	btn.add_theme_color_override("icon_disabled_color", disabled_text)

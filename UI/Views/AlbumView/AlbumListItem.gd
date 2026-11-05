@@ -21,9 +21,7 @@ var song_count_accent: Color = Color.WHITE:
 		song_count_accent = value
 		if song_count_label == null:
 			return
-		var sb := song_count_label.get_theme_stylebox("normal") as StyleBoxFlat
-		if sb:
-			sb.bg_color = value
+		song_count_label.get_theme_stylebox("normal").bg_color = value
 
 ## 展开动画补间
 var expand_tween: Tween

@@ -3,64 +3,13 @@
 [ext_resource type="Script" uid="uid://b8akimcmi4h6p" path="res://UI/Views/StoreView/StoreDownloadRow.gd" id="1_row"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="2_scroll"]
 
-[sub_resource type="StyleBoxFlat" id="SB_normal"]
-bg_color = Color(0.1, 0.12, 0.17, 0.42)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.18, 0.22, 0.3, 0.55)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_pressed"]
-bg_color = Color(0.078, 0.098, 0.14, 0.9)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.55, 0.7, 1, 0.9)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_hover"]
-bg_color = Color(0.133, 0.164, 0.227, 0.7)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.36, 0.55, 1, 0.55)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_focus"]
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.58, 0.72, 1, 0.9)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
 [node name="StoreDownloadRow" type="Button" unique_id=1445563834]
+theme_type_variation = &"ButtonRowDownload"
 custom_minimum_size = Vector2(0, 84)
 offset_right = 600.0
 offset_bottom = 84.0
 mouse_filter = 1
 mouse_default_cursor_shape = 2
-theme_override_styles/normal = SubResource("SB_normal")
-theme_override_styles/pressed = SubResource("SB_pressed")
-theme_override_styles/hover = SubResource("SB_hover")
-theme_override_styles/focus = SubResource("SB_focus")
 script = ExtResource("1_row")
 
 [node name="HBox" type="HBoxContainer" parent="." unique_id=631452724]

@@ -26,21 +26,18 @@ func apply_theme() -> void:
 	if not ThemeMGR:
 		return
 	# 标题下划线 → 强调色
-	var tsb = %CharaViewTitle.get_theme_stylebox("normal")
-	if tsb is StyleBoxFlat:
-		tsb.border_color = ThemeMGR.get_color("primary_light")
+	var tsb: StyleBoxFlat = %CharaViewTitle.get_theme_stylebox("normal")
+	tsb.border_color = ThemeMGR.get_color("primary_light")
 	# 选择按钮：实心强调色填充，禁用态用凹陷面
 	var p := ThemeMGR.get_color("primary")
 	for state in ["normal", "pressed", "hover"]:
 		if not ThemeMGR.has_local_stylebox(%SelectBtn, state):
 			continue
 		var sb = %SelectBtn.get_theme_stylebox(state)
-		if sb is StyleBoxFlat:
-			sb.bg_color = ThemeMGR._tint_keep_alpha(p, sb.bg_color.a)
+		sb.bg_color = ThemeMGR._tint_keep_alpha(p, sb.bg_color.a)
 	if ThemeMGR.has_local_stylebox(%SelectBtn, "disabled"):
-		var dsb = %SelectBtn.get_theme_stylebox("disabled")
-		if dsb is StyleBoxFlat:
-			dsb.bg_color = ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("surface_low"), dsb.bg_color.a)
+		var dsb: StyleBoxFlat = %SelectBtn.get_theme_stylebox("disabled")
+		dsb.bg_color = ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("surface_low"), dsb.bg_color.a)
 
 ## 构建角色列表（清空占位项，按 CharaMGR 扫描结果重新生成）
 func _build_chara_list() -> void:
@@ -104,9 +101,7 @@ func _open_chara_detail(chara_key: String) -> void:
 	%CharaAuthor.text = "立绘 %s" % str(data.get("author", ""))
 	%CharaDescription.text = str(data.get("description", ""))
 	# 加载角色背景（未配置时保留原默认图）
-	var bg := CharaMGR.get_background(chara_key)
-	if bg:
-		%CharaBGImg.texture = bg
+	%CharaBGImg.texture = CharaMGR.get_background(chara_key)
 
 	# 已选中的角色将 SelectBtn 置灰
 	var is_current := chara_key == CharaMGR.get_current_chara_key()

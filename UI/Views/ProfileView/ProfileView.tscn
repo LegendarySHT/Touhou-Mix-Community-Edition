@@ -806,6 +806,7 @@ vertical_alignment = 2
 [node name="GradeHeaderS" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=2014034047]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
+theme_type_variation = &"LabelOnAccent"
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_7fsko")
@@ -836,6 +837,7 @@ vertical_alignment = 1
 [node name="GradeHeaderC" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1616333252]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
+theme_type_variation = &"LabelOnAccent"
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_6jr7o")
@@ -846,6 +848,7 @@ vertical_alignment = 1
 [node name="GradeHeaderD" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1618589507]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
+theme_type_variation = &"LabelOnAccent"
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_1myf0")
@@ -856,7 +859,7 @@ vertical_alignment = 1
 [node name="GradeHeaderF" type="Label" parent="PageContent/History/HistoryPanel/TopBar/HistoryStatsPanel/Grid" unique_id=1552353533]
 custom_minimum_size = Vector2(60, 50)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.949, 0.961, 0.984, 1)
+theme_type_variation = &"LabelOnAccent"
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_2oogn")
 text = "F"

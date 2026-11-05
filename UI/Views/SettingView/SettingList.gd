@@ -1150,20 +1150,10 @@ func apply_button_theme(color: Color) -> void:
 	if not _value_button_instance:
 		return
 	var button_theme: Theme = _value_button_instance.theme
-	if button_theme == null:
-		return
-	var sb_normal: StyleBoxFlat = button_theme.get_stylebox("normal", "Button") as StyleBoxFlat
-	var sb_pressed: StyleBoxFlat = button_theme.get_stylebox("pressed", "Button") as StyleBoxFlat
-	var sb_hover: StyleBoxFlat = button_theme.get_stylebox("hover", "Button") as StyleBoxFlat
-	var sb_focus: StyleBoxFlat = button_theme.get_stylebox("focus", "Button") as StyleBoxFlat
-	if sb_normal:
-		sb_normal.bg_color = color
-	if sb_pressed:
-		sb_pressed.bg_color = color.darkened(0.25)
-	if sb_hover:
-		sb_hover.bg_color = color.lightened(0.15)
-	if sb_focus:
-		sb_focus.border_color = color
+	button_theme.get_stylebox("normal", "Button").bg_color = color
+	button_theme.get_stylebox("pressed", "Button").bg_color = color.darkened(0.25)
+	button_theme.get_stylebox("hover", "Button").bg_color = color.lightened(0.15)
+	button_theme.get_stylebox("focus", "Button").border_color = color
 
 ## 供 SettingListItem.setup_item 调用：从场景直接 instantiate 出 TYPE_BUTTON 的 value_node
 func make_value_button() -> Button:

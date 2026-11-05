@@ -5,106 +5,17 @@
 [ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="3_round"]
 [ext_resource type="Script" uid="uid://dvvnpbiokn5cb" path="res://UI/Views/ResourceView/ResourceSkinPreview.gd" id="4_preview"]
 
-[sub_resource type="StyleBoxFlat" id="SB_normal"]
-bg_color = Color(0.102, 0.1255, 0.1765, 0.94)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.2, 0.24, 0.32, 0.85)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-shadow_color = Color(0, 0, 0, 0.25)
-shadow_size = 6
-
-[sub_resource type="StyleBoxFlat" id="SB_pressed"]
-bg_color = Color(0.078, 0.098, 0.14, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.55, 0.7, 1, 1)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-
-[sub_resource type="StyleBoxFlat" id="SB_hover"]
-bg_color = Color(0.133, 0.164, 0.227, 0.98)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.36, 0.55, 1, 0.85)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-shadow_color = Color(0.16, 0.28, 0.6, 0.3)
-shadow_size = 10
-
-[sub_resource type="StyleBoxFlat" id="SB_focus"]
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.58, 0.72, 1, 0.9)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-
-[sub_resource type="StyleBoxFlat" id="SB_selected"]
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.58, 0.72, 1, 0.95)
-corner_radius_top_left = 16
-corner_radius_top_right = 16
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 16
-
-[sub_resource type="StyleBoxFlat" id="SB_cover"]
-bg_color = Color(0.062, 0.078, 0.114, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.16, 0.2, 0.27, 1)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_badge"]
-content_margin_left = 10.0
-content_margin_top = 3.0
-content_margin_right = 10.0
-content_margin_bottom = 3.0
-bg_color = Color(0.16, 0.24, 0.5, 0.9)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
-
 [node name="ResourceCard" type="Button" unique_id=980416716]
+theme_type_variation = &"ButtonCardCompact"
 custom_minimum_size = Vector2(600, 150)
 offset_right = 600.0
 offset_bottom = 150.0
 mouse_filter = 1
 mouse_default_cursor_shape = 2
-theme_override_styles/normal = SubResource("SB_normal")
-theme_override_styles/pressed = SubResource("SB_pressed")
-theme_override_styles/hover = SubResource("SB_hover")
-theme_override_styles/focus = SubResource("SB_focus")
 script = ExtResource("1_card")
 
 [node name="SelectedBorder" type="Panel" parent="." unique_id=1396353131]
+theme_type_variation = &"PanelCardSelected"
 unique_name_in_owner = true
 visible = false
 layout_mode = 1
@@ -114,7 +25,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_styles/panel = SubResource("SB_selected")
 
 [node name="HBox" type="HBoxContainer" parent="." unique_id=1759079422]
 layout_mode = 1
@@ -130,12 +40,12 @@ grow_vertical = 2
 theme_override_constants/separation = 14
 
 [node name="CoverWrap" type="Panel" parent="HBox" unique_id=1966632862]
+theme_type_variation = &"PanelCardCoverCompact"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(126, 126)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
-theme_override_styles/panel = SubResource("SB_cover")
 
 [node name="Cover" type="TextureRect" parent="HBox/CoverWrap" unique_id=244121348]
 unique_name_in_owner = true
@@ -229,11 +139,11 @@ theme_override_constants/separation = 8
 alignment = 1
 
 [node name="Badge" type="Label" parent="HBox/Right" unique_id=587554651]
+theme_type_variation = &"LabelCardBadge"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 16
-theme_override_styles/normal = SubResource("SB_badge")
 text = "有人声"
 horizontal_alignment = 1
 vertical_alignment = 1

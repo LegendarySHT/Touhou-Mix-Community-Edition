@@ -100,9 +100,6 @@ func _style_individual_nodes() -> void:
 	ThemeMGR._style_panel_set_bg_color(%ForePanel, surface_high)
 	ThemeMGR._style_panel_set_bg_color(%BackPanel, surface_low)
 
-	# 右侧滑动面板底色
-	ThemeMGR._style_panel_set_bg_color(%OptionPanel, surface_low)
-
 ## 出场：整页淡出，播完后收起详情面板
 func _play_exit() -> Tween:
 	var tw := AniMGR.animate_fade_out(self, 0.3, "%s_out" % name)

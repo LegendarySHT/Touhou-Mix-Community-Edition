@@ -121,75 +121,6 @@ region = Rect2(0, 320, 80, 80)
 atlas = ExtResource("4_set2")
 region = Rect2(80, 320, 80, 80)
 
-[sub_resource type="StyleBoxFlat" id="SB_dl_normal"]
-content_margin_left = 20.0
-bg_color = Color(0.2, 0.33, 0.78, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.4, 0.58, 1, 0.9)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
-[sub_resource type="StyleBoxFlat" id="SB_dl_pressed"]
-content_margin_left = 20.0
-bg_color = Color(0.14, 0.24, 0.6, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.4, 0.58, 1, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
-[sub_resource type="StyleBoxFlat" id="SB_dl_hover"]
-content_margin_left = 20.0
-bg_color = Color(0.28, 0.44, 0.86, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.52, 0.66, 1, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
-[sub_resource type="StyleBoxFlat" id="SB_dl_disabled"]
-content_margin_left = 20.0
-bg_color = Color(0.15, 0.19, 0.26, 0.8)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.22, 0.27, 0.35, 0.8)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
-[sub_resource type="StyleBoxFlat" id="SB_dl_focus"]
-content_margin_left = 20.0
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.58, 0.72, 1, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-expand_margin_left = 2.0
-expand_margin_top = 2.0
-expand_margin_right = 2.0
-expand_margin_bottom = 2.0
-
 [sub_resource type="AtlasTexture" id="Atlas_download"]
 atlas = ExtResource("3_set1")
 region = Rect2(240, 320, 80, 80)
@@ -278,6 +209,7 @@ script = ExtResource("6_scroll")
 end_padding = 0.0
 
 [node name="Kind" type="Label" parent="Panel/Content/Header" unique_id=1208175417]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
@@ -376,6 +308,7 @@ mouse_filter = 2
 theme_override_constants/separation = 8
 
 [node name="RankTitle" type="Label" parent="Panel/Content/Body/LeftCol/RankBox/RankCol" unique_id=313546632]
+theme_type_variation = &"LabelAccent"
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 23
@@ -471,6 +404,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="DownloadsCount" type="Label" parent="Panel/Content/Body/RightCol/Stats/Downloads" unique_id=946289561]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
@@ -494,12 +428,14 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="PlaysCount" type="Label" parent="Panel/Content/Body/RightCol/Stats/Plays" unique_id=1898725087]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 21
 text = "0"
 
 [node name="Date" type="Label" parent="Panel/Content/Body/RightCol/Stats" unique_id=1188870493]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 19
@@ -513,6 +449,7 @@ mouse_filter = 2
 theme_override_constants/separation = 16
 
 [node name="SizeLabel" type="Label" parent="Panel/Content/Body/RightCol/Actions" unique_id=1699689793]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
@@ -522,6 +459,7 @@ vertical_alignment = 1
 clip_text = true
 
 [node name="DownloadBtn" type="Button" parent="Panel/Content/Body/RightCol/Actions" unique_id=1017878009]
+theme_type_variation = &"ButtonDownloadIdle"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(250, 64)
 layout_mode = 2
@@ -529,10 +467,5 @@ size_flags_vertical = 4
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 34
 theme_override_font_sizes/font_size = 26
-theme_override_styles/normal = SubResource("SB_dl_normal")
-theme_override_styles/pressed = SubResource("SB_dl_pressed")
-theme_override_styles/hover = SubResource("SB_dl_hover")
-theme_override_styles/disabled = SubResource("SB_dl_disabled")
-theme_override_styles/focus = SubResource("SB_dl_focus")
 text = "下载谱面"
 icon = SubResource("Atlas_download")

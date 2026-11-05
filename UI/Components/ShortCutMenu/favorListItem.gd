@@ -60,9 +60,8 @@ func apply_theme() -> void:
 	var border_map := {"normal": border, "hover": border, "pressed": p, "focus": p}
 	for state in bg_map:
 		var sb := get_theme_stylebox(state)
-		if sb is StyleBoxFlat:
-			sb.bg_color = bg_map[state]
-			sb.border_color = border_map[state]
+		sb.bg_color = bg_map[state]
+		sb.border_color = border_map[state]
 
 func _exit_tree() -> void:
 	if ThemeMGR:

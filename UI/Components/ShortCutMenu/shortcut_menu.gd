@@ -1,10 +1,7 @@
-extends VBoxContainer
+extends Control
 class_name Shortcut_Menu
 
 static var instance:Shortcut_Menu
-
-# 外部引用
-@onready var shortcut_panel: Panel = %ShortcutPanel
 
 # 收藏夹列表项场景
 const FAVOR_ITEM_SCENE := preload("res://UI/Components/ShortCutMenu/favorListItem.tscn")
@@ -62,6 +59,13 @@ func _on_state_changed(old_state: UIStateManager.UIState, new_state: UIStateMana
 		if EvtBus.current_search_query != "" and not %SortTabBtn.button_pressed:
 			%SortTabBtn.button_pressed = true
 
+## 展开态面板高度（含顶部 120 的标签条）与收起态只剩标签条的高度。
+## 收起靠改 offset_bottom 而不是缩放：标签按钮就在根节点顶部，缩放会把它们一起压扁。
+## 面板背景在独立的 BgPanel 上，收起时连 self_modulate 一起淡到 0——
+## 只剩标签条时不该看见那块面板底；按钮在 BgPanel 之外，不受淡出影响。
+const PANEL_H_OPEN := 825.0
+const PANEL_H_BAR := 120.0
+
 func _on_menu_tab_btn_toggled(toggled_on: bool, btn: Button):
 	var tween = AniMGR.create_managed_tween(self)
 	tween.set_ease(Tween.EASE_OUT)
@@ -70,18 +74,10 @@ func _on_menu_tab_btn_toggled(toggled_on: bool, btn: Button):
 
 	tween.tween_property(btn, "custom_minimum_size", Vector2(120 + 310 * (1 if toggled_on else 0), 120), 0.45)
 
-	if _is_all_off():
-		# 缩小:开启 visual_only,让 offset_transform 不进入布局/输入矩阵,避免 scale=0 触发 affine_inverse 报错
-		%ShortcutPanel.set_offset_transform_visual_only(true)
-		tween.tween_property(%ShortcutPanel, "offset_transform_scale:y", 0.0, 0.5)
-		AniMGR.animate_fade_out(%ShortcutPanel, 0.6, "menu_fade")
-	else:
-		# 变大:关闭 visual_only;若起始 scale 为 0,先设为极小值避免 scale=0 + visual_only=false 触发报错
-		%ShortcutPanel.set_offset_transform_visual_only(false)
-		if %ShortcutPanel.offset_transform_scale.y == 0.0:
-			%ShortcutPanel.set_offset_transform_scale(Vector2(%ShortcutPanel.offset_transform_scale.x, 0.001))
-		tween.tween_property(%ShortcutPanel, "offset_transform_scale:y", 1.0, 0.5)
-		AniMGR.animate_fade_in(%ShortcutPanel, 0, "menu_fade")
+	# 高度按当前 offset_top 算：面板在 Main 里是"距顶 75"定位的，写死绝对值会错位
+	var closing := _is_all_off()
+	tween.tween_property(self, "offset_bottom", offset_top + (PANEL_H_BAR if closing else PANEL_H_OPEN), 0.35)
+	tween.tween_property(%BgPanel, "self_modulate:a", 0.0 if closing else 1.0, 0.45)
 
 	if toggled_on:
 		tween.tween_property(%PageContent, "offset_transform_position:x", (-655 if btn == %FavorListTabBtn else 0), 0.5)

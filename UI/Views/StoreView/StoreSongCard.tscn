@@ -6,70 +6,6 @@
 [ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="4_set3"]
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="5_set2"]
 
-[sub_resource type="StyleBoxFlat" id="SB_normal"]
-bg_color = Color(0.102, 0.1255, 0.1765, 0.94)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.2, 0.24, 0.32, 0.85)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
-shadow_color = Color(0, 0, 0, 0.28)
-shadow_size = 8
-
-[sub_resource type="StyleBoxFlat" id="SB_pressed"]
-bg_color = Color(0.078, 0.098, 0.14, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.55, 0.7, 1, 1)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
-
-[sub_resource type="StyleBoxFlat" id="SB_hover"]
-bg_color = Color(0.133, 0.164, 0.227, 0.98)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.36, 0.55, 1, 0.85)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
-shadow_color = Color(0.16, 0.28, 0.6, 0.35)
-shadow_size = 14
-
-[sub_resource type="StyleBoxFlat" id="SB_focus"]
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.58, 0.72, 1, 0.9)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
-
-[sub_resource type="StyleBoxFlat" id="SB_cover"]
-bg_color = Color(0.062, 0.078, 0.114, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.16, 0.2, 0.27, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
 [sub_resource type="AtlasTexture" id="Atlas_note"]
 atlas = ExtResource("4_set3")
 region = Rect2(160, 0, 80, 80)
@@ -86,70 +22,13 @@ region = Rect2(80, 320, 80, 80)
 atlas = ExtResource("5_set2")
 region = Rect2(160, 320, 80, 80)
 
-[sub_resource type="StyleBoxFlat" id="SB_dl_normal"]
-bg_color = Color(0.2, 0.33, 0.78, 0.92)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.4, 0.58, 1, 0.9)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
-[sub_resource type="StyleBoxFlat" id="SB_dl_pressed"]
-bg_color = Color(0.14, 0.24, 0.6, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.4, 0.58, 1, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
-[sub_resource type="StyleBoxFlat" id="SB_dl_hover"]
-bg_color = Color(0.28, 0.44, 0.86, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.52, 0.66, 1, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
-[sub_resource type="StyleBoxFlat" id="SB_dl_focus"]
-draw_center = false
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.58, 0.72, 1, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-expand_margin_left = 2.0
-expand_margin_top = 2.0
-expand_margin_right = 2.0
-expand_margin_bottom = 2.0
-shadow_color = Color(0.36, 0.55, 1, 0.4)
-shadow_size = 8
-
 [node name="StoreSongCard" type="Button" unique_id=2140883703]
+theme_type_variation = &"ButtonCardLarge"
 custom_minimum_size = Vector2(600, 250)
 offset_right = 600.0
 offset_bottom = 250.0
 mouse_filter = 1
 mouse_default_cursor_shape = 2
-theme_override_styles/normal = SubResource("SB_normal")
-theme_override_styles/pressed = SubResource("SB_pressed")
-theme_override_styles/hover = SubResource("SB_hover")
-theme_override_styles/focus = SubResource("SB_focus")
 script = ExtResource("1_card")
 
 [node name="HBox" type="HBoxContainer" parent="." unique_id=2027326736]
@@ -167,13 +46,13 @@ mouse_filter = 2
 theme_override_constants/separation = 18
 
 [node name="CoverWrap" type="Panel" parent="HBox" unique_id=952050055]
+theme_type_variation = &"PanelCardCover"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(218, 218)
 layout_mode = 2
 size_flags_horizontal = 0
 size_flags_vertical = 4
 mouse_filter = 2
-theme_override_styles/panel = SubResource("SB_cover")
 
 [node name="Cover" type="TextureRect" parent="HBox/CoverWrap" unique_id=1045383062]
 unique_name_in_owner = true
@@ -291,6 +170,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="DownloadsCount" type="Label" parent="HBox/Info/Stats/Downloads" unique_id=570498012]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
@@ -312,6 +192,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="PlaysCount" type="Label" parent="HBox/Info/Stats/Plays" unique_id=1273419331]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
@@ -333,6 +214,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="LikesCount" type="Label" parent="HBox/Info/Stats/Likes" unique_id=1032969063]
+theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
@@ -357,16 +239,13 @@ theme_override_constants/separation = 8
 alignment = 1
 
 [node name="DownloadBtn" type="Button" parent="HBox/RightCol" unique_id=176756795]
+theme_type_variation = &"ButtonDownloadIdle"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(94, 94)
 layout_mode = 2
 size_flags_horizontal = 4
 mouse_default_cursor_shape = 2
 theme_override_constants/icon_max_width = 52
-theme_override_styles/normal = SubResource("SB_dl_normal")
-theme_override_styles/pressed = SubResource("SB_dl_pressed")
-theme_override_styles/hover = SubResource("SB_dl_hover")
-theme_override_styles/focus = SubResource("SB_dl_focus")
 icon = SubResource("Atlas_downloads")
 icon_alignment = 1
 expand_icon = true

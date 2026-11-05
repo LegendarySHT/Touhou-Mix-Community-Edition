@@ -158,21 +158,17 @@ func _apply_track_colors() -> void:
 func _set_track_base_colors(light: bool) -> void:
 	# 浅色模式：底板统一为纯白（不受主题色影响），整行颜色完全由音轨色相 modify 决定
 	var root_sb := get_theme_stylebox("panel")
-	if root_sb is StyleBoxFlat:
-		root_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.1044445, 0.12558684, 0.17314443, 0.8509804)
-		root_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0.34404153, 0.40147635, 0.51591545)
+	root_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.1044445, 0.12558684, 0.17314443, 0.8509804)
+	root_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0.34404153, 0.40147635, 0.51591545)
 	var tr_sb := track_panel.get_theme_stylebox("panel")
-	if tr_sb is StyleBoxFlat:
-		tr_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.7330051, 0.7330055, 0.7330051)
-		tr_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0, 0, 0, 0.35)
+	tr_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.7330051, 0.7330055, 0.7330051)
+	tr_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0, 0, 0, 0.35)
 	var ch_sb := channel_panel.get_theme_stylebox("panel")
-	if ch_sb is StyleBoxFlat:
-		ch_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.73333335, 0.73333335, 0.73333335)
-		ch_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0, 0, 0, 0.35)
+	ch_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.73333335, 0.73333335, 0.73333335)
+	ch_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0, 0, 0, 0.35)
 	var nt_sb := note_panel.get_theme_stylebox("panel")
-	if nt_sb is StyleBoxFlat:
-		nt_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.45177418, 0.4929024, 0.558753, 0.9019608)
-		nt_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0, 0, 0, 0.25)
+	nt_sb.bg_color = Color(1, 1, 1, 1) if light else Color(0.45177418, 0.4929024, 0.558753, 0.9019608)
+	nt_sb.border_color = Color(0, 0, 0, 0.18) if light else Color(0, 0, 0, 0.25)
 
 ## enableBtn 四态配色。其图标/文字挂在按钮自身上，若用 self_modulate 染色会连它们一起被染，
 ## 故这里直接给按钮「每实例独立」的样式框（.tscn 中 resource_local_to_scene）写入
@@ -200,17 +196,15 @@ func _apply_enable_btn_colors(light: bool) -> void:
 	}
 	for state in specs:
 		var sb := enable_btn.get_theme_stylebox(state)
-		if sb is StyleBoxFlat:
-			var bg: Color = specs[state][0]
-			var bd: Color = specs[state][1]
-			sb.bg_color = Color(bg.r * cn.r, bg.g * cn.g, bg.b * cn.b, bg.a)
-			sb.border_color = Color(bd.r * cn.r, bd.g * cn.g, bd.b * cn.b, bd.a)
+		var bg: Color = specs[state][0]
+		var bd: Color = specs[state][1]
+		sb.bg_color = Color(bg.r * cn.r, bg.g * cn.g, bg.b * cn.b, bg.a)
+		sb.border_color = Color(bd.r * cn.r, bd.g * cn.g, bd.b * cn.b, bd.a)
 	# 按下 / 悬停按下态带一圈「辉光」（StyleBoxFlat.shadow）。原来白色辉光会被 self_modulate 染成轨道色，
 	# 现改为直接写入轨道色辉光（浅色模式下白辉光落在浅底上不可见，必须跟着轨道色走）。
 	for state in ["pressed", "hover_pressed"]:
 		var sb := enable_btn.get_theme_stylebox(state)
-		if sb is StyleBoxFlat:
-			sb.shadow_color = Color(cn.r, cn.g, cn.b, sb.shadow_color.a)
+		sb.shadow_color = Color(cn.r, cn.g, cn.b, sb.shadow_color.a)
 
 # 根据乐器大类索引设置图标区域（图标材质由外部 setup，此处仅改坐标）
 # enable_btn.icon 须为 AtlasTexture 才会生效

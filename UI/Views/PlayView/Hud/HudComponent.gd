@@ -272,7 +272,3 @@ func _make_label(text: String, font_size: int,
 ## 半粗略的等宽数字盒：数字位数变化时避免整体左右跳动
 func _mono_box(l: Label) -> void:
 	l.add_theme_constant_override("outline_size", 0)
-
-
-func _apply_font_color(l: Label, c: Color) -> void:
-	l.add_theme_color_override("font_color", c)

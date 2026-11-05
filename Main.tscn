@@ -336,7 +336,7 @@ offset_top = 55.58252
 offset_right = -80.0
 offset_bottom = 95.58252
 grow_horizontal = 2
-theme_override_colors/font_color = Color(0.949, 0.961, 0.984, 1)
+theme_type_variation = &"LabelOnAccent"
 theme_override_font_sizes/font_size = 32
 theme_override_styles/normal = SubResource("StyleBoxFlat_iygje")
 autowrap_mode = 3
@@ -359,7 +359,19 @@ metadata/_edit_lock_ = true
 
 [node name="ShortCutMenu" parent="Skew/SkewC" unique_id=1142631087 instance=ExtResource("5_kjvhd")]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(600, 0)
 layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -600.0
+offset_top = 75.0
+offset_right = 0.0
+offset_bottom = 200.0
+grow_horizontal = 0
+pivot_offset_ratio = Vector2(0.5, 0)
+offset_transform_enabled = true
+offset_transform_position = Vector2(1000, 0)
 
 [node name="AlbumList" type="ScrollContainer" parent="Skew/SkewC" unique_id=257977288]
 unique_name_in_owner = true
@@ -382,8 +394,8 @@ metadata/_edit_lock_ = true
 layout_mode = 2
 
 [node name="MarginTop" type="Control" parent="Skew/SkewC/AlbumList/VBox" unique_id=347624655]
-layout_mode = 2
 custom_minimum_size = Vector2(0, 250)
+layout_mode = 2
 
 [node name="VBox" type="VBoxContainer" parent="Skew/SkewC/AlbumList/VBox" unique_id=1696024062]
 custom_minimum_size = Vector2(630, 0)
@@ -394,8 +406,8 @@ theme_override_constants/separation = 29
 alignment = 1
 
 [node name="MarginBottom" type="Control" parent="Skew/SkewC/AlbumList/VBox" unique_id=273776046]
-layout_mode = 2
 custom_minimum_size = Vector2(0, 900)
+layout_mode = 2
 
 [node name="SongList" type="ScrollContainer" parent="Skew/SkewC" unique_id=2135907176]
 unique_name_in_owner = true
@@ -523,7 +535,6 @@ offset_top = 260.00003
 offset_right = 200.0
 offset_bottom = 332.99997
 rotation = -0.34906584
-theme_override_colors/font_color = Color(0.949, 0.961, 0.984, 1)
 theme_override_font_sizes/font_size = 30
 text = "9999
 ms"

@@ -75,15 +75,10 @@ func clear() -> void:
 
 ## 主题刷新
 func apply_theme() -> void:
-	var panel := get_theme_stylebox("panel")
-	if panel is StyleBoxFlat:
-		var flat: StyleBoxFlat = panel.duplicate()
-		flat.bg_color = ThemeMGR.get_color("surface_high")
-		flat.border_color = ThemeMGR.get_color("border")
-		flat.set_border_width_all(1)
-		add_theme_stylebox_override("panel", flat)
-	_apply_btn_states()
-	%NotiBannerBtn.add_theme_color_override("font_color", ThemeMGR.get_color("text_primary"))
+	var panel: StyleBoxFlat = get_theme_stylebox("panel")
+	panel.bg_color = ThemeMGR.get_color("surface_high")
+	panel.border_color = ThemeMGR.get_color("border")
+	panel.set_border_width_all(1)
 	%NotiBannerBtn.add_theme_color_override("font_hover_color", ThemeMGR.get_color("text_primary"))
 	%NotiBannerBtn.add_theme_color_override("font_pressed_color", ThemeMGR.get_color("primary_light"))
 	%NotiBannerBtn.add_theme_color_override("font_focus_color", ThemeMGR.get_color("text_primary"))
@@ -102,7 +97,6 @@ func _play_item(item: Dictionary) -> void:
 	var cb: Variant = item["on_click"]
 	_clickable = cb is Callable and cb.is_valid()
 	%NotiBannerBtn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if _clickable else Control.CURSOR_ARROW
-	_apply_btn_states()
 	visible = true
 	_apply_text_layout(str(item["text"]))
 
@@ -170,16 +164,3 @@ func _apply_text_layout(text: String) -> void:
 	else:
 		_btn.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
 		reset_size()
-
-## flat 按钮在 hover/pressed 仍会画主题方角样式，统一换成贴合胶囊的圆角高亮。
-## 无回调的通知不给高亮：整条只是展示，点它也只是提前收起
-func _apply_btn_states() -> void:
-	var tint := ThemeMGR.get_color("text_primary")
-	for state in ["normal", "pressed", "hover", "hover_pressed", "disabled", "focus"]:
-		if _clickable and BTN_STATE_ALPHA.has(state):
-			var flat := StyleBoxFlat.new()
-			flat.set_corner_radius_all(BTN_CORNER_RADIUS)
-			flat.bg_color = Color(tint.r, tint.g, tint.b, BTN_STATE_ALPHA[state])
-			%NotiBannerBtn.add_theme_stylebox_override(state, flat)
-		else:
-			%NotiBannerBtn.add_theme_stylebox_override(state, StyleBoxEmpty.new())

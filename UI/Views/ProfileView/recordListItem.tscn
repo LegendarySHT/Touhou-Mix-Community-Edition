@@ -4,25 +4,13 @@
 [ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="2_76847"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="3_e3e5v"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ng81m"]
-bg_color = Color(0.0627, 0.0784, 0.1137, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1216, 0.149, 0.2039, 1)
-corner_radius_top_left = 10
-corner_radius_top_right = 10
-corner_radius_bottom_right = 10
-corner_radius_bottom_left = 10
-
 [node name="RecordListItem" type="Panel" unique_id=992292245]
+theme_type_variation = &"PanelRecordRow"
 custom_minimum_size = Vector2(0, 130)
 clip_contents = true
 offset_right = 1585.0
 offset_bottom = 130.0
 mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_ng81m")
 script = ExtResource("1_v8uxu")
 
 [node name="Button" type="Button" parent="." unique_id=155156319]

@@ -20,9 +20,7 @@ var midi_count_accent: Color = Color.WHITE:
 		midi_count_accent = value
 		if midi_count_label == null:
 			return
-		var sb := midi_count_label.get_theme_stylebox("normal") as StyleBoxFlat
-		if sb:
-			sb.bg_color = value
+		midi_count_label.get_theme_stylebox("normal").bg_color = value
 
 signal _init_fin
 

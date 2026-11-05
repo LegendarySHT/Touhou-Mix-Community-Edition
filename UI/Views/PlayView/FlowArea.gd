@@ -420,11 +420,7 @@ func _apply_judge_line_position() -> void:
 
 func _apply_judge_line_thickness() -> void:
 	var thickness : int = max(1, ConfigManager.instance.get_int("judge_line_thickness", 2))
-	var base_style: StyleBox = %JudgeLine.get_theme_stylebox("separator")
-	if base_style is StyleBoxLine:
-		var line_style: StyleBoxLine = (base_style as StyleBoxLine).duplicate() as StyleBoxLine
-		line_style.thickness = thickness
-		%JudgeLine.add_theme_stylebox_override("separator", line_style)
+	%JudgeLine.get_theme_stylebox("separator").thickness = thickness
 
 func _apply_note_fall_config_from_settings() -> void:
 	# 不写内联回退：config.ini 是默认值的权威来源，且 ConfigManager.merge_with_defaults

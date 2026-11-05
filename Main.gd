@@ -354,7 +354,8 @@ func apply_theme() -> void:
 	ThemeMGR._modify_button_states_color(get_node_or_null("LTBtn"), "primary")
 	ThemeMGR._modify_button_states_color(get_node_or_null("RBBtn"), "primary")
 	# ShortCutMenu 面板 — 中性凸起面 + 强调色细描边
-	var sc_sb: StyleBoxFlat = %ShortCutMenu.shortcut_panel.get_theme_stylebox("panel")
+	# 面板底在 BgPanel 上（根是 Control，收起时整体淡出，按钮不受影响）
+	var sc_sb: StyleBoxFlat = (%ShortCutMenu.get_node("BgPanel") as Panel).get_theme_stylebox("panel")
 	sc_sb.bg_color = ThemeMGR.get_color("surface_high")
 	sc_sb.border_color = Color(primary.r, primary.g, primary.b, 0.55)
 

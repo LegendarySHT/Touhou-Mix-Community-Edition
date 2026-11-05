@@ -247,7 +247,7 @@ func _apply_theme() -> void:
 	var tinted: Array[StyleBoxFlat] = []
 	for type in ["Button", "OptionButton", "LineEdit", "PopupMenu"]:
 		for sb_name in theme.get_stylebox_list(type):
-			var sb := theme.get_stylebox(sb_name, type) as StyleBoxFlat
+			var sb: StyleBoxFlat = theme.get_stylebox(sb_name, type)
 			if not tinted.has(sb):
 				tinted.append(sb)
 				_tint(sb, primary)

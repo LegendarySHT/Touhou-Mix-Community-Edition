@@ -582,13 +582,9 @@ func _border_from(color: Color) -> Color:
 ## 统一给（原生 StyleBoxFlat 或自定义自绘风格框）设置 bg_color/border_color
 ## 只改色相，透明度沿用各 StyleBox 自身配置
 func _apply_color_to_stylebox(sb: StyleBox, color: Color) -> void:
-	if sb is StyleBoxFlat:
-		sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
-		sb.border_color = _tint_keep_alpha(_border_from(color), sb.border_color.a)
-	# StyleBoxHighlightGradient（GDScript 自绘渐变风格框，继承 StyleBox 基类，属性命名与原生命名一致）
-	elif sb is StyleBoxHighlightGradient:
-		sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
-		sb.border_color = _tint_keep_alpha(_border_from(color), sb.border_color.a)
+	# StyleBoxFlat 与原生/自定义渐变风格框（StyleBoxHighlightGradient 继承 StyleBox 基类，属性命名一致）走同一套改色
+	sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
+	sb.border_color = _tint_keep_alpha(_border_from(color), sb.border_color.a)
 
 ## 对按钮各状态（normal/hover/pressed/hover_pressed）stylebox 应用主题色，各状态自带明暗变体
 ## 仅处理按钮本地覆盖的状态样式（见 has_local_stylebox）
@@ -604,64 +600,39 @@ func _modify_button_states_color(btn: Button, color_key: String) -> void:
 			continue
 		_apply_color_to_stylebox(btn.get_theme_stylebox(spec[0]), spec[1])
 
-## 统一设置按钮各状态样式（通过 Theme 的 StyleBoxFlat 引用）。
-## 现代配色：常规态为中性板面 + 细描边，交互态才引入强调色。
-## 几何参数（圆角/边框宽/边距）由 .tscn 上的 StyleBox 决定，此处只写颜色。
-## 把某状态的 StyleBox 颜色写入 tmp（复制原 StyleBox 以保留几何，最后由 merge_with 一次性并入 theme）。
-## 复制而非就地改色，是为了让所有写入在 Theme.freeze 期间完成、帧末只产生一次全树传播。
-func _set_theme_stylebox(theme: Theme, tmp: Theme, type: String, state: String, bg: Color, border: Color, shadow: Color = Color(0, 0, 0, 0)) -> void:
+## 原地改 theme 里某个状态 StyleBox 的颜色。几何（圆角/边框宽/边距/阴影尺寸）全部来自
+## MainTheme.tres，这里只碰颜色；唯一的例外是 corner_detail —— 它由圆角半径推导，
+## 半径不同的样式盒写死同一个值反而更糟，故按 r/3 归一化。
+## 取到的就是 theme 内那一份实例，改完即生效，不需要再 set_stylebox 写回一次。
+## alpha 给禁用态整体降不透明度用。
+## 取主题里某类型/状态的样式盒；主题没定义时返回 null。
+## 不能直接 `get_stylebox`：它在缺项时会回落到基类型（或引擎默认主题）的那一份，
+## 对它赋色等于把基类型染了。
+func _theme_box(thm: Theme, type: String, state: String) -> StyleBox:
+	if not thm.has_theme_item(Theme.DATA_TYPE_STYLEBOX, state, type):
+		return null
+	return thm.get_stylebox(state, type)
+
+func _set_theme_stylebox(theme: Theme, type: String, state: String, bg: Color, border: Color, shadow: Color = Color(0, 0, 0, 0), alpha: float = 1.0) -> void:
 	if not theme.has_theme_item(Theme.DATA_TYPE_STYLEBOX, state, type):
 		return
 	var sb := theme.get_stylebox(state, type)
-	var dup := sb.duplicate()
-	if dup is StyleBoxFlat:
-		(dup as StyleBoxFlat).bg_color = bg
-		(dup as StyleBoxFlat).border_color = border
-		(dup as StyleBoxFlat).shadow_color = shadow
-		# AA 圆角框的图元数随 corner_detail 线性增长：默认 12 段时单框 ~300 图元，
-		# 列表行一屏 3 按钮 × 17 行就是 ~1.6 万。按圆角半径取 3~8 段，AA 下小圆角视觉无差
-		var flat := dup as StyleBoxFlat
-		var r := maxi(flat.corner_radius_top_left, maxi(flat.corner_radius_top_right,
-			maxi(flat.corner_radius_bottom_right, flat.corner_radius_bottom_left)))
-		flat.corner_detail = clampi(int(r / 3.0), 3, 8)
-	elif dup is StyleBoxHighlightGradient:
-		dup.bg_color = bg
-		dup.border_color = border
-		dup.shadow_color = shadow
-	tmp.set_stylebox(state, type, dup)
-
-## 复制某状态样式并整色替换（bg / border 同色、可选整体透明度），保留几何（圆角/边框宽/边距）。
-## 用于需要「整体降不透明度」的场景（如禁用态），_set_theme_stylebox 只能改 RGB 无法改 a。
-func _make_stylebox(theme: Theme, type: String, state: String, bg: Color, border: Color, alpha: float = 1.0) -> StyleBox:
-	if not theme.has_theme_item(Theme.DATA_TYPE_STYLEBOX, state, type):
-		return null
-	var sb := theme.get_stylebox(state, type)
-	var dup := sb.duplicate()
 	var bg_c := Color(bg.r, bg.g, bg.b, bg.a * alpha)
 	var bd_c := Color(border.r, border.g, border.b, border.a * alpha)
-	if dup is StyleBoxFlat:
-		(dup as StyleBoxFlat).bg_color = bg_c
-		(dup as StyleBoxFlat).border_color = bd_c
-		(dup as StyleBoxFlat).shadow_color = Color(0, 0, 0, 0)
-		var flat := dup as StyleBoxFlat
-		var r := maxi(flat.corner_radius_top_left, maxi(flat.corner_radius_top_right,
-			maxi(flat.corner_radius_bottom_right, flat.corner_radius_bottom_left)))
-		flat.corner_detail = clampi(int(r / 3.0), 3, 8)
-	elif dup is StyleBoxHighlightGradient:
-		dup.bg_color = bg_c
-		dup.border_color = bd_c
-		dup.shadow_color = Color(0, 0, 0, 0)
-	return dup
+	
+	sb.bg_color = bg_c
+	sb.border_color = bd_c
+	sb.shadow_color = shadow
+	
+	if sb is StyleBoxFlat:
+		var r := maxi(sb.corner_radius_top_left, maxi(sb.corner_radius_top_right,
+			maxi(sb.corner_radius_bottom_right, sb.corner_radius_bottom_left)))
+		sb.corner_detail = clampi(int(r / 3.0), 3, 8)
 
-## 取色器（ColorPicker）主题。
-## 手机场景下色板 + 滑条已经够用，其余元素（预设色块、吸管、形状切换、swatch 列表）
-## 一律在 ColorPickerButton 侧关掉（见 ThemeMGR.setup_color_picker）；这里管两件事：
-##   1. 弹窗容器配色 —— ColorPicker 类型**没有** panel 主题项，弹层是 ColorPickerButton
-##      自带的 PopupPanel，不挂上去就永远是引擎写死的半透明黑，与主题脱节。
-##   2. 整体尺寸 —— 项目把正文字号放大到 28/48，默认的 label_width=90 + sv_width=220
-##      会让滑条和色板挤成一团；这里统一放大，同时保留足够的触摸热区。
-func _style_color_picker(_theme: Theme, tmp: Theme, _p: Color) -> void:
-	tmp.set_constant("h_width", "ColorPicker", 30)
+## 取色器（ColorPicker）主题里唯一还随主题变的东西：取色光标颜色。
+## 尺寸（label_width/sv_width/sv_height/h_width/margin）已全部收进 MainTheme.tres，
+## 不再每帧/每次切主题都重写一遍常量。
+func _style_color_picker(tmp: Theme) -> void:
 	# 取色光标：外圈用正文色，浅色模式下避免白圈糊在浅色色板上
 	tmp.set_color("focused_not_editing_cursor_color", "ColorPicker", get_color("text_primary"))
 
@@ -675,41 +646,13 @@ func style_color_picker_popup(btn: ColorPickerButton) -> void:
 	if pop.has_theme_stylebox_override("panel"):
 		pop.remove_theme_stylebox_override("panel")
 
-## 按当前主题生成一份「弹层面板」样式（与 MainTheme 的 PopupPanel/panel 同源）。
-func _theme_panel_stylebox() -> StyleBoxFlat:
-	var panel := StyleBoxFlat.new()
-	panel.bg_color = get_color("surface_high")
-	panel.border_color = get_color("border")
-	panel.set_border_width_all(1)
-	panel.set_corner_radius_all(16)
-	panel.corner_detail = 6
-	panel.shadow_color = Color(0, 0, 0, 0.34)
-	panel.shadow_size = 14
-	return panel
-
-## 取色器尺寸：只放大「真正需要手点的部分」，别碰 label_width。
-## 引擎源码（color_picker.cpp）里这几个常量的真实用途：
-##   sv_width/sv_height → 色板 uv_edit 的 custom_minimum_size
-##   h_width            → 色相条 w_edit 的 custom_minimum_size（这里当触摸热区用）
-##   label_width        → **仅** labels[i] 的最小宽度（"R"/"G"/"B"/"A" 三个字母）
-##   margin/separation  → 整体外/内边距
-##
-## 滑条那一行是 GridContainer(columns=3)，每行三格依次是：Label / HSlider / SpinBox。
-## GridContainer 只把剩余宽度分给带 SIZE_EXPAND_FILL 的格子（只有 HSlider），
-## 另两格按各自 minimum_size 固定占位。所以「滑条拉不满」的真正元凶不是 label_width，
-## 而是 **SpinBox 太宽**：spin_box.cpp 的 get_minimum_size() = line_edit 最小宽 + 按钮块宽，
-## 而项目把 LineEdit 字号放到 28、content_margin 8，数字输入框自然吃到一两百像素。
-## 这里三件事一起做：
-##   1. label_width 压到 40 —— "R"/"G"/"B" 三个字母够用，别让它抢宽度；
-##   2. 给 GridContainer 里所有 SpinBox 上最小宽度上限，把宽度还给滑条；
-##   3. 给取色器一个最小宽度兜底，窄屏下也留得下可点的滑条。
+## 取色器尺寸。
+## label_width / sv_width / sv_height / h_width / margin 这些纯静态常量已经写进
+## MainTheme.tres 的 ColorPicker/constants/*，不必每个实例再 override 一遍。
+## 这里只处理「主题常量管不到」的两件事——它们都得靠遍历节点才能做：
+##   1. GridContainer 里 SpinBox 太宽会把滑条挤扁（spin_box 最小宽 = LineEdit 最小宽 + 按钮块）；
+##   2. 滑块默认只有 ~16px 高，触摸点不中。
 func _enlarge_color_picker(pk: ColorPicker) -> void:
-	pk.add_theme_constant_override("label_width", 40)
-	pk.add_theme_constant_override("sv_width", 340)
-	pk.add_theme_constant_override("sv_height", 420)
-	pk.add_theme_constant_override("h_width", 44)
-	pk.add_theme_constant_override("margin", 14)
-	pk.add_theme_constant_override("separation", 12)
 	# 滑条热区：滑块本身要有足够高度才点得中（默认 ~16px）
 	for child in pk.find_children("*", "HSlider", true, false):
 		var s := child as HSlider
@@ -735,40 +678,38 @@ func _style_tab_container(theme: Theme, tmp: Theme) -> void:
 	var border_soft := get_color("border_soft")
 
 	# 选中标签与内容面板同色 → 无缝合并（几何沿用 tscn，仅改底色）
-	_set_theme_stylebox(theme, tmp, "TabContainer", "tab_selected", surface, Color(0, 0, 0, 0))
+	_set_theme_stylebox(theme, "TabContainer", "tab_selected", surface, Color(0, 0, 0, 0))
 	# 内容面板：surface + 弱描边
-	_set_theme_stylebox(theme, tmp, "TabContainer", "panel", surface, border_soft)
+	_set_theme_stylebox(theme, "TabContainer", "panel", surface, border_soft)
 	# 未选中标签保持 tscn 的透明，不在这里上色
 
 	# 文字色随外观模式翻转（深色浅字 / 浅色深字），字号仍由 tscn 的 font_size 决定
 	tmp.set_color("font_selected_color", "TabContainer", get_color("text_primary"))
 	tmp.set_color("font_unselected_color", "TabContainer", get_color("text_secondary"))
 
-func _theme_button_set_color(theme: Theme, tmp: Theme, base_color: Color, type: String = "Button") -> void:
+func _theme_button_set_color(theme: Theme, base_color: Color, type: String = "Button") -> void:
 	var surface := get_color("surface_high")
 	var surface_hover := get_color("surface_hover")
 	var surface_low := get_color("surface_low")
 	var border := get_color("border")
 	var border_soft := get_color("border_soft")
 
-	_set_theme_stylebox(theme, tmp, type, "normal", surface, border)
-	_set_theme_stylebox(theme, tmp, type, "hover", surface_hover, Color(base_color.r, base_color.g, base_color.b, 0.85))
-	_set_theme_stylebox(theme, tmp, type, "pressed", base_color.darkened(0.15), base_color.lightened(0.1))
-	_set_theme_stylebox(theme, tmp, type, "hover_pressed", base_color.darkened(0.32), base_color.darkened(0.05))
-	_set_theme_stylebox(theme, tmp, type, "focus", Color(0, 0, 0, 0), base_color)
+	_set_theme_stylebox(theme, type, "normal", surface, border)
+	_set_theme_stylebox(theme, type, "hover", surface_hover, Color(base_color.r, base_color.g, base_color.b, 0.85))
+	_set_theme_stylebox(theme, type, "pressed", base_color.darkened(0.15), base_color.lightened(0.1))
+	_set_theme_stylebox(theme, type, "hover_pressed", base_color.darkened(0.32), base_color.darkened(0.05))
+	_set_theme_stylebox(theme, type, "focus", Color(0, 0, 0, 0), base_color)
 	# 禁用态：底色压到 surface_low（浅色下这是最深的一层）+ 弱描边，让它明确"凹下去且不可点"。
 	# 不做整体降透明度——降了会把里面的文字/图标一起洗淡，禁用字必须仍然读得清。
 	var dis_bg := surface_low.darkened(0.06) if _appearance == "light" else surface_low
-	_set_theme_stylebox(theme, tmp, type, "disabled", dis_bg, border_soft)
+	_set_theme_stylebox(theme, type, "disabled", dis_bg, border_soft)
 
 ## 共享 R12 按钮是实心强调色填充，禁用后就算换成 surface_low 仍显得"能按"，
 ## 额外降到 0.6 不透明度拉开对比。主 Theme 的按钮不走这条（保持全不透明，字才清楚）。
-func _style_shared_r12_disabled(theme: Theme, tmp: Theme) -> void:
+func _style_shared_r12_disabled(theme: Theme) -> void:
 	var dis_bg := get_color("surface_low").darkened(0.06) \
 		if _appearance == "light" else get_color("surface_low")
-	var sb := _make_stylebox(theme, "Button", "disabled", dis_bg, get_color("border_soft"), 0.6)
-	if sb:
-		tmp.set_stylebox("disabled", "Button", sb)
+	_set_theme_stylebox(theme, "Button", "disabled", dis_bg, get_color("border_soft"), Color.TRANSPARENT, 0.6)
 
 # ============ 共享按钮 Theme（几何 .tres，颜色随主题） ============
 
@@ -776,38 +717,42 @@ func _style_shared_r12_disabled(theme: Theme, tmp: Theme) -> void:
 ## 几何参数（圆角/边框宽度/边距）收在 UI/Theme/BtnTheme/*.tres 里，颜色在此按当前主题统一写入。
 ## 资源按 uid 单例缓存，改一次即同步所有引用场景（含 duplicate 的列表项）。
 func _refresh_shared_btn_themes() -> void:
+	# 每个 Theme 各自静默写入、末尾抛一次 changed（原因同 _refresh_theme_colors：
+	# 原地改 StyleBox 属性每次都会触发一轮整树重算，这里 5 态 × 3 属性 = 15 轮）
 	# ListBtn-ColorBorder — 列表项按钮（album/song/sorted 共用）：与专辑节点同款（边框 pri_light + 半透明底 + focus 阴影）
 	var list_theme := load(SHARED_LIST_BTN_THEME_PATH) as Theme
-	var tmp := Theme.new()
-	_style_shared_list_btn_theme(list_theme, tmp)
-	list_theme.merge_with(tmp)
+	list_theme.set_block_signals(true)
+	_style_shared_list_btn_theme(list_theme)
+	list_theme.set_block_signals(false)
+	list_theme.emit_changed()
 	# R12NoBorder — 圆角12 无边框按钮（PopupWindow/KeySequenceItem/MidiView/PlayView/ValueButton 共用）：与主 Theme 按钮同款（primary 三阶）
 	var r12_theme := load(SHARED_R12_BTN_THEME_PATH) as Theme
-	tmp = Theme.new()
-	_style_shared_flat_btn_theme(r12_theme, tmp)
-	_style_shared_r12_disabled(r12_theme, tmp)
-	r12_theme.merge_with(tmp)
+	r12_theme.set_block_signals(true)
+	_style_shared_flat_btn_theme(r12_theme)
+	_style_shared_r12_disabled(r12_theme)
+	r12_theme.set_block_signals(false)
+	r12_theme.emit_changed()
 
 ## 列表项按钮 Theme 四态颜色（现代风格：不透明描边 + 透明底，四态用不同色阶区分）。
 ## 列表项的封面/标题是 show_behind_parent（画在 StyleBox 之下），因此这里**不使用任何填充**
 ## （哪怕半透明也会盖住封面、透出封面方角）；交互态改用卡片外侧的辉光来表达。
 ## 色阶：normal 中性描边 → hover 强调色 → pressed/hover_pressed 亮强调色（选中）→ focus 亮强调色
-func _style_shared_list_btn_theme(theme: Theme, tmp: Theme) -> void:
+func _style_shared_list_btn_theme(theme: Theme) -> void:
 	var p := get_color("primary")
 	var pl := get_color("primary_light")
 	var border := get_color("border")
 	# normal — 中性描边，透明底，无辉光。border 在深色模式偏暗，压在暗背景上看不出卡片轮廓，故提亮一档
-	_set_theme_stylebox(theme, tmp, "Button", "normal", Color(0, 0, 0, 0), border.lightened(0.18) if _appearance != "light" else border, Color(0, 0, 0, 0))
+	_set_theme_stylebox(theme, "Button", "normal", Color(0, 0, 0, 0), border.lightened(0.18) if _appearance != "light" else border, Color(0, 0, 0, 0))
 	# hover — 强调色描边 + 强调色辉光
-	_set_theme_stylebox(theme, tmp, "Button", "hover", Color(0, 0, 0, 0), p, Color(p.r, p.g, p.b, 0.45))
+	_set_theme_stylebox(theme, "Button", "hover", Color(0, 0, 0, 0), p, Color(p.r, p.g, p.b, 0.45))
 	# pressed / hover_pressed — 亮强调色描边 + 更强辉光（.tres 中二者共享同一 StyleBox）
-	_set_theme_stylebox(theme, tmp, "Button", "pressed", Color(0, 0, 0, 0), pl, Color(pl.r, pl.g, pl.b, 0.6))
-	_set_theme_stylebox(theme, tmp, "Button", "hover_pressed", Color(0, 0, 0, 0), pl, Color(pl.r, pl.g, pl.b, 0.6))
+	_set_theme_stylebox(theme, "Button", "pressed", Color(0, 0, 0, 0), pl, Color(pl.r, pl.g, pl.b, 0.6))
+	_set_theme_stylebox(theme, "Button", "hover_pressed", Color(0, 0, 0, 0), pl, Color(pl.r, pl.g, pl.b, 0.6))
 	# focus — 亮强调色描边 + 轻微辉光
-	_set_theme_stylebox(theme, tmp, "Button", "focus", Color(0, 0, 0, 0), pl, Color(pl.r, pl.g, pl.b, 0.35))
+	_set_theme_stylebox(theme, "Button", "focus", Color(0, 0, 0, 0), pl, Color(pl.r, pl.g, pl.b, 0.35))
 
 ## 圆角12 无边框按钮 Theme 四态颜色（solid 强调填充，交互态提亮/压暗）
-func _style_shared_flat_btn_theme(theme: Theme, tmp: Theme) -> void:
+func _style_shared_flat_btn_theme(theme: Theme) -> void:
 	var base := get_color("primary")
 	var colors: Dictionary
 	if _appearance == "light":
@@ -826,17 +771,16 @@ func _style_shared_flat_btn_theme(theme: Theme, tmp: Theme) -> void:
 			"focus": base.lightened(0.05),
 		}
 	for state in colors:
-		_set_theme_stylebox(theme, tmp, "Button", state, colors[state], Color(0, 0, 0, 0))
+		_set_theme_stylebox(theme, "Button", state, colors[state], Color(0, 0, 0, 0))
 	# focus 态在 .tres 里是「空心描边」（draw_center=false），bg_color 不生效，需同步描边色
-	_set_theme_stylebox(theme, tmp, "Button", "focus", Color(0, 0, 0, 0), base)
+	_set_theme_stylebox(theme, "Button", "focus", Color(0, 0, 0, 0), base)
 
 func _style_panel_set_bg_color(panel: Control, color: Color) -> void:
 	if not has_local_stylebox(panel, "panel"):
 		return
 	var sb := panel.get_theme_stylebox("panel")
-	if sb is StyleBoxFlat:
-		sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
-		sb.border_color = _tint_keep_alpha(_border_from(color), sb.border_color.a)
+	sb.bg_color = _tint_keep_alpha(color, sb.bg_color.a)
+	sb.border_color = _tint_keep_alpha(_border_from(color), sb.border_color.a)
 
 ## 修改按钮自带的 normal/pressed/hover StyleBoxFlat 颜色（保留 tscn 的 skew/border/shadow/alpha 配置）
 ## 仅处理按钮本地覆盖的状态样式（见 has_local_stylebox），避免误改共享 Theme 资源
@@ -849,8 +793,38 @@ func _style_button_set_bg_color(btn: Button, color: Color) -> void:
 		if not has_local_stylebox(btn, spec[0]):
 			continue
 		var sb := btn.get_theme_stylebox(spec[0])
-		if sb is StyleBoxFlat:
-			sb.bg_color = _tint_keep_alpha(spec[1], sb.bg_color.a)
+		sb.bg_color = _tint_keep_alpha(spec[1], sb.bg_color.a)
+
+## 次级扁平按钮（商店/资源页的工具条、分页、标签页按钮）统一上色。
+## 几何（圆角/边距）仍由各 .tscn 的本地样式盒决定，这里只写三态底色与字色。
+## 常态底=surface_high、悬停=surface_hover、按下=primary_dark，描边=border；
+## 字色常态走 text_secondary（弱化），悬停/焦点回到 text_primary。
+## 原先 StoreView 与 ResourceView 各有一份几乎相同的 _style_flat_button，
+## 调用点传的 5 个参数也全都一样，故合并到此处。
+func style_flat_button(btn: Button) -> void:
+	var surface_high := get_color("surface_high")
+	var surface_hover := get_color("surface_hover")
+	var primary_dark := get_color("primary_dark")
+	var primary_light := get_color("primary_light")
+	var border := get_color("border")
+	var hover_border := get_color("primary") if _appearance == "light" else primary_light
+
+	for spec in [
+		["normal", surface_high, border],
+		["hover", surface_hover, hover_border],
+		["pressed", primary_dark, primary_light],
+	]:
+		var sb: StyleBoxFlat = btn.get_theme_stylebox(spec[0])
+		sb.bg_color = _tint_keep_alpha(spec[1], sb.bg_color.a)
+		sb.border_color = spec[2]
+
+	btn.add_theme_color_override("font_color", get_color("text_secondary"))
+	btn.add_theme_color_override("font_hover_color", get_color("text_primary"))
+	# 禁用态统一走 text_disabled（低饱和深灰）。不要再额外降透明度：
+	# 颜色本身已经够"熄火"，再叠 alpha 会淡到看不清
+	var disabled_text := get_color("text_disabled")
+	btn.add_theme_color_override("font_disabled_color", disabled_text)
+	btn.add_theme_color_override("icon_disabled_color", disabled_text)
 
 # ============ 取色器统一配置 ============
 
@@ -928,10 +902,6 @@ func attach_hex_edit(btn: ColorPickerButton, edit_alpha: bool = false) -> LineEd
 ## TextScrollHelper，Array.has() 的线性查找会让注册退化成O(N²)
 var _theme_appliers: Dictionary[int, Node] = {}
 
-## 主题色版本号：卡片等共享场景样式只需在版本变化时改一次 StyleBox，
-## 避免同场景的所有实例重复改同一份共享子资源，触发成百上千次重绘。
-var theme_revision: int = 0
-
 ## 注册主题应用者（视图/组件 _ready 时调用，并自调一次 apply_theme() 完成首次着色）
 func register_theme_applier(node: Node) -> void:
 	if node:
@@ -957,7 +927,6 @@ func refresh_theme_only() -> void:
 	var main := GlobalNodes.main
 	if not main:
 		return
-	theme_revision += 1
 
 	# 第一阶段：全局 Theme 资源（触发大面积重绘，单独一帧）
 	# 注意：切换主题色不再清空背景缓存，背景与主题色独立（避免 Image.load_from_file 同步阻塞）
@@ -1012,11 +981,6 @@ func _on_theme_changed(preset_name: String) -> void:
 		# 外部驱动的预设切换：re-apply 后需要 save + refresh
 		save_theme()
 		refresh_theme_only()
-	# 若 _theme_name == preset_name，说明是内部已 emit 的通知，无需重复 save+refresh：
-	# - apply_preset / load_theme 自身已完成 save+refresh_theme_only 后再 emit
-	# - set_color / set_palette_colors 同理（_theme_name 保持不变或改为 "custom"，
-	#   但 emit 时 preset_name 等于 _theme_name，故也走此跳过分支）
-	# 此处跳过避免了双重 save/refresh 导致的卡顿
 
 ## 仅刷新背景（设置界面改背景、或主题色/深浅色变化后调用）
 func refresh_backgrounds() -> void:
@@ -1113,10 +1077,19 @@ func _switch_main_bg(target_view: String) -> void:
 # ============ Theme 颜色刷新 ============
 
 ## 更新 Main 节点上已有 Theme 资源的 StyleBoxFlat 颜色（不新建 Theme）。
-## 所有 set_*/stylebox 先汇入临时 Theme，末尾 merge_with 一次性并入 thm：
-## Godot 在 merge_with 内部 freeze 期间完成全部写入、帧末只 emit 一次 changed，
-## 把原本 ~85 次独立 set 造成的 ~85 次整树传播塌缩成 1 次。
+## 颜色（set_color / set_constant / set_font_size）先汇入临时 Theme，末尾 merge_with 一次性
+## 并入 thm：Godot 在 merge_with 内部 freeze 期间完成全部写入、帧末只 emit 一次 changed，
+## 避免每次 set_color 都触发一轮整树主题传播。
+## 注意 StyleBox 的颜色不在此列——它们是原地改 .tres 里的共享实例，改的瞬间就生效，
+## 既没法也不该塞进 tmp 再合并。
+## 主题写入必须整段静默，避免主题树反复重算
 func _refresh_theme_colors(thm: Theme) -> void:
+	thm.set_block_signals(true)
+	_refresh_theme_colors_impl(thm)
+	thm.set_block_signals(false)
+	thm.emit_changed()
+
+func _refresh_theme_colors_impl(thm: Theme) -> void:
 	var p := get_color("primary")
 	var pl := get_color("primary_light")
 	var surface := get_color("surface")
@@ -1126,19 +1099,18 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	var border := get_color("border")
 	var border_soft := get_color("border_soft")
 	var text_primary := get_color("text_primary")
-	var _text_dim := get_color("text_dim")
 	var tmp := Theme.new()
 
 	# 按钮 / 选项按钮：中性板面 + 强调色交互态
-	_theme_button_set_color(thm, tmp, p, "Button")
-	_theme_button_set_color(thm, tmp, p, "OptionButton")
+	_theme_button_set_color(thm, p, "Button")
+	_theme_button_set_color(thm, p, "OptionButton")
 
 	# 全局面板底色（Panel / PanelContainer）
 	for type in ["Panel", "PanelContainer"]:
-		_set_theme_stylebox(thm, tmp, type, "panel", surface, border_soft)
+		_set_theme_stylebox(thm, type, "panel", surface, border_soft)
 
 	# CheckBox 悬停按下底色
-	_set_theme_stylebox(thm, tmp, "CheckBox", "hover_pressed", surface_hover, border)
+	_set_theme_stylebox(thm, "CheckBox", "hover_pressed", surface_hover, border)
 
 	tmp.set_color("font_disabled_color", "Button", get_color("text_disabled"))
 	# 按钮文字色：深色模式为浅色文字、浅色模式为深色文字（text_primary 随模式翻转），
@@ -1158,13 +1130,9 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	tmp.set_color("font_hover_color", "OptionButton", text_primary)
 	tmp.set_color("font_pressed_color", "OptionButton", text_primary)
 	tmp.set_color("font_focus_color", "OptionButton", text_primary)
-	# 下拉箭头：OptionButton 的 arrow 图标**不吃** icon_*_color（源码 option_button.cpp 里
-	# arrow_icon->draw(ci, ofs, clr) 的 clr 由 modulate_arrow 决定，见下），四个 icon_*_color
-	# 写在这里没有任何效果。真正的开关是常量 modulate_arrow：
-	#   false（引擎默认）→ clr 恒为 Color(1,1,1)，箭头永远纯白；
-	#   true            → clr 跟随 font_color / font_hover_color / font_pressed_color / font_disabled_color。
-	# 打开后箭头自动与文字同色，且随状态变色，无需额外配色。
-	tmp.set_constant("modulate_arrow", "OptionButton", 1)
+	# 下拉箭头：OptionButton 的 arrow 图标**不吃** icon_*_color（option_button.cpp 里
+	# arrow_icon->draw(ci, ofs, clr) 的 clr 由常量 modulate_arrow 决定）。该常量已在
+	# MainTheme.tres 里设为 1，箭头于是跟随 font_*_color 自动变色，无需在这里重复设置。
 	tmp.set_color("font_color", "CheckBox", text_primary)
 	tmp.set_color("font_color", "CheckButton", text_primary)
 	# CheckBox/CheckButton 的勾选图标是自带白底贴图，不应随 Button 图标色被染色，显式保持白色
@@ -1186,101 +1154,205 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	# 保证设置页里"输入框 + 选项按钮"并排时不出现"一个像禁用"的色差。
 	# 凹陷感改由描边表达（border + 2px，见 MainTheme.tres 的 StyleBoxFlat_gb15f）；
 	# read_only 才用 surface_low（真正更深的面）+ border_soft，用来区分"不可编辑"。
-	_set_theme_stylebox(thm, tmp, "LineEdit", "normal", surface_high, border)
-	_set_theme_stylebox(thm, tmp, "LineEdit", "focus", Color(0, 0, 0, 0), p)
-	_set_theme_stylebox(thm, tmp, "LineEdit", "read_only", surface_low, border_soft)
+	_set_theme_stylebox(thm, "LineEdit", "normal", surface_high, border)
+	_set_theme_stylebox(thm, "LineEdit", "focus", Color(0, 0, 0, 0), p)
+	_set_theme_stylebox(thm, "LineEdit", "read_only", surface_low, border_soft)
+
+	# 深色输入框变体：基类型 LineEdit 刻意用 surface_high（与 OptionButton 并排时不显色差），
+	# 但搜索框、面板内嵌输入框需要真正"凹"下去一档，于是把底色压到 surface_low。
+	# LineEditDeep 是通用款；LineEditSearch 右侧多留 70 给搜索图标（图标是 LineEdit 子节点，
+	# 靠 content_margin_right 让出位置，用样式盒而不是结构）。
+	var is_light := _appearance == "light"
+	var placeholder_c := get_color("text_secondary") if is_light else get_color("text_dim")
+	for t in ["LineEditDeep", "LineEditSearch"]:
+		_set_theme_stylebox(thm, t, "normal", surface_low, border)
+		_set_theme_stylebox(thm, t, "focus", surface_low.lightened(0.04), _tint_keep_alpha(p, 0.9))
+		_set_theme_stylebox(thm, t, "read_only", surface_low.darkened(0.05), border_soft)
+		tmp.set_color("caret_color", t, p)
+		tmp.set_color("font_placeholder_color", t, placeholder_c)
 
 	# Label
 	tmp.set_color("font_color", "Label", get_color("text_primary"))
+	# 文字角色变体：只覆盖 font_color，字体/字号/描边全部回落 Label（变体项是稀疏的）。
+	# 原先这些字色散落在 StoreView / ResourceView / ChartDetailPanel / 卡片脚本里逐个 override，
+	# 现在一处定义，节点只在 tscn 挂 variation 名字。
+	tmp.set_color("font_color", "LabelMuted", get_color("text_secondary") if is_light else get_color("text_dim"))
+	tmp.set_color("font_color", "LabelSecondary", get_color("text_secondary"))
+	tmp.set_color("font_color", "LabelAccent", get_color("primary_dark") if is_light else get_color("primary_light"))
+	tmp.set_color("font_color", "LabelOnAccent", Color.WHITE)
+
+	# 按钮角色变体：原先 StoreView / ResourceView 各自把手写一遍的六态颜色（20 个按钮、
+	# 每个约 12 行 override）现在收进主题。节点只在 tscn 挂 theme_type_variation，
+	# 几何（圆角 12 / 内边距 / 描边）全在 MainTheme.tres，这里只刷颜色与状态语义。
+	var pd := get_color("primary_dark")
+	var text_secondary := get_color("text_secondary")
+	var text_disabled := get_color("text_disabled")
+	var accent := pd if is_light else pl
+
+	# ButtonTab：未选中是透明底（alpha 0，不能给纯色，否则标签变成一排实心块）
+	# 悬停淡浮起；选中态深色模式实心强调底、浅色模式淡主色底 + 深字，避免白字压浅蓝。
+	var tab_fill := p if is_light else pd
+	var tab_alpha := 0.16 if is_light else 0.55
+	_set_theme_stylebox(thm, "ButtonTab", "normal", surface_high, border, Color(0, 0, 0, 0), 0.0)
+	_set_theme_stylebox(thm, "ButtonTab", "hover", surface_hover, border, Color(0, 0, 0, 0), 0.85)
+	_set_theme_stylebox(thm, "ButtonTab", "pressed", tab_fill, accent, Color(0, 0, 0, 0), tab_alpha)
+	_set_theme_stylebox(thm, "ButtonTab", "hover_pressed", tab_fill, accent, Color(0, 0, 0, 0), tab_alpha)
+	_set_theme_stylebox(thm, "ButtonTab", "disabled", surface_low, border_soft, Color(0, 0, 0, 0), 0.0)
+	_set_theme_stylebox(thm, "ButtonTab", "focus", Color(0, 0, 0, 0), accent)
+
+	# ButtonFlat：工具条按钮。常态浅凸面 → 悬停提亮描边 → 按下实心强调底。
+	# 原本各处的 alpha 在 0.76~0.95 之间浮动，统一为不透明（差异肉眼不可辨）。
+	var flat_disabled_bg := surface_low.darkened(0.06) if is_light else surface_low
+	_set_theme_stylebox(thm, "ButtonFlat", "normal", surface_high, border)
+	_set_theme_stylebox(thm, "ButtonFlat", "hover", surface_hover, p if is_light else pl)
+	_set_theme_stylebox(thm, "ButtonFlat", "pressed", pd, pl)
+	_set_theme_stylebox(thm, "ButtonFlat", "hover_pressed", pd, pl)
+	_set_theme_stylebox(thm, "ButtonFlat", "disabled", flat_disabled_bg, border_soft)
+	_set_theme_stylebox(thm, "ButtonFlat", "focus", Color(0, 0, 0, 0), accent)
+
+	# 字色 / 图标色：常态次要 → 悬停正文 → 按下强调。
+	# ButtonFlat 按下底色是实心主色，文字必须反白；ButtonTab 浅色下底色很淡，仍用深强调色。
+	var on_fill := Color.WHITE if is_light else pl
+	for t in ["ButtonTab", "ButtonFlat"]:
+		var press_c := accent if t == "ButtonTab" else on_fill
+		tmp.set_color("font_color", t, text_secondary)
+		tmp.set_color("font_hover_color", t, get_color("text_primary"))
+		tmp.set_color("font_pressed_color", t, press_c)
+		tmp.set_color("font_hover_pressed_color", t, press_c)
+		tmp.set_color("font_focus_color", t, get_color("text_primary"))
+		tmp.set_color("font_disabled_color", t, text_disabled)
+		tmp.set_color("icon_normal_color", t, text_secondary)
+		tmp.set_color("icon_hover_color", t, get_color("text_primary"))
+		tmp.set_color("icon_pressed_color", t, press_c)
+		tmp.set_color("icon_hover_pressed_color", t, press_c)
+		tmp.set_color("icon_focus_color", t, accent)
+		tmp.set_color("icon_disabled_color", t, text_disabled)
+
+	# 下载按钮：状态只有四种（未下载 / 下载中 / 已下载 / 失败），基色由状态唯一决定，
+	# 所以四个变体共享整套样式盒，卡片不再 resource_local_to_scene 各复制一份。
+	# 原先三处 _set_download_colors 的压暗系数还各不相同（0.12 vs 0.15、0.2 vs 0.22），这里统一。
+	var dl_specs := {
+		"ButtonDownloadIdle": p,
+		"ButtonDownloadBusy": get_color("warning"),
+		"ButtonDownloadDone": get_color("success"),
+		"ButtonDownloadError": get_color("danger"),
+	}
+	var dl_disabled_bg := surface_high if is_light else surface_low
+	var dl_disabled_text := get_color("text_secondary") if is_light else get_color("text_dim")
+	for t in dl_specs:
+		var base: Color = dl_specs[t]
+		_set_theme_stylebox(thm, t, "normal", base.darkened(0.13), base.lightened(0.35))
+		_set_theme_stylebox(thm, t, "hover", base, base.lightened(0.55))
+		_set_theme_stylebox(thm, t, "pressed", base.darkened(0.21), base)
+		_set_theme_stylebox(thm, t, "focus", Color(0, 0, 0, 0),
+			base.darkened(0.08) if is_light else base.lightened(0.5),
+			Color(base.r, base.g, base.b, 0.4))
+		_set_theme_stylebox(thm, t, "disabled", dl_disabled_bg, border)
+		# 饱和底色上字与图标固定白（浅色模式也不翻深色，否则浅底深字会糊）
+		for c in ["font_color", "font_hover_color", "font_pressed_color",
+				"font_hover_pressed_color", "font_focus_color",
+				"icon_normal_color", "icon_hover_color", "icon_pressed_color",
+				"icon_hover_pressed_color", "icon_focus_color"]:
+			tmp.set_color(c, t, Color.WHITE)
+		tmp.set_color("font_disabled_color", t, dl_disabled_text)
+		tmp.set_color("icon_disabled_color", t, dl_disabled_text)
+	# 卡片 / 列表项变体：样式盒几何已经搬进 MainTheme.tres（原先散在各卡片的 .tscn 里），
+	# 这里只刷颜色，各卡片原本的 alpha 语义原样保留。
+	# 它们都是池化列表项 —— N 个实例共用主题里这一份实例，所以一处写入即全省生效，
+	# 池化脚本的 apply_theme 里不再需要「共享样式盒写前比对」那套逻辑。
+	var card_states := [
+		["normal", surface_high, 0.94, border, 0.85],
+		["hover", surface_hover, 0.98, p, 0.85],
+		["pressed", surface_low, 1.0, pl, 0.85],
+	]
+	for t in ["ButtonCardLarge", "ButtonCardCompact"]:
+		for s in card_states:
+			var csb := _theme_box(thm, t, s[0])
+			csb.bg_color = _tint_keep_alpha(s[1], s[2])
+			csb.border_color = _tint_keep_alpha(s[3], s[4])
+		var focus_box := _theme_box(thm, t, "focus")
+		focus_box.border_color = _tint_keep_alpha(accent, 0.9)
+		focus_box.shadow_color = Color(p.r, p.g, p.b, 0.35)
+
+	# 下载管理行：常态近乎透明，靠悬停 / 按下浮现
+	var row_states := [
+		["normal", surface, 0.42, border_soft, 0.55],
+		["hover", surface_hover, 0.7, p, 0.55],
+		["pressed", surface_low, 0.9, p, 0.55],
+	]
+	for s in row_states:
+		var dsb := _theme_box(thm, "ButtonRowDownload", s[0])
+		dsb.bg_color = _tint_keep_alpha(s[1], s[2])
+		dsb.border_color = _tint_keep_alpha(s[3], s[4])
+	_theme_box(thm, "ButtonRowDownload", "focus").border_color = _tint_keep_alpha(accent, 0.9)
+
+	# 待操作行：底色更淡，三态描边统一用弱边框
+	for s in [["normal", surface, 0.25], ["hover", surface_hover, 0.65], ["pressed", surface_low, 0.9]]:
+		var psb := _theme_box(thm, "ButtonRowPending", s[0])
+		psb.bg_color = _tint_keep_alpha(s[1], s[2])
+		psb.border_color = _tint_keep_alpha(border_soft, 0.6)
+	_theme_box(thm, "ButtonRowPending", "focus").border_color = accent
+
+	# 封面框：浅色模式比卡片深一档，白底上白色音符预览才看得见
+	var cover_bg := surface_high if is_light else surface_low
+	for t in ["PanelCardCover", "PanelCardCoverCompact"]:
+		var cover_box := _theme_box(thm, t, "panel")
+		cover_box.bg_color = cover_bg
+		cover_box.border_color = border
+	_theme_box(thm, "PanelCardSelected", "panel").border_color = _tint_keep_alpha(accent, 0.95)
+	_theme_box(thm, "LabelCardBadge", "normal").bg_color = _tint_keep_alpha(pd, 0.9)
+	var record_box := _theme_box(thm, "PanelRecordRow", "panel")
+	record_box.bg_color = surface_high
+	record_box.border_color = border_soft
+	var comment_box := _theme_box(thm, "PanelContainerCommentCard", "panel")
+	comment_box.bg_color = _tint_keep_alpha(surface_high, 0.9)
+	comment_box.border_color = border_soft
+
+	_set_theme_stylebox(thm, "PanelSunken", "panel", surface_low, border)
+
 	# RichTextLabel（如 MidiView 谱面简介）：正文色走 default_color，不设会停留在引擎默认的浅色上
 	tmp.set_color("default_color", "RichTextLabel", get_color("text_primary"))
 
 	# PopupMenu：面板用凸起面，悬停用半透明强调色
-	_set_theme_stylebox(thm, tmp, "PopupMenu", "panel", surface_high, border)
-	_set_theme_stylebox(thm, tmp, "PopupMenu", "hover", Color(p.r, p.g, p.b, 0.22), border_soft)
-	# 子菜单右箭头：tres 里是 #b2b2b2 的灰描线，浅色面板上几乎看不见。
-	# 引擎没有对应颜色主题项——popup_menu.cpp 里 submenu->draw(ci, pos, icon_color)，
-	# icon_color 只取 items[i].icon_modulate（默认纯白、无主题项），静态改色只能改图标资源本身。
-	# 走 DPITexture 自带的 color_map：引擎在栅格化 SVG 前替换 stroke/fill 颜色，
-	# 保留矢量与按 DPI 的多分辨率缓存，且改的是主题里那一个共享资源，所有 PopupMenu 一次生效。
-	# 不要用 get_image() 逐像素染色后塞回 ImageTexture——那会固定分辨率、丢掉缩放，还要多上传一张纹理。
-	var submenu_arrow := thm.get_icon("submenu", "PopupMenu")
-	if submenu_arrow and submenu_arrow.has_method("set_color_map"):
-		submenu_arrow.set_color_map({Color(SUBMENU_ARROW_SRC_COLOR): text_primary})
-	# PopupPanel：所有弹层容器（含 ColorPickerButton 的取色器弹窗）。几何在 MainTheme.tres，
-	# 这里只刷底色/描边，浅色模式下才不会残留引擎默认的半透明黑
-	tmp.set_stylebox("panel", "PopupPanel", _theme_panel_stylebox())
+	_set_theme_stylebox(thm, "PopupMenu", "panel", surface_high, border)
+	_set_theme_stylebox(thm, "PopupMenu", "hover", Color(p.r, p.g, p.b, 0.22), border_soft)
+	# 子菜单右箭头
+	thm.get_icon("submenu", "PopupMenu").set_color_map({Color(SUBMENU_ARROW_SRC_COLOR): text_primary})
+	# PopupPanel：所有弹层容器（含 ColorPickerButton 的取色器弹窗）
+	_set_theme_stylebox(thm, "PopupPanel", "panel", surface_high, border, Color(0, 0, 0, 0.34))
 
 	# 滚动条：几何统一收在 MainTheme.tres（V/HScrollBar 的 grabber/scroll 样式盒 content_margin=10
 	for type in ["VScrollBar", "HScrollBar"]:
-		_set_theme_stylebox(thm, tmp, type, "grabber", border, border)
-		_set_theme_stylebox(thm, tmp, type, "grabber_highlight", p, p)
-		_set_theme_stylebox(thm, tmp, type, "grabber_pressed", pl, pl)
+		_set_theme_stylebox(thm, type, "grabber", border, border)
+		_set_theme_stylebox(thm, type, "grabber_highlight", p, p)
+		_set_theme_stylebox(thm, type, "grabber_pressed", pl, pl)
 
 	# HSlider（音量条等）：滑轨在浅色下需压暗、已填充段用强调色（原写死的近白填充在浅底上不可见）
 	var groove := Color(0, 0, 0, 0.22) if _appearance == "light" else Color(0, 0, 0, 0.6)
-	_set_theme_stylebox(thm, tmp, "HSlider", "slider", groove, Color(0, 0, 0, 0))
-	_set_theme_stylebox(thm, tmp, "HSlider", "grabber_area", p, p)
-	_set_theme_stylebox(thm, tmp, "HSlider", "grabber_area_highlight", pl, pl)
+	_set_theme_stylebox(thm, "HSlider", "slider", groove, Color(0, 0, 0, 0))
+	_set_theme_stylebox(thm, "HSlider", "grabber_area", p, p)
+	_set_theme_stylebox(thm, "HSlider", "grabber_area_highlight", pl, pl)
 
-	# ProgressBar（等级/经验条 / 下载进度）：底槽要看着像"凹槽"，不是一条有色带子。
-	# 原先复用了 surface_low —— 那是 LineEdit / 按钮 disabled 用的「带饱和度的凹陷色」，
-	# 铺成进度条这么长一条、压在几乎中性的浅面板上就像条彩色带子，空进度时格外跳眼。
-	# 改成半透明黑叠加：无论进度条压在哪种底色的面板上，槽都自动比所在面深一档，
-	# 且不带色相，视觉上就是"凹进去的阴影"。描边取 border（比槽底更深）当内壁，强化凹陷感。
-	# 深色下黑上加黑分不出层次，故深色仍走 surface_hover + border。
-	if _appearance == "light":
-		_set_theme_stylebox(thm, tmp, "ProgressBar", "background", Color(0, 0, 0, 0.12), border)
-	else:
-		_set_theme_stylebox(thm, tmp, "ProgressBar", "background", surface_hover, border)
-	_set_theme_stylebox(thm, tmp, "ProgressBar", "fill", p, p)
+	# ProgressBar（等级/经验条 / 下载进度）
+	_set_theme_stylebox(thm, "ProgressBar", "background", Color(0, 0, 0, 0.12) if _appearance == "light" else surface_hover, border)
+	_set_theme_stylebox(thm, "ProgressBar", "fill", p, p)
 	tmp.set_color("font_color", "ProgressBar", text_primary)
 
 	# TabContainer
 	_style_tab_container(thm, tmp)
 
-	# 工具提示（鼠标悬停 tooltip_text / 触屏长按）：引擎默认是方角灰板，与主题完全脱节。
-	# TooltipPanel/TooltipLabel 是引擎内置类型，这里直接补上背景与文字色。
-	var tip_panel := StyleBoxFlat.new()
-	tip_panel.bg_color = surface_high
-	tip_panel.border_color = border
-	tip_panel.set_border_width_all(1)
-	tip_panel.set_corner_radius_all(10)
-	tip_panel.set_content_margin_all(14)
-	tip_panel.shadow_color = Color(0, 0, 0, 0.28)
-	tip_panel.shadow_size = 8
-	tip_panel.corner_detail = 5
-	tip_panel.anti_aliasing = true
-	tmp.set_stylebox("panel", "TooltipPanel", tip_panel)
+	# 工具提示（鼠标悬停 tooltip_text / 触屏长按）：面板几何在 MainTheme.tres 的
+	# TooltipPanel/styles/panel，这里只刷底色/描边，跟随明暗模式。
+	_set_theme_stylebox(thm, "TooltipPanel", "panel", surface_high, border, Color(0, 0, 0, 0.28))
 	tmp.set_color("font_color", "TooltipLabel", get_color("text_primary"))
 	# 触屏上 tooltip 由长按触发，字号比正文小一档，避免挡住内容
 	tmp.set_font_size("font_size", "TooltipLabel", int(get_font_size("body", 32) * 0.8))
 
 	# 取色器（ColorPicker 弹窗）：默认样式是深灰方角 + 细碎控件，手机上好点的只有色板与滑条。
-	_style_color_picker(thm, tmp, p)
-
-	# HSlider / VSlider 滑块：ColorPicker 的色相/透明度滑条也走这里（它内部就是 HSlider），
-	# 默认抓取柄是个 12px 的圆点，在浅色板面上几乎看不见，统一换成强调色实心圆。
-	var grab := StyleBoxFlat.new()
-	grab.bg_color = p
-	grab.set_corner_radius_all(11)
-	grab.content_margin_top = 11.0
-	grab.content_margin_bottom = 11.0
-	grab.content_margin_left = 11.0
-	grab.content_margin_right = 11.0
-	grab.corner_detail = 6
-	var grab_hl := grab.duplicate() as StyleBoxFlat
-	grab_hl.bg_color = pl
-	tmp.set_stylebox("grabber", "HSlider", grab)
-	tmp.set_stylebox("grabber_highlight", "HSlider", grab_hl)
-	tmp.set_stylebox("grabber", "VSlider", grab)
-	tmp.set_stylebox("grabber_highlight", "VSlider", grab_hl)
+	_style_color_picker(tmp)
 
 	# Tree
 	tmp.set_font_size("font_size", "Tree", get_font_size("body", 32))
-	tmp.set_constant("item_margin", "Tree", 48)
-	tmp.set_constant("button_margin", "Tree", 10)
-	tmp.set_constant("h_separation", "Tree", 6)
 
 	thm.merge_with(tmp)
 

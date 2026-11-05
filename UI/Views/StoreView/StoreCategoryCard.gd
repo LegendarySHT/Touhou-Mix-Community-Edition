@@ -5,8 +5,6 @@
 class_name StoreCategoryCard
 extends Button
 
-static var _shared_style_revision := -1
-
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 
 signal detail_requested(item: Dictionary, source_rect: Rect2)
@@ -21,26 +19,8 @@ var _has_ready := false
 var _cover_version := 0
 var _press_pos := Vector2.INF
 
-var _dl_normal: StyleBoxFlat
-var _dl_hover: StyleBoxFlat
-var _dl_pressed: StyleBoxFlat
-var _dl_focus: StyleBoxFlat
-
-
 func _ready() -> void:
 	_has_ready = true
-	_dl_normal = _duplicate_stylebox("normal")
-	_dl_hover = _duplicate_stylebox("hover")
-	_dl_pressed = _duplicate_stylebox("pressed")
-	_dl_focus = _duplicate_stylebox("focus")
-	if _dl_normal:
-		%DownloadBtn.add_theme_stylebox_override("normal", _dl_normal)
-	if _dl_hover:
-		%DownloadBtn.add_theme_stylebox_override("hover", _dl_hover)
-	if _dl_pressed:
-		%DownloadBtn.add_theme_stylebox_override("pressed", _dl_pressed)
-	if _dl_focus:
-		%DownloadBtn.add_theme_stylebox_override("focus", _dl_focus)
 
 	button_down.connect(func() -> void: _press_pos = get_global_mouse_position())
 	pressed.connect(_on_pressed)
@@ -51,11 +31,6 @@ func _ready() -> void:
 		apply_theme()
 	if not item.is_empty():
 		_apply_item(false)
-
-
-func _duplicate_stylebox(state: String) -> StyleBoxFlat:
-	var sb := %DownloadBtn.get_theme_stylebox(state) as StyleBoxFlat
-	return sb.duplicate() as StyleBoxFlat if sb else null
 
 
 func set_item(p_item: Dictionary, animate_in: bool = false) -> void:
@@ -143,46 +118,30 @@ func _placeholder_icon(kind: String) -> Texture2D:
 
 func _apply_state() -> void:
 	var state := int(item.get("state", STATE_INSTALLED))
-	var base := ThemeMGR.get_color("success") if ThemeMGR else Color("#2FA66A")
+	var variant := &"ButtonDownloadDone"
 	var icon_tex: Texture2D = StoreIconsLib.check()
 	var label_text := "已安装"
 	var tip := "该资源已在本地"
 	match state:
 		ResourceManager.DownloadState.NOT_DOWNLOADED:
-			base = ThemeMGR.get_color("primary") if ThemeMGR else Color("#2E55C8")
+			variant = &"ButtonDownloadIdle"
 			icon_tex = StoreIconsLib.download()
 			label_text = "获取"
 			tip = "下载该资源"
 		ResourceManager.DownloadState.DOWNLOADING:
-			base = ThemeMGR.get_color("warning") if ThemeMGR else Color("#D89A2A")
+			variant = &"ButtonDownloadBusy"
 			icon_tex = StoreIconsLib.download_cloud()
 			label_text = "下载中"
 			tip = "正在下载…"
 		ResourceManager.DownloadState.FAILED:
-			base = ThemeMGR.get_color("danger") if ThemeMGR else Color("#C7303F")
+			variant = &"ButtonDownloadError"
 			icon_tex = StoreIconsLib.close()
 			label_text = "重试"
 			tip = "下载失败，点击重试"
 	%DownloadBtn.icon = icon_tex
 	%DownloadBtn.tooltip_text = tip
 	%StateLabel.text = label_text
-	_set_download_colors(base)
-
-
-func _set_download_colors(base: Color) -> void:
-	if _dl_normal:
-		_dl_normal.bg_color = ThemeMGR._tint_keep_alpha(base.darkened(0.12), 0.92) if ThemeMGR else base
-		_dl_normal.border_color = base.lightened(0.35)
-	if _dl_hover:
-		_dl_hover.bg_color = ThemeMGR._tint_keep_alpha(base, 1.0) if ThemeMGR else base
-		_dl_hover.border_color = base.lightened(0.55)
-	if _dl_pressed:
-		_dl_pressed.bg_color = base.darkened(0.2)
-		_dl_pressed.border_color = base
-	if _dl_focus:
-		var light := ThemeMGR != null and ThemeMGR.get_appearance() == "light"
-		_dl_focus.border_color = base.darkened(0.08) if light else base.lightened(0.5)
-		_dl_focus.shadow_color = Color(base.r, base.g, base.b, 0.4)
+	%DownloadBtn.theme_type_variation = variant
 	%StateLabel.add_theme_color_override("font_color",
 		ThemeMGR.get_color("text_secondary") if ThemeMGR else Color(0.7, 0.75, 0.85))
 
@@ -208,42 +167,10 @@ func _on_download_pressed() -> void:
 func apply_theme() -> void:
 	if not _has_ready or not ThemeMGR:
 		return
-	var surface_high := ThemeMGR.get_color("surface_high")
-	var surface_hover := ThemeMGR.get_color("surface_hover")
-	var surface_low := ThemeMGR.get_color("surface_low")
-	var border := ThemeMGR.get_color("border")
-	var primary := ThemeMGR.get_color("primary")
-	var primary_light := ThemeMGR.get_color("primary_light")
-	var primary_dark := ThemeMGR.get_color("primary_dark")
 	var is_light := ThemeMGR.get_appearance() == "light"
 
-	if _shared_style_revision != ThemeMGR.theme_revision:
-		_shared_style_revision = ThemeMGR.theme_revision
-		for spec in [
-			["normal", surface_high, border, 0.94],
-			["hover", surface_hover, primary, 0.98],
-			["pressed", surface_low, primary_light, 1.0],
-		]:
-			var sb := get_theme_stylebox(spec[0]) as StyleBoxFlat
-			if sb:
-				sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], spec[3])
-				sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.85)
-		var focus_sb := get_theme_stylebox("focus") as StyleBoxFlat
-		if focus_sb:
-			var focus_color := primary_dark if is_light else primary_light
-			focus_sb.border_color = ThemeMGR._tint_keep_alpha(focus_color, 0.9)
-			focus_sb.shadow_color = Color(primary.r, primary.g, primary.b, 0.35)
-
-		var cover_sb := %CoverWrap.get_theme_stylebox("panel") as StyleBoxFlat
-		if cover_sb:
-			cover_sb.bg_color = ThemeMGR.get_color("surface_high") if is_light else surface_low
-			cover_sb.border_color = border
-
-	%Type.add_theme_color_override("font_color", primary_dark if is_light else primary_light)
-	%Desc.add_theme_color_override("font_color",
-		ThemeMGR.get_color("text_secondary") if is_light else ThemeMGR.get_color("text_dim"))
-	# 分类角标固定深蓝底，字色必须固定白色（不能跟随主题的深色正文）
-	%KindChip.add_theme_color_override("font_color", Color.WHITE)
+	# Type / Desc 走 LabelAccent / LabelMuted 变体
+	# 分类角标固定深蓝底，字色必须固定白色（LabelOnAccent 变体，tscn 里挂）
 	%Placeholder.modulate = ThemeMGR.get_color("text_secondary") if is_light \
 		else ThemeMGR.get_color("text_dim")
 	%Placeholder.modulate.a = 0.55

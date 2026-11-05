@@ -3,8 +3,6 @@
 class_name StoreDownloadRow
 extends Button
 
-static var _shared_style_revision := -1
-
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 
 signal detail_requested(item: Dictionary, source_rect: Rect2)
@@ -26,7 +24,7 @@ func _ready() -> void:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
 	if not item.is_empty():
-		_apply()
+		apply_theme()
 
 
 func set_entry(p_item: Dictionary, state: int, stage: int = -1, percent: float = -1.0) -> void:
@@ -36,10 +34,13 @@ func set_entry(p_item: Dictionary, state: int, stage: int = -1, percent: float =
 	item["_row_percent"] = percent
 	if not _has_ready:
 		return
-	_apply()
+	apply_theme()
 
 
-func _apply() -> void:
+func apply_theme() -> void:
+	if not _has_ready or not ThemeMGR:
+		return
+
 	%Name.set_scroll_text(str(item.get("title", "未命名")))
 	var state := int(item.get("_row_state", STATE_QUEUED))
 	var stage := int(item.get("_row_stage", -1))
@@ -95,36 +96,6 @@ func _on_pressed() -> void:
 	if dragging or item.is_empty():
 		return
 	detail_requested.emit(item, get_global_rect())
-
-
-func apply_theme() -> void:
-	if not _has_ready or not ThemeMGR:
-		return
-	var surface := ThemeMGR.get_color("surface")
-	var surface_hover := ThemeMGR.get_color("surface_hover")
-	var surface_low := ThemeMGR.get_color("surface_low")
-	var border := ThemeMGR.get_color("border_soft")
-	var primary := ThemeMGR.get_color("primary")
-
-	if _shared_style_revision != ThemeMGR.theme_revision:
-		_shared_style_revision = ThemeMGR.theme_revision
-		for spec in [
-			["normal", surface, border, 0.42],
-			["hover", surface_hover, primary, 0.7],
-			["pressed", surface_low, primary, 0.9],
-		]:
-			var sb := get_theme_stylebox(spec[0]) as StyleBoxFlat
-			if sb:
-				sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], spec[3])
-				sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.55)
-		var focus_sb := get_theme_stylebox("focus") as StyleBoxFlat
-		if focus_sb:
-			var focus_color := ThemeMGR.get_color("primary_dark") \
-				if ThemeMGR.get_appearance() == "light" else ThemeMGR.get_color("primary_light")
-			focus_sb.border_color = ThemeMGR._tint_keep_alpha(focus_color, 0.9)
-
-	_apply()
-
 
 func _exit_tree() -> void:
 	if ThemeMGR:

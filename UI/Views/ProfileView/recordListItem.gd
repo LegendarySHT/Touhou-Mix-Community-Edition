@@ -18,26 +18,10 @@ var _midi_hash: String = ""
 var _record: Dictionary = {}
 
 func _ready() -> void:
-	if ThemeMGR:
-		ThemeMGR.register_theme_applier(self)
-		apply_theme()
 	%Button.pressed.connect(_on_detail_pressed)
 
 func _on_detail_pressed() -> void:
 	detail_requested.emit(_record, get_global_rect(), %Button)
-
-## 应用主题色：根面板随主题翻浅/翻深（否则浅色模式下会残留写死的深色卡片）
-func apply_theme() -> void:
-	if not ThemeMGR:
-		return
-	var sb := get_theme_stylebox("panel")
-	if sb is StyleBoxFlat:
-		sb.bg_color = ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("surface_high"), sb.bg_color.a)
-		sb.border_color = ThemeMGR.get_color("border_soft")
-
-func _exit_tree() -> void:
-	if ThemeMGR:
-		ThemeMGR.unregister_theme_applier(self)
 
 ## 设置列表类型（列表加载器在 setup_record 前调用，或直接传给 setup_record 的 mode）
 func set_mode(mode: int) -> void:

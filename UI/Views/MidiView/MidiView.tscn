@@ -145,17 +145,6 @@ margin = Rect2(5, 0, 0, 0)
 atlas = ExtResource("3_qoscg")
 region = Rect2(320, 0, 80, 80)
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_fx5ny"]
-bg_color = Color(0.0353, 0.0471, 0.0745, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_f13vx"]
 
@@ -711,10 +700,10 @@ expand_icon = true
 
 [node name="OptionPanel" type="Panel" parent="." unique_id=1188763556]
 unique_name_in_owner = true
+theme_type_variation = &"PanelSunken"
 custom_minimum_size = Vector2(600, 0)
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_styles/panel = SubResource("StyleBoxFlat_fx5ny")
 script = ExtResource("7_r153q")
 
 [node name="OptTabBtns" type="HBoxContainer" parent="OptionPanel" unique_id=339701538]
@@ -994,6 +983,8 @@ layout_mode = 2
 theme_override_constants/separation = 30
 
 [node name="LineEdit" type="LineEdit" parent="OptionPanel/OptTabs/CommentPanel/Bottom" unique_id=936299093]
+theme_type_variation = &"LineEditDeep"
+unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 size_flags_horizontal = 3
@@ -1084,11 +1075,11 @@ metadata/_tab_index = 4
 [connection signal="pressed" from="LeftArea/MainBtn/TrackViewBtn" to="." method="_on_click_track_btn"]
 [connection signal="pressed" from="LeftArea/MainBtn/PlayBtn" to="." method="_on_click_start_btn"]
 [connection signal="pressed" from="LeftArea/MainBtn/FavorListBtn" to="." method="_on_click_favor_list_btn"]
-[connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Top/Like" to="OptionPanel/OptTabs/CommentPanel" method="_on_like_pressed"]
-[connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Top/Dislike" to="OptionPanel/OptTabs/CommentPanel" method="_on_dislike_pressed"]
-[connection signal="text_submitted" from="OptionPanel/OptTabs/CommentPanel/Bottom/LineEdit" to="OptionPanel/OptTabs/CommentPanel" method="_on_send_pressed"]
-[connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Bottom/Button" to="OptionPanel/OptTabs/CommentPanel" method="_on_send_pressed"]
 [connection signal="item_selected" from="OptionPanel/OptTabs/ModePanel/HFlowC/DifficultySelect" to="OptionPanel" method="_on_difficulty_selected"]
 [connection signal="item_selected" from="OptionPanel/OptTabs/ModePanel/HFlowC/LimitSelect" to="OptionPanel" method="_on_limit_selected"]
 [connection signal="item_selected" from="OptionPanel/OptTabs/ModePanel/HFlowC/ModeSelect" to="OptionPanel" method="_on_mode_selected"]
 [connection signal="item_selected" from="OptionPanel/OptTabs/ModePanel/HFlowC/GameModeSelect" to="OptionPanel" method="_on_game_mode_selected"]
+[connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Top/Like" to="OptionPanel/OptTabs/CommentPanel" method="_on_like_pressed"]
+[connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Top/Dislike" to="OptionPanel/OptTabs/CommentPanel" method="_on_dislike_pressed"]
+[connection signal="text_submitted" from="OptionPanel/OptTabs/CommentPanel/Bottom/LineEdit" to="OptionPanel/OptTabs/CommentPanel" method="_on_send_pressed"]
+[connection signal="pressed" from="OptionPanel/OptTabs/CommentPanel/Bottom/Button" to="OptionPanel/OptTabs/CommentPanel" method="_on_send_pressed"]

@@ -75,29 +75,25 @@ func _ready() -> void:
 func apply_theme() -> void:
 	# WindowBG — 中性凸起面（保留 tscn 预设的圆角/边框）
 	var sb := ($WindowBG as PanelContainer).get_theme_stylebox("panel")
-	if sb is StyleBoxFlat:
-		var sh := ThemeMGR.get_color("surface_high")
-		sb.bg_color = Color(sh.r, sh.g, sh.b, 0.98)
+	var sh := ThemeMGR.get_color("surface_high")
+	sb.bg_color = Color(sh.r, sh.g, sh.b, 0.98)
 	# KBModeAdjust/AddBtn — 强调色主按钮；该按钮在 tscn 里有自己的 normal/pressed/hover 样式框，
 	# 因此可就地改色而不影响共享的 R12NoBorder 主题
 	ThemeMGR._style_button_set_bg_color(%KBModeAdjustAddBtn, ThemeMGR.get_color("primary"))
-	# 默认页 取消/确认按钮：tscn 内写死了深色/蓝色底板与近白文字，浅色模式下会残留深色块 + 浅底浅字
-	var text_primary := ThemeMGR.get_color("text_primary")
+	# 默认页 取消/确认按钮：tscn 内写死了深色/蓝色底板，浅色模式下会残留深色块；
+	# 字色不必再写——MainTheme 的 Button/font_color 每次刷新就是 text_primary
 	ThemeMGR._style_button_set_bg_color(%MessageCancelBtn, ThemeMGR.get_color("surface_high"))
-	%MessageCancelBtn.add_theme_color_override("font_color", text_primary)
 	ThemeMGR._style_button_set_bg_color(%MessageConfirmBtn, ThemeMGR.get_color("primary"))
-	%MessageConfirmBtn.add_theme_color_override("font_color", text_primary)
 	_style_default_option_button()
 
-## 默认弹窗里的选项按钮/下拉菜单：tscn 内写死了深色 hover/pressed，
-## 浅色模式下会变成一块很黑/纯黑；这里按主题重刷按钮态与菜单底色。
+## 默认弹窗里的选项按钮：tscn 内写死了深色 hover/pressed，浅色模式下会变成一块很黑/纯黑，
+## 这里按主题重刷三态底色。字色交给 MainTheme 的 OptionButton/font_*（已是 text_primary），
+## 只有「按下态底色是实心强调色」需要白字，单独覆盖。
 func _style_default_option_button() -> void:
-	var text_primary := ThemeMGR.get_color("text_primary")
 	var surface_low := ThemeMGR.get_color("surface_low")
 	var surface_hover := ThemeMGR.get_color("surface_hover")
 	var primary := ThemeMGR.get_color("primary")
 	var border := ThemeMGR.get_color("border")
-	var is_light := ThemeMGR.get_appearance() == "light"
 	var pressed_text := Color.WHITE
 
 	for spec in [
@@ -107,34 +103,12 @@ func _style_default_option_button() -> void:
 	]:
 		if not ThemeMGR.has_local_stylebox(%MessageOption, spec[0]):
 			continue
-		var sb := %MessageOption.get_theme_stylebox(spec[0]) as StyleBoxFlat
-		if sb:
-			sb.draw_center = true
-			sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], sb.bg_color.a if sb.bg_color.a > 0.0 else 0.95)
-			sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.85)
-	%MessageOption.add_theme_color_override("font_color", text_primary)
-	%MessageOption.add_theme_color_override("font_hover_color", text_primary)
+		var sb: StyleBoxFlat = %MessageOption.get_theme_stylebox(spec[0])
+		sb.draw_center = true
+		sb.bg_color = ThemeMGR._tint_keep_alpha(spec[1], sb.bg_color.a if sb.bg_color.a > 0.0 else 0.95)
+		sb.border_color = ThemeMGR._tint_keep_alpha(spec[2], 0.85)
 	%MessageOption.add_theme_color_override("font_pressed_color", pressed_text)
 	%MessageOption.add_theme_color_override("font_hover_pressed_color", pressed_text)
-	%MessageOption.add_theme_color_override("font_focus_color", text_primary)
-	%MessageOption.add_theme_color_override("icon_normal_color", text_primary if is_light else text_primary)
-	%MessageOption.add_theme_color_override("icon_hover_color", primary)
-	%MessageOption.add_theme_color_override("icon_pressed_color", pressed_text)
-
-	var menu: PopupMenu = %MessageOption.get_popup()
-	var panel := StyleBoxFlat.new()
-	panel.bg_color = ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("surface_high"), 0.98)
-	panel.border_color = border
-	panel.set_border_width_all(1)
-	panel.set_corner_radius_all(10)
-	menu.add_theme_stylebox_override("panel", panel)
-	var hover := StyleBoxFlat.new()
-	hover.bg_color = ThemeMGR._tint_keep_alpha(primary, 0.18 if is_light else 0.28)
-	hover.set_corner_radius_all(6)
-	menu.add_theme_stylebox_override("hover", hover)
-	menu.add_theme_color_override("font_color", text_primary)
-	menu.add_theme_color_override("font_hover_color", text_primary)
-
 
 func _exit_tree() -> void:
 	if ThemeMGR:

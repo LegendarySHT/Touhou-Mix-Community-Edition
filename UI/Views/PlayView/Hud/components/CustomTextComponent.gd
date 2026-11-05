@@ -62,6 +62,7 @@ func _build_content() -> void:
 	elif v == 2:
 		var pc := PanelContainer.new()
 		pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# 运行时创建的容器没有 tscn 可挂样式盒，只能节点私有覆盖；底色取组件参数色
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(c.r, c.g, c.b, clampf(float(get_param("bg_alpha", 0.35)), 0.0, 1.0))
 		sb.set_corner_radius_all(10)
