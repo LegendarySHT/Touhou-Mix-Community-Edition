@@ -12,6 +12,7 @@
 [ext_resource type="Theme" uid="uid://clu7eeeh6aitj" path="res://UI/Theme/BtnTheme/R12NoBorder.tres" id="10_q4lmo"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="11_i1we6"]
 [ext_resource type="Texture2D" uid="uid://bxkgbenh2ja4h" path="res://Resources/Covers/423be8d161a8a972c9014454921864a9.jpg" id="11_q4lmo"]
+[ext_resource type="PackedScene" path="res://UI/Views/PlayView/Hud/HudEditor.tscn" id="12_hudeditor"]
 
 [sub_resource type="Gradient" id="Gradient_7ak4s"]
 colors = PackedColorArray(0.0627451, 0.08627451, 0.16470589, 1, 0.02745098, 0.039215688, 0.07058824, 1)
@@ -438,6 +439,11 @@ theme_override_font_sizes/font_size = 72
 icon = SubResource("AtlasTexture_p7r7c")
 icon_alignment = 1
 
+[node name="HudEditor" parent="." unique_id=1900000100 instance=ExtResource("12_hudeditor")]
+unique_name_in_owner = true
+visible = false
+
 [connection signal="value_changed" from="Hud/TopProgressBar" to="Hud" method="_on_progress_bar_value_changed"]
 [connection signal="pressed" from="CenterBackground/VBox/PauseMenu/Continue" to="." method="show_or_hide_menu"]
 [connection signal="pressed" from="CenterBackground/VBox/PauseMenu/Quit" to="." method="_on_quit_pressed"]
+[connection signal="closed" from="HudEditor" to="." method="_on_hud_editor_closed"]

@@ -44,7 +44,7 @@ var _game_started: bool = false
 
 ## 自定义 HUD 编辑模式：进入打歌页但不播放，只调 HUD 布局
 var _hud_edit_mode: bool = false
-var _hud_editor: HudEditor = null
+@onready var _hud_editor: HudEditor = %HudEditor
 
 ## 游戏代次：每次 _prepare_game 自增，用于让已启动的 _on_game_finished 协程在
 ## 用户重试（仍停留在 PLAY_VIEW）时失效，避免等待结束后被强切回 ScoreView
@@ -584,8 +584,7 @@ func show_or_hide_menu():
 		return
 	# 自定义 HUD 编辑中：返回键 / 暂停按钮等同于「关闭编辑器」
 	if _hud_edit_mode:
-		if _hud_editor != null and is_instance_valid(_hud_editor):
-			_hud_editor.request_close()
+		_hud_editor.request_close()
 		return
 	if is_pause and %PauseMenu.visible:
 		if _game_started:
@@ -641,19 +640,13 @@ func exit_hud_edit_mode() -> void:
 func _start_hud_editor() -> void:
 	%Hud.set_edit_mode(true)
 	%Hud.apply_all_layouts()
-	_hud_editor = HudEditor.new()
-	_hud_editor.name = "HudEditor"
-	add_child(_hud_editor)
-	_hud_editor.closed.connect(_on_hud_editor_closed)
+	# 面板是场景里的常驻节点，只切启用状态，不再每次进出重建
 	_hud_editor.setup(%Hud)
 	GLogger.info("进入自定义 HUD 编辑模式", "PlayView")
 
 
 func _close_hud_editor() -> void:
-	if _hud_editor != null and is_instance_valid(_hud_editor):
-		remove_child(_hud_editor)
-		_hud_editor.queue_free()
-	_hud_editor = null
+	_hud_editor.deactivate()
 
 
 func _on_hud_editor_closed() -> void:

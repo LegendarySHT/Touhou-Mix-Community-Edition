@@ -2,65 +2,37 @@ class_name HudEditor
 extends Control
 
 ## 自定义 HUD 的浮层面板。
+## 节点树、文案、尺寸与静态样式都在 HudEditor.tscn / HudEditorTheme.tres 里，
+## 本脚本只负责接线与交互；仅「动画 / 样式参数」的行随组件数据动态生成。
 ## 布局：本节点铺满整个打歌页并接管鼠标/触摸 —— 点空白处取消选中，
 ## 点中组件即选中并可直接拖动；面板（拖标题栏移动、拖右下角改大小）负责改变体、
-## 锚点、偏移、缩放与动画参数。内容用 HFlowContainer 横向流动分栏，面板越宽分栏越多。
+## 锚点、偏移、缩放与动画参数。内容用 HFlowContainer 自动分栏，列数随面板宽度变化。
 ## 数据全部落在 HudComponent.data 上，保存时才写盘。
+## 节点常驻于 PlayView，由 setup() / deactivate() 切换启用状态，不重复创建。
 
 signal closed
 
 ## 面板尺寸下限 / 默认宽度占比
 const MIN_W := 540.0
 const MIN_H := 480.0
-## 面板左右内边距（MarginContainer）
-const PANEL_PAD_X := 20.0
-## 预留竖向滚动条 + 内边距宽度：ScrollContainer 出现竖滚动条后内容区比容器窄这么多
-const SCROLLBAR_RESERVE := 44.0
 const DEFAULT_W_RATIO := 0.46
 const DEFAULT_W_MAX := 1150.0
 const DEFAULT_H_MAX := 940.0
 const PANEL_MARGIN := 24.0
-## 分栏时每个区块的最小宽度
-const COLUMN_MIN_W := 360.0
-## 参数行横向流动时的最小宽度
+## 参数行的最小宽度；列数由 HFlowContainer 按可用宽度自行决定
 const ROW_MIN_W := 340.0
-const FLOW_SEP := 12.0
-## 面板内字号
-const PANEL_FONT_SIZE := 32
-## 入场后重摆的帧数（到 2 帧和 0 帧各摆一次）
-const SETTLE_TICKS := 4
 
 var hud: PlayHud = null
 
-var _panel: Panel = null
-var _margin: MarginContainer = null
-var _vbox: VBoxContainer = null
-var _scroll: ScrollContainer = null
-var _scroll_body: VBoxContainer = null
-var _top_flow: HFlowContainer = null
-var _grip: Button = null
-## 上方四个短区块（按面板宽度重算列宽）
-var _top_sections: Array[Control] = []
-var _params_box: HFlowContainer = null
-var _params_section: Control = null
-## 用户手动调过的面板尺寸（Vector2.ZERO = 用默认值）
-var _want_size: Vector2 = Vector2.ZERO
+# 面板节点全部写在 HudEditor.tscn 里，脚本用 % 唯一名直接访问，改层级不用改路径
+## .tres 里主色相关的色值统一写这个占位色（alpha 各自保留），运行时只换 rgb
+const ACCENT_PLACEHOLDER := Color(1.0, 0.435294, 0.682353, 1.0)
+const DEFAULT_HINT := "拖组件 / 标题栏 / 右下角可移动与缩放窗口"
 
-var _list: OptionButton = null
-var _variant: OptionButton = null
-var _add_btn: Button = null
-var _add_menu: PopupMenu = null
-var _del_btn: Button = null
 
 var _anchor_btns: Array[Button] = []
-var _edit_ax: LineEdit = null
-var _edit_ay: LineEdit = null
-var _edit_ox: LineEdit = null
-var _edit_oy: LineEdit = null
-var _edit_scale: LineEdit = null
-var _chk_visible: Button = null
-var _chk_loop: Button = null
-var _hint: Label = null
+## 用户手动调过的面板尺寸（Vector2.ZERO = 用默认值）
+var _want_size: Vector2 = Vector2.ZERO
 
 var _selected: HudComponent = null
 var _dirty: bool = false
@@ -77,328 +49,88 @@ var _drag_start_pos: Vector2 = Vector2.ZERO
 var _drag_start_offset: Vector2 = Vector2.ZERO
 
 var _resizing: bool = false
-## 入场后还要再重摆几次：首帧拿到的是兜底尺寸，列宽会算错（表现为内容溢出窗口）
-var _settle: int = 0
-## 自动贴合内容高度时防止递归
-
 
 var _hint_timer: float = 0.0
+## 每个 StyleBoxFlat 哪些色槽原值是占位色；换主题后仍能认出已染过的色
+var _accent_flags: Dictionary = {}
 
 
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_STOP
-	focus_mode = Control.FOCUS_NONE
-	z_index = 30
+	# 常驻节点默认不参与帧/输入处理，进出编辑模式时开关
+	set_process(false)
+	set_process_input(false)
 	resized.connect(_on_root_resized)
-	# 不用 anchors 拉伸：运行时 new 出来的 Control 在父节点尺寸没变过时不会重算 anchored rect，
-	# 会停在 (0,0) 导致面板被摆到屏幕外。直接跟父节点尺寸对齐。
-	var par := get_parent()
-	if par is Control:
-		if not (par as Control).resized.is_connected(_sync_full_rect):
-			(par as Control).resized.connect(_sync_full_rect)
-	_sync_full_rect()
+	_connect_controls()
 
 
-func _sync_full_rect() -> void:
-	var par := get_parent()
-	if par is Control:
-		size = (par as Control).size
-		position = Vector2.ZERO
-	_on_root_resized()
-
-
+## 进入编辑模式：复用场景节点，只刷新数据与主色
 func setup(p_hud: PlayHud) -> void:
 	hud = p_hud
-	_build()
+	_reset_state()
+	visible = true
+	set_process_input(true)
+	_apply_theme()
 	_rebuild_component_list()
 	_select_first()
-	# 面板尺寸依赖 ScrollContainer 的最终最小尺寸，首帧还拿不到，延迟一帧再摆
+	# 面板位置尺寸只依赖根节点尺寸，延后一帧摆一次；之后由 resized 跟随
 	call_deferred("_place_panel")
-	_settle = SETTLE_TICKS
 	set_process(true)
+
+
+## 退出编辑模式：关掉显示与处理，节点留在树里等下次复用
+func deactivate() -> void:
+	visible = false
+	set_process(false)
+	set_process_input(false)
+	_reset_state()
+
+
+func _reset_state() -> void:
+	_selected = null
+	_dirty = false
+	_syncing = false
+	_want_size = Vector2.ZERO
+	_panel_moved = false
+	_panel_anchor = Vector2.ZERO
+	_drag_panel = false
+	_drag_touch = false
+	_drag_pending = false
+	_drag_comp = null
+	_drag_start_pos = Vector2.ZERO
+	_drag_start_offset = Vector2.ZERO
+	_resizing = false
+	_hint_timer = 0.0
+	(%Hint as Label).text = DEFAULT_HINT
+	(%AddMenu as PopupMenu).clear()
 
 
 func _process(delta: float) -> void:
 	if _hint_timer > 0.0:
 		_hint_timer -= delta
-		if _hint_timer <= 0.0 and _hint != null:
-			_hint.text = ""
-	# 入场后重摆两次：首帧的滚动区尺寸不可靠，重摆会按真实宽度重算列宽
-	if _settle > 0:
-		_settle -= 1
-		if _settle == 2 or _settle == 0:
-			_place_panel()
+		if _hint_timer <= 0.0:
+			(%Hint as Label).text = ""
 	# 选中框跟着组件走：文本变化 / 预览动画都会改变尺寸，每帧重画一次（就几个矩形）
 	queue_redraw()
 
 
-# ==================== 构建面板 ====================
+# ==================== 场景节点接线 ====================
 
-func _build() -> void:
-	# 用 Panel 而不是 PanelContainer：右下角要放一个独立的缩放手柄，
-	# 容器会把它拉满整块，普通 Control 才能自由摆放。
-	_panel = Panel.new()
-	_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	var sb := StyleBoxFlat.new()
-	# 打歌舞台恒为深色，编辑面板也固定深色：跟随主题会出现「浅色面板 + 深色输入框」这种混搭
-	sb.bg_color = Color(0.078, 0.094, 0.133, 0.97)
-	sb.border_color = Color(1, 1, 1, 0.16)
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(14)
-	_panel.add_theme_stylebox_override("panel", sb)
-	add_child(_panel)
-	_panel.resized.connect(_layout_panel_children)
+## 结构、文案、尺寸都在 HudEditor.tscn 里；这里只把信号和数值框的行接上
+func _connect_controls() -> void:
 
-	_margin = MarginContainer.new()
-	_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_margin.add_theme_constant_override("margin_left", 20)
-	_margin.add_theme_constant_override("margin_right", 20)
-	_margin.add_theme_constant_override("margin_top", 14)
-	_margin.add_theme_constant_override("margin_bottom", 12)
-	_panel.add_child(_margin)
-
-	_vbox = VBoxContainer.new()
-	_vbox.add_theme_constant_override("separation", 10)
-	_margin.add_child(_vbox)
-
-	_vbox.add_child(_build_title_row())
-
-	_scroll = ScrollContainer.new()
-	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_scroll.custom_minimum_size = Vector2(0, 300)
-	# 首帧面板尺寸还没定，列宽会算错；滚动区一旦拿到真实宽度就重算一次
-	_scroll.resized.connect(_update_columns)
-	_vbox.add_child(_scroll)
-
-	_scroll_body = VBoxContainer.new()
-	_scroll_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_scroll_body.add_theme_constant_override("separation", int(FLOW_SEP))
-	_scroll.add_child(_scroll_body)
-
-	# 短区块（组件/变体/锚点/偏移）横向流动，面板越宽列越多
-	_top_flow = HFlowContainer.new()
-	_top_flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_top_flow.add_theme_constant_override("h_separation", int(FLOW_SEP))
-	_top_flow.add_theme_constant_override("v_separation", int(FLOW_SEP))
-	_scroll_body.add_child(_top_flow)
-	_top_sections = [
-		_build_component_section(),
-		_build_variant_section(),
-		_build_anchor_section(),
-		_build_transform_section(),
-	]
-	for s in _top_sections:
-		_top_flow.add_child(s)
-
-	# 参数区独占整行，内部再横向流动 —— 参数动辄十来个，跟着其它区块挤一列会很矮胖
-	_params_section = _build_params_section()
-	_scroll_body.add_child(_params_section)
-
-	_hint = Label.new()
-	_hint.add_theme_font_size_override("font_size", 18)
-	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_hint.text = "拖组件 / 标题栏 / 右下角可移动与缩放窗口"
-	_vbox.add_child(_hint)
-
-	_grip = Button.new()
-	_grip.flat = true
-	_grip.text = "◢"
-	_grip.focus_mode = Control.FOCUS_NONE
-	_grip.mouse_default_cursor_shape = Control.CURSOR_FDIAGSIZE
-	_grip.tooltip_text = "拖动调整窗口大小"
-	_grip.gui_input.connect(_on_grip_input)
-	_panel.add_child(_grip)
-
-	_apply_panel_theme()
-
-
-func _build_title_row() -> Control:
-	var head := HBoxContainer.new()
-	head.add_theme_constant_override("separation", 8)
-	head.mouse_filter = Control.MOUSE_FILTER_PASS
-	head.gui_input.connect(_on_title_input)
-
-	var title := Label.new()
-	title.text = "自定义 HUD"
-	title.add_theme_font_size_override("font_size", 34)
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_child(title)
-
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_child(spacer)
-
-	var reset_btn := Button.new()
-	reset_btn.text = "重置"
-	reset_btn.tooltip_text = "把组件恢复为默认布局"
-	reset_btn.focus_mode = Control.FOCUS_NONE
-	reset_btn.pressed.connect(_on_reset_pressed)
-	head.add_child(reset_btn)
-
-	var save_btn := Button.new()
-	save_btn.text = "保存"
-	save_btn.focus_mode = Control.FOCUS_NONE
-	save_btn.pressed.connect(_on_save_pressed)
-	head.add_child(save_btn)
-
-	var close_btn := Button.new()
-	close_btn.text = "关闭"
-	close_btn.focus_mode = Control.FOCUS_NONE
-	close_btn.pressed.connect(request_close)
-	head.add_child(close_btn)
-	return head
-
-
-func _section(title: String) -> VBoxContainer:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	var l := Label.new()
-	l.text = title
-	l.add_theme_font_size_override("font_size", 24)
-	l.modulate.a = 0.75
-	box.add_child(l)
-	return box
-
-
-func _build_component_section() -> Control:
-	var box := _section("组件")
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	# 下拉独占一行：和 ＋/－ 挤一行时，按最长项撑开后会把整块顶到 450+，
-	# 流式布局就排不出第二列了
-	_list = OptionButton.new()
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.fit_to_longest_item = true
-	_list.item_selected.connect(_on_list_selected)
-	row.add_child(_list)
-	box.add_child(row)
-
-	var row_btns := HBoxContainer.new()
-	row_btns.add_theme_constant_override("separation", 8)
-	_add_btn = Button.new()
-	_add_btn.text = "＋ 添加"
-	_add_btn.tooltip_text = "添加组件（每种最多一个）"
-	_add_btn.focus_mode = Control.FOCUS_NONE
-	_add_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_add_btn.pressed.connect(_on_add_pressed)
-	row_btns.add_child(_add_btn)
-
-	_del_btn = Button.new()
-	_del_btn.text = "－ 删除"
-	_del_btn.tooltip_text = "删除当前组件"
-	_del_btn.focus_mode = Control.FOCUS_NONE
-	_del_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_del_btn.pressed.connect(_on_delete_pressed)
-	row_btns.add_child(_del_btn)
-	box.add_child(row_btns)
-
-	_add_menu = PopupMenu.new()
-	_add_menu.index_pressed.connect(_on_add_menu_pressed)
-	add_child(_add_menu)
-	return box
-
-
-func _build_variant_section() -> Control:
-	var box := _section("外观变体")
-	_variant = OptionButton.new()
-	_variant.fit_to_longest_item = false
-	_variant.item_selected.connect(_on_variant_selected)
-	box.add_child(_variant)
-	return box
-
-
-func _build_anchor_section() -> Control:
-	var box := _section("锚点")
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	var presets := HudSchema.anchor_presets()
-	for i in presets.size():
-		var btn := Button.new()
-		btn.text = String(presets[i]["label"])
-		btn.toggle_mode = true
-		btn.focus_mode = Control.FOCUS_NONE
-		btn.custom_minimum_size = Vector2(84, 64)
+	# 3×3 锚点按钮按子节点顺序绑定预设索引，顺序与 HudSchema.anchor_presets() 一致
+	for i in mini(HudSchema.anchor_presets().size(), (%Presets as GridContainer).get_child_count()):
+		var btn := (%Presets as GridContainer).get_child(i) as Button
 		btn.pressed.connect(_on_anchor_preset.bind(i))
-		grid.add_child(btn)
 		_anchor_btns.append(btn)
-	box.add_child(grid)
 
-	var custom := HBoxContainer.new()
-	custom.add_theme_constant_override("separation", 6)
-	var lx := Label.new()
-	lx.text = "自定义"
-	lx.custom_minimum_size = Vector2(90, 0)
-	custom.add_child(lx)
-	_edit_ax = _make_num_edit(0.5, false, 0.0, 1.0, 2, 100.0, _on_anchor_custom_changed.bind(0))
-	_edit_ay = _make_num_edit(0.5, false, 0.0, 1.0, 2, 100.0, _on_anchor_custom_changed.bind(1))
-	custom.add_child(_edit_ax)
-	custom.add_child(_edit_ay)
-	box.add_child(custom)
-	return box
-
-
-func _build_transform_section() -> Control:
-	var box := _section("偏移 / 缩放")
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	var lx := Label.new()
-	lx.text = "偏移"
-	lx.custom_minimum_size = Vector2(90, 0)
-	row.add_child(lx)
-	_edit_ox = _make_num_edit(0.0, false, -4000.0, 4000.0, 1, 110.0, _on_offset_changed.bind(0))
-	_edit_oy = _make_num_edit(0.0, false, -4000.0, 4000.0, 1, 110.0, _on_offset_changed.bind(1))
-	row.add_child(_edit_ox)
-	row.add_child(_edit_oy)
-	box.add_child(row)
-
-	var row2 := HBoxContainer.new()
-	row2.add_theme_constant_override("separation", 6)
-	var ls := Label.new()
-	ls.text = "缩放"
-	ls.custom_minimum_size = Vector2(90, 0)
-	row2.add_child(ls)
-	_edit_scale = _make_num_edit(1.0, false, 0.1, 5.0, 2, 110.0, _on_scale_changed)
-	row2.add_child(_edit_scale)
-	box.add_child(row2)
-
-	var row3 := HBoxContainer.new()
-	row3.add_theme_constant_override("separation", 6)
-	var lv := Label.new()
-	lv.text = "显示"
-	lv.custom_minimum_size = Vector2(90, 0)
-	row3.add_child(lv)
-	_chk_visible = _make_toggle(true, _on_visible_toggled)
-	row3.add_child(_chk_visible)
-	box.add_child(row3)
-	return box
-
-
-func _build_params_section() -> Control:
-	var box := _section("动画 / 样式参数")
-	_params_box = HFlowContainer.new()
-	_params_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_params_box.add_theme_constant_override("h_separation", int(FLOW_SEP))
-	_params_box.add_theme_constant_override("v_separation", 6)
-	box.add_child(_params_box)
-
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	var preview_btn := Button.new()
-	preview_btn.text = "预览一次"
-	preview_btn.focus_mode = Control.FOCUS_NONE
-	preview_btn.pressed.connect(_on_preview_pressed)
-	row.add_child(preview_btn)
-	var loop_label := Label.new()
-	loop_label.text = "循环预览"
-	row.add_child(loop_label)
-	_chk_loop = _make_toggle(true, _on_loop_toggled)
-	_chk_loop.custom_minimum_size = Vector2(130, 0)
-	row.add_child(_chk_loop)
-	box.add_child(row)
-	return box
+	_wire_num_edit((%EditAX as LineEdit), 0.5, false, 0.0, 1.0, 2, _on_anchor_custom_changed.bind(0))
+	_wire_num_edit((%EditAY as LineEdit), 0.5, false, 0.0, 1.0, 2, _on_anchor_custom_changed.bind(1))
+	_wire_num_edit((%EditOX as LineEdit), 0.0, false, -4000.0, 4000.0, 1, _on_offset_changed.bind(0))
+	_wire_num_edit((%EditOY as LineEdit), 0.0, false, -4000.0, 4000.0, 1, _on_offset_changed.bind(1))
+	_wire_num_edit((%EditScale as LineEdit), 1.0, false, 0.1, 5.0, 2, _on_scale_changed)
+	_wire_toggle((%VisibleToggle as Button), _on_visible_toggled)
+	_wire_toggle((%LoopToggle as Button), _on_loop_toggled)
 
 
 ## 数字输入用纯 LineEdit（SpinBox 的上下箭头在手机上又窄又难点，内嵌输入框还常拿不到焦点）。
@@ -410,6 +142,13 @@ func _make_num_edit(value: float, is_int: bool, min_v: float, max_v: float,
 	le.custom_minimum_size = Vector2(width, 0)
 	le.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	le.select_all_on_focus = true
+	_wire_num_edit(le, value, is_int, min_v, max_v, decimals, cb)
+	return le
+
+
+## 场景里写好的 LineEdit 和参数区动态行共用同一套数值解析与回调
+func _wire_num_edit(le: LineEdit, value: float, is_int: bool, min_v: float, max_v: float,
+		decimals: int, cb: Callable) -> void:
 	# 负数范围（如偏移）用全键盘：数字小键盘在多数 Android 输入法上没有减号
 	le.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_DEFAULT if min_v < 0.0 \
 		else LineEdit.KEYBOARD_TYPE_NUMBER_DECIMAL
@@ -423,7 +162,6 @@ func _make_num_edit(value: float, is_int: bool, min_v: float, max_v: float,
 	le.text_changed.connect(func(_t: String) -> void: _on_num_typed(le, cb))
 	le.text_submitted.connect(func(_t: String) -> void: _finalize_num(le, cb))
 	le.focus_exited.connect(func() -> void: _finalize_num(le, cb))
-	return le
 
 
 func _fmt_num(v: float, is_int: bool, decimals: int) -> String:
@@ -502,71 +240,35 @@ func _set_num_text(le: LineEdit, v: float) -> void:
 	le.set_meta("silent", false)
 
 
-## 面板自成一套深色主题：文字浅色、按钮/输入框深色描边，
-## 不依赖全局深浅色（打歌舞台恒为深色，跟随主题会出现浅底深字/深底深字两种翻车）。
-func _apply_panel_theme() -> void:
-	if _panel == null:
-		return
-	var t := Theme.new()
-	# 编辑器信息密度高，字号统一收小一档（主主题那套是给全屏页面用的）
-	t.default_font_size = PANEL_FONT_SIZE
-	for ft in ["Label", "Button", "OptionButton", "LineEdit", "SpinBox", "PopupMenu", "CheckBox"]:
-		t.set_font_size("font_size", ft, PANEL_FONT_SIZE)
-	var text := Color("#F2F5FB")
-	var dim := Color("#A6B1C9")
-	var primary := Color("#FF6FAE")
-	if ThemeMGR != null:
-		primary = ThemeMGR.get_color("primary")
-	for type in ["Label", "Button", "OptionButton", "CheckBox", "CheckButton", "SpinBox", "LineEdit"]:
-		t.set_color("font_color", type, text)
-		t.set_color("font_hover_color", type, text)
-		t.set_color("font_pressed_color", type, text)
-		t.set_color("font_hover_pressed_color", type, text)
-		t.set_color("font_focus_color", type, text)
-		t.set_color("font_disabled_color", type, Color(dim.r, dim.g, dim.b, 0.5))
-	t.set_color("font_color", "PopupMenu", text)
-	t.set_color("font_hover_color", "PopupMenu", text)
-	t.set_color("font_disabled_color", "PopupMenu", dim)
-
-	# 按钮三态：半透明白底，按下时用强调色
-	for spec in [
-		["normal", Color(1, 1, 1, 0.08), Color(1, 1, 1, 0.0)],
-		["hover", Color(1, 1, 1, 0.16), Color(primary.r, primary.g, primary.b, 0.5)],
-		["pressed", Color(primary.r, primary.g, primary.b, 0.42), Color(primary.r, primary.g, primary.b, 0.9)],
-		["disabled", Color(1, 1, 1, 0.03), Color(1, 1, 1, 0.0)],
-		["focus", Color(1, 1, 1, 0.0), Color(primary.r, primary.g, primary.b, 0.85)],
-	]:
-		var b := _flat(spec[1], spec[2], 8)
-		t.set_stylebox(spec[0], "Button", b)
-		t.set_stylebox(spec[0], "OptionButton", b)
-
-	# 输入框：比面板再暗一层，形成凹陷
-	var input := _flat(Color(0, 0, 0, 0.30), Color(1, 1, 1, 0.18), 6)
-	var input_focus := _flat(Color(0, 0, 0, 0.36), Color(primary.r, primary.g, primary.b, 0.9), 6)
-	for state in ["normal", "read_only"]:
-		t.set_stylebox(state, "LineEdit", input)
-	t.set_stylebox("focus", "LineEdit", input_focus)
-
-	# 下拉箭头跟随文字色
-	t.set_constant("modulate_arrow", "OptionButton", 1)
-
-	var popup := _flat(Color(0.09, 0.11, 0.15, 0.98), Color(1, 1, 1, 0.18), 8)
-	popup.set_content_margin_all(6)
-	t.set_stylebox("panel", "PopupMenu", popup)
-	var hover := _flat(Color(primary.r, primary.g, primary.b, 0.30), Color(0, 0, 0, 0.0), 5)
-	t.set_stylebox("hover", "PopupMenu", hover)
-
-	_panel.theme = t
+## 根节点在场景里挂的就是 HudEditorTheme.tres，直接原地改这份共享资源：
+## 多个控件引用同一 StyleBoxFlat 时去重后改一次即全部生效，不必复制主题。
+func _apply_theme() -> void:
+	var primary := ThemeMGR.get_color("primary")
+	var tinted: Array[StyleBoxFlat] = []
+	for type in ["Button", "OptionButton", "LineEdit", "PopupMenu"]:
+		for sb_name in theme.get_stylebox_list(type):
+			var sb := theme.get_stylebox(sb_name, type) as StyleBoxFlat
+			if not tinted.has(sb):
+				tinted.append(sb)
+				_tint(sb, primary)
 
 
-func _flat(bg: Color, border: Color, radius: int) -> StyleBoxFlat:
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.border_color = border
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(radius)
-	sb.set_content_margin_all(6)
-	return sb
+## 首次记下哪些色槽原值是占位色，之后按记录重染，alpha 各自保留
+func _tint(sb: StyleBoxFlat, primary: Color) -> void:
+	if not _accent_flags.has(sb):
+		_accent_flags[sb] = [
+			_same_rgb(sb.bg_color, ACCENT_PLACEHOLDER),
+			_same_rgb(sb.border_color, ACCENT_PLACEHOLDER),
+		]
+	var flags: Array = _accent_flags[sb]
+	if flags[0]:
+		sb.bg_color = Color(primary.r, primary.g, primary.b, sb.bg_color.a)
+	if flags[1]:
+		sb.border_color = Color(primary.r, primary.g, primary.b, sb.border_color.a)
+
+
+func _same_rgb(a: Color, b: Color) -> bool:
+	return is_equal_approx(a.r, b.r) and is_equal_approx(a.g, b.g) and is_equal_approx(a.b, b.b)
 
 
 ## 布尔控件用「开/关」切换按钮，不用 CheckBox：勾选图标是主题贴图，
@@ -578,88 +280,41 @@ func _make_toggle(on: bool, cb: Callable) -> Button:
 	b.text = "开" if on else "关"
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(160, 0)
+	_wire_toggle(b, cb)
+	return b
+
+
+func _wire_toggle(b: Button, cb: Callable) -> void:
 	b.toggled.connect(func(v: bool) -> void:
 		b.text = "开" if v else "关"
 		cb.call(v)
 	)
-	return b
 
 
 # ==================== 面板位置 / 尺寸 ====================
 
 func _avail_size() -> Vector2:
-	var w := size.x - PANEL_MARGIN * 2.0
-	var h := size.y - PANEL_MARGIN * 2.0
-	if w < 320.0 or h < 320.0:
-		# 首帧自身尺寸还没算出来，给个能用的估值，_on_root_resized 会再摆一次
-		return Vector2(1000.0, 760.0)
-	return Vector2(w, h)
+	return Vector2(size.x - PANEL_MARGIN * 2.0, size.y - PANEL_MARGIN * 2.0)
 
 
 func _place_panel() -> void:
-	if _panel == null:
-		return
+	if size.x <= 0.0 or size.y <= 0.0:
+		return  # 根节点还没被布局，交给 resized
 	var avail := _avail_size()
 	var w := _want_size.x if _want_size.x > 0.0 \
 		else clampf(avail.x * DEFAULT_W_RATIO, MIN_W, DEFAULT_W_MAX)
 	var h := _want_size.y if _want_size.y > 0.0 else minf(avail.y, DEFAULT_H_MAX)
-	_panel.size = Vector2(clampf(w, MIN_W, avail.x), clampf(h, MIN_H, avail.y))
-	_panel.position = Vector2(size.x - _panel.size.x - PANEL_MARGIN, PANEL_MARGIN)
-	_layout_panel_children()
-
-
-## 面板尺寸变化时同步内部：内边距容器铺满、缩放手柄贴右下、按可用宽度重算分栏
-func _layout_panel_children() -> void:
-	if _panel == null or _margin == null:
-		return
-	_margin.position = Vector2.ZERO
-	_margin.size = _panel.size
-	if _grip != null:
-		var g := 44.0
-		_grip.size = Vector2(g, g)
-		_grip.position = Vector2(_panel.size.x - g - 2.0, _panel.size.y - g - 2.0)
-	# 容器要下一帧才排完，尺寸算完再按真实宽度分栏（分栏完再贴合高度）
-	_update_columns.call_deferred()
-
-
-## 分栏宽度按**面板宽度**算，不按滚动区实测宽度：
-## 滚动区宽度本来就是由内容最小宽度撑出来的，用它反过来算列宽会形成正反馈（列越宽 → 内容越宽 → 列更宽）。
-func _update_columns() -> void:
-	if _panel == null:
-		return
-	# 优先用滚动区实测宽度（含滚动条占位），拿不到（首帧还没排）时才用面板宽兜底。
-	# 不能用内容的最小宽度反推：列宽变宽会让内容变宽，形成正反馈。
-	var w := _panel.size.x - PANEL_PAD_X * 2.0 - SCROLLBAR_RESERVE
-	if _scroll != null and _scroll.size.x > 120.0:
-		w = _scroll.size.x - SCROLLBAR_RESERVE
-	if w < 120.0:
-		return
-	_apply_flow_columns(_top_flow, COLUMN_MIN_W, w)
-	_apply_flow_columns(_params_box, ROW_MIN_W, w)
-
-
-func _apply_flow_columns(flow: HFlowContainer, min_w: float, w: float) -> void:
-	if flow == null or flow.get_child_count() == 0:
-		return
-	var cols := maxi(1, int(floor((w + FLOW_SEP) / (min_w + FLOW_SEP))))
-	var cw := (w - FLOW_SEP * float(cols - 1)) / float(cols)
-	for c in flow.get_children():
-		var ctrl := c as Control
-		if ctrl == null:
-			continue
-		var want := Vector2(maxf(min_w, cw), ctrl.custom_minimum_size.y)
-		if not ctrl.custom_minimum_size.is_equal_approx(want):
-			ctrl.custom_minimum_size = want
+	(%Panel as Panel).size = Vector2(clampf(w, MIN_W, avail.x), clampf(h, MIN_H, avail.y))
+	(%Panel as Panel).position = Vector2(size.x - (%Panel as Panel).size.x - PANEL_MARGIN, PANEL_MARGIN)
 
 
 func _on_root_resized() -> void:
-	if _panel == null:
+	if not visible:
 		return
 	if not _panel_moved:
 		_place_panel()
 	else:
 		_clamp_panel()
-		_layout_panel_children()
 	queue_redraw()
 
 
@@ -705,8 +360,8 @@ func _on_grip_input(event: InputEvent) -> void:
 
 
 func _clamp_panel() -> void:
-	_panel.position.x = clampf(_panel.position.x, 80.0 - _panel.size.x, maxf(0.0, size.x - 80.0))
-	_panel.position.y = clampf(_panel.position.y, 0.0, maxf(0.0, size.y - 60.0))
+	(%Panel as Panel).position.x = clampf((%Panel as Panel).position.x, 80.0 - (%Panel as Panel).size.x, maxf(0.0, size.x - 80.0))
+	(%Panel as Panel).position.y = clampf((%Panel as Panel).position.y, 0.0, maxf(0.0, size.y - 60.0))
 
 
 # ==================== 组件选中与拖动 ====================
@@ -768,17 +423,15 @@ func _resize_to(pos: Vector2) -> void:
 	var d := pos - _panel_anchor
 	_panel_anchor = pos
 	var avail := _avail_size()
-	var ns := _panel.size + d
+	var ns := (%Panel as Panel).size + d
 	ns.x = clampf(ns.x, MIN_W, maxf(MIN_W, avail.x))
 	ns.y = clampf(ns.y, MIN_H, maxf(MIN_H, avail.y))
-	_panel.size = ns
+	(%Panel as Panel).size = ns
 	# 右下角往外拖时面板会顶到屏幕外：把整块往里推，保证右边/下边不出界
-	_panel.position.x = clampf(_panel.position.x, 0.0, maxf(0.0, size.x - PANEL_MARGIN - ns.x))
-	_panel.position.y = clampf(_panel.position.y, 0.0, maxf(0.0, size.y - PANEL_MARGIN - ns.y))
+	(%Panel as Panel).position.x = clampf((%Panel as Panel).position.x, 0.0, maxf(0.0, size.x - PANEL_MARGIN - ns.x))
+	(%Panel as Panel).position.y = clampf((%Panel as Panel).position.y, 0.0, maxf(0.0, size.y - PANEL_MARGIN - ns.y))
 	_want_size = ns
 	_panel_moved = true
-	_layout_panel_children()
-
 
 ## 面板拖动：一律用「第一次移动当基准 + 位移增量」，不碰按下点。
 ## 按下点来自 _gui_input（标题栏局部坐标），移动来自 _input（视口坐标），两者不能相减。
@@ -806,7 +459,7 @@ func _panel_move_to(pos: Vector2) -> void:
 		return
 	if pos == _panel_anchor:
 		return
-	_panel.position += pos - _panel_anchor
+	(%Panel as Panel).position += pos - _panel_anchor
 	_panel_anchor = pos
 	_panel_moved = true
 	_clamp_panel()
@@ -910,47 +563,39 @@ func _select(comp: HudComponent) -> void:
 	_sync_visible()
 	_rebuild_params()
 	_update_buttons()
-	if not _panel_moved:
-		_place_panel.call_deferred()
 	queue_redraw()
 
 
 func _update_buttons() -> void:
-	if _del_btn != null:
-		_del_btn.disabled = _selected == null
-	if _variant != null:
-		_variant.disabled = _selected == null
+	(%Delete as Button).disabled = _selected == null
+	(%Variant as OptionButton).disabled = _selected == null
 
 
 func _sync_list_selection() -> void:
-	if _list == null:
-		return
 	_syncing = true
 	var idx := -1
-	for i in _list.item_count:
-		var id := String(_list.get_item_metadata(i))
+	for i in (%ComponentList as OptionButton).item_count:
+		var id := String((%ComponentList as OptionButton).get_item_metadata(i))
 		if _selected != null and id == _selected.component_id:
 			idx = i
 			break
 	if idx >= 0:
-		_list.select(idx)
+		(%ComponentList as OptionButton).select(idx)
 	_syncing = false
 
 
 func _sync_variant() -> void:
-	if _variant == null:
-		return
 	_syncing = true
-	_variant.clear()
+	(%Variant as OptionButton).clear()
 	if _selected == null:
 		_syncing = false
 		return
 	var variants: Array = _selected.get_variants()
 	for v in variants:
-		_variant.add_item(String((v as Dictionary).get("name", "变体")))
+		(%Variant as OptionButton).add_item(String((v as Dictionary).get("name", "变体")))
 	var idx := clampi(_selected.get_variant(), 0, maxi(0, variants.size() - 1))
 	if variants.size() > 0:
-		_variant.select(idx)
+		(%Variant as OptionButton).select(idx)
 	_syncing = false
 
 
@@ -960,60 +605,52 @@ func _sync_anchor() -> void:
 	for i in _anchor_btns.size():
 		var preset: Vector2 = (HudSchema.anchor_presets()[i]["anchor"] as Vector2)
 		_anchor_btns[i].set_pressed_no_signal(preset.is_equal_approx(a))
-	_set_num_text(_edit_ax, a.x)
-	_set_num_text(_edit_ay, a.y)
+	_set_num_text((%EditAX as LineEdit), a.x)
+	_set_num_text((%EditAY as LineEdit), a.y)
 	_syncing = false
 
 
 func _sync_offset_fields() -> void:
 	_syncing = true
 	var o := _selected.pos_offset() if _selected != null else Vector2.ZERO
-	_set_num_text(_edit_ox, o.x)
-	_set_num_text(_edit_oy, o.y)
+	_set_num_text((%EditOX as LineEdit), o.x)
+	_set_num_text((%EditOY as LineEdit), o.y)
 	_syncing = false
 
 
 func _sync_scale_field() -> void:
 	_syncing = true
 	var sc := float(_selected.data.get("scale", 1.0)) if _selected != null else 1.0
-	_set_num_text(_edit_scale, sc)
+	_set_num_text((%EditScale as LineEdit), sc)
 	_syncing = false
 
 
 func _sync_visible() -> void:
 	_syncing = true
-	if _chk_visible != null:
-		var on := bool(_selected.data.get("visible", true)) if _selected != null else true
-		_chk_visible.set_pressed_no_signal(on)
-		_chk_visible.text = "开" if on else "关"
-		_chk_visible.disabled = _selected == null
+	var on := bool(_selected.data.get("visible", true)) if _selected != null else true
+	(%VisibleToggle as Button).set_pressed_no_signal(on)
+	(%VisibleToggle as Button).text = "开" if on else "关"
+	(%VisibleToggle as Button).disabled = _selected == null
 	_syncing = false
 
 
 # ==================== 参数区 ====================
 
 func _rebuild_params() -> void:
-	if _params_box == null:
-		return
-	for c in _params_box.get_children():
-		_params_box.remove_child(c)
+	for c in (%ParamsBox as HFlowContainer).get_children():
+		(%ParamsBox as HFlowContainer).remove_child(c)
 		c.queue_free()
 	if _selected == null:
 		return
 	for e in _selected.get_param_schema():
-		_params_box.add_child(_make_param_row(e as Dictionary))
-	# 参数量随组件变化，重建后立刻按当前宽度重新分栏（面板还没尺寸就等 _update_columns）
-	if _panel != null and _panel.size.x > 120.0:
-		var w := _panel.size.x - PANEL_PAD_X * 2.0 - SCROLLBAR_RESERVE
-		if _scroll != null and _scroll.size.x > 120.0:
-			w = _scroll.size.x - SCROLLBAR_RESERVE
-		_apply_flow_columns(_params_box, ROW_MIN_W, w)
+		(%ParamsBox as HFlowContainer).add_child(_make_param_row(e as Dictionary))
 
 
 func _make_param_row(e: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	row.custom_minimum_size = Vector2(ROW_MIN_W, 0)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var l := Label.new()
 	l.text = String(e.get("name", ""))
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1066,25 +703,25 @@ func _make_param_row(e: Dictionary) -> Control:
 func _on_list_selected(idx: int) -> void:
 	if _syncing or hud == null:
 		return
-	var id := String(_list.get_item_metadata(idx))
+	var id := String((%ComponentList as OptionButton).get_item_metadata(idx))
 	_select(hud.get_component(id))
 
 
 func _rebuild_component_list() -> void:
-	if _list == null or hud == null:
+	if hud == null:
 		return
 	_syncing = true
-	_list.clear()
+	(%ComponentList as OptionButton).clear()
 	for c in hud.get_components():
 		var comp: HudComponent = c
-		_list.add_item(HudSchema.name_of(comp.component_id))
-		_list.set_item_metadata(_list.item_count - 1, comp.component_id)
+		(%ComponentList as OptionButton).add_item(HudSchema.name_of(comp.component_id))
+		(%ComponentList as OptionButton).set_item_metadata((%ComponentList as OptionButton).item_count - 1, comp.component_id)
 	_syncing = false
 	_sync_list_selection()
 
 
 func _on_add_pressed() -> void:
-	_add_menu.clear()
+	(%AddMenu as PopupMenu).clear()
 	var has: Dictionary = {}
 	for c in hud.get_components():
 		has[(c as HudComponent).component_id] = true
@@ -1092,19 +729,19 @@ func _on_add_pressed() -> void:
 	for e in HudSchema.entries():
 		if has.has(String(e["id"])):
 			continue
-		_add_menu.add_item(String(e["name"]))
-		_add_menu.set_item_metadata(n, String(e["id"]))
+		(%AddMenu as PopupMenu).add_item(String(e["name"]))
+		(%AddMenu as PopupMenu).set_item_metadata(n, String(e["id"]))
 		n += 1
 	if n == 0:
 		_flash_hint("所有组件都已摆放（每种最多一个）")
 		return
-	_add_menu.size = Vector2i(400, n * 64)
-	_add_menu.position = Vector2i(_add_btn.get_screen_position() + Vector2(-200.0, 64.0))
-	_add_menu.popup()
+	(%AddMenu as PopupMenu).size = Vector2i(400, n * 64)
+	(%AddMenu as PopupMenu).position = Vector2i((%Add as Button).get_screen_position() + Vector2(-200.0, 64.0))
+	(%AddMenu as PopupMenu).popup()
 
 
 func _on_add_menu_pressed(idx: int) -> void:
-	var id := String(_add_menu.get_item_metadata(idx))
+	var id := String((%AddMenu as PopupMenu).get_item_metadata(idx))
 	var comp := hud.add_component(id)
 	if comp != null:
 		_rebuild_component_list()
@@ -1272,9 +909,7 @@ func _mark_dirty() -> void:
 
 
 func _flash_hint(text: String) -> void:
-	if _hint == null:
-		return
-	_hint.text = text
+	(%Hint as Label).text = text
 	_hint_timer = 2.5
 
 

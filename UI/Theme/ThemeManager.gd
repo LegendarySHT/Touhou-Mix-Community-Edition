@@ -568,10 +568,7 @@ func has_local_stylebox(node: Control, state: String) -> bool:
 func _modify_panel_color(node: Control, color_key: String) -> void:
 	if not has_local_stylebox(node, "panel"):
 		return
-	var sb := node.get_theme_stylebox("panel")
-	if sb == null or sb is StyleBoxEmpty:
-		return
-	_apply_color_to_stylebox(sb, get_color(color_key))
+	_apply_color_to_stylebox(node.get_theme_stylebox("panel"), get_color(color_key))
 
 ## 只替换 RGB，保留目标 StyleBox 原有的 alpha（避免主题改色时把作者设定的透明度覆盖掉）
 func _tint_keep_alpha(color: Color, alpha: float) -> Color:
@@ -605,10 +602,7 @@ func _modify_button_states_color(btn: Button, color_key: String) -> void:
 	]:
 		if not has_local_stylebox(btn, spec[0]):
 			continue
-		var sb := btn.get_theme_stylebox(spec[0])
-		if sb == null or sb is StyleBoxEmpty:
-			continue
-		_apply_color_to_stylebox(sb, spec[1])
+		_apply_color_to_stylebox(btn.get_theme_stylebox(spec[0]), spec[1])
 
 ## 统一设置按钮各状态样式（通过 Theme 的 StyleBoxFlat 引用）。
 ## 现代配色：常规态为中性板面 + 细描边，交互态才引入强调色。
@@ -619,8 +613,6 @@ func _set_theme_stylebox(theme: Theme, tmp: Theme, type: String, state: String, 
 	if not theme.has_theme_item(Theme.DATA_TYPE_STYLEBOX, state, type):
 		return
 	var sb := theme.get_stylebox(state, type)
-	if sb == null:
-		return
 	var dup := sb.duplicate()
 	if dup is StyleBoxFlat:
 		(dup as StyleBoxFlat).bg_color = bg
@@ -644,8 +636,6 @@ func _make_stylebox(theme: Theme, type: String, state: String, bg: Color, border
 	if not theme.has_theme_item(Theme.DATA_TYPE_STYLEBOX, state, type):
 		return null
 	var sb := theme.get_stylebox(state, type)
-	if sb == null:
-		return null
 	var dup := sb.duplicate()
 	var bg_c := Color(bg.r, bg.g, bg.b, bg.a * alpha)
 	var bd_c := Color(border.r, border.g, border.b, border.a * alpha)
@@ -723,22 +713,16 @@ func _enlarge_color_picker(pk: ColorPicker) -> void:
 	# 滑条热区：滑块本身要有足够高度才点得中（默认 ~16px）
 	for child in pk.find_children("*", "HSlider", true, false):
 		var s := child as HSlider
-		if s == null:
-			continue
 		s.custom_minimum_size.y = maxf(s.custom_minimum_size.y, 44.0)
 		s.focus_mode = Control.FOCUS_NONE
 	# 数值输入框（R/G/B/A/I 右侧那格）压窄：它是滑条的竞争对手，不是主角。
 	# 只动横向最小宽度，纵向保持原样，触摸热区不受影响。
 	for child in pk.find_children("*", "SpinBox", true, false):
 		var sb := child as SpinBox
-		if sb == null:
-			continue
 		sb.custom_minimum_size.x = 96
 		sb.size_flags_horizontal = Control.SIZE_FILL
 		# 内部 LineEdit 也要一并收窄，否则 get_bound_minimum_size() 仍按大字撑开
-		var le := sb.get_line_edit()
-		if le:
-			le.custom_minimum_size.x = 0
+		sb.get_line_edit().custom_minimum_size.x = 0
 	pk.custom_minimum_size = Vector2(maxf(pk.custom_minimum_size.x, 640.0), 0)
 
 ## TabContainer 主题样式
@@ -794,17 +778,15 @@ func _style_shared_r12_disabled(theme: Theme, tmp: Theme) -> void:
 func _refresh_shared_btn_themes() -> void:
 	# ListBtn-ColorBorder — 列表项按钮（album/song/sorted 共用）：与专辑节点同款（边框 pri_light + 半透明底 + focus 阴影）
 	var list_theme := load(SHARED_LIST_BTN_THEME_PATH) as Theme
-	if list_theme:
-		var tmp := Theme.new()
-		_style_shared_list_btn_theme(list_theme, tmp)
-		list_theme.merge_with(tmp)
+	var tmp := Theme.new()
+	_style_shared_list_btn_theme(list_theme, tmp)
+	list_theme.merge_with(tmp)
 	# R12NoBorder — 圆角12 无边框按钮（PopupWindow/KeySequenceItem/MidiView/PlayView/ValueButton 共用）：与主 Theme 按钮同款（primary 三阶）
 	var r12_theme := load(SHARED_R12_BTN_THEME_PATH) as Theme
-	if r12_theme:
-		var tmp := Theme.new()
-		_style_shared_flat_btn_theme(r12_theme, tmp)
-		_style_shared_r12_disabled(r12_theme, tmp)
-		r12_theme.merge_with(tmp)
+	tmp = Theme.new()
+	_style_shared_flat_btn_theme(r12_theme, tmp)
+	_style_shared_r12_disabled(r12_theme, tmp)
+	r12_theme.merge_with(tmp)
 
 ## 列表项按钮 Theme 四态颜色（现代风格：不透明描边 + 透明底，四态用不同色阶区分）。
 ## 列表项的封面/标题是 show_behind_parent（画在 StyleBox 之下），因此这里**不使用任何填充**
@@ -859,8 +841,6 @@ func _style_panel_set_bg_color(panel: Control, color: Color) -> void:
 ## 修改按钮自带的 normal/pressed/hover StyleBoxFlat 颜色（保留 tscn 的 skew/border/shadow/alpha 配置）
 ## 仅处理按钮本地覆盖的状态样式（见 has_local_stylebox），避免误改共享 Theme 资源
 func _style_button_set_bg_color(btn: Button, color: Color) -> void:
-	if not btn:
-		return
 	for spec in [
 		["normal", color],
 		["pressed", color.darkened(0.25)],
@@ -879,11 +859,7 @@ func _style_button_set_bg_color(btn: Button, color: Color) -> void:
 ## 任何新建 ColorPickerButton 的地方都应调用本函数，避免各处各写一套导致风格漂移。
 ##   edit_alpha — 是否显示透明度滑条（背景色类需要，音符颜色类不需要）
 func setup_color_picker(btn: ColorPickerButton, edit_alpha: bool = false) -> void:
-	if not btn:
-		return
 	var pk := btn.get_picker()
-	if not pk:
-		return
 	pk.edit_alpha = edit_alpha
 	# 纯色模式下不需要强度滑条
 	pk.edit_intensity = false
@@ -989,8 +965,7 @@ func refresh_theme_only() -> void:
 	# 不再需要把 Main 的 theme 手动下推（含 skew 下 Node2D 子树）—— 那些节点自动继承项目默认主题。
 	if _main_theme == null:
 		_main_theme = load(MAIN_THEME_PATH) as Theme
-	if _main_theme:
-		_refresh_theme_colors(_main_theme)
+	_refresh_theme_colors(_main_theme)
 	# 共享按钮 Theme（几何 .tres，颜色随主题）—— 资源单例，改一次即同步所有引用场景
 	_refresh_shared_btn_themes()
 	await get_tree().process_frame
