@@ -139,6 +139,7 @@ func _on_view_ready() -> void:
 	UiStatMGR.state_changed.connect(_on_state_changed)
 	if FileSystemManager.instance:
 		FileSystemManager.instance.resources_ready.connect(_on_resources_ready)
+	EvtBus.charts_cache_validated.connect(_on_charts_cache_validated)
 
 	# 标签下划线位置依赖容器布局，等首帧量出按钮位置后再摆放
 	call_deferred("_update_tab_underline", true)
@@ -982,6 +983,22 @@ func _sync_song_states() -> void:
 		if hash_str.is_empty():
 			continue
 		item["state"] = ResourceManager.instance.get_download_state(hash_str)
+
+
+## 后台缓存校验完成后本地反向索引才补齐新下载的谱面。此时统一重取状态并刷新
+## 已绑定卡片 / 详情弹窗 / 下载管理页，消除「下载其实已完成，按钮仍停在下载」的残留窗口。
+## 该信号在启动扫描、DelView 删除等场景也会触发，所以这里必须能安全处理空数据。
+func _on_charts_cache_validated(_changed: bool) -> void:
+	_sync_song_states()
+	if _song_vlist != null:
+		for node in _song_vlist.bound_nodes():
+			if is_instance_valid(node):
+				node.call("refresh_download_state")
+	if %DetailLayer.is_open():
+		%DetailLayer.refresh_download_state()
+	if _current_tab == Tab.DOWNLOADS:
+		_refresh_downloads_page(false)
+	_update_batch_button()
 
 
 ## 切到下载管理页时，把当前页已经下载的谱面并入记录（只做一次）

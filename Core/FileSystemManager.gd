@@ -2169,6 +2169,16 @@ func is_valid_audio_file(file_path: String) -> bool:
 	var file_ext = file_path.get_extension().to_lower()
 	return valid_extensions.has(file_ext)
 
+## 下载收尾即时登记谱面 hash → 目录映射。
+## 缓存快速路径下新增目录由后台校验协程异步扫描，resources_ready 发出时
+## _hash_to_folder 可能还没有该 hash，ResourceManager.get_download_state() 的自愈
+## 逻辑会据此把刚落盘的 DOWNLOADED 误判成 NOT_DOWNLOADED。文件已写入就先登记；
+## 后台校验稍后全量重建反向索引，结果一致（多对一映射，额外 key 无害）。
+func register_chart_hash(chart_hash: String, folder_name: String) -> void:
+	if chart_hash.is_empty() or folder_name.is_empty():
+		return
+	_hash_to_folder[chart_hash] = folder_name
+
 ## 重新扫描资源（热重载）
 ## 协程：内部 await _scan_all_resources()，调用方需 await 此函数
 func rescan_resources() -> void:

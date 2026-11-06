@@ -308,7 +308,15 @@ func _finalize_download(chart_hash: String, chart_data: Dictionary, chart_dir: S
 	_report_progress(on_progress, DownloadStage.RESCAN, -1.0)
 	if FileSystemManager.instance:
 		await FileSystemManager.instance.rescan_resources()
-	
+		# rescan 走缓存快速路径时，新增谱面目录是交给后台校验协程异步扫描的，
+		# resources_ready 发出时 _hash_to_folder 里还没有本次下载的 hash。若此时就返回，
+		# 调用方 get_download_state() 的自愈逻辑会把刚写入的 DOWNLOADED 抹成
+		# NOT_DOWNLOADED（表现为「实际已下载完成，按钮却不变已下载」）。
+		await FileSystemManager.instance.await_busy_done()
+		# 兜底：扫描若因并发被跳过（_scan_all_resources 的 is_scanning 早退），
+		# 文件既已落盘就直接登记反向索引，不再把状态判定绑在扫描时序上
+		FileSystemManager.instance.register_chart_hash(chart_hash, chart_dir.get_file())
+
 	_download_states[chart_hash] = DownloadState.DOWNLOADED
 	GLogger.info("Chart downloaded: %s" % str(chart_data.get("hash", "")), "ResMGR")
 	return {"ok": true}
