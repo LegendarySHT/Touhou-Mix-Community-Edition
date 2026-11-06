@@ -336,6 +336,8 @@ var _last_press_pos: Vector2 = Vector2(-1000000.0, -1000000.0)
 var _last_press_was_mouse: bool = false
 
 var pressed_keys: Dictionary = {}
+# 摇杆轴方向键位的当前状态（token → 是否已越过阈值），用于边沿检测
+var _axis_pressed: Dictionary = {}
 
 func init_flow_area():
 	clear_flow_area()
@@ -656,6 +658,7 @@ func clear_flow_area():
 	touch_positions.clear()
 	_gestures.clear()
 	pressed_keys.clear()
+	_axis_pressed.clear()
 	note_idx = 0
 	_needs_bucket_sweep = false
 	_reset_seq_arrays()
@@ -1172,41 +1175,100 @@ func _gui_input(event: InputEvent) -> void:
 		_handle_slide_drag(event.index, touch_positions[event.index], event_time_ms)
 
 func _input(event: InputEvent) -> void:
+	if UiStatMGR.current_state != UiStatMGR.UIState.PLAY_VIEW:
+		return
+	# 摇杆轴是持续量：先按阈值化成「按下/抬起」两个状态，再走与按键相同的判定
+	if event is InputEventJoypadMotion:
+		_handle_joy_axis(event as InputEventJoypadMotion)
+		return
+	if not (event is InputEventKey or event is InputEventMIDI
+			or event is InputEventMouseButton or event is InputEventJoypadButton):
+		return
+	# 有 GUI 控件持有键盘焦点时（HUD 编辑器的数值/文本输入框）不抢按键：
+	# 这里无条件 accept_event() 会让输入框一个字符都收不到。
+	# 正常打歌时焦点恒为 null（FocusManager 在 PLAY_VIEW 不接管），行为不变。
+	if get_viewport().gui_get_focus_owner() != null:
+		return
 
-	if UiStatMGR.current_state == UiStatMGR.UIState.PLAY_VIEW and event is InputEventKey:
-		# 有 GUI 控件持有键盘焦点时（HUD 编辑器的数值/文本输入框）不抢按键：
-		# 这里无条件 accept_event() 会让输入框一个字符都收不到。
-		# 正常打歌时焦点恒为 null（FocusManager 在 PLAY_VIEW 不接管），行为不变。
-		if get_viewport().gui_get_focus_owner() != null:
-			return
-		accept_event()
-		if event.is_echo():
-			return
-		if _limit_fail_active:
-			return
-
-		if parent_node.key_map and event.keycode in parent_node.key_map:
-			if parent_node.is_pause:
-				accept_event()
-				return
-
-			if event.pressed:
-				var idx = parent_node.key_map.find(event.keycode)
-				var event_time_ms := _get_realtime_position_ms()
-				pressed_keys[event.keycode] = idx
-				# 使用统一的判定函数，支持所有音符类型
-				var bn := judge_note_at_lane(idx, idx, event_time_ms)
-				if bn >= 0:
-					if _st_type[bn] == FlowNote.NoteType.Long:
-						_hold_long_note(event.keycode, bn)
-				else:
-					%LaneEffect.light_lane(idx)
-			else:
-				pressed_keys.erase(event.keycode)
-				var released_lane = parent_node.key_map.find(event.keycode)
-				_handle_release(event.keycode, _get_realtime_position_ms(), released_lane)
-		elif event.keycode == KEY_ESCAPE and event.pressed:
+	# Esc 不作为键位（录入时已在黑名单里），只负责呼出/收起菜单
+	if event is InputEventKey:
+		var key_event := event as InputEventKey
+		if key_event.pressed and not key_event.is_echo() and key_event.keycode == KEY_ESCAPE:
+			accept_event()
 			parent_node.show_or_hide_menu()
+			return
+
+	# 键盘连发（长按重复）不是新的按下，忽略
+	if event is InputEventKey and (event as InputEventKey).is_echo():
+		return
+
+	var token := ConfigParser.binding_token_from_event(event)
+	# 未绑定的输入不吞事件，留给界面与其它系统
+	if token == ConfigParser.BINDING_NONE or not parent_node.lane_by_token.has(token):
+		return
+	# 暂停时把输入让给界面（手柄 A、鼠标键还要能操作菜单），同时不参与判定
+	if parent_node.is_pause:
+		return
+	if _limit_fail_active:
+		accept_event()
+		return
+
+	accept_event()
+	var lane: int = parent_node.lane_by_token[token]
+	# 键盘键、MIDI 音符、鼠标键、手柄按钮共用同一条按下/抬起通道
+	if ConfigParser.binding_event_pressed(event):
+		_press_lane(token, lane)
+	else:
+		_release_lane(token, lane)
+
+
+## 摇杆轴转成键位：正负两个方向各算一个键位，越过阈值算按下、回落到阈值内算抬起
+## 只有绑定了对应方向的轴才会被处理，其它轴直接忽略
+func _handle_joy_axis(event: InputEventJoypadMotion) -> void:
+	if get_viewport().gui_get_focus_owner() != null:
+		return
+	var token_pos := ConfigParser.make_joy_axis_token(event.axis, true)
+	var token_neg := ConfigParser.make_joy_axis_token(event.axis, false)
+	if parent_node.lane_by_token.has(token_pos):
+		_sync_axis_state(token_pos, event.axis_value >= ConfigParser.JOY_AXIS_THRESHOLD)
+	if parent_node.lane_by_token.has(token_neg):
+		_sync_axis_state(token_neg, event.axis_value <= -ConfigParser.JOY_AXIS_THRESHOLD)
+
+
+## 轴方向的边沿检测：只有真正跨过阈值才产生一次按下/抬起，避免逐帧重复判定
+func _sync_axis_state(token: int, pressed_now: bool) -> void:
+	if bool(_axis_pressed.get(token, false)) == pressed_now:
+		return
+	_axis_pressed[token] = pressed_now
+	if parent_node.is_pause or _limit_fail_active:
+		return
+	var lane: int = int(parent_node.lane_by_token.get(token, -1))
+	if lane < 0:
+		return
+	if pressed_now:
+		_press_lane(token, lane)
+	else:
+		_release_lane(token, lane)
+
+
+## 按下某个轨道（键盘 / MIDI / 鼠标 / 手柄共用）
+## token 只作为按下身份（长条按住、释放配对），与输入来源无关
+func _press_lane(token: int, lane: int) -> void:
+	pressed_keys[token] = lane
+	var event_time_ms := _get_realtime_position_ms()
+	# 使用统一的判定函数，支持所有音符类型
+	var bn := judge_note_at_lane(lane, lane, event_time_ms)
+	if bn >= 0:
+		if _st_type[bn] == FlowNote.NoteType.Long:
+			_hold_long_note(token, bn)
+	else:
+		%LaneEffect.light_lane(lane)
+
+
+## 抬起某个轨道（键盘 / MIDI / 鼠标 / 手柄共用）
+func _release_lane(token: int, lane: int) -> void:
+	pressed_keys.erase(token)
+	_handle_release(token, _get_realtime_position_ms(), lane)
 
 # ========== 触摸/键盘判定 ==========
 

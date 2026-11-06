@@ -158,6 +158,12 @@ func _initialize_core_systems() -> void:
 	vk_guard.name = "VirtualKeyboardGuard"
 	add_child(vk_guard)
 
+	# 1.2. MIDI 键盘输入：引擎自带桌面端驱动（Windows winmm / Linux ALSA / macOS CoreMIDI），
+	#     与实体键盘共用同一条输入流。键位录入与打歌都要用，开机统一打开；
+	#     Android 无 MIDI 驱动，这里为空操作，不影响启动。
+	OS.open_midi_inputs()
+	logger.info("MIDI inputs opened: %s" % str(OS.get_connected_midi_inputs()), "Main")
+
 	# 1.5. 存储管理器：恢复/解析自定义存储根（必须先于配置加载，因为 settings.ini 随存储根迁移）
 	# 读取迁移日志 / 引导指针处理崩溃恢复，并把最终存储根注入 PathHelper
 	storage_manager = StorageManager.new()

@@ -3,6 +3,7 @@ extends Control
 class_name KBModeAdjust
 
 ## 不能作为键位的按键（保留作取消/删除/导航等功能键）
+## 只作用于键盘输入；鼠标左键在 token 化阶段就被排除，手柄与 MIDI 没有额外黑名单
 const BLACKLISTED_KEYS: Array[Key] = [
 	Key.KEY_ESCAPE, Key.KEY_TAB, Key.KEY_BACKTAB, Key.KEY_BACKSPACE, Key.KEY_DELETE,
 	Key.KEY_ENTER, Key.KEY_KP_ENTER,
@@ -40,10 +41,11 @@ var _hint: Label = null
 # 交替颜色序列按钮颜色（按索引保存，重建时保留）
 var _alt_colors_state: Array[Color] = []
 
-# 数据：每个 item 为 {"key": Key, "display_name": String}
+# 数据：每个 item 为 {"token": int, "display_name": String}
+# token 统一表示键盘键 / MIDI 音符 / 鼠标键 / 手柄按钮与轴（编码见 ConfigParser）
 var _items: Array = []
 var _selected_index: int = -1
-var _recording_key: bool = false
+var _recording: bool = false
 
 # 拖拽状态
 var _dragged_item: KeySequenceItem = null
@@ -73,17 +75,17 @@ func init_adjust(current_keys: String, current_display_names: String,
 		kb_mode: Variant = 1, alt_color: Variant = 1, alt_count: Variant = 2,
 		alt_colors: String = "#ff0000,#0000ff", gap: Variant = 0, lane_sep: Variant = 0) -> void:
 	_cancel_recording()
-	# 显式重置按钮文本（_cancel_recording 在 _recording_key=false 时不设置文本）
+	# 显式重置按钮文本（_cancel_recording 在非录入态下不设置文本）
 	%KeyConfigBtn.text = "输入按键"
 	_items.clear()
 	_selected_index = -1
 
-	var keys: Array[Key] = ConfigParser.parse_keyboard_keys(current_keys)
-	var names: Array[String] = ConfigParser.parse_keyboard_display_names(current_display_names, keys.size())
+	var tokens: Array = ConfigParser.parse_lane_bindings(current_keys)
+	var names: Array[String] = ConfigParser.parse_keyboard_display_names(current_display_names, tokens.size())
 
-	for i in keys.size():
+	for i in tokens.size():
 		_items.append({
-			"key": keys[i],
+			"token": int(tokens[i]),
 			"display_name": names[i] if i < names.size() else ""
 		})
 
@@ -111,15 +113,15 @@ func init_adjust(current_keys: String, current_display_names: String,
 
 
 ## 返回当前配置给 PopupWindow.show_kb_mode_adjust
-## 过滤掉未设置按键（KEY_NONE）的 item，避免无效键写入配置
+## 过滤掉未绑定（token 为 0）的 item，避免无效键写入配置
 func get_result() -> Dictionary:
 	var valid_keys: Array[String] = []
 	var valid_names: Array[String] = []
 	for item in _items:
-		var k: Key = item.get("key", Key.KEY_NONE)
-		if k == Key.KEY_NONE:
+		var token := int(item.get("token", ConfigParser.BINDING_NONE))
+		if token == ConfigParser.BINDING_NONE:
 			continue
-		valid_keys.append(_key_to_config_string(k))
+		valid_keys.append(ConfigParser.binding_to_token_string(token))
 		# strip_edges 保证与 parse_keyboard_display_names 的解析行为一致（round-trip）
 		valid_names.append(String(item.get("display_name", "")).strip_edges())
 
@@ -220,7 +222,8 @@ func _rebuild_items() -> void:
 		%KeySequenceFlow.move_child(item, i)  # 插入到 InsertPlace 之前
 		item.button_group = _shared_button_group
 		var item_data: Dictionary = _items[i]
-		item.set_data(item_data.get("key", Key.KEY_NONE), item_data.get("display_name", ""), i)
+		item.set_data(int(item_data.get("token", ConfigParser.BINDING_NONE)),
+			item_data.get("display_name", ""), i)
 		# 连接信号
 		item.item_selected.connect(_on_item_selected)
 		item.drag_started.connect(_on_item_drag_started)
@@ -233,12 +236,6 @@ func _rebuild_items() -> void:
 	if %InsertPlace.get_parent() == %KeySequenceFlow:
 		%KeySequenceFlow.move_child(%InsertPlace, insert_idx)
 	%InsertPlace.visible = false
-
-
-## 将 Key 枚举转为可被 ConfigParser.parse_keyboard_keys 解析的字符串
-## 优先使用 OS.get_keycode_string（与 OS.find_keycode_from_string 互逆）
-func _key_to_config_string(k: Key) -> String:
-	return OS.get_keycode_string(k)
 
 
 # ===== 选中 =====
@@ -256,8 +253,7 @@ func _refresh_detail_panel() -> void:
 		_suppress_display_name_signal = false
 		return
 	var item: Dictionary = _items[_selected_index]
-	var k: Key = item.get("key", Key.KEY_NONE)
-	%KeyName.text = "当前按键： " + ("未设置" if k == Key.KEY_NONE else OS.get_keycode_string(k))
+	%KeyName.text = "当前按键： " + _binding_label(item)
 	_suppress_display_name_signal = true
 	%KeyDisplayNameEdit.text = item.get("display_name", "")
 	_suppress_display_name_signal = false
@@ -266,7 +262,7 @@ func _refresh_detail_panel() -> void:
 # ===== AddBtn =====
 
 func _on_add_btn_pressed() -> void:
-	_items.append({"key": Key.KEY_NONE, "display_name": ""})
+	_items.append({"token": ConfigParser.BINDING_NONE, "display_name": ""})
 	_rebuild_items()
 	# 选中新增的项
 	var new_idx := _items.size() - 1
@@ -295,24 +291,28 @@ func _on_key_config_btn_pressed() -> void:
 		%KeyConfigBtn.text = "输入按键"
 		%KeyConfigBtn.disabled = false
 		return
-	if _recording_key:
+	if _recording:
 		_cancel_recording()
 	else:
 		_start_recording()
 
 
 func _start_recording() -> void:
-	_recording_key = true
-	%KeyConfigBtn.text = "按键中..."
+	_recording = true
+	%KeyConfigBtn.text = "等待输入..."
+	# 实体键盘、MIDI 键盘、鼠标键、手柄都能录入，提示里点明，避免玩家以为只认实体按键
+	%KeyName.text = "请按下按键、鼠标键、手柄按钮或扳机，或弹奏 MIDI 音符"
 	# 释放 LineEdit 焦点，避免按键被吞
 	%KeyDisplayNameEdit.release_focus()
 
 
 func _cancel_recording() -> void:
-	if not _recording_key:
+	if not _recording:
 		return
-	_recording_key = false
+	_recording = false
 	%KeyConfigBtn.text = "输入按键"
+	# 取消录入（ESC 等）时把「当前按键」那行还原成选中项的真实绑定
+	_refresh_detail_panel()
 
 
 # ===== 显示名编辑 =====
@@ -344,25 +344,15 @@ func _input(event: InputEvent) -> void:
 	# 仅 visible 会在此窗口已隐藏但仍为当前 tab 时继续拦截按键
 	if not is_visible_in_tree():
 		return
+
+	# 录入模式：实体键盘、MIDI 键盘、鼠标键与手柄都能写入当前槽位
+	if _recording:
+		_handle_recording_event(event)
+		return
+
 	if not (event is InputEventKey) or not event.pressed or event.is_echo():
 		return
 	var key_event: InputEventKey = event as InputEventKey
-
-	# 录入模式：拦截所有按键
-	if _recording_key:
-		accept_event()
-		# ESC / Backspace / Delete → 取消录入
-		if key_event.keycode in [Key.KEY_ESCAPE, Key.KEY_BACKSPACE, Key.KEY_DELETE]:
-			_cancel_recording()
-			return
-		# 黑名单键 → 警告，保持录入状态
-		if key_event.keycode in BLACKLISTED_KEYS:
-			%KeyName.text = "不可用： " + OS.get_keycode_string(key_event.keycode)
-			GLogger.warning("Key '%s' is blacklisted" % OS.get_keycode_string(key_event.keycode), "KBModeAdjust")
-			return
-		# 录入有效按键
-		_apply_recorded_key(key_event.keycode)
-		return
 
 	# 非录入模式：LineEdit 有焦点时不拦截（让用户正常编辑文本）
 	if %KeyDisplayNameEdit.has_focus() or %AltColorCountEdit.has_focus():
@@ -382,37 +372,107 @@ func _input(event: InputEvent) -> void:
 			_delete_selected()
 
 
-## 录入按键到当前选中项
-func _apply_recorded_key(k: Key) -> void:
+## 录入态的输入处理：Esc / Backspace / Delete 保留为取消录入，
+## 被排除的输入只给提示不写入，其余可用输入立即绑定并退出录入
+func _handle_recording_event(event: InputEvent) -> void:
+	if event is InputEventKey:
+		var key_event := event as InputEventKey
+		# 键盘连发（长按重复）不是新的按下
+		if key_event.is_echo():
+			return
+		if key_event.pressed and key_event.keycode in [
+				Key.KEY_ESCAPE, Key.KEY_BACKSPACE, Key.KEY_DELETE]:
+			accept_event()
+			_cancel_recording()
+			return
+
+	# 鼠标左键保留给界面点击：只给提示，事件照常放行，否则录制期间按钮点不动
+	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \
+			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		%KeyName.text = "不可用： 鼠标左键（保留给界面）"
+		return
+
+	var token := ConfigParser.binding_token_from_event(event)
+	if token == ConfigParser.BINDING_NONE:
+		# MIDI 的 Note Off 与其它消息也吞掉，避免录入期间触发别处的 MIDI 处理
+		if event is InputEventMIDI:
+			accept_event()
+		return
+	# 抬起事件不写入，等真正的按下
+	if not ConfigParser.binding_event_pressed(event):
+		return
+	accept_event()
+	if _is_blacklisted(token):
+		var blocked := ConfigParser.binding_to_display_name(token)
+		%KeyName.text = "不可用： " + blocked
+		GLogger.warning("Binding '%s' is blacklisted" % blocked, "KBModeAdjust")
+		return
+	_apply_recorded_token(token)
+
+
+## 该绑定是否被排除：键盘的功能键走黑名单，鼠标左键在 token 化阶段就已排除
+func _is_blacklisted(token: int) -> bool:
+	if token == ConfigParser.BINDING_NONE:
+		return true
+	if ConfigParser.binding_kind(token) != ConfigParser.BindingKind.KEY:
+		return false
+	return ConfigParser.binding_value(token) in BLACKLISTED_KEYS
+
+
+## 把绑定写入当前选中项
+func _apply_recorded_token(token: int) -> void:
 	if _selected_index < 0 or _selected_index >= _items.size():
 		_cancel_recording()
 		return
-	# 检查按键冲突：该键是否已绑定到其他 item
+	var label := ConfigParser.binding_to_display_name(token)
+	# 同一个输入不能绑到两个槽位
 	for i in _items.size():
 		if i == _selected_index:
 			continue
-		if _items[i].get("key", Key.KEY_NONE) == k:
+		if int(_items[i].get("token", ConfigParser.BINDING_NONE)) == token:
 			%KeyName.text = "已绑定到第 %d 个按键" % (i + 1)
-			GLogger.warning("Key '%s' is already bound to item %d" % [OS.get_keycode_string(k), i], "KBModeAdjust")
+			GLogger.warning("Binding '%s' is already bound to item %d" % [label, i],
+				"KBModeAdjust")
 			_cancel_recording()
 			return
-	_items[_selected_index]["key"] = k
-	# 若显示名为空，自动填充按键默认名
-	if String(_items[_selected_index].get("display_name", "")).is_empty():
-		var default_name := OS.get_keycode_string(k)
-		_items[_selected_index]["display_name"] = default_name
-		_suppress_display_name_signal = true
-		%KeyDisplayNameEdit.text = default_name
-		_suppress_display_name_signal = false
+	var old_token := int(_items[_selected_index].get("token", ConfigParser.BINDING_NONE))
+	_items[_selected_index]["token"] = token
+	_sync_display_name(_selected_index, old_token)
 	# 刷新 UI
-	%KeyName.text = "当前按键： " + OS.get_keycode_string(k)
+	%KeyName.text = "当前按键： " + label
 	var item_node := _find_item_node_by_index(_selected_index)
 	if item_node:
-		item_node.key_code = k
+		item_node.binding_token = token
 		item_node.display_name = String(_items[_selected_index].get("display_name", ""))
 		item_node.refresh_text()
 	# 退出录入模式
 	_cancel_recording()
+
+
+## 槽位的默认显示名（键名 / 音名 / 鼠标键 / 手柄键）
+func _default_binding_name(token: int) -> String:
+	return ConfigParser.binding_to_display_name(token)
+
+
+## 重新录入后刷新显示名：只替换「仍是旧绑定默认名」的自动填充值，
+## 玩家自己改过的名字保持不动
+func _sync_display_name(idx: int, old_token: int) -> void:
+	var current := String(_items[idx].get("display_name", "")).strip_edges()
+	if not current.is_empty() and current != _default_binding_name(old_token):
+		return
+	var new_name := _default_binding_name(int(_items[idx].get("token", ConfigParser.BINDING_NONE)))
+	_items[idx]["display_name"] = new_name
+	_suppress_display_name_signal = true
+	%KeyDisplayNameEdit.text = new_name
+	_suppress_display_name_signal = false
+
+
+## 槽位的显示文本：未绑定时显示未设置，否则用绑定的默认名
+func _binding_label(item: Dictionary) -> String:
+	var token := int(item.get("token", ConfigParser.BINDING_NONE))
+	if token == ConfigParser.BINDING_NONE:
+		return "未设置"
+	return ConfigParser.binding_to_display_name(token)
 
 
 ## 删除当前选中的 item

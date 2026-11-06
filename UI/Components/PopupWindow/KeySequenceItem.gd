@@ -3,8 +3,9 @@ extends Button
 class_name KeySequenceItem
 
 ## 单个键位项的数据
-## 注意：属性名用 key_code 而非 key，避免与 Key 枚举类型同名导致跨类访问解析失败
-var key_code: Key = Key.KEY_NONE
+## 注意：属性名用 binding_token 而非 token，避免与内置概念混淆
+## 绑定 token 的编码见 ConfigParser（键盘键 / MIDI 音符 / 鼠标键 / 手柄按钮与轴共用）
+var binding_token: int = ConfigParser.BINDING_NONE
 var display_name: String = ""
 var item_index: int = -1
 
@@ -34,21 +35,21 @@ func _ready() -> void:
 	pressed.connect(_on_pressed)
 
 ## 写入数据并刷新文本
-func set_data(k: Key, _name: String, idx: int) -> void:
-	key_code = k
+func set_data(token: int, _name: String, idx: int) -> void:
+	binding_token = token
 	display_name = _name
 	item_index = idx
 	refresh_text()
 
-## 刷新按钮显示文本：自定义名称优先，否则用按键默认名；按键未设置时显示"未设置"
+## 刷新按钮显示文本：自定义名称优先，否则用绑定的默认名（键名 / 音名 / 鼠标键 / 手柄键）；都未设置时显示"未设置"
 func refresh_text() -> void:
-	if key_code == Key.KEY_NONE:
+	if binding_token == ConfigParser.BINDING_NONE:
 		text = "未设置"
 		return
 	if not display_name.is_empty():
 		text = display_name
 	else:
-		text = OS.get_keycode_string(key_code)
+		text = ConfigParser.binding_to_display_name(binding_token)
 
 # ===== 拖拽 =====
 

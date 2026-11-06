@@ -253,7 +253,7 @@ func show_image_adjust(view_name: String = "", allow_cover: bool = false) -> Dic
 ## current_keys / current_display_names：由调用方从 pending 配置传入，未传则回退到配置文件
 ## current_kb_mode / current_gap：键盘模式开关与左右间距；current_alt_*：交替轨道颜色
 ## current_lane_sep：轨道分隔线开关（0/1，仅键盘模式生效）
-## 返回 Dictionary: {"keys": "A,S,D,F,...", "display_names": "P1,,,...",
+## 返回 Dictionary: {"keys": "A,M60,MB2,JB0,JA0+,...", "display_names": "P1,,,...",
 ##                    "keyboard_mode": 0/1, "keyboard_mode_gap": int,
 ##                    "alt_color": 0/1, "alt_count": int, "alt_colors": "#rrggbb,...",
 ##                    "lane_separator": 0/1}

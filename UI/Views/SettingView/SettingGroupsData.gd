@@ -415,7 +415,7 @@ static func get_setting_groups() -> Array:
 				"id": "keyboard_mode_keys",
 				"name_en": "Keyboard Mode Settings",
 				"name_zh": "键盘模式设置",
-				"description": "点击按钮打开窗口，设置键盘模式开关、按键顺序、显示名称、左右间距与交替轨道颜色",
+				"description": "点击按钮打开窗口，设置键盘模式开关、按键顺序（实体按键、MIDI 键盘音符、鼠标键或手柄按键）、显示名称、左右间距与交替轨道颜色",
 				"type": "TYPE_BUTTON",
 				"on_click": "_popup_kb_mode_adjust"
 			},

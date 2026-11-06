@@ -245,9 +245,10 @@ func _load_config_parameters() -> void:
 	if keyboard_mode:
 		max_touch_move_velocity = 999999.0
 		hand_model_enabled = false
-		var keys = ConfigParser.parse_keyboard_keys(cfg.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;"))
-		if keys.size() > 0:
-			lane_count = keys.size()
+		var lanes: int = ConfigParser.parse_lane_bindings(
+			cfg.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;")).size()
+		if lanes > 0:
+			lane_count = lanes
 
 ## 配置变更：清除缓存并要求重新生成
 ## 只按 key 分派 —— 配置键全局唯一，所以这里不需要（也不该）知道某项在 ini 的哪个 section，
@@ -291,18 +292,19 @@ func _on_config_changed(key: String, value: Variant) -> void:
 			if km:
 				max_touch_move_velocity = 999999.0
 				hand_model_enabled = false
-				var keys = ConfigParser.parse_keyboard_keys(ConfigManager.instance.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;"))
-				if keys.size() > 0:
-					lane_count = keys.size()
+				var lanes: int = ConfigParser.parse_lane_bindings(
+					ConfigManager.instance.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;")).size()
+				if lanes > 0:
+					lane_count = lanes
 			else:
 				max_touch_move_velocity = ConfigManager.instance.get_float("max_touch_move_speed")
 				hand_model_enabled = true
 				lane_count = ConfigManager.instance.get_int("lane_count", 12)
 		"keyboard_mode_keys":
 			if ConfigManager.instance.get_int("keyboard_mode", 0) == 1:
-				var new_keys = ConfigParser.parse_keyboard_keys(str(value))
-				if new_keys.size() > 0:
-					lane_count = new_keys.size()
+				var lanes: int = ConfigParser.parse_lane_bindings(str(value)).size()
+				if lanes > 0:
+					lane_count = lanes
 		"block_size":
 			key_width = float(value)
 

@@ -72,7 +72,10 @@ const _PLAYBACK_STALL_THRESHOLD := 30  # 30帧 ≈ 0.5秒
 var lane_count: int = 12
 var lane_padding: int = 100 # 左右填充安全区
 var keyboard_mode: bool = false
-var key_map: Array[Key] = []
+# 每个轨道一个绑定 token（0 = 该轨道未绑定），编码见 ConfigParser
+var lane_tokens: Array[int] = []
+# 绑定 token → 轨道索引（输入端 O(1) 查表）
+var lane_by_token: Dictionary = {}
 var key_display_names: Array[String] = []
 
 var judge_line_offset_y: int = 250
@@ -339,7 +342,7 @@ func _apply_input_low_latency(enable: bool) -> void:
 		GLogger.info("Input accumulation restored to %s" % _saved_accumulated_input, "PlayView")
 
 func get_lane_count() -> int:
-	return lane_count if not keyboard_mode else key_map.size()
+	return lane_count if not keyboard_mode else lane_tokens.size()
 
 ## 获取轨道交替颜色（仅键盘模式 + 交替轨道颜色开启时返回，否则返回 null）
 ## 交替方式：两端对称，colors[lane_idx % int(轨道数/2) % colors.size()]
@@ -1052,12 +1055,12 @@ func _load_lane_parameters() -> void:
 	# 加载键盘模式（0=关闭，1=开启，默认0）
 	keyboard_mode = config_mgr.get_int("keyboard_mode", 0) == 1
 	
-	# 加载键盘键位字符串（默认 "A,S,D,F,J,K,L,;"）
+	# 加载键位（键盘键 / MIDI 音符 / 鼠标键 / 手柄按钮与轴共用一个槽位表）
 	var keyboard_keys_str = config_mgr.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;")
-	key_map = ConfigParser.parse_keyboard_keys(keyboard_keys_str)
-	# 加载键盘键位显示名称（与 key_map 对齐，空字符串=使用按键默认名）
+	apply_lane_bindings(ConfigParser.parse_lane_bindings(keyboard_keys_str))
+	# 加载键位显示名称（与 lane_tokens 对齐，空字符串=使用绑定默认名）
 	var keyboard_names_str = config_mgr.get_string("keyboard_mode_display_names", "")
-	key_display_names = ConfigParser.parse_keyboard_display_names(keyboard_names_str, key_map.size())
+	key_display_names = ConfigParser.parse_keyboard_display_names(keyboard_names_str, lane_tokens.size())
 
 	# 加载交替轨道颜色（默认开启；仅键盘模式生效）
 	keyboard_alt_color = config_mgr.get_bool("keyboard_alt_color", true)
@@ -1076,8 +1079,8 @@ func _load_lane_parameters() -> void:
 	keyboard_lane_separator = config_mgr.get_bool("keyboard_lane_separator", false)
 
 	GLogger.info(
-		"PlayView lane parameters loaded: lane_count=%d, lane_padding=%d, keyboard_mode=%s, key_map_size=%d" % 
-		[lane_count, lane_padding, str(keyboard_mode), key_map.size()],
+		"PlayView lane parameters loaded: lane_count=%d, lane_padding=%d, keyboard_mode=%s, lane_tokens=%d" % 
+		[lane_count, lane_padding, str(keyboard_mode), lane_tokens.size()],
 		"PlayView"
 	)
 	beam_alpha = config_mgr.get_float("flash_alpha", 0.8)
@@ -1127,21 +1130,22 @@ func _on_lane_config_changed(key: String, value: Variant) -> void:
 				GLogger.info("PlayView keyboard_mode updated: %s" % str(keyboard_mode), "PlayView")
 	
 		"keyboard_mode_keys":
-			var new_keys = ConfigParser.parse_keyboard_keys(str(value))
-			if new_keys.size() != key_map.size() or _are_keys_different(new_keys, key_map):
-				key_map = new_keys
-				# 键位变化时同步重算 display_names（按新 key 数量对齐）
+			var new_bindings := ConfigParser.parse_lane_bindings(str(value))
+			if not _is_same_bindings(new_bindings):
+				apply_lane_bindings(new_bindings)
+				# 键位变化时同步重算 display_names（按新轨道数对齐）
 				key_display_names = ConfigParser.parse_keyboard_display_names(
 					ConfigManager.instance.get_string("keyboard_mode_display_names", ""),
-					key_map.size()
+					lane_tokens.size()
 				)
 				# 仅在键盘模式时需要重初始化
 				if keyboard_mode:
 					should_reinit = true
-				GLogger.info("PlayView keyboard_mode_keys updated: %d keys" % key_map.size(), "PlayView")
+				GLogger.info("PlayView keyboard_mode_keys updated: %d lanes" % lane_tokens.size(),
+					"PlayView")
 
 		"keyboard_mode_display_names":
-			key_display_names = ConfigParser.parse_keyboard_display_names(str(value), key_map.size())
+			key_display_names = ConfigParser.parse_keyboard_display_names(str(value), lane_tokens.size())
 			# 仅在键盘模式时需要重初始化（刷新标签文本）
 			if keyboard_mode:
 				should_reinit = true
@@ -1189,14 +1193,22 @@ func _on_lane_config_changed(key: String, value: Variant) -> void:
 		if not (playback_mgr and playback_mgr.is_playing):
 			_reinit_lane_display()
 
-## 比较两个KeyCode数组是否不同
-func _are_keys_different(keys1: Array[Key], keys2: Array[Key]) -> bool:
-	if keys1.size() != keys2.size():
-		return true
-	for i in range(keys1.size()):
-		if keys1[i] != keys2[i]:
-			return true
-	return false
+## 应用一组轨道绑定 token，并重建 token → 轨道的查表
+func apply_lane_bindings(tokens: Array) -> void:
+	lane_tokens.assign(tokens)
+	lane_by_token.clear()
+	for i in lane_tokens.size():
+		if lane_tokens[i] != ConfigParser.BINDING_NONE:
+			lane_by_token[lane_tokens[i]] = i
+
+## 当前绑定是否与给定绑定一致，避免重复重建轨道显示
+func _is_same_bindings(tokens: Array) -> bool:
+	if tokens.size() != lane_tokens.size():
+		return false
+	for i in lane_tokens.size():
+		if int(tokens[i]) != lane_tokens[i]:
+			return false
+	return true
 
 ## 重新初始化轨道显示
 ## 清空旧轨道并根据当前配置重新初始化
@@ -1209,8 +1221,8 @@ func _reinit_lane_display() -> void:
 	%LaneEffect.set_beam_alpha(beam_alpha)
 	
 	# 如果启用了键盘模式，显示键位提示
-	if keyboard_mode and key_map.size() > 0:
-		%LaneEffect.init_key_display(key_map, key_display_names)
+	if keyboard_mode and lane_tokens.size() > 0:
+		%LaneEffect.init_key_display(lane_tokens, key_display_names)
 	
 	GLogger.info("PlayView lane display reinitialized", "PlayView")
 
@@ -1420,7 +1432,7 @@ func _init_lane_display():
 	%LaneEffect.init_beam(get_lane_count(), self)
 	%LaneEffect.set_beam_alpha(beam_alpha)
 	if keyboard_mode:
-		%LaneEffect.init_key_display(key_map, key_display_names)
+		%LaneEffect.init_key_display(lane_tokens, key_display_names)
 
 # ---- 判定回调（计分数据源留在 PlayView，展示委托 HUD） ----
 

@@ -212,29 +212,31 @@ func _get_separator_tex(color: Color) -> GradientTexture2D:
 	return tex
 
 
-func init_key_display(key_map: Array[Key], display_names: Array[String] = []) -> void:
+## tokens 与 display_names 逐位对齐同一个轨道；token 为 0（未绑定）的轨道不显示标签
+func init_key_display(tokens: Array[int], display_names: Array[String] = []) -> void:
 	if _key_label_overlay:
 		_key_label_overlay.queue_free()
 	_key_label_overlay = Control.new()
 	_key_label_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_key_label_overlay)
 
-	# key_map 为空时无需创建任何标签（也避免 label 泄漏）
-	if key_map.is_empty():
+	# tokens 为空时无需创建任何标签（也避免 label 泄漏）
+	if tokens.is_empty():
 		return
 
 	var beam_width: float = _beam_note_width + 20.0
 
-	for i in range(key_map.size()):
+	for i in range(tokens.size()):
 		var nl := Label.new()
 		nl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		nl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 		nl.add_theme_font_size_override("font_size", 42)
 		nl.custom_minimum_size  = Vector2(beam_width, 100)
 		nl.size = Vector2(beam_width, 100)
-		# 优先使用自定义显示名，为空则回退到按键默认名
+		# 优先使用自定义显示名，为空则回退到绑定的默认名（键名 / 音名 / 手柄按钮名）
 		var custom_name := display_names[i] if i < display_names.size() else ""
-		nl.text = custom_name if not custom_name.is_empty() else OS.get_keycode_string(key_map[i])
+		nl.text = custom_name if not custom_name.is_empty() \
+			else ConfigParser.binding_to_display_name(tokens[i])
 		# 标签以光柱中心为基准居中：标签宽固定为音符宽+20，光柱宽随 beam_width_mode 变化，
 		# 直接左对齐光柱会在 mode 1（轨道宽度）下让字母相对轨道中心偏右，看起来轨道线也歪了
 		var label_x := _lane_xs[i] + (beam_size.x - beam_width) * 0.5
