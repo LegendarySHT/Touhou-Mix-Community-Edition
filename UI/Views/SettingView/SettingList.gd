@@ -96,7 +96,6 @@ func load_settings(setting: Dictionary = {}):
 	_pending_config = setting.duplicate(true)
 
 	# 遍历所有分组
-	var group_idx := 0
 	var show_advanced := _is_advanced_visible()
 	for group in setting_groups:
 		# 添加分隔符
@@ -112,8 +111,7 @@ func load_settings(setting: Dictionary = {}):
 			if setting_data.get("advanced", false) and not show_advanced:
 				continue
 			var init_value = _pending_config.get(setting_data.id, null)
-			add_setting_item(setting_data, init_value, group_idx)
-		group_idx += 1
+			add_setting_item(setting_data, init_value)
 
 	# 应用高级设置项可见性（根据 show_advanced_settings 的值）
 	_apply_advanced_visibility()
@@ -162,7 +160,7 @@ func _get_current_para_sepa_idx():
 func _process(delta: float) -> void:
 	super._process(delta)
 
-func add_setting_item(setting_data: Dictionary, init_value: Variant = "", group_idx: int = 0):
+func add_setting_item(setting_data: Dictionary, init_value: Variant = ""):
 	# 创建设置项
 	var setting_item: SettingItem = create_and_add_item(setting_data.id, "SettingItem")
 	# 注入 SettingList 引用，供 on_click / options_provider 回调使用
@@ -229,32 +227,6 @@ func add_setting_item(setting_data: Dictionary, init_value: Variant = "", group_
 	# 存储到字典中
 	setting_items[setting_data.id] = setting_item
 
-	# 设置 focus_neighbor_left 指向对应分组的左侧快捷按钮（按左方向键回到对应区域）
-	_setup_focus_neighbor_left(setting_item, group_idx)
-
-## 让设置项的值控件 focus_neighbor_left 指向对应分组的快捷按钮
-## 分组下标与 SettingView 左侧 ShortCut 按钮下标一一对应（每个分组前都 _add_separator）
-## 仅设置真正的可聚焦控件（OptionButton/ColorPickerButton/LineEdit/Button），容器本身不可聚焦
-func _setup_focus_neighbor_left(setting_item: SettingItem, group_idx: int) -> void:
-	if %ShortCutBtns == null or group_idx < 0 or group_idx >= %ShortCutBtns.get_child_count():
-		return
-	var target: Button = %ShortCutBtns.get_child(group_idx)
-	if target == null:
-		return
-	var focusable: Control = null
-	match setting_item.value_type:
-		SettingItem.ValueType.TYPE_OPTION:
-			focusable = setting_item.value_node
-		SettingItem.ValueType.TYPE_COLOR:
-			if setting_item.value_node:
-				focusable = setting_item.value_node.get_node_or_null("ColorPickerButton")
-		SettingItem.ValueType.TYPE_LINE_EDIT:
-			if setting_item.value_node:
-				focusable = setting_item.value_node.get_node_or_null("LineEdit")
-		SettingItem.ValueType.TYPE_BUTTON:
-			focusable = setting_item.value_node
-	if focusable:
-		focusable.focus_neighbor_left = target.get_path()
 
 # 为未声明 options_provider 的 TYPE_OPTION 设置静态选项
 func _setup_static_options(setting_item: SettingItem, setting_data: Dictionary, initial_value: Variant, language: String) -> void:
@@ -1054,7 +1026,7 @@ func _is_advanced_visible() -> bool:
 func _add_advanced_item(setting_data: Dictionary, group_idx: int) -> void:
 	var setting_id: String = setting_data.id
 	var init_value = _pending_config.get(setting_id, null)
-	add_setting_item(setting_data, init_value, group_idx)
+	add_setting_item(setting_data, init_value)
 
 	var setting_item: SettingItem = setting_items.get(setting_id)
 	if setting_item == null:

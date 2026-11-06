@@ -56,11 +56,17 @@ func animate_list_item_horizontal(target: BaseScrollList, center_index: int, hor
 	var range_left = maxi(center_index - 3, 0)
 	var range_right = mini(center_index + 10, container.get_child_count())
 
+	var touched := false
 	for i in range(range_left, range_right):
 		var tag = container.get_child(i)
 		if not tag.get_global_rect().intersects(screen_rect):
 			pass
 		tween.tween_property(tag,"offset_transform_position:x",horizon_delta,0.05)
+		touched = true
+	# 列表为空 / 范围无子项时没有任何补间：直接收掉，避免空 Tween 报错
+	if not touched:
+		tween.kill()
+		return null
 	return tween
 
 ## 创建透明度动画

@@ -109,6 +109,7 @@ func _ready() -> void:
 	_setup_song_vlist()
 	_setup_pending_vlist()
 	_connect_ui()
+	_setup_focus_tabs()
 	_select_tab(Tab.SONGS, true)
 	_update_pending_ui()
 	UiStatMGR.state_changed.connect(_on_ui_state_changed)
@@ -274,6 +275,24 @@ func _on_tab_pressed(tab: int) -> void:
 	if tab == _current_tab:
 		return
 	_select_tab(tab, false)
+
+
+## 顶部页签按 Tab 切换，页内控件交给方向键
+func _setup_focus_tabs() -> void:
+	var bar := FocusTabBar.new()
+	bar.root = _tab_buttons[0].get_parent()
+	bar.page_root = self
+	bar.buttons_fn = func() -> Array: return _tab_buttons.duplicate()
+	bar.current_fn = func() -> int: return _current_tab
+	bar.select_fn = func(i: int) -> void: _select_tab(i, false)
+	FocusMGR.register_tab_bar(bar)
+
+
+## 当前页签按钮，供外层设置页决定焦点落点
+func active_tab_button() -> Control:
+	if _current_tab >= 0 and _current_tab < _tab_buttons.size():
+		return _tab_buttons[_current_tab]
+	return null
 
 
 func _select_tab(tab: int, instant: bool) -> void:
@@ -1104,11 +1123,6 @@ func _particle_preview_texture(pack_key: String, data: Dictionary) -> Texture2D:
 # ══════════════════════════════════════════════════════
 #  焦点 / 主题
 # ══════════════════════════════════════════════════════
-
-func focus_first_tab() -> void:
-	if _current_tab >= 0 and _current_tab < _tab_buttons.size():
-		_tab_buttons[_current_tab].grab_focus()
-
 
 func apply_theme() -> void:
 	if not ThemeMGR:

@@ -62,7 +62,6 @@ func _apply_indicator_colors() -> void:
 func load_midi(midis: Array[MidiData], preferred_id: String = "") -> void:
 	current_midis = midis
 	_refresh_display()
-	_setup_focus_neighbor()
 	
 	await get_tree().process_frame
 	_collapsed = false
@@ -79,24 +78,6 @@ func load_midi(midis: Array[MidiData], preferred_id: String = "") -> void:
 	for item in list_items:
 		item.set_expanded(true)
 	need_snap = true
-
-func _setup_focus_neighbor():
-	if container == null:
-		return
-
-	var left_node_path = %PreviBtn.get_path()
-	var right_node_path = %InfoBtn.get_path()
-	
-	var ln = container.get_child(-1).button
-	var cn
-	for i in container.get_children():
-		cn = i.button
-		ln.focus_neighbor_bottom = cn.get_path()
-
-		cn.focus_neighbor_left = left_node_path
-		cn.focus_neighbor_right = right_node_path
-		cn.focus_neighbor_top = ln.get_path()
-		ln = cn
 
 # 返回当前的选择
 func get_selection() -> MidiData:
@@ -119,12 +100,6 @@ func cleanup_midi_cache(midi: MidiData) -> void:
 	if pm != null and pm.current_midi_data == midi and pm.has_method("unload_midi"):
 		pm.unload_midi()
 	midi.clear_parsed_notes()
-
-func get_focus_node_path() -> NodePath:
-	var node = get_selected_node()
-	if node:
-		return node.button.get_path()
-	return ""
 
 ## 清空列表
 func _clear_list() -> void:
@@ -220,7 +195,6 @@ func remove_selected_midi():
 	var removed_index = selected_item
 	current_midis.erase(get_selection())
 	_refresh_display()
-	_setup_focus_neighbor()
 
 	if not list_items.size():
 		UiStatMGR.go_back()

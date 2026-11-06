@@ -16,7 +16,6 @@
 [ext_resource type="Script" uid="uid://dbp1i13pg0fxj" path="res://UI/Components/NotificationBanner.gd" id="19_devvj"]
 [ext_resource type="Script" uid="uid://bb04m122u3fvm" path="res://UI/Components/LeftTopBtn.gd" id="23_mxvw5"]
 [ext_resource type="Script" uid="uid://darocq4d7rwmu" path="res://UI/Views/SortedMidiView/SortedMidiView.gd" id="26_5mvff"]
-[ext_resource type="Script" uid="uid://c6mxoockmlm1a" path="res://UI/Components/FocusManager.gd" id="26_xrxkg"]
 [ext_resource type="PackedScene" uid="uid://6x22q0274hxw" path="res://UI/Components/PopupWindow/PopupWindow.tscn" id="28_hri7i"]
 
 [sub_resource type="Gradient" id="Gradient_mxvw5"]
@@ -503,8 +502,6 @@ layout_mode = 0
 offset_top = 40.0
 offset_bottom = 190.0
 offset_transform_enabled = true
-focus_neighbor_right = NodePath("")
-focus_next = NodePath("")
 focus_mode = 0
 button_pressed = true
 
@@ -659,17 +656,6 @@ mouse_filter = 2
 texture = SubResource("AtlasTexture_5tuhn")
 expand_mode = 1
 stretch_mode = 5
-
-[node name="FocusManager" type="Control" parent="." unique_id=1592088624]
-visible = false
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-script = ExtResource("26_xrxkg")
 
 [node name="PopupWindowShader" type="ColorRect" parent="." unique_id=1275441849]
 unique_name_in_owner = true

@@ -198,6 +198,11 @@ func _ensure_pool_ready() -> void:
 	_vlist.stretch_width = false
 	_vlist.on_row_ready = _on_pool_item_ready
 	_vlist.on_row_bind = _on_pool_item_bind
+	# 焦点组的成员是池项里的按钮，选中要走本视图的选中态（含吸附与指示器）
+	_vlist.focus_control_fn = func(node): return (node as SortedMidiListItem).button
+	_vlist.on_focus_select = func(index: int) -> void:
+		select_item(index)
+		focus_selected_item()
 	_vlist.setup(self, content, item_scene)
 
 ## 清空列表（保留池，仅隐藏并重置槽状态）
@@ -219,7 +224,7 @@ func _update_cover_window() -> void:
 func _update_visible_parallax() -> void:
 	pass
 
-## 选中指定数据索引（兼容 FocusManager 等外部调用）
+## 选中指定数据索引
 func select_item(index: int) -> int:
 	if current_items.is_empty():
 		return index
@@ -254,18 +259,26 @@ func _scroll_to_item(idx: int) -> void:
 	elif item_bot > scroll_vertical + view_h:
 		scroll_vertical = roundi(item_bot - view_h)
 
-## 供 FocusManager 把焦点移入列表：确保选中的数据索引滚入可视窗口（被池化）
-## 后聚焦其按钮。虚拟化项不在固定子位、且可能已滚出屏幕被释放，必须先滚动补位。
+## 把焦点移到选中项：虚拟化项不在固定子位、且可能已滚出屏幕被释放，必须先滚动补位
 func focus_selected_item() -> void:
-	if current_items.is_empty():
-		return
+	var target := _focus_default()
+	if target != null:
+		target.grab_focus()
+
+## 页面默认落点：选中项；选中项还没进池时先滚进可视窗口再取节点
+func _focus_default() -> Control:
+	if current_items.is_empty() or _vlist == null:
+		return null
 	if selected_item < 0:
 		select_item(0)
+	if selected_item < 0:
+		return null
 	_scroll_to_item(selected_item)
 	_update_virtual_layout()
 	var node := get_pool_node_by_index(selected_item)
-	if node and node.button:
-		node.button.grab_focus()
+	if node == null or node.button == null:
+		return null
+	return node.button
 
 ## 搜索查询改变
 func _on_search_query_changed(query: String) -> void:

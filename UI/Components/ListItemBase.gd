@@ -66,14 +66,8 @@ func _on_focus_entered():
 		_pass_focus = false
 		return
 
-	# 方向键聚焦时需要触发按钮。
-	# 吸附飞行中（吸附目标还没滚进视口）忽略本次按键选中：进入焦点时捕获当时的
-	# 吸附状态，之后即使目标滚进视口也不再放行 —— 首尾 focus 相连 + 按住方向键时，
-	# 焦点一旦滚出屏幕，Godot 自动焦点导航（钳制 ScrollContainer 可见区域，见引擎
-	# control.cpp _window_find_focus_neighbor）会把焦点丢到屏幕内任意可见项，此时选中
-	# 该项会把吸附目标从中途改走，表现为"吸附未完成时吸附到其它项 / 选中项回退来回跳"。
-	# 吸附目标进入视口（或吸附结束）后按键即恢复选中；BaseScrollList._grab_focus_to_selected
-	# 会在目标可见时把焦点拉回吸附项，保证按键从吸附项继续导航。
+	# 焦点落到未选中的项上时把它选中（列表整体由焦点路由接管时走 select，
+	# 这里是鼠标点击、以及焦点被引擎自带导航移动时的兜底）。
 	var list = parent_node
 	var snapped_off_target := false
 	if list is BaseScrollList and list.is_snapping() \

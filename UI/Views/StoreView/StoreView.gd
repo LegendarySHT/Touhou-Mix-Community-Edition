@@ -132,6 +132,7 @@ func _on_view_ready() -> void:
 
 	_connect_ui()
 	_init_vocal_toggle()
+	_setup_focus_tabs()
 	_setup_song_vlist()
 	_apply_sort_icons()
 	_select_tab(Tab.SONGS, true)
@@ -195,6 +196,17 @@ func _init_vocal_toggle() -> void:
 		enabled = ConfigManager.instance.get_int("download_vocal", 1) == 1
 	%VocalBtn.set_pressed_no_signal(enabled)
 	_update_vocal_visual()
+
+
+## 顶部标签栏按 Tab 切换，页内控件交给方向键
+func _setup_focus_tabs() -> void:
+	var bar := FocusTabBar.new()
+	bar.root = _tab_buttons[0].get_parent()
+	bar.page_root = self
+	bar.buttons_fn = func() -> Array: return _tab_buttons.duplicate()
+	bar.current_fn = func() -> int: return _current_tab
+	bar.select_fn = func(i: int) -> void: _select_tab(i, false)
+	FocusMGR.register_tab_bar(bar)
 
 
 func _on_vocal_toggled(pressed: bool) -> void:
@@ -1297,24 +1309,38 @@ func handle_back_request() -> bool:
 	return %DetailLayer.handle_back_request()
 
 
-## FocusManager 的商店页焦点落点：当前页第一张可见卡片，没有卡片就聚焦当前标签
-func focus_first() -> void:
-	var vl := _active_vlist()
-	if vl != null:
-		var best: Control = null
-		var best_index := 2147483647
-		for node in vl.bound_nodes():
-			if not is_instance_valid(node) or not node.visible:
-				continue
-			var idx := int(node.get_meta(&"row_index", 2147483647))
-			if idx < best_index:
-				best = node
-				best_index = idx
-		if best != null:
-			best.grab_focus()
-			return
+## 商店页默认焦点落点：当前页第一张可见卡片，没有卡片就落在当前标签上
+func _focus_default() -> Control:
+	var first := _first_bound_card()
+	if first != null:
+		return first
 	if _current_tab >= 0 and _current_tab < _tab_buttons.size():
-		_tab_buttons[_current_tab].grab_focus()
+		return _tab_buttons[_current_tab]
+	return null
+
+
+## 当前页最早一张已绑定卡片
+func _first_bound_card() -> Control:
+	var vl := _active_vlist()
+	if vl == null:
+		return null
+	var best: Control = null
+	var best_index := 2147483647
+	for node in vl.bound_nodes():
+		if not is_instance_valid(node) or not node.visible:
+			continue
+		var idx := int(node.get_meta(&"row_index", 2147483647))
+		if idx < best_index:
+			best = node
+			best_index = idx
+	return best
+
+
+## 详情关闭后的兜底：把焦点放回商店页的默认落点
+func focus_first() -> void:
+	var target := _focus_default()
+	if target != null:
+		target.grab_focus()
 
 
 ## 找到当前页正在显示指定条目的池节点（详情关闭后恢复焦点用）

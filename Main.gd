@@ -44,7 +44,7 @@ func _bootstrap_post_managers() -> void:
 
 func _enter_tree() -> void:
 	# 全局节点自注册：Main 直属常驻节点
-	# 放在 _enter_tree 是为了保证早于子节点（FocusManager 等）的 _ready
+	# 放在 _enter_tree 是为了保证早于各子节点（视图 / 常驻组件）的 _ready
 	GlobalNodes.main = self
 	GlobalNodes.skew_c = %SkewC
 	GlobalNodes.selected_album = %SelectedAlbum as AlbumListItem
@@ -61,6 +61,10 @@ func _enter_tree() -> void:
 	GlobalNodes.task_progress = %TaskProgress
 	GlobalNodes.process_tip = %ProcessTip
 	GlobalNodes.process_progress = %ProcessProgress
+
+	# 角落导航按钮只走方向键，不占页面的 Tab 循环
+	(GlobalNodes.lt_btn as Control).set_meta(&"focus_no_tab", true)
+	(GlobalNodes.rb_btn as Control).set_meta(&"focus_no_tab", true)
 
 func _ready():
 	# Android 平台：仅在日志中记录（不再启动时固定请求存储权限——

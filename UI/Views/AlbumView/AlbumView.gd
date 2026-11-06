@@ -247,10 +247,8 @@ func _refresh_display_async(my_generation: int, keep_album_id: String = "") -> v
 				if my_generation != _load_generation:
 					return
 
-	# 最终校验:仅当本次 generation 仍最新时连接头尾 + 触发未加载项封面加载
+	# 最终校验:仅当本次 generation 仍最新时触发未加载项封面加载
 	if my_generation == _load_generation:
-		if list_items.size() >= 2:
-			_connect_head_and_tail()
 		trigger_cover_chain()
 
 

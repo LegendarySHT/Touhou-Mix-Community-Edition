@@ -63,6 +63,9 @@ var scroll_control_state: ScrollControlState:
 ## 所有列表项
 var list_items: Array[ListItemBase] = []
 
+## 焦点组：列表对方向键 / Tab 表现为一个整体，成员表按当前项实时重建
+var focus_group: FocusGroup = null
+
 ## 选中项变化信号（new_index = -1 表示取消选中/清空）
 ## 由 selected_item 属性 setter 统一发出，覆盖 select_item / 列表项按钮直改 / 展开收起等所有路径
 signal selection_changed(new_index: int)
@@ -122,6 +125,70 @@ func _ready() -> void:
 	get_v_scroll_bar().gui_input.connect(_on_v_scrollbar_gui_input)
 	get_v_scroll_bar().value_changed.connect(_on_v_scrollbar_changed)
 
+	_setup_focus_group()
+
+## 注册焦点组与默认落点：
+## 方向键在项之间移动、到边界后交回几何搜索；Tab 遍历整个列表只算一站。
+## 虚拟化列表不挂容器（项由池管理），组由 VirtualList 自己注册，这里只登记落点。
+func _setup_focus_group() -> void:
+	FocusMGR.register_default(self, _focus_default)
+	if container == null:
+		return
+	focus_group = FocusGroup.new()
+	focus_group.root = self
+	focus_group.axis = FocusGroup.Axis.VERTICAL
+	focus_group.count_fn = func() -> int: return list_items.size()
+	focus_group.index_fn = func() -> int: return selected_item
+	focus_group.map_fn = func() -> Dictionary: return _focus_member_map()
+	focus_group.member_fn = func(index: int) -> Control: return _focus_member_at(index)
+	focus_group.select_fn = func(index: int) -> void: _focus_select(index)
+	FocusMGR.register_group(focus_group)
+
+## 组成员表：可聚焦的项按钮 → 下标（每帧导航前重建，列表重建无需额外通知）
+func _focus_member_map() -> Dictionary:
+	var map := {}
+	for i in list_items.size():
+		var item := list_items[i]
+		if not is_instance_valid(item):
+			continue
+		var btn: Control = item.button
+		if btn != null and is_instance_valid(btn) and btn.focus_mode == Control.FOCUS_ALL \
+				and btn.is_visible_in_tree():
+			map[btn] = i
+	return map
+
+func _focus_member_at(index: int) -> Control:
+	if index < 0 or index >= list_items.size():
+		return null
+	var item := list_items[index]
+	if not is_instance_valid(item):
+		return null
+	var btn: Control = item.button
+	if btn == null or not is_instance_valid(btn) or btn.focus_mode != Control.FOCUS_ALL:
+		return null
+	return btn
+
+## 组内选中并聚焦：选中走各自的 select_item（含展开/吸附），随后把焦点放到该按钮上
+func _focus_select(index: int) -> void:
+	select_item(index)
+	var item := get_selected_node()
+	if item != null and is_instance_valid(item) and item.button != null:
+		item.button.grab_focus()
+
+## 页面默认落点：列表当前选中项，没有选中就选首项；项不可聚焦（如设置行）时返回 null
+func _focus_default() -> Control:
+	if list_items.is_empty():
+		return null
+	var index := selected_item
+	if index < 0:
+		index = 0
+	var member := _focus_member_at(index)
+	if member == null:
+		return null
+	if selected_item != index:
+		select_item(index)
+	return member
+
 ## 用户拖拽开始（越过死区、列表开始跟随手指/鼠标移动）
 func _on_drag_scroll_started() -> void:
 	_drag_scrolling = true
@@ -172,8 +239,7 @@ func is_snapping() -> bool:
 	return _snap_active
 
 ## 判断指定索引的列表项是否在可视视口内（与视口有可见重叠）
-## 供焦点导航延迟选中判断：滚动/吸附中焦点落到屏幕外的项时，
-## 等待该项滚入视口再选中，避免把吸附目标反复改到屏幕外
+## 供焦点落到屏幕外的项时判断：该项还没滚进视口就先不改选中，避免把吸附目标反复改到屏幕外
 func is_item_visible(index: int) -> bool:
 	if index < 0 or index >= list_items.size():
 		return false
@@ -185,31 +251,6 @@ func is_item_visible(index: int) -> bool:
 	var item_top := item.global_position.y
 	var item_bottom := item.global_position.y + item.size.y
 	return item_top < list_bottom and item_bottom > list_top
-
-## 把焦点拉回吸附项：
-## 吸附飞行中（目标还没滚进视口）Godot 自动焦点导航（钳制在 ScrollContainer 可见区域，
-## 见引擎 control.cpp 的 _window_find_focus_neighbor）会把焦点丢到屏幕内任意可见项；
-## 此时 grab_focus 会触发 ScrollContainer 滚动与吸附打架，故仅当吸附目标已进入视口时才拉回。
-## 焦点本就在吸附项上时不打扰；焦点在文本输入框（搜索框/输入框，用户在打字）时也不抢。
-## 其余情况（焦点漂移到列表内其它项、或停留在其它视图/导航按钮上）都拉回吸附项，
-## 保证吸附结束后焦点落在吸附目标上、按键可从吸附项继续导航。
-func _grab_focus_to_selected() -> void:
-	if selected_item < 0 or selected_item >= list_items.size():
-		return
-	if not is_item_visible(selected_item):
-		return  # 目标还没滚进视口，此时 grab 会触发滚动与吸附打架
-	var sel_node := get_selected_node()
-	if sel_node == null or not is_instance_valid(sel_node):
-		return
-	var btn: Control = sel_node.button
-	if btn == null or not is_instance_valid(btn):
-		return
-	var focus_owner := get_viewport().gui_get_focus_owner()
-	if focus_owner == btn:
-		return
-	if focus_owner is LineEdit or focus_owner is TextEdit:
-		return  # 用户在搜索框/输入框打字，不抢焦点
-	btn.grab_focus()
 
 # 滚动条值变化（scrollbar 自身拖拽时）
 func _on_v_scrollbar_changed(_value: float):
@@ -416,12 +457,6 @@ func _process(delta: float) -> void:
 		_snap_active = false
 		_snap_stable_frames = 0
 		_snap_clamped_frames = 0
-
-	# 吸附飞行中焦点可能被 Godot 自动焦点导航（钳制 ScrollContainer 可见区域）丢到
-	# 屏幕内任意项；一旦吸附目标滚进视口就把焦点拉回吸附项，保证吸附结束后
-	# 按键从吸附目标处继续正常导航（"吸附项在屏幕内可见时即可按键选择"）
-	if _snap_active and selected_item >= 0 and selected_item < list_items.size():
-		_grab_focus_to_selected()
 
 	# 封面懒加载：视窗变化时才加载新进入的未加载封面
 	_update_cover_window()
@@ -693,19 +728,3 @@ func clear_items() -> void:
 	_scroll_stable = true
 	_scroll_speed = 0.0
 	_prev_scroll_vertical = 0
-
-## 将头尾连接 用于focus循环
-func _connect_head_and_tail() -> void:
-	if container == null:
-		return
-	# 少于 2 项时头尾连接无意义（空列表 get_child(0) 会越界崩溃）
-	if container.get_child_count() < 2:
-		return
-
-	var node_h: Control = container.get_child(0).button
-	var node_t: Control = container.get_child(-1).button
-
-	node_h.focus_neighbor_top = node_t.get_path()
-	node_h.focus_neighbor_left = node_t.get_path()
-	node_t.focus_neighbor_bottom = node_h.get_path()
-	node_t.focus_neighbor_right = node_h.get_path()

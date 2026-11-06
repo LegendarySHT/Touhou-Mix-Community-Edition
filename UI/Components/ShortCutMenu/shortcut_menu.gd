@@ -11,6 +11,8 @@ var _is_creating: bool = false
 
 func _ready() -> void:
 	instance = self
+	_apply_page_focus()
+	_setup_focus_tab_bar()
 	# 连接按钮点击事件
 	%SortTabBtn.toggled.connect(_on_menu_tab_btn_toggled.bind(%SortTabBtn))
 	%FavorListTabBtn.toggled.connect(_on_menu_tab_btn_toggled.bind(%FavorListTabBtn))
@@ -40,7 +42,8 @@ func _on_focus_enter(btn: Button):
 	if btn.is_hovered() and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		return
 	await get_tree().create_timer(0.1).timeout
-	if not btn.button_pressed:
+	# 焦点已经移走（快速 Tab 穿过两个标签）时不再按下：否则会用已经过时的意图把面板切回去
+	if not btn.button_pressed and btn.has_focus():
 		btn.button_pressed = true
 
 func _on_state_changed(old_state: UIStateManager.UIState, new_state: UIStateManager.UIState) -> void:
@@ -66,26 +69,131 @@ func _on_state_changed(old_state: UIStateManager.UIState, new_state: UIStateMana
 const PANEL_H_OPEN := 825.0
 const PANEL_H_BAR := 120.0
 
-func _on_menu_tab_btn_toggled(toggled_on: bool, btn: Button):
-	var tween = AniMGR.create_managed_tween(self)
+## 展开状态可能在同一帧里连续变化（互斥标签先取消再按下），合并成一次处理：
+## 否则中间的「两个标签都没按下」会被当成全部收起，面板缩回只剩标签条
+var _menu_state_pending := false
+
+func _on_menu_tab_btn_toggled(_toggled_on: bool, _btn: Button) -> void:
+	if _menu_state_pending:
+		return
+	_menu_state_pending = true
+	_apply_menu_state.call_deferred()
+
+func _apply_menu_state() -> void:
+	_menu_state_pending = false
+	var sort_pressed: bool = %SortTabBtn.button_pressed
+	var favor_pressed: bool = %FavorListTabBtn.button_pressed
+	var closing := not sort_pressed and not favor_pressed
+
+	# 同名 tween：切页时旧的动画连同回调一起作废，不会和新动画抢同一批属性
+	var tween := AniMGR.create_managed_tween(self, "menu_panel")
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_QUINT)
 	tween.set_parallel(true)
 
-	tween.tween_property(btn, "custom_minimum_size", Vector2(120 + 310 * (1 if toggled_on else 0), 120), 0.45)
-
+	tween.tween_property(%SortTabBtn, "custom_minimum_size",
+		Vector2(120 + 310 * (1 if sort_pressed else 0), 120), 0.45)
+	tween.tween_property(%FavorListTabBtn, "custom_minimum_size",
+		Vector2(120 + 310 * (1 if favor_pressed else 0), 120), 0.45)
 	# 高度按当前 offset_top 算：面板在 Main 里是"距顶 75"定位的，写死绝对值会错位
-	var closing := _is_all_off()
 	tween.tween_property(self, "offset_bottom", offset_top + (PANEL_H_BAR if closing else PANEL_H_OPEN), 0.35)
 	tween.tween_property(%BgPanel, "self_modulate:a", 0.0 if closing else 1.0, 0.45)
+	tween.tween_property(%PageContent, "offset_transform_position:x", (-655 if favor_pressed else 0), 0.5)
 
-	if toggled_on:
-		tween.tween_property(%PageContent, "offset_transform_position:x", (-655 if btn == %FavorListTabBtn else 0), 0.5)
+	# 可见性一律不动（两页并排，靠平移切换），只切焦点：
+	# 没展开的那一页整页不可聚焦，两个标签都收起时除标签按钮外全部不可聚焦
+	_apply_page_focus()
 
 func _is_all_off() -> bool:
 	if %SortTabBtn.button_pressed or %FavorListTabBtn.button_pressed:
 		return false
 	return true
+
+# ========== 标签栏 ==========
+
+## 两个标签按钮注册成标签栏：面板内按 Tab 切换页签，与其他页面的标签栏一致
+var _tab_bar: FocusTabBar = null
+
+func _setup_focus_tab_bar() -> void:
+	_tab_bar = FocusTabBar.new()
+	_tab_bar.root = %Btns
+	_tab_bar.page_root = self
+	_tab_bar.buttons_fn = _tab_buttons
+	_tab_bar.current_fn = _current_tab_index
+	_tab_bar.select_fn = _select_tab
+	# 面板是页面上的附属区域：焦点不在面板里时，Tab 不该被它抢去切面板页签
+	_tab_bar.only_when_focused = true
+	FocusMGR.register_tab_bar(_tab_bar)
+
+func _tab_buttons() -> Array:
+	return [%SortTabBtn, %FavorListTabBtn]
+
+## 当前页下标：焦点停在标签按钮上时以它为准（此时面板可能刚收起，没有展开页）
+func _current_tab_index() -> int:
+	var focused := FocusMGR.focused_control()
+	if focused == %FavorListTabBtn:
+		return 1
+	if focused == %SortTabBtn:
+		return 0
+	return 1 if %FavorListTabBtn.button_pressed else 0
+
+## 切到第 i 页：直接展开目标页，不等聚焦后的延时自动按下
+func _select_tab(index: int) -> void:
+	var btns := _tab_buttons()
+	if index < 0 or index >= btns.size():
+		return
+	var btn: Button = btns[index]
+	if not btn.button_pressed:
+		btn.button_pressed = true
+
+## 面板内控件的原始焦点模式：切页只改 focus_mode，不动可见性与布局
+var _page_focus_backup: Dictionary = {}
+
+## 按当前展开状态决定两页的控件能不能被焦点选中
+func _apply_page_focus() -> void:
+	for key in _page_focus_backup.keys():
+		if not is_instance_valid(key):
+			_page_focus_backup.erase(key)
+	var sort_on: bool = %SortTabBtn.button_pressed
+	var favor_on: bool = %FavorListTabBtn.button_pressed
+	var dropped := _set_page_focus(%SortPage, sort_on and not favor_on)
+	dropped = _set_page_focus(%FavorPage, favor_on) or dropped
+	# 焦点原本就在被关掉的那一页上：引擎会直接丢焦点，落到当前页签按钮上
+	if dropped:
+		_focus_tab_button()
+
+## 设置单页内控件的可聚焦状态，返回是否关掉了正持有焦点的控件
+func _set_page_focus(page: Control, enabled: bool) -> bool:
+	var dropped := false
+	for node in _collect_controls(page):
+		if not _page_focus_backup.has(node):
+			_page_focus_backup[node] = node.focus_mode
+		var original: Control.FocusMode = _page_focus_backup[node]
+		var mode: Control.FocusMode = original if enabled else Control.FOCUS_NONE
+		if mode == node.focus_mode:
+			continue
+		if not enabled and node.has_focus():
+			dropped = true
+		node.focus_mode = mode
+	return dropped
+
+## 面板内没有可聚焦内容时把焦点放到当前页签按钮
+func _focus_tab_button() -> void:
+	# 面板已全部收起：焦点不留在面板里，交给焦点路由落到当前页面
+	if _is_all_off():
+		return
+	var btn: Button = %FavorListTabBtn if %FavorListTabBtn.button_pressed else %SortTabBtn
+	if btn.focus_mode == Control.FOCUS_NONE:
+		return
+	btn.grab_focus.call_deferred()
+
+func _collect_controls(root: Node) -> Array[Control]:
+	var out: Array[Control] = []
+	for child in root.get_children():
+		if child is Control:
+			out.append(child as Control)
+		out.append_array(_collect_controls(child))
+	return out
 
 # ========== 转场动画 ==========
 
@@ -216,6 +324,8 @@ func _refresh_favor_list(_arg1 = null, _arg2 = null, _arg3 = null) -> void:
 	# 重建后恢复焦点到原项
 	if target_item:
 		target_item.grab_focus()
+	# 新建的项要跟随当前展开状态决定是否可聚焦
+	_apply_page_focus()
 
 
 ## AddBtn 点击：根据当前状态切换新建/确认

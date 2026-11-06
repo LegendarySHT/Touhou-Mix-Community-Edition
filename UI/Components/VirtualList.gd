@@ -89,6 +89,14 @@ var _grow_scheduled: bool = false
 ## 已销毁：在途的续建直接放弃（避免释放后又被建回一堆节点）
 var _disposed: bool = false
 
+## 焦点组：整个虚拟列表对方向键 / Tab 表现为一个整体
+var focus_group: FocusGroup = null
+## 组内选中时的宿主回调（如 SortedMidiView 要同步选中态与吸附）；
+## 未设置时本模块自己滚动到该项再聚焦
+var on_focus_select: Callable = Callable()
+## 池项里真正可聚焦的控件（默认池项自身；项内还有按钮时由宿主指定）
+var focus_control_fn: Callable = Callable()
+
 
 func setup(p_scroll: ScrollContainer, p_list: Control, p_row_scene: PackedScene) -> void:
 	scroll = p_scroll
@@ -103,6 +111,7 @@ func setup(p_scroll: ScrollContainer, p_list: Control, p_row_scene: PackedScene)
 		_grow()
 		sync(false)
 	)
+	_setup_focus_group()
 
 
 ## 量行高 + 建池。行高拿不到（首帧容器尚未布局）返回 false，调用方应稍后重试
@@ -242,6 +251,8 @@ func clear() -> void:
 func release() -> void:
 	_disposed = true
 	_grow_pending = false
+	FocusMGR.unregister_group(focus_group)
+	focus_group = null
 	for node in pool:
 		if is_instance_valid(node):
 			node.queue_free()
@@ -385,6 +396,90 @@ func _place(node: Control, idx: int) -> void:
 func relayout() -> void:
 	for slot in occupied.keys():
 		_place(pool[int(slot)], int(occupied[slot]))
+	if focus_group != null:
+		focus_group.columns = maxi(columns, 1)
+
+
+# ── 焦点 ──────────────────────────────────────────────
+
+## 注册焦点组：成员是「当前窗口内的池项」，下标即数据索引。
+## 池项换绑不需要通知本对象，FocusRouter 每次导航前会重建成员表。
+func _setup_focus_group() -> void:
+	if focus_group != null:
+		FocusMGR.unregister_group(focus_group)
+	focus_group = FocusGroup.new()
+	focus_group.root = list
+	focus_group.axis = FocusGroup.Axis.GRID
+	focus_group.columns = maxi(columns, 1)
+	focus_group.count_fn = func() -> int: return total
+	focus_group.index_fn = func() -> int: return focused_index()
+	focus_group.map_fn = func() -> Dictionary: return _focus_map()
+	focus_group.member_fn = func(index: int) -> Control: return focus_control(index)
+	focus_group.select_fn = func(index: int) -> void: focus_index(index)
+	FocusMGR.register_group(focus_group)
+
+
+## 当前焦点所在的数据索引（焦点可能落在池项自身或其内部按钮上）
+func focused_index() -> int:
+	var owner := FocusMGR.focused_control()
+	if owner == null:
+		return -1
+	for slot in occupied.keys():
+		var node: Control = pool[int(slot)]
+		if is_instance_valid(node) and (node == owner or node.is_ancestor_of(owner)):
+			return int(occupied[slot])
+	return -1
+
+
+func _focus_map() -> Dictionary:
+	var map := {}
+	for slot in occupied.keys():
+		var node: Control = pool[int(slot)]
+		if not is_instance_valid(node) or not node.visible:
+			continue
+		var ctl := node
+		if focus_control_fn.is_valid():
+			ctl = focus_control_fn.call(node) as Control
+		if ctl != null and ctl.focus_mode == Control.FOCUS_ALL:
+			map[ctl] = int(occupied[slot])
+	return map
+
+
+## 取指定数据索引当前可聚焦的控件（不在窗口内返回 null）
+func focus_control(index: int) -> Control:
+	var node := node_at(index)
+	if node == null:
+		return null
+	if focus_control_fn.is_valid():
+		return focus_control_fn.call(node) as Control
+	return node
+
+
+## 把焦点移到指定数据索引
+func focus_index(index: int) -> void:
+	if on_focus_select.is_valid():
+		on_focus_select.call(index)
+		return
+	scroll_to_index(index)
+	var ctl := focus_control(index)
+	if ctl != null:
+		ctl.grab_focus()
+
+
+## 把指定数据索引滚进可视窗口并重绑窗口，供聚焦前调用
+func scroll_to_index(index: int) -> void:
+	if scroll == null or row_stride <= 0.0 or index < 0 or index >= total:
+		return
+	var cols := maxi(columns, 1)
+	var row := int(index / float(cols))
+	var top := top_padding + float(row) * row_stride
+	var bottom := top + row_height
+	var view_top := float(scroll.scroll_vertical)
+	if top < view_top:
+		scroll.scroll_vertical = int(top)
+	elif bottom > view_top + scroll.size.y:
+		scroll.scroll_vertical = int(bottom - scroll.size.y)
+	sync(true)
 
 
 func _release_all() -> void:

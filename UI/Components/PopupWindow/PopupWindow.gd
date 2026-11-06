@@ -53,6 +53,40 @@ func _pop_up_window(page: int = 0, window_title: String = "", closable: bool = t
 	await get_tree().process_frame
 	# await get_tree().create_timer(0.1).timeout
 	popup()
+	call_deferred(&"_focus_current_page")
+
+## 键盘 / 手柄打开时把焦点放进页面：提示页落在确认按钮，其它页落在页面里第一个可聚焦控件。
+## 鼠标 / 触摸打开时不动焦点，避免触摸操作冒出焦点描边。
+func _focus_current_page(force: bool = false) -> void:
+	if not FocusMGR or not visible:
+		return
+	if not force and not FocusMGR.is_keyboard_mode():
+		return
+	var page: Node = %Tabs.get_current_tab_control()
+	if page == null:
+		return
+	var target: Control = null
+	if %Tabs.current_tab == 0 and %MessageConfirmBtn.is_visible_in_tree():
+		target = %MessageConfirmBtn
+	if target == null:
+		target = FocusMGR.first_focusable_in(page)
+	if target != null:
+		target.grab_focus()
+
+## 弹窗是独立窗口，主窗口的焦点路由收不到这里的按键；
+## 页内还没有控件持有焦点时，第一次按方向键 / Tab 就把焦点放进当前页
+func _input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if get_viewport().gui_get_focus_owner() != null:
+		return
+	if not (event is InputEventKey or event is InputEventJoypadButton or event is InputEventJoypadMotion):
+		return
+	for action in [&"ui_up", &"ui_down", &"ui_left", &"ui_right", &"ui_focus_next", &"ui_focus_prev"]:
+		if event.is_action_pressed(action, true, true):
+			_focus_current_page(true)
+			get_viewport().set_input_as_handled()
+			return
 
 func _ready() -> void:
 	instance = self
@@ -97,6 +131,7 @@ func set_window_title(text: String) -> void:
 
 func _on_tab_changed(tab: int) -> void:
 	set_window_title(PAGE_TITLES.get(tab, ""))
+	call_deferred(&"_focus_current_page")
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
 func apply_theme() -> void:

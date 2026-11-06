@@ -300,6 +300,9 @@ func _on_key_config_btn_pressed() -> void:
 func _start_recording() -> void:
 	_recording = true
 	%KeyConfigBtn.text = "等待输入..."
+	# 录入期间独占键盘：焦点导航不接管方向键 / Tab
+	if FocusMGR:
+		FocusMGR.set_capture_disabled(true)
 	# 实体键盘、MIDI 键盘、鼠标键、手柄都能录入，提示里点明，避免玩家以为只认实体按键
 	%KeyName.text = "请按下按键、鼠标键、手柄按钮或扳机，或弹奏 MIDI 音符"
 	# 释放 LineEdit 焦点，避免按键被吞
@@ -310,6 +313,8 @@ func _cancel_recording() -> void:
 	if not _recording:
 		return
 	_recording = false
+	if FocusMGR:
+		FocusMGR.set_capture_disabled(false)
 	%KeyConfigBtn.text = "输入按键"
 	# 取消录入（ESC 等）时把「当前按键」那行还原成选中项的真实绑定
 	_refresh_detail_panel()

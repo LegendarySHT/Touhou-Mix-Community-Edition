@@ -47,20 +47,26 @@ func _on_view_ready() -> void:
 	# 监听 UI 状态变化，进入 MIDI_VIEW 时若 FavorPanel 可见则刷新
 	UiStatMGR.state_changed.connect(_on_state_changed)
 
-	# 按钮的焦点逻辑
-	for i in left_btns:
-		i.focus_entered.connect(func():
-			i.focus_neighbor_right = %MidiList.get_focus_node_path()
-		)
-	play_btn.focus_entered.connect(func():
-		play_btn.focus_neighbor_top = %MidiList.get_focus_node_path()
-	)
+	_setup_focus_tabs()
 
-	# 右面板 tab 切换时刷新 Tab 循环焦点
-	for b in %OptTabBtns.get_children():
-		if b is Button:
-			b.toggled.connect(func(_on: bool): _update_focus_neighbors())
-	_update_focus_neighbors()
+## 右侧面板的三个页签按 Tab 切换，页内控件交给方向键
+func _setup_focus_tabs() -> void:
+	var bar := FocusTabBar.new()
+	bar.root = %OptTabBtns
+	bar.page_root = self
+	bar.buttons_fn = func() -> Array:
+		return %OptTabBtns.get_children().filter(func(b): return b is Button and b.is_visible_in_tree())
+	bar.current_fn = func() -> int:
+		var list := bar.buttons()
+		for i in list.size():
+			if (list[i] as Button).button_pressed:
+				return i
+		return 0
+	bar.select_fn = func(i: int) -> void:
+		var list := bar.buttons()
+		if i >= 0 and i < list.size():
+			(list[i] as Button).button_pressed = true
+	FocusMGR.register_tab_bar(bar)
 
 ## 应用主题色（由 ThemeManager 广播调用 + ViewBase._ready 首次自调）
 func apply_theme() -> void:
@@ -115,42 +121,6 @@ func _play_enter() -> Tween:
 	AniMGR.animate_fade_in(self, 0.1, "%s_fade_in" % name)
 	offset_transform_position = Vector2(0, -500)
 	return AniMGR.animate_offset_back(self, 0.5, "%s_in" % name)
-
-## 更新 Midi 视图 Tab 循环焦点 + InfoBtn 左邻居
-## 左区（MidiList 项 + HBoxC 四周按钮）Tab → PlayBtn → 右面板选中 tab → MidiList 选中项，三者循环
-## InfoBtn 左邻居总指向 MidiList 当前选中项（修复其自动按几何指到选中项上一节点）
-## 由 _ready / MidiList 选中变化（selection_changed 信号）/ 右面板 tab 切换 触发
-func _update_focus_neighbors() -> void:
-	if not is_inside_tree():
-		return
-	var play_path := play_btn.get_path()
-	# 1) 左区四周按钮 Tab → PlayBtn
-	for btn in left_btns:
-		btn.focus_next = play_path
-	%InfoBtn.focus_next = play_path
-	%DeleteBtn.focus_next = play_path
-	# 2) MidiList 项 Tab → PlayBtn
-	for item in %MidiList.list_items:
-		if is_instance_valid(item) and item.button:
-			item.button.focus_next = play_path
-	# 3) 选中项路径（InfoBtn 左邻居 / 右 tab 返回共用）
-	var sel_path = %MidiList.get_focus_node_path()
-	# 4) PlayBtn Tab → 右面板当前选中的可见 tab；该 tab Tab → MidiList 选中项
-	var tab := _get_selected_visible_tab_btn()
-	if tab:
-		play_btn.focus_next = tab.get_path()
-		if not sel_path.is_empty():
-			tab.focus_next = sel_path
-	# 5) InfoBtn 左邻居 → MidiList 选中项
-	if not sel_path.is_empty():
-		%InfoBtn.focus_neighbor_left = sel_path
-
-## 右面板当前选中的可见 tab 按钮（Rank/Mode/Comment 三选一）
-func _get_selected_visible_tab_btn() -> Button:
-	for b in %OptTabBtns.get_children():
-		if b is Button and b.button_pressed and b.is_visible_in_tree():
-			return b
-	return null
 
 # MIDI 选择变化：加载列表（收藏夹面板/排行榜由 selection_changed 信号统一刷新）
 func _on_midi_selected(_midi_id: String, midi: MidiData) -> void:
@@ -212,11 +182,10 @@ func _cleanup() -> void:
 
 # midilist 内部切换检测（prev/next/list 展开/列表项点击均直接改 selected_item，
 # 由 BaseScrollList 的 selection_changed 信号统一通知，替代原先 _process 逐帧轮询）
-# 选中项变化时刷新焦点循环 + 导航位置 + 收藏夹面板 + 排行榜
+# 选中项变化时刷新导航位置 + 收藏夹面板 + 排行榜
 func _on_selection_changed(index: int) -> void:
 	if index == -1:
 		return
-	_update_focus_neighbors()
 	var midi: MidiData = %MidiList.get_selection()
 	if midi:
 		# 记录导航位置：切换 midi 时记录具体选中项（仅在有 album/song 上下文的导航链内，

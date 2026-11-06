@@ -75,6 +75,9 @@ func open(p_item: Dictionary, source_rect: Rect2, p_mode: int = Mode.STORE) -> v
 	visible = true
 	%Dim.color = Color(0, 0, 0, 0)
 	%Content.modulate.a = 0.15
+	# 打开期间独占焦点：方向键 / Tab 只在面板内走，关闭时还给来源控件
+	if FocusMGR:
+		FocusMGR.push_layer(self, func() -> Control: return %CloseBtn)
 	_open_target_rect = target
 	%Panel.position = target.position
 	%Panel.size = target.size
@@ -103,7 +106,6 @@ func open(p_item: Dictionary, source_rect: Rect2, p_mode: int = Mode.STORE) -> v
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.tween_property(%Content, "modulate:a", 1.0, 0.28) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	%CloseBtn.grab_focus.call_deferred()
 
 
 func _finish_open(target: Rect2) -> void:
@@ -142,6 +144,8 @@ func close() -> void:
 
 func _finish_close() -> void:
 	visible = false
+	if FocusMGR:
+		FocusMGR.pop_layer(self)
 	%Panel.position = Vector2.ZERO
 	%Panel.size = DETAIL_SIZE
 	%Panel.offset_transform_position = Vector2.ZERO

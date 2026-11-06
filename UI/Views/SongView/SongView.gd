@@ -105,7 +105,6 @@ func _load_songs(album_id: String) -> void:
 		_apply_song_search_filter()
 	_refresh_display()
 
-	_connect_head_and_tail_next_frame()
 	_update_ss_count()
 
 	# 加长
@@ -175,7 +174,6 @@ func _refresh_from_data() -> void:
 	if not _search_query.is_empty():
 		_apply_song_search_filter()
 	_refresh_display()
-	_connect_head_and_tail_next_frame()
 	_update_ss_count()
 	# 先把容器高度按歌曲数撑开，确保 _restore_selected_song 等布局稳定时项位置已就绪
 	container.custom_minimum_size.y = (140 + 29) * (current_songs.size() + 1)
@@ -187,19 +185,6 @@ func _refresh_from_data() -> void:
 	if current_songs.is_empty():
 		if ChartDB.GetAlbum(current_album_id).is_empty():
 			_deferred_go_back()
-
-## 首尾焦点连接延迟到下一帧执行
-## clear_items 用 queue_free 移除旧项，旧项要到帧末才真正脱离容器；若同步调用
-## _connect_head_and_tail，container.get_child(0) 会取到待释放的旧首项，使新末项的
-## focus_neighbor_bottom 指向已释放节点（焦点移到末项按下报 invalid path 错误）。
-## 等待一帧后旧项已移除，头尾才指向真实的新首/末项（与 AlbumView 的两阶段构建一致）。
-func _connect_head_and_tail_next_frame() -> void:
-	if not is_inside_tree() or container == null:
-		return
-	await get_tree().process_frame
-	if not is_inside_tree() or container == null:
-		return
-	_connect_head_and_tail()
 
 ## 同步更新 SelectedAlbum 头部卡片（SongView 过渡时展示的选中专辑）的歌曲计数
 func _update_ss_count() -> void:

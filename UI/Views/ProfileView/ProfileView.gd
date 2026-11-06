@@ -61,6 +61,7 @@ func _on_view_ready() -> void:
 	%PasswordEdit.secret = true
 	%NewPasswordEdit.secret = true
 	_reset_avatar_adjust()
+	_setup_focus_tabs()
 	# 头像卡（Border 整块卡片框）点击进入 Chara_View：卡片框接收点击，头像图透传
 	%CharaCardBorder.gui_input.connect(_on_card_border_gui_input)
 	%DetailLayer.closed.connect(_on_detail_closed)
@@ -71,8 +72,21 @@ func _on_view_ready() -> void:
 	# 保证启动扫描完成后能按最终选中的角色加载一次
 	call_deferred("_connect_scan_ready")
 
-func _connect_scan_ready() -> void:
-	if FileSystemManager.instance and not FileSystemManager.instance.resources_ready.is_connected(_load_chara_display):
+	_setup_focus_tabs()
+
+## 顶部导航按钮是资料页的标签栏：Tab / Shift+Tab 切换三页，页内控件交给方向键
+func _setup_focus_tabs() -> void:
+	var bar := FocusTabBar.new()
+	bar.root = %ProfileBtn.get_parent()
+	bar.page_root = self
+	bar.buttons_fn = func() -> Array: return [%ProfileBtn, %HistoryBtn, %EditBtn]
+	bar.current_fn = func() -> int: return %PageContent.current_tab
+	bar.select_fn = func(i: int) -> void:
+		%PageContent.current_tab = clampi(i, TAB_PROFILE, TAB_EDIT)
+		_sync_navi_selection(%PageContent.current_tab)
+	FocusMGR.register_tab_bar(bar)
+
+func _connect_scan_ready() -> void:	if FileSystemManager.instance and not FileSystemManager.instance.resources_ready.is_connected(_load_chara_display):
 		FileSystemManager.instance.resources_ready.connect(_load_chara_display)
 
 ## 角色切换（[Chara] chara_id）时刷新展示

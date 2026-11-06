@@ -15,14 +15,23 @@ extends Control
 func _ready() -> void:
 	# 子类初始化先于主题应用：apply_theme 依赖子类在 _on_view_ready 里建立的引用
 	_on_view_ready()
+	# 页面默认焦点落点：优先级高于内层列表，返回 null 时自动落到内层列表或阅读顺序第一项
+	if FocusMGR:
+		FocusMGR.register_default(self, _focus_default, 10)
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
 
 func _exit_tree() -> void:
+	if FocusMGR:
+		FocusMGR.unregister_default(self)
 	if ThemeMGR:
 		ThemeMGR.unregister_theme_applier(self)
 	_on_view_exit()
+
+## 页面默认焦点落点。返回 null 表示本页不指定，交给内层列表或阅读顺序第一项
+func _focus_default() -> Control:
+	return null
 
 ## 子类初始化钩子（替代覆盖 _ready）
 func _on_view_ready() -> void:

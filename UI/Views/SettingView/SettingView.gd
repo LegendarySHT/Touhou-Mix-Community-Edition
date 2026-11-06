@@ -43,14 +43,42 @@ func _on_view_ready() -> void:
 	EvtBus.page_left.connect(switch_page.bind(-1))
 	EvtBus.page_right.connect(switch_page.bind(1))
 
-	# 转移焦点至导航按钮
-	%ShortCutBtns.get_child(0).grab_focus()
+	_setup_focus_tabs()
 
 	# 从 ConfigLoader 加载配置
 	_load_config_from_file()
 
 	# 关于页动态内容绑定（版本号/关于项目/更新历史，版本以 VersionManager / version_history.json 为准）
 	refresh_about_page()
+
+## 左侧导航栏是设置页的标签栏：Tab / Shift+Tab 切换分组，页内控件交给方向键
+func _setup_focus_tabs() -> void:
+	var bar := FocusTabBar.new()
+	bar.root = short_cut_btns
+	bar.page_root = self
+	bar.buttons_fn = func() -> Array:
+		return short_cut_btns.get_children().filter(func(b): return b is Button and b.is_visible_in_tree())
+	bar.current_fn = func() -> int:
+		var list := bar.buttons()
+		for i in list.size():
+			if (list[i] as Button).button_pressed:
+				return i
+		return 0
+	bar.select_fn = func(i: int) -> void:
+		var list := bar.buttons()
+		if i >= 0 and i < list.size():
+			(list[i] as Button).button_pressed = true
+	FocusMGR.register_tab_bar(bar)
+
+## 页面默认落点：资源管理子页优先，其次是当前按下的分组按钮
+func _focus_default() -> Control:
+	var resource_view := %ResourceView
+	if resource_view != null and is_instance_valid(resource_view) and resource_view.visible:
+		return resource_view.active_tab_button()
+	for btn in short_cut_btns.get_children():
+		if btn is Button and btn.button_pressed:
+			return btn
+	return short_cut_btns.get_child(0) if short_cut_btns.get_child_count() > 0 else null
 
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
 ## SettingList 的 value_button 主题；ShortCut 导航按钮的 focus 直接复用共享 Theme 的 focus StyleBox
@@ -90,43 +118,6 @@ func _play_enter() -> Tween:
 	var tw := AniMGR.animate_offset_back(%ShortCutBtns, 0.25, "sv_btns")
 	AniMGR.animate_offset_back(%SettingList, 0.35, "sv_info")
 	return tw
-
-func get_all_child_nodes(c: Container):
-	var node_array = []
-	for i in c.get_children():
-		node_array.append(i)
-		if i.get_children():
-			node_array += get_all_child_nodes(i)
-	return node_array
-
-func get_nearest_focusable_node(pos_y) -> Control:
-	var nearest_node: Control = null
-	var min_distance = INF
-	
-	# 获取GridContainer的全局位置
-	var c: Container = %SettingList.container
-	
-	
-	# 遍历GridContainer的所有子节点
-	var na = get_all_child_nodes(c)
-	if not na:
-		return null
-
-	for child in na:
-		# 确保节点是Control类型且可以聚焦
-		if child.focus_mode != Control.FOCUS_NONE and child.global_position.y > 0 and child.global_position.y < c.get_global_rect().size.y:
-			# 计算节点的中心点全局坐标
-			var node_y = child.get_global_rect().position.y
-			
-			# 计算距离
-			var distance = abs(node_y - pos_y)
-			
-			# 更新最近节点
-			if distance < min_distance:
-				min_distance = distance
-				nearest_node = child
-
-	return nearest_node
 
 func _btn_focus_entered(btn: Button):
 	if not btn.button_pressed:
@@ -285,10 +276,6 @@ func _reveal_group(idx: int) -> void:
 				_snap_tween.finished.connect(func ():
 					_snap_tween = null
 					%ShortCutBtns.remove_meta("snaping")
-					var btn = %ShortCutBtns.get_child(idx)
-					var neighbor = get_nearest_focusable_node(btn.get_global_position().y)
-					if neighbor:
-						btn.focus_neighbor_right = neighbor.get_path()
 				)
 			c_idx += 1
 
