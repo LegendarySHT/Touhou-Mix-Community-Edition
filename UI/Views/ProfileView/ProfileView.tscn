@@ -554,6 +554,9 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 mouse_filter = 2
+max_value = 100.0
+show_percentage = true
+theme_override_font_sizes/font_size = 24
 rounded = true
 
 [node name="MarginBottom" type="Control" parent="PageContent/Profile/Main" unique_id=306449287]
@@ -614,6 +617,7 @@ horizontal_alignment = 1
 vertical_alignment = 2
 
 [node name="RankTotalValue" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankTotal" unique_id=995132753]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_top = 0.5
@@ -642,6 +646,7 @@ layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_ag846")
 
 [node name="RankPastValue" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast" unique_id=1103544077]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 0.6
@@ -652,6 +657,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="RankPastYear" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast" unique_id=76458199]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.6
@@ -670,6 +676,7 @@ layout_mode = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_j7lut")
 
 [node name="RankPast2Value" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast2" unique_id=1428837707]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_right = 0.6
@@ -680,6 +687,7 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="RankPast2Year" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast2" unique_id=2051562825]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.6

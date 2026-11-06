@@ -215,6 +215,7 @@ func _sync_from_auth() -> void:
 		_player_data.bio = ""
 		_player_data.avatar_url = ""
 		_player_data.pp = 0.0
+		_player_data.rank = 0
 		_player_data.accuracy = 0.0
 		_player_data.total_plays = 0
 		_player_data.max_combo = 0
@@ -305,6 +306,9 @@ func _fetch_stats_async() -> void:
 		return
 	var s: Dictionary = stats_result.data
 	_player_data.pp = float(s.get("totalPp", 0))
+	# 全服总榜名次：服务端在没有任何有效成绩时返回 null，用 0 表示「未上榜」
+	var global_rank: Variant = s.get("globalRank", null)
+	_player_data.rank = int(global_rank) if global_rank != null and int(global_rank) > 0 else 0
 	_player_data.accuracy = float(s.get("avgAccuracy", 0)) * 100.0
 	_player_data.total_plays = int(s.get("totalPlays", 0))
 	_player_data.max_combo = int(s.get("maxCombo", 0))

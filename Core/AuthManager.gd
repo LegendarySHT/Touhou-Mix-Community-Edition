@@ -266,6 +266,12 @@ func upload_avatar(image_base64: String, content_type: String = "") -> Dictionar
 func get_user_stats() -> Dictionary:
 	return await authed_request("GET", "/api/users/me/stats")
 
+## 获取当前用户最近两年（UTC+8 当前年 + 上一年）的年度玩家榜名次：GET /api/users/me/rankings
+## 返回 data.ranks = [{year, rank(null=未上榜), rankedPlayers, totalPp}, ...]，按年份降序。
+## 总榜名次不在这里，直接读 me/stats 的 globalRank。
+func get_my_rankings() -> Dictionary:
+	return await authed_request("GET", "/api/users/me/rankings")
+
 ## 获取最近游玩记录：GET /api/users/me/scores/recent?limit=&offset=
 func get_recent_scores(limit: int = 20, offset: int = 0) -> Dictionary:
 	return await authed_request("GET", "/api/users/me/scores/recent?limit=%d&offset=%d" % [limit, offset])

@@ -29,6 +29,8 @@ const RECORD_ITEM_SCENE := preload("res://UI/Views/ProfileView/recordListItem.ts
 const ChartDetailPageLib := preload("res://UI/Components/PopupWindow/ChartDetailPage.gd")
 # 单页记录数
 const RECORD_PAGE_LIMIT := 20
+## 排名卡片「-」：未上榜 / 未登录 / 离线 / 接口失败
+const RANK_PLACEHOLDER := "-"
 
 ## 操作进行中（防止重复点击）
 var _busy: bool = false
@@ -46,6 +48,12 @@ var _most_loaded: bool = false
 var _recent_loading: bool = false
 var _best_loading: bool = false
 var _most_loading: bool = false
+
+# 年度排名：缓存 key = 账号 + 当前 pp（pp 变化即名次可能变化），避免资料/统计多次刷新重复打接口
+var _ranks_busy: bool = false
+var _ranks_cache_key: String = ""
+var _ranks_cache: Array = []
+var _last_pp: float = -1.0
 
 func _on_view_ready() -> void:
 	%ProfileBtn.pressed.connect(_on_navi_profile_pressed)
@@ -66,6 +74,14 @@ func _on_view_ready() -> void:
 	# 角色展示：初始加载当前人物，并监听切换（选中角色后刷新）
 	_load_chara_display()
 	EvtBus.config_changed.connect(_on_config_changed)
+	# 排名缓存失效源：成绩上传 / 网络状态 / 登录态变化。随后到来的资料刷新会重新拉取年度名次
+	if not EvtBus.score_uploaded.is_connected(_on_rank_score_uploaded):
+		EvtBus.score_uploaded.connect(_on_rank_score_uploaded)
+	if not EvtBus.online_status_changed.is_connected(_on_rank_online_changed):
+		EvtBus.online_status_changed.connect(_on_rank_online_changed)
+	if not EvtBus.auth_changed.is_connected(_on_rank_auth_changed):
+		EvtBus.auth_changed.connect(_on_rank_auth_changed)
+	_init_rank_year_labels()
 	# FileSystemManager 由 Main._ready 创建（晚于本节点 _ready），故延迟一帧再连扫描完成信号，
 	# 保证启动扫描完成后能按最终选中的角色加载一次
 	call_deferred("_connect_scan_ready")
@@ -133,6 +149,8 @@ func _play_exit() -> Tween:
 
 ## 入场：底栏上滑 + 内容区淡入
 func _play_enter() -> Tween:
+	# 每次进入详情页强制刷一次年度名次：别人的成绩也会改变我的名次，不能只靠本机 pp 变化判断
+	_refresh_yearly_ranks(true)
 	var navi := %Navi
 	if navi:
 		navi.offset_transform_position = Vector2(0, navi.size.y)
@@ -304,6 +322,137 @@ func update_display(data: Dictionary) -> void:
 	# 同步 Edit 页输入框为当前值
 	%NicknameEdit.text = display_name
 	%DescEdit.text = bio
+	_update_level(data)
+	_update_total_rank(data)
+	_last_pp = float(data.get("pp", 0.0))
+	_refresh_yearly_ranks()
+
+# ========== 等级进度条与排名卡片 ==========
+
+## 等级进度条：等级/进度公式与 PlayerInfoContent.calc_level / calc_level_progress 同源
+## （优先直接复用其实例，避免公式两处维护；实例未就绪时用同一公式兜底）。
+## 数值驱动方式参考 Main.tscn 的 ProcessTip/ProcessProgress —— FileSystemManager.show_progress_ui
+## 设 min=0 / max=100 / value / show_percentage，进度条自带百分比文字。
+func _update_level(data: Dictionary) -> void:
+	var pp := maxf(0.0, float(data.get("pp", 0.0)))
+	var lvl := 0
+	var progress := 0.0
+	var pic := GlobalNodes.player_info_tabs as PlayerInfoContent
+	if pic:
+		lvl = pic.calc_level(pp)
+		progress = clampf(pic.calc_level_progress(pp, lvl), 0.0, 1.0)
+	else:
+		lvl = int(floor(sqrt(pp)))
+		var threshold := float(lvl) * float(lvl)
+		var span := float(lvl + 1) * float(lvl + 1) - threshold
+		progress = clampf((pp - threshold) / span, 0.0, 1.0) if span > 0.0 else 0.0
+	%ProfileLevelText.text = "Level %d" % lvl
+	var bar: ProgressBar = %ProfileLevelingBar
+	bar.min_value = 0.0
+	bar.max_value = 100.0
+	bar.value = progress * 100.0
+	bar.show_percentage = true
+
+## 总榜名次来自 me/stats 的 globalRank（PlayerInfoContent 写入 _player_data.rank）
+func _update_total_rank(data: Dictionary) -> void:
+	%RankTotalValue.text = _format_rank(data.get("rank", 0))
+
+## 未上榜（null / 0 / 非正数）统一显示「-」
+func _format_rank(value: Variant) -> String:
+	if value == null:
+		return RANK_PLACEHOLDER
+	var r := int(value)
+	return "#%d" % r if r > 0 else RANK_PLACEHOLDER
+
+## 年度榜按服务端 UTC+8 自然年划分，本地先按同一口径摆好「当前年 + 上一年」占位年份；
+## 接口返回后再用响应里的年份覆盖（服务端才是年份真相）。
+func _init_rank_year_labels() -> void:
+	var y := _current_utc8_year()
+	%RankPastYear.text = str(y)
+	%RankPast2Year.text = str(y - 1)
+
+func _current_utc8_year() -> int:
+	# get_datetime_dict_from_unix_time 没有 utc 形参（4.7）：时间戳本身按 UTC 解释，
+	# 因此先 +8h 再取年份，得到的就是 UTC+8 的当前年，与服务端年度榜划分一致。
+	var shifted := int(Time.get_unix_time_from_system()) + 8 * 3600
+	return int(Time.get_datetime_dict_from_unix_time(shifted).get("year", 2026))
+
+## 排名缓存失效：只清 key，等随后必然到来的 update_display 重新拉取，避免同一次刷新打两次接口
+func _on_rank_score_uploaded(_midi_hash: String) -> void:
+	_ranks_cache_key = ""
+
+func _on_rank_auth_changed(_user_data: Variant) -> void:
+	_ranks_cache_key = ""
+
+func _on_rank_online_changed(online: bool, _message: String) -> void:
+	_ranks_cache_key = ""
+	if not online:
+		_set_yearly_rank_values(RANK_PLACEHOLDER, RANK_PLACEHOLDER)
+
+## 拉取当前用户最近两年的年度名次。force 用于每次进入详情页时绕过缓存取新值。
+func _refresh_yearly_ranks(force: bool = false) -> void:
+	if _ranks_busy:
+		return
+	var logged_in := AuthManager.instance != null and AuthManager.instance.is_logged_in
+	var online := NetManager.instance != null and NetManager.instance.is_online
+	if not logged_in or not online:
+		_ranks_cache_key = ""
+		_ranks_cache = []
+		_set_yearly_rank_values(RANK_PLACEHOLDER, RANK_PLACEHOLDER)
+		return
+	var username := str(AuthManager.instance.current_user.get("username", ""))
+	var key := "%s|%s" % [username, "%.2f" % _last_pp]
+	if not force and key == _ranks_cache_key:
+		_apply_yearly_ranks(_ranks_cache)
+		return
+	_ranks_busy = true
+	# 语句形式调用协程＝合法的即发即忘；结果由函数内部异步处理
+	_fetch_yearly_ranks(key, username)
+
+func _fetch_yearly_ranks(key: String, username: String) -> void:
+	var result: Dictionary = await AuthManager.instance.get_my_rankings()
+	_ranks_busy = false
+	if not is_instance_valid(self):
+		return
+	# 请求期间切换账号 / 登出：丢弃过期结果
+	var current := ""
+	if AuthManager.instance and AuthManager.instance.is_logged_in:
+		current = str(AuthManager.instance.current_user.get("username", ""))
+	if current != username:
+		return
+	if not result.get("ok", false) or not result.data is Dictionary:
+		GLogger.warning("Failed to load yearly rankings: %s" % str(result.get("error", "")), "ProfileView")
+		# 失败也记下这一代 key，避免同一次资料刷新里反复重试；网络/登录态变化会重新失效
+		_ranks_cache_key = key
+		_ranks_cache = []
+		_set_yearly_rank_values(RANK_PLACEHOLDER, RANK_PLACEHOLDER)
+		return
+	var raw: Variant = result.data.get("ranks", null)
+	var ranks: Array = []
+	if raw is Array:
+		ranks = raw
+	_ranks_cache = ranks
+	_ranks_cache_key = key
+	_apply_yearly_ranks(_ranks_cache)
+
+## 名次按年份降序：ranks[0] = 当前年，ranks[1] = 上一年
+func _apply_yearly_ranks(ranks: Array) -> void:
+	var first: Dictionary = {}
+	var second: Dictionary = {}
+	if ranks.size() > 0 and ranks[0] is Dictionary:
+		first = ranks[0]
+	if ranks.size() > 1 and ranks[1] is Dictionary:
+		second = ranks[1]
+	if not first.is_empty():
+		%RankPastYear.text = str(int(first.get("year", 0)))
+	if not second.is_empty():
+		%RankPast2Year.text = str(int(second.get("year", 0)))
+	_set_yearly_rank_values(_format_rank(first.get("rank", null)),
+		_format_rank(second.get("rank", null)))
+
+func _set_yearly_rank_values(current_year_rank: String, previous_year_rank: String) -> void:
+	%RankPastValue.text = current_year_rank
+	%RankPast2Value.text = previous_year_rank
 
 ## 头像上屏：Profile 页大图 + Edit 页预览。
 ## 头像由 PlayerInfoContent 统一加载（MiniInfo/Summary 也要用），这里只负责显示。
