@@ -1,9 +1,13 @@
 [gd_scene format=3 uid="uid://6x22q0274hxw"]
 
 [ext_resource type="Script" uid="uid://dly3k36hy880k" path="res://UI/Components/PopupWindow/PopupWindow.gd" id="1_ff7qk"]
+[ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="2_round"]
 [ext_resource type="Script" uid="uid://dy3ing4k0ohsf" path="res://UI/Components/PopupWindow/NoteSkinAdjust.gd" id="3_gghdr"]
+[ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="3_set1"]
 [ext_resource type="Script" uid="uid://bouqpji0hyu7b" path="res://UI/Components/PopupWindow/DelayAdjust.gd" id="3_xybxw"]
+[ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="5_set3"]
 [ext_resource type="Script" uid="uid://c2ylo07cj00rw" path="res://UI/Components/TouchScrollOptionButton.gd" id="6_fyi7o"]
+[ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="6_scroll"]
 [ext_resource type="Script" uid="uid://cyad78ab6lgat" path="res://UI/Components/PopupWindow/ParticleAdjust.gd" id="6_ukd1n"]
 [ext_resource type="Script" uid="uid://birrx3o1ktn31" path="res://UI/Components/PopupWindow/ImageAdjust.gd" id="6_v2710"]
 [ext_resource type="Script" uid="uid://bybph8jhlvdlx" path="res://UI/Components/PopupWindow/KBModeAdjust.gd" id="11_krk8y"]
@@ -12,6 +16,8 @@
 [ext_resource type="Script" uid="uid://xmf1c4vlwxw3" path="res://UI/Components/PopupWindow/StorageLocationAdjust.gd" id="21_storage"]
 [ext_resource type="Script" uid="uid://dk51vefnbwc1w" path="res://UI/Components/PopupWindow/StorageConflictAdjust.gd" id="22_conflict"]
 [ext_resource type="Script" uid="uid://b47npyuqw7acg" path="res://UI/Views/PlayView/NoteBatchDrawer.gd" id="23_drawer"]
+[ext_resource type="Script" uid="uid://ubq33mvyg5jv" path="res://UI/Components/PopupWindow/ChartDetailPage.gd" id="cd_1_detail"]
+[ext_resource type="Theme" uid="uid://d0x0ea1hnbce6" path="res://UI/Theme/PopupTheme.tres" id="popup_theme"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_6vipk"]
 content_margin_left = 20.0
@@ -155,6 +161,75 @@ region = Rect2(160, 80, 80, 80)
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_j02sm"]
 bg_color = Color(1, 1, 1, 0.5)
 
+[sub_resource type="StyleBoxFlat" id="cd_SB_cover"]
+bg_color = Color(0.062, 0.078, 0.114, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.2, 0.27, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+
+[sub_resource type="AtlasTexture" id="cd_Atlas_song"]
+atlas = ExtResource("5_set3")
+region = Rect2(160, 0, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="cd_SB_rank"]
+bg_color = Color(0.075, 0.094, 0.136, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.16, 0.2, 0.27, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="cd_SB_flat"]
+bg_color = Color(0, 0, 0, 0)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="cd_SB_flat_pressed"]
+bg_color = Color(0.2, 0.26, 0.36, 0.9)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="cd_SB_flat_hover"]
+bg_color = Color(0.16, 0.2, 0.28, 0.7)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="AtlasTexture" id="cd_Atlas_up"]
+atlas = ExtResource("20_4gkd0")
+region = Rect2(0, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="cd_Atlas_down"]
+atlas = ExtResource("20_4gkd0")
+region = Rect2(80, 0, 80, 80)
+
+[sub_resource type="AtlasTexture" id="cd_Atlas_downloads"]
+atlas = ExtResource("20_4gkd0")
+region = Rect2(0, 320, 80, 80)
+
+[sub_resource type="AtlasTexture" id="cd_Atlas_plays"]
+atlas = ExtResource("20_4gkd0")
+region = Rect2(80, 320, 80, 80)
+
+[sub_resource type="AtlasTexture" id="cd_Atlas_download"]
+atlas = ExtResource("3_set1")
+region = Rect2(240, 320, 80, 80)
+
 [node name="PopupWindow" type="PopupPanel" unique_id=1385603115]
 gui_embed_subwindows = true
 oversampling_override = 1.0
@@ -162,6 +237,7 @@ initial_position = 2
 size = Vector2i(850, 600)
 visible = true
 min_size = Vector2i(850, 600)
+theme = ExtResource("popup_theme")
 theme_override_styles/panel = SubResource("StyleBoxEmpty_6vipk")
 script = ExtResource("1_ff7qk")
 
@@ -175,6 +251,19 @@ offset_left = 20.0
 offset_right = -20.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="WindowDim" type="ColorRect" parent="Window" unique_id=845565788]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -20.0
+offset_right = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.72)
 
 [node name="WindowBG" type="Panel" parent="Window" unique_id=144741027]
 unique_name_in_owner = true
@@ -2198,6 +2287,312 @@ layout_mode = 2
 theme_type_variation = &"ButtonPrimary"
 theme_override_font_sizes/font_size = 24
 text = "保留目标已有版本（合并补缺）"
+
+[node name="FavoritePage" type="Control" parent="Window/WindowBG/Tabs" unique_id=1122668452]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+metadata/_tab_index = 9
+
+[node name="FpHint" type="Label" parent="Window/WindowBG/Tabs/FavoritePage" unique_id=1030998383]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+offset_top = 2.0
+offset_bottom = 30.0
+grow_horizontal = 2
+theme_type_variation = &"LabelMuted"
+text = "选择一个收藏夹，把当前曲目加进去"
+horizontal_alignment = 1
+
+[node name="FpScroll" type="ScrollContainer" parent="Window/WindowBG/Tabs/FavoritePage" unique_id=725757272]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 38.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+
+[node name="FpList" type="VBoxContainer" parent="Window/WindowBG/Tabs/FavoritePage/FpScroll" unique_id=829771272]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="FpEmpty" type="Label" parent="Window/WindowBG/Tabs/FavoritePage/FpScroll/FpList" unique_id=1292549939]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+text = "还没有收藏夹，先在快捷菜单里新建一个"
+horizontal_alignment = 1
+
+[node name="ChartDetailPage" type="Control" parent="Window/WindowBG/Tabs" unique_id=1131119634]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+script = ExtResource("cd_1_detail")
+metadata/_tab_index = 10
+
+[node name="Body" type="HBoxContainer" parent="Window/WindowBG/Tabs/ChartDetailPage" unique_id=731701955]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 26
+
+[node name="LeftCol" type="VBoxContainer" parent="Window/WindowBG/Tabs/ChartDetailPage" unique_id=78636420]
+custom_minimum_size = Vector2(390, 0)
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 0.4
+anchor_bottom = 1.0
+offset_top = 20.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 14
+
+[node name="CoverWrap" type="Panel" parent="Window/WindowBG/Tabs/ChartDetailPage/LeftCol" unique_id=313787893]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(390, 390)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("cd_SB_cover")
+
+[node name="Cover" type="TextureRect" parent="Window/WindowBG/Tabs/ChartDetailPage/LeftCol/CoverWrap" unique_id=1490627391]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+script = ExtResource("2_round")
+corner_radius = 18.0
+
+[node name="Placeholder" type="TextureRect" parent="Window/WindowBG/Tabs/ChartDetailPage/LeftCol/CoverWrap" unique_id=1502065850]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0.4)
+custom_minimum_size = Vector2(108, 108)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -54.0
+offset_top = -54.0
+offset_right = 54.0
+offset_bottom = 54.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("cd_Atlas_song")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="RankBox" type="Panel" parent="Window/WindowBG/Tabs/ChartDetailPage/LeftCol" unique_id=1270843060]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_styles/panel = SubResource("cd_SB_rank")
+
+[node name="RankCol" type="VBoxContainer" parent="Window/WindowBG/Tabs/ChartDetailPage/LeftCol/RankBox" unique_id=1688223513]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 12.0
+offset_right = -16.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="RankTitle" type="Label" parent="Window/WindowBG/Tabs/ChartDetailPage/LeftCol/RankBox/RankCol" unique_id=313546632]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelAccent"
+theme_override_font_sizes/font_size = 23
+text = "排行榜"
+
+[node name="RankList" type="VBoxContainer" parent="Window/WindowBG/Tabs/ChartDetailPage/LeftCol/RankBox/RankCol" unique_id=350727658]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="RightCol" type="VBoxContainer" parent="Window/WindowBG/Tabs/ChartDetailPage" unique_id=151502558]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.4
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 30.0
+offset_top = 20.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Sub" type="Label" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol" unique_id=541876194]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 22
+text = "作者 · 专辑 · 曲名"
+clip_text = true
+script = ExtResource("6_scroll")
+theme_color_key = "text_secondary"
+end_padding = 0.0
+
+[node name="Desc" type="RichTextLabel" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol" unique_id=1246707755]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 250)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+mouse_filter = 1
+theme_override_font_sizes/normal_font_size = 22
+bbcode_enabled = true
+text = "简介占位文本"
+
+[node name="CdDivider" type="ColorRect" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol" unique_id=1162896455]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+mouse_filter = 2
+color = Color(0.2, 0.24, 0.32, 0.8)
+
+[node name="Stats" type="HBoxContainer" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol" unique_id=1319639590]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 16
+
+[node name="LikeBtn" type="Button" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats" unique_id=795017511]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/icon_max_width = 26
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("cd_SB_flat")
+theme_override_styles/pressed = SubResource("cd_SB_flat_pressed")
+theme_override_styles/hover = SubResource("cd_SB_flat_hover")
+theme_override_styles/focus = SubResource("cd_SB_flat_hover")
+text = "  0"
+icon = SubResource("cd_Atlas_up")
+
+[node name="DislikeBtn" type="Button" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats" unique_id=103213101]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/icon_max_width = 26
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("cd_SB_flat")
+theme_override_styles/pressed = SubResource("cd_SB_flat_pressed")
+theme_override_styles/hover = SubResource("cd_SB_flat_hover")
+theme_override_styles/focus = SubResource("cd_SB_flat_hover")
+text = "  0"
+icon = SubResource("cd_Atlas_down")
+
+[node name="Downloads" type="HBoxContainer" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats" unique_id=148849777]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Icon" type="TextureRect" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats/Downloads" unique_id=1977699793]
+modulate = Color(0.7, 0.76, 0.86, 1)
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = SubResource("cd_Atlas_downloads")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="DownloadsCount" type="Label" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats/Downloads" unique_id=946289561]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 21
+text = "0"
+
+[node name="Plays" type="HBoxContainer" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats" unique_id=1462144508]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Icon" type="TextureRect" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats/Plays" unique_id=1805027525]
+modulate = Color(0.7, 0.76, 0.86, 1)
+custom_minimum_size = Vector2(22, 22)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = SubResource("cd_Atlas_plays")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="PlaysCount" type="Label" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats/Plays" unique_id=1898725087]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 21
+text = "0"
+
+[node name="Date" type="Label" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats" unique_id=1188870493]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 19
+text = "上传于 2026-10-30"
+vertical_alignment = 1
+
+[node name="Actions" type="HBoxContainer" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol" unique_id=171653584]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 16
+
+[node name="SizeLabel" type="Label" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Actions" unique_id=1699689793]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 20
+text = "文件 6.2 MB · 含人声"
+vertical_alignment = 1
+clip_text = true
+
+[node name="DownloadBtn" type="Button" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Actions" unique_id=1017878009]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(250, 64)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonDownloadIdle"
+theme_override_constants/icon_max_width = 34
+theme_override_font_sizes/font_size = 26
+text = "下载谱面"
+icon = SubResource("cd_Atlas_download")
 
 [connection signal="focus_exited" from="Window/WindowBG/Tabs/DelayAdjust/Stack/HBoxC/DelayValue" to="Window/WindowBG/Tabs/DelayAdjust" method="_on_delay_focus_exited"]
 [connection signal="text_changed" from="Window/WindowBG/Tabs/DelayAdjust/Stack/HBoxC/DelayValue" to="Window/WindowBG/Tabs/DelayAdjust" method="_on_delay_text_changed"]

@@ -4,7 +4,7 @@
 ##   TopBar    左侧搜索 / 排序 / 批量下载 / 人声开关，右侧五个标签页（歌曲 / 皮肤 / 特效 / 音源 / 下载管理）
 ##   Tabs      TabContainer（tabs_visible=false）：四个列表页（ScrollContainer → ListContent → VirtualList 池）
 ##             → 共享空状态页 → 下载管理页；切换标签只改 current_tab，空状态靠切到共享页表达
-##   DetailLayer 卡片展开式详情弹窗（通用组件 ChartDetailPanel，默认 STORE 模式）
+##   详情页由 PopupWindow 的谱面详情页承载（ChartDetailPage，默认 STORE 模式）
 ##   Bottom    歌曲页分页条（进场/退场由本脚本的 _play_enter/_play_exit 驱动）
 ##
 ## 数据：
@@ -101,8 +101,6 @@ var _hero_cover_version: int = 0
 
 ## 详情弹窗打开期间记录被临时隐藏的导航按钮（RB_Btn z=99，会盖在弹窗之上）
 ## 打开详情的那张卡片/下载行：关闭时把焦点还给原项，而不是跳回列表第一项
-var _detail_source_node: Control = null
-var _detail_source_item: Dictionary = {}
 
 # ── 虚拟列表 / 绑定动画 ───────────────────────────────
 var _song_vlist: VirtualListLib = null
@@ -181,8 +179,9 @@ func _connect_ui() -> void:
 	%VocalBtn.toggled.connect(_on_vocal_toggled)
 	%PreviBtn.pressed.connect(_on_previ_pressed)
 	%NextBtn.pressed.connect(_on_next_pressed)
-	%DetailLayer.closed.connect(_on_detail_closed)
-	%DetailLayer.download_requested.connect(_on_detail_download_requested)
+	var popup := PopupWindow.instance
+	if popup != null and not popup.chart_download_requested.is_connected(_on_detail_download_requested):
+		popup.chart_download_requested.connect(_on_detail_download_requested)
 	# 空状态提示兼作「手动重载」入口：加载失败 / 无内容时点一下重新拉取当前标签页
 	# （列表页共用一个空状态页，下载管理有自己的空提示）
 	%PageEmpty.gui_input.connect(_on_empty_gui_input)
@@ -460,24 +459,10 @@ func _on_card_ready(node) -> void:
 	node.download_requested.connect(_on_card_download_requested)
 
 
+## 卡片请求打开详情：详情页现在由 PopupWindow 承载，关闭后的焦点还原也由它负责
 func _on_detail_requested(item: Dictionary, source_rect: Rect2) -> void:
-	_detail_source_node = _find_bound_node_for_item(item)
-	_detail_source_item = item
-	%DetailLayer.open(item, source_rect)
-
-
-func _on_detail_closed() -> void:
-	var source := _detail_source_node
-	var source_item := _detail_source_item
-	_detail_source_node = null
-	_detail_source_item = {}
-	# 弹窗关闭后优先把焦点还给打开它的那张卡片；只有卡片已被池回收/换绑时才退回首项
-	if UiStatMGR.current_state == UIStateManager.UIState.STORE_VIEW:
-		if is_instance_valid(source) and source.is_visible_in_tree() \
-				and _node_shows_item(source, source_item):
-			source.grab_focus()
-		else:
-			call_deferred("focus_first")
+	if PopupWindow.instance != null:
+		PopupWindow.instance.show_chart_detail(item, 0, source_rect)
 
 
 # ── 搜索 / 排序 / 分页 ────────────────────────────────
@@ -987,8 +972,8 @@ func _refresh_bound_card(hash_str: String) -> void:
 			var node_item = node.get("item")
 			if node_item is Dictionary and str(node_item.get("hash", "")) == hash_str:
 				node.call("refresh_download_state")
-	if %DetailLayer.is_open():
-		%DetailLayer.refresh_download_state()
+	if PopupWindow.instance != null:
+		PopupWindow.instance.refresh_chart_detail_state()
 
 
 func _sync_song_states() -> void:
@@ -1293,20 +1278,24 @@ func _on_state_changed(old_state: UIStateManager.UIState,
 		TextScrollMGR.resume_page(self)
 	elif old_state == UIStateManager.UIState.STORE_VIEW \
 			and new_state != UIStateManager.UIState.STORE_VIEW:
-		if %DetailLayer.is_open():
-			%DetailLayer.close()
+		if PopupWindow.instance != null:
+			PopupWindow.instance.close_chart_detail()
 		TextScrollMGR.suspend_page(self)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-		if %DetailLayer.handle_back_request():
+		if PopupWindow.instance != null and PopupWindow.instance.is_chart_detail_open():
+			PopupWindow.instance.close_chart_detail()
 			get_viewport().set_input_as_handled()
 
 
 ## Main 的全局返回键调用：详情打开时先关详情，返回 true 表示事件已被消费
 func handle_back_request() -> bool:
-	return %DetailLayer.handle_back_request()
+	if PopupWindow.instance != null and PopupWindow.instance.is_chart_detail_open():
+		PopupWindow.instance.close_chart_detail()
+		return true
+	return false
 
 
 ## 商店页默认焦点落点：当前页第一张可见卡片，没有卡片就落在当前标签上

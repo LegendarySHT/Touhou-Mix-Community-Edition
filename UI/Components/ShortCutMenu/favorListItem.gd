@@ -193,7 +193,7 @@ func _confirm_rename() -> void:
 	name_label.visible = true
 	if not new_name.is_empty() and new_name != _name_full_text:
 		# 组件自行落盘：改名在每一个复用点的行为都一致，交给宿主转发就会漏连
-		# （FavoritePicker 漏过一次，表现为「能进编辑框但改不动」）
+		# （收藏选择页漏过一次，表现为「能进编辑框但改不动」）
 		_name_full_text = new_name
 		name_label.set_scroll_text(new_name)
 		if FavoriteManager.instance != null:

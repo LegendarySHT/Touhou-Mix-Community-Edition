@@ -1,7 +1,6 @@
 [gd_scene format=3 uid="uid://dvvggbuqsfxbw"]
 
 [ext_resource type="Script" uid="uid://dbgwcersgki3c" path="res://UI/Views/StoreView/StoreView.gd" id="1_store"]
-[ext_resource type="PackedScene" uid="uid://drhaatgwaxfor" path="res://UI/Components/ChartDetailPanel.tscn" id="2_detail"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="3_set1"]
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="4_set2"]
 [ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="5_set3"]
@@ -24,8 +23,6 @@ border_width_bottom = 2
 border_color = Color(0.32, 0.48, 0.9, 0.4)
 shadow_color = Color(0, 0, 0, 0.35)
 shadow_size = 12
-
-
 
 [sub_resource type="AtlasTexture" id="Atlas_search"]
 atlas = ExtResource("3_set1")
@@ -102,6 +99,25 @@ corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
+[sub_resource type="StyleBoxFlat" id="SB_hero_progress_bg"]
+bg_color = Color(0.0627, 0.0784, 0.1137, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="SB_hero_progress_fill"]
+bg_color = Color(0.0509, 0.5294, 1, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
 [sub_resource type="StyleBoxFlat" id="SB_pager_btn"]
 content_margin_left = 14.0
 content_margin_top = 8.0
@@ -152,25 +168,6 @@ corner_radius_bottom_left = 12
 [sub_resource type="AtlasTexture" id="Atlas_next"]
 atlas = ExtResource("5_set3")
 region = Rect2(80, 80, 80, 80)
-
-[sub_resource type="StyleBoxFlat" id="SB_hero_progress_bg"]
-bg_color = Color(0.0627, 0.0784, 0.1137, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
-
-[sub_resource type="StyleBoxFlat" id="SB_hero_progress_fill"]
-bg_color = Color(0.0509, 0.5294, 1, 1)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
 
 [node name="Store" type="Control" unique_id=1469865060]
 z_index = 10
@@ -229,12 +226,12 @@ mouse_filter = 2
 theme_override_constants/separation = 12
 
 [node name="SearchEdit" type="LineEdit" parent="TopBar/Row/Toolbar" unique_id=1192628260]
-theme_type_variation = &"LineEditSearch"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(260, 76)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 3.0
+theme_type_variation = &"LineEditSearch"
 theme_override_font_sizes/font_size = 25
 placeholder_text = "搜索谱面 / 作者 / 专辑"
 
@@ -257,34 +254,34 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="FilterDataBtn" type="Button" parent="TopBar/Row/Toolbar" unique_id=423131846]
-theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(76, 76)
 layout_mode = 2
 tooltip_text = "排序字段：下载数"
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonFlat"
 theme_override_constants/icon_max_width = 36
 icon = SubResource("Atlas_data_download")
 icon_alignment = 1
 
 [node name="SortOrderBtn" type="Button" parent="TopBar/Row/Toolbar" unique_id=799784552]
-theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(76, 76)
 layout_mode = 2
 tooltip_text = "切换升序 / 降序"
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonFlat"
 theme_override_constants/icon_max_width = 36
 icon = SubResource("Atlas_desc")
 icon_alignment = 1
 
 [node name="BatchDownloadBtn" type="Button" parent="TopBar/Row/Toolbar" unique_id=1330030490]
-theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 76)
 layout_mode = 2
 tooltip_text = "下载当前页所有未下载的谱面"
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonFlat"
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 34
 theme_override_font_sizes/font_size = 24
@@ -292,12 +289,12 @@ text = "批量下载"
 icon = SubResource("Atlas_cloud")
 
 [node name="VocalBtn" type="Button" parent="TopBar/Row/Toolbar" unique_id=825044778]
-theme_type_variation = &"ButtonFlat"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 76)
 layout_mode = 2
 tooltip_text = "开启后，下载谱面时一并下载人声"
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonFlat"
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 34
 theme_override_font_sizes/font_size = 24
@@ -311,11 +308,11 @@ mouse_filter = 2
 theme_override_constants/separation = 6
 
 [node name="TabSongBtn" type="Button" parent="TopBar/Row/TabBar" unique_id=689949741]
-theme_type_variation = &"ButtonTab"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonTab"
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 40
 theme_override_font_sizes/font_size = 27
@@ -326,11 +323,11 @@ text = "歌曲"
 icon = SubResource("Atlas_tab_song")
 
 [node name="TabSkinBtn" type="Button" parent="TopBar/Row/TabBar" unique_id=746944903]
-theme_type_variation = &"ButtonTab"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonTab"
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 40
 theme_override_font_sizes/font_size = 27
@@ -340,11 +337,11 @@ text = "皮肤"
 icon = SubResource("Atlas_tab_skin")
 
 [node name="TabEffectBtn" type="Button" parent="TopBar/Row/TabBar" unique_id=618875605]
-theme_type_variation = &"ButtonTab"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonTab"
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 40
 theme_override_font_sizes/font_size = 27
@@ -354,11 +351,11 @@ text = "特效"
 icon = SubResource("Atlas_tab_effect")
 
 [node name="TabSoundfontBtn" type="Button" parent="TopBar/Row/TabBar" unique_id=1466761850]
-theme_type_variation = &"ButtonTab"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonTab"
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 40
 theme_override_font_sizes/font_size = 27
@@ -368,11 +365,11 @@ text = "音源"
 icon = SubResource("Atlas_tab_sf")
 
 [node name="TabDownloadBtn" type="Button" parent="TopBar/Row/TabBar" unique_id=1840244665]
-theme_type_variation = &"ButtonTab"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 78)
 layout_mode = 2
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonTab"
 theme_override_constants/h_separation = 10
 theme_override_constants/icon_max_width = 40
 theme_override_font_sizes/font_size = 27
@@ -469,13 +466,13 @@ size_flags_vertical = 3
 mouse_filter = 2
 
 [node name="PageEmpty" type="Label" parent="Tabs" unique_id=848771213]
-theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
 tooltip_text = "点击重新加载"
 mouse_filter = 0
 mouse_default_cursor_shape = 2
+theme_type_variation = &"LabelMuted"
 theme_override_font_sizes/font_size = 34
 text = "正在加载…"
 horizontal_alignment = 1
@@ -503,7 +500,6 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("SB_hero")
 
 [node name="HeroEmpty" type="Label" parent="Tabs/DownloadsPage/HeroPanel" unique_id=14532917]
-theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 8
@@ -517,6 +513,7 @@ offset_right = 902.0
 offset_bottom = 16.5
 grow_horizontal = 2
 grow_vertical = 2
+theme_type_variation = &"LabelMuted"
 theme_override_font_sizes/font_size = 28
 text = "暂无正在下载的任务"
 horizontal_alignment = 1
@@ -599,10 +596,10 @@ script = ExtResource("7_scroll")
 end_padding = 0.0
 
 [node name="StageText" type="Label" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/Info" unique_id=1089921538]
-theme_type_variation = &"LabelAccent"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"LabelAccent"
 theme_override_font_sizes/font_size = 21
 text = "正在下载 MIDI"
 
@@ -611,9 +608,9 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 14)
 layout_mode = 2
 mouse_filter = 2
-show_percentage = false
 theme_override_styles/background = SubResource("SB_hero_progress_bg")
 theme_override_styles/fill = SubResource("SB_hero_progress_fill")
+show_percentage = false
 
 [node name="MetaText" type="Label" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/Info" unique_id=1169156944]
 unique_name_in_owner = true
@@ -640,16 +637,15 @@ text = "0%"
 horizontal_alignment = 2
 
 [node name="DetailText" type="Label" parent="Tabs/DownloadsPage/HeroPanel/HeroBody/Right" unique_id=735257953]
-theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"LabelMuted"
 theme_override_font_sizes/font_size = 19
 text = "123 MB / 456 MB"
 horizontal_alignment = 2
 clip_text = true
 
 [node name="RecentTitleText" type="Label" parent="Tabs/DownloadsPage" unique_id=287180004]
-theme_type_variation = &"LabelSecondary"
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
@@ -659,6 +655,7 @@ offset_top = 240.0
 offset_right = -40.0
 offset_bottom = 272.0
 grow_horizontal = 2
+theme_type_variation = &"LabelSecondary"
 theme_override_font_sizes/font_size = 24
 text = "下载记录"
 
@@ -686,7 +683,6 @@ size_flags_vertical = 3
 mouse_filter = 2
 
 [node name="DownloadsEmpty" type="Label" parent="Tabs/DownloadsPage" unique_id=696217958]
-theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -699,6 +695,7 @@ grow_vertical = 2
 tooltip_text = "点击重新加载"
 mouse_filter = 0
 mouse_default_cursor_shape = 2
+theme_type_variation = &"LabelMuted"
 theme_override_font_sizes/font_size = 30
 text = "还没有下载记录"
 horizontal_alignment = 1
@@ -735,11 +732,11 @@ icon = SubResource("Atlas_prev")
 icon_alignment = 1
 
 [node name="PagerText" type="Label" parent="Bottom" unique_id=281129194]
-theme_type_variation = &"LabelSecondary"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 64)
 layout_mode = 2
 size_flags_horizontal = 4
+theme_type_variation = &"LabelSecondary"
 theme_override_font_sizes/font_size = 24
 theme_override_styles/normal = SubResource("SB_pager_info")
 text = "—"
@@ -758,6 +755,3 @@ theme_override_styles/hover = SubResource("SB_pager_hover")
 icon = SubResource("Atlas_next")
 icon_alignment = 1
 
-[node name="DetailLayer" parent="." unique_id=1158746815 instance=ExtResource("2_detail")]
-unique_name_in_owner = true
-layout_mode = 1

@@ -888,6 +888,7 @@ func refresh_theme_only() -> void:
 	if _main_theme == null:
 		_main_theme = load(MAIN_THEME_PATH) as Theme
 	_refresh_theme_colors(_main_theme)
+	_refresh_popup_theme()
 	# 共享按钮 Theme（几何 .tres，颜色随主题）—— 资源单例，改一次即同步所有引用场景
 	_refresh_shared_btn_themes()
 	await get_tree().process_frame
@@ -1042,6 +1043,45 @@ func _refresh_theme_colors(thm: Theme) -> void:
 	thm.set_block_signals(false)
 	thm.emit_changed()
 
+## 弹窗专属主题：ButtonPrimary / ButtonClose 只在 PopupWindow 子树内可见
+const POPUP_THEME_PATH := "res://UI/Theme/PopupTheme.tres"
+var _popup_theme: Theme = null
+
+## 按当前调色板刷新弹窗专属变体的颜色（结构与几何在 PopupTheme.tres 内）
+func _refresh_popup_theme() -> void:
+	if _popup_theme == null:
+		_popup_theme = load(POPUP_THEME_PATH) as Theme
+	if _popup_theme == null:
+		return
+	var p := get_color("primary")
+	var pl := get_color("primary_light")
+	var surface_low := get_color("surface_low")
+	var surface_hover := get_color("surface_hover")
+	var border_soft := get_color("border_soft")
+
+	_popup_theme.set_block_signals(true)
+
+	# ButtonPrimary：实心强调填充的主操作按钮（确认 / 应用 / 继续这类）
+	_set_theme_stylebox(_popup_theme, "ButtonPrimary", "normal", p, _tint_keep_alpha(pl, 0.8))
+	_set_theme_stylebox(_popup_theme, "ButtonPrimary", "hover", p.lightened(0.15), pl)
+	_set_theme_stylebox(_popup_theme, "ButtonPrimary", "pressed", p.darkened(0.25), _tint_keep_alpha(pl, 0.8))
+	_set_theme_stylebox(_popup_theme, "ButtonPrimary", "hover_pressed", p.darkened(0.25), _tint_keep_alpha(pl, 0.8))
+	_set_theme_stylebox(_popup_theme, "ButtonPrimary", "disabled", surface_low, border_soft)
+	_set_theme_stylebox(_popup_theme, "ButtonPrimary", "focus", Color(0, 0, 0, 0), pl)
+
+	# ButtonClose：窗口右上角的关闭按钮。常态只有细边框不填色，悬停才给面
+	_set_theme_stylebox(_popup_theme, "ButtonClose", "normal", surface_low, border_soft)
+	_set_theme_stylebox(_popup_theme, "ButtonClose", "hover", surface_hover, p)
+	_set_theme_stylebox(_popup_theme, "ButtonClose", "pressed", _tint_keep_alpha(p, 0.22), p)
+	_set_theme_stylebox(_popup_theme, "ButtonClose", "focus", Color(0, 0, 0, 0), p)
+	_popup_theme.set_color("icon_normal_color", "ButtonClose", get_color("text_secondary"))
+	_popup_theme.set_color("icon_hover_color", "ButtonClose", get_color("text_primary"))
+	_popup_theme.set_color("icon_pressed_color", "ButtonClose", p)
+	_popup_theme.set_color("icon_focus_color", "ButtonClose", p)
+
+	_popup_theme.set_block_signals(false)
+	_popup_theme.emit_changed()
+
 func _refresh_theme_colors_impl(thm: Theme) -> void:
 	var p := get_color("primary")
 	var pl := get_color("primary_light")
@@ -1163,25 +1203,8 @@ func _refresh_theme_colors_impl(thm: Theme) -> void:
 	_set_theme_stylebox(thm, "ButtonFlat", "disabled", flat_disabled_bg, border_soft)
 	_set_theme_stylebox(thm, "ButtonFlat", "focus", Color(0, 0, 0, 0), accent)
 
-	# ButtonPrimary：实心强调填充的主操作按钮（确认 / 应用 / 继续这类）。
-	# 三态按 primary 亮度阶梯分档，字色反白固定在变体里。
-	_set_theme_stylebox(thm, "ButtonPrimary", "normal", p, _tint_keep_alpha(pl, 0.8))
-	_set_theme_stylebox(thm, "ButtonPrimary", "hover", p.lightened(0.15), pl)
-	_set_theme_stylebox(thm, "ButtonPrimary", "pressed", p.darkened(0.25), _tint_keep_alpha(pl, 0.8))
-	_set_theme_stylebox(thm, "ButtonPrimary", "hover_pressed", p.darkened(0.25), _tint_keep_alpha(pl, 0.8))
-	_set_theme_stylebox(thm, "ButtonPrimary", "disabled", surface_low, border_soft)
-	_set_theme_stylebox(thm, "ButtonPrimary", "focus", Color(0, 0, 0, 0), pl)
-
-	# ButtonClose：窗口右上角的关闭按钮（详情面板 / 弹窗共用）。
-	# 常态只有细边框不填色，悬停才给面，避免在标题栏上显得过重。
-	_set_theme_stylebox(thm, "ButtonClose", "normal", surface_low, border_soft)
-	_set_theme_stylebox(thm, "ButtonClose", "hover", surface_hover, p)
-	_set_theme_stylebox(thm, "ButtonClose", "pressed", _tint_keep_alpha(p, 0.22), p)
-	_set_theme_stylebox(thm, "ButtonClose", "focus", Color(0, 0, 0, 0), p)
-	tmp.set_color("icon_normal_color", "ButtonClose", text_secondary)
-	tmp.set_color("icon_hover_color", "ButtonClose", get_color("text_primary"))
-	tmp.set_color("icon_pressed_color", "ButtonClose", p)
-	tmp.set_color("icon_focus_color", "ButtonClose", p)
+	# ButtonPrimary / ButtonClose 只服务弹窗，结构与配色都在 PopupTheme.tres，
+	# 由 _refresh_popup_theme() 一并刷新（项目主题里不再保留这两个变体）。
 
 	# 字色 / 图标色：常态次要 → 悬停正文 → 按下强调。
 	# ButtonFlat 按下底色是实心主色，文字必须反白；ButtonTab 浅色下底色很淡，仍用深强调色。

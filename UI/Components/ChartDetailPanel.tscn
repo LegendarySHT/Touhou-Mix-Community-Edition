@@ -1,6 +1,6 @@
-[gd_scene format=3 uid="uid://drhaatgwaxfor"]
+[gd_scene format=3 uid="uid://d0gssovb8nqrx"]
 
-[ext_resource type="Script" uid="uid://dghy6airawe5y" path="res://UI/Components/ChartDetailPanel.gd" id="1_detail"]
+[ext_resource type="Script" path="res://UI/Components/ChartDetailPanel.gd" id="1_detail"]
 [ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="2_round"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="3_set1"]
 [ext_resource type="Texture2D" uid="uid://68fry5jr6m8l" path="res://Resources/icon/icon_set2.png" id="4_set2"]

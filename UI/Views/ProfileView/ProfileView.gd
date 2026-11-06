@@ -26,14 +26,13 @@ const LIST_MOST := 2
 # 记录列表项场景（preload 避免每次加载）
 const RECORD_ITEM_SCENE := preload("res://UI/Views/ProfileView/recordListItem.tscn")
 ## 详情弹窗是通用组件，这里用 LIBRARY 模式（不下载，只提供本地谱面跳转）
-const ChartDetailPanelLib := preload("res://UI/Components/ChartDetailPanel.gd")
+const ChartDetailPageLib := preload("res://UI/Components/PopupWindow/ChartDetailPage.gd")
 # 单页记录数
 const RECORD_PAGE_LIMIT := 20
 
 ## 操作进行中（防止重复点击）
 var _busy: bool = false
 ## 打开详情的那条记录的按钮：关闭后把焦点还回去
-var _detail_source: Control = null
 ## 头像 FileDialog（运行时创建）
 var _avatar_file_dialog: FileDialog = null
 ## 待保存头像源图（本地选图解码后，保存时裁剪方形区域）
@@ -64,7 +63,6 @@ func _on_view_ready() -> void:
 	_setup_focus_tabs()
 	# 头像卡（Border 整块卡片框）点击进入 Chara_View：卡片框接收点击，头像图透传
 	%CharaCardBorder.gui_input.connect(_on_card_border_gui_input)
-	%DetailLayer.closed.connect(_on_detail_closed)
 	# 角色展示：初始加载当前人物，并监听切换（选中角色后刷新）
 	_load_chara_display()
 	EvtBus.config_changed.connect(_on_config_changed)
@@ -117,8 +115,8 @@ func _on_card_border_gui_input(event: InputEvent) -> void:
 
 ## 出场：底栏下滑 + 内容区淡出，播完后隐藏（独立视图，避免盖住其它页面）
 func _play_exit() -> Tween:
-	if %DetailLayer.is_open():
-		%DetailLayer.close()
+	if PopupWindow.instance != null:
+		PopupWindow.instance.close_chart_detail()
 	var navi := %Navi
 	if navi:
 		AniMGR.animate_offset_to(navi, Vector2(0, navi.size.y), 0.3, "ProfileNaviOut")
@@ -581,13 +579,12 @@ func _populate_records(vbox: VBoxContainer, records: Array, mode: int) -> void:
 
 # ========== 记录详情 ==========
 
-func _on_record_detail_requested(record: Dictionary, source_rect: Rect2, source: Control) -> void:
+func _on_record_detail_requested(record: Dictionary, source_rect: Rect2, _source: Control) -> void:
 	var hash_str := str(record.get("midiHash", ""))
 	if hash_str.is_empty():
 		return
-	_detail_source = source
-	%DetailLayer.open(_item_for_record(record, hash_str), source_rect,
-		ChartDetailPanelLib.Mode.LIBRARY)
+	PopupWindow.instance.show_chart_detail(_item_for_record(record, hash_str),
+		ChartDetailPageLib.Mode.LIBRARY, source_rect)
 
 
 ## 记录 DTO + 本地 MidiData 拼成详情条目（字段口径与商店归一化一致）
@@ -629,17 +626,12 @@ func _first_non_empty(values: Array, fallback: String) -> String:
 	return fallback
 
 
-func _on_detail_closed() -> void:
-	var source := _detail_source
-	_detail_source = null
-	if UiStatMGR.current_state == UIStateManager.UIState.PROFILE_VIEW \
-			and is_instance_valid(source) and source.is_visible_in_tree():
-		source.grab_focus()
-
-
 ## Main 的全局返回键调用：详情打开时先关详情
 func handle_back_request() -> bool:
-	return %DetailLayer.handle_back_request()
+	if PopupWindow.instance != null and PopupWindow.instance.is_chart_detail_open():
+		PopupWindow.instance.close_chart_detail()
+		return true
+	return false
 
 
 ## 刷新所有历史列表（成绩上传后调用）：清空已加载标记并重新加载当前 Tab

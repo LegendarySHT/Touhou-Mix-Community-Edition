@@ -5,8 +5,6 @@
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="3_71xqf"]
 [ext_resource type="Script" uid="uid://g8pqawth7e6o" path="res://UI/Views/ProfileView/AvatarPreview.gd" id="4_sgab8"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="5_l4gu6"]
-[ext_resource type="PackedScene" uid="uid://drhaatgwaxfor" path="res://UI/Components/ChartDetailPanel.tscn" id="6_xsa8c"]
-
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_3y6u5"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_i6pqd"]
@@ -1238,10 +1236,6 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_ag846")
 icon = SubResource("AtlasTexture_p7r7c")
 icon_alignment = 1
-
-[node name="DetailLayer" parent="." unique_id=1131119634 instance=ExtResource("6_xsa8c")]
-unique_name_in_owner = true
-layout_mode = 1
 
 [connection signal="pressed" from="PageContent/Edit/EditRow/ProfileEditColumn/Nickname/NicknameConfirmBtn" to="." method="_on_save_nickname_btn_pressed"]
 [connection signal="pressed" from="PageContent/Edit/EditRow/ProfileEditColumn/DescBox/DescConfirmBtn" to="." method="_on_save_desc_btn_pressed"]

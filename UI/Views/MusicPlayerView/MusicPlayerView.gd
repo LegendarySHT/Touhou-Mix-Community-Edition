@@ -498,17 +498,14 @@ func _main_slide_in() -> void:
 
 # ── 收藏选择器（曲库单曲/批量与播放列表共用）──────────
 
-var _pending_fav_midis: Array = []
-
 ## 收到的是 chart_id 列表（曲库投影的 key / 播放列表项的 chart_id），选择收藏夹后批量入
 func _on_favorite_requested(midis: Array) -> void:
-	_pending_fav_midis = midis
-	%FavoritePicker.open(true)
-
-func _on_favorite_picked(fav_id: String) -> void:
-	if not _pending_fav_midis.is_empty():
-		FavoriteManager.instance.add_ids_to_favorite(fav_id, _pending_fav_midis)
-	_pending_fav_midis = []
+	if midis.is_empty() or PopupWindow.instance == null:
+		return
+	var fav_id: String = await PopupWindow.instance.show_favorite_picker()
+	if fav_id.is_empty():
+		return
+	FavoriteManager.instance.add_ids_to_favorite(fav_id, midis)
 
 # ── 状态刷新 ──────────────────────────────────────────
 

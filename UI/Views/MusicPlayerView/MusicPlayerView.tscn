@@ -4,7 +4,6 @@
 [ext_resource type="Script" uid="uid://cbh87b36twohc" path="res://UI/Views/MusicPlayerView/NoteRollView.gd" id="2_noteroll"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="2_ny7ko"]
 [ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="3_df07l"]
-[ext_resource type="Script" uid="uid://ck64tyl2tgn3n" path="res://UI/Views/MusicPlayerView/FavoritePicker.gd" id="3_favpick"]
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="4_omuun"]
 [ext_resource type="Texture2D" uid="uid://b0fapcfe5ph3p" path="res://Resources/icon/icon_set3.png" id="4_wihuv"]
 [ext_resource type="Texture2D" uid="uid://cug51b3m7pnnr" path="res://Resources/icon/instruments_icon.png" id="5_omuun"]
@@ -678,72 +677,6 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 42
 text = "全部加入收藏夹"
 
-[node name="PopupWindowShader" type="ColorRect" parent="." unique_id=845565788]
-unique_name_in_owner = true
-visible = false
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0, 0, 0, 0.72)
-
-[node name="FavoritePicker" type="Panel" parent="." unique_id=1122668452]
-unique_name_in_owner = true
-visible = false
-custom_minimum_size = Vector2(700, 600)
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -220.0
-offset_top = -240.0
-offset_right = 220.0
-offset_bottom = 150.0
-grow_horizontal = 2
-grow_vertical = 2
-script = ExtResource("3_favpick")
-
-[node name="FpTitle" type="Label" parent="FavoritePicker" unique_id=1030998383]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = -1
-anchor_right = 1.0
-offset_top = 10.0
-offset_bottom = 33.0
-grow_horizontal = 2
-text = "选择收藏夹"
-horizontal_alignment = 1
-
-[node name="FpScroll" type="ScrollContainer" parent="FavoritePicker" unique_id=725757272]
-layout_mode = 1
-anchors_preset = -1
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = 15.0
-offset_top = 60.0
-offset_right = -18.0
-offset_bottom = -10.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_vertical = 3
-horizontal_scroll_mode = 0
-
-[node name="FpList" type="VBoxContainer" parent="FavoritePicker/FpScroll" unique_id=829771272]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 4
-
-[node name="FpEmpty" type="Label" parent="FavoritePicker/FpScroll/FpList" unique_id=1292549939]
-unique_name_in_owner = true
-layout_mode = 2
-text = "还没有收藏夹"
-horizontal_alignment = 1
-
 [connection signal="pressed" from="BackBtn" to="." method="_on_back_pressed" flags=3]
 [connection signal="pressed" from="TrackViewBtn" to="." method="_on_track_view_pressed" flags=3]
 [connection signal="drag_ended" from="MainColumn/BottomBar/ProgressSlider" to="." method="_on_progress_drag_ended" flags=3]
@@ -769,5 +702,3 @@ horizontal_alignment = 1
 [connection signal="pressed" from="LibraryLayer/SearchRow/SortOrderBtn" to="LibraryLayer" method="_on_sort_order_pressed" flags=3]
 [connection signal="pressed" from="LibraryLayer/SearchRow/BatchAddBtn" to="LibraryLayer" method="_on_batch_add_pressed" flags=3]
 [connection signal="pressed" from="LibraryLayer/SearchRow/BatchFavBtn" to="LibraryLayer" method="_on_batch_fav_pressed" flags=3]
-[connection signal="gui_input" from="PopupWindowShader" to="FavoritePicker" method="_on_shader_gui_input"]
-[connection signal="picked" from="FavoritePicker" to="." method="_on_favorite_picked" flags=3]

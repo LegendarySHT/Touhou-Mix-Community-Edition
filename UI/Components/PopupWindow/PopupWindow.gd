@@ -5,8 +5,12 @@ class_name PopupWindow
 static var instance: PopupWindow
 
 signal window_close
+## 详情页点了下载（宿主决定是否真的开始下载）
+signal chart_download_requested(item: Dictionary)
 
 var _confirm: bool = false
+## 窗口内遮罩（场景里的 %WindowDim）：面板外的暗化与点击都由它承担
+var _dim: ColorRect = null
 
 ## 窗口弹出动画时长（秒，与 _window_popup_animate 中 animate_offset_scale 的 duration 一致）
 ## ParticleAdjust 等子脚本不需要此常量，仅在 PopupWindow 内使用；show_particle_adjust 用它等待动画完成
@@ -15,8 +19,19 @@ const _POPUP_ANIM_DURATION: float = 0.4
 const _WINDOW_SIZE: Array[Vector2] = [
 	Vector2(850, 600),
 	Vector2(1500, 700),
-	Vector2(950, 850)
+	Vector2(950, 850),
+	Vector2(1300, 840)
 	]
+
+## 收藏夹列表项（与快捷菜单同一套视觉）
+const FAVOR_ITEM_SCENE := preload("res://UI/Components/ShortCutMenu/favorListItem.tscn")
+
+## 默认入场：从中心稍稍放大（不需要指定来源位置时的通用表现）
+const _ENTRY_SCALE := Vector2(0.9, 0.9)
+## 窗口内自带遮罩的不透明度（与原 Main 的 %PopupWindowShader 一致）
+const _DIM_ALPHA := 0.72
+## 面板四周留给阴影的边距（与 %WindowBG 在场景里的 offset 一致）
+const _SHADOW_MARGIN := 20.0
 
 ## 各页标题。标题栏由窗口本身提供，页面里不再各写一份。
 const PAGE_TITLES := {
@@ -29,31 +44,106 @@ const PAGE_TITLES := {
 	6: "音符下落",
 	7: "资源存储位置",
 	8: "存储目录冲突",
+	9: "选择收藏夹",
+	10: "谱面详情",
 }
 
 ## title 为空时取 PAGE_TITLES；closable=false 时隐藏右上角关闭按钮（强制提示不给绕过入口）
-func _pop_up_window(page: int = 0, window_title: String = "", closable: bool = true) -> void:
+## from_rect：全局矩形，给了就从那里飞出（卡片详情）；默认从中心放大
+func _pop_up_window(page: int = 0, window_title: String = "", closable: bool = true,
+		from_rect: Rect2 = Rect2()) -> void:
+	_entry_rect = from_rect
 	# 每次开新页前无条件解除模态：exclusive 只在 show_message(force=true) 期间为 true，
 	# 由那个协程自己复位。一旦协程在 await window_close 处被丢弃（节点释放、切场景、
 	# 信号没等到），复位语句就永远不执行，之后所有弹窗点外部都关不掉 = 玩家没法中止操作。
 	# 这里按"打开即恢复可取消"兜底，force 页在 popup 前再置 true。
 	exclusive = false
+	# 重开时清掉上一次的关闭中状态：关闭动画可能被新动画顶掉，finished 不会触发
+	_closing = false
 	%CloseBtn.visible = closable
 	# 先切页再设标题：切页会触发 tab_changed 把标题重置成本页默认标题
 	%Tabs.current_tab = page
 	%WindowTitle.text = window_title if not window_title.is_empty() else PAGE_TITLES.get(page, "")
+	var panel_size: Vector2
 	if page in [2, 3, 4, 5]:
-		%Window.custom_minimum_size = _WINDOW_SIZE[1]
+		panel_size = _WINDOW_SIZE[1]
 	elif page in [6]:
-		%Window.custom_minimum_size = _WINDOW_SIZE[2]
+		panel_size = _WINDOW_SIZE[2]
+	elif page == 10:
+		panel_size = _WINDOW_SIZE[3]
 	else:
-		%Window.custom_minimum_size = _WINDOW_SIZE[0]
-	%Window.size = Vector2.ZERO
-	size = Vector2.ZERO
+		panel_size = _WINDOW_SIZE[0]
+	%Window.custom_minimum_size = panel_size
+	_layout_fullscreen_window()
 	await get_tree().process_frame
 	# await get_tree().create_timer(0.1).timeout
 	popup()
+	# popup() 会按 initial_position 重算位置，落地后再摆一次
+	_layout_fullscreen_window()
 	call_deferred(&"_focus_current_page")
+
+## 窗口铺满主视口，面板在窗口内居中。
+## 注意：Popup 会把自己的 Control 子节点强制铺满窗口（wrap_controls / _update_child_rects），
+## 所以定位放在 %Window 的下一层 %WindowBG 上，而不是 %Window。
+func _layout_fullscreen_window() -> void:
+	var screen := _screen_size()
+	size = Vector2i(screen)
+	position = Vector2i.ZERO
+	wrap_controls = false
+	var panel_size: Vector2 = %Window.custom_minimum_size
+	%WindowBG.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	# %WindowBG 的坐标相对 %Window，而 %Window 的 rect 由 Popup 管着、起点不一定是 0
+	%WindowBG.position = ((screen - panel_size) * 0.5).floor() \
+		- Vector2(_SHADOW_MARGIN, _SHADOW_MARGIN) - %Window.position
+	%WindowBG.size = panel_size + Vector2(_SHADOW_MARGIN, _SHADOW_MARGIN) * 2.0
+	%WindowBG.pivot_offset = %WindowBG.size * 0.5
+
+func _screen_size() -> Vector2:
+	# 用主界面的 size（Control 逻辑坐标）：root.get_visible_rect() 是物理像素，
+	# canvas_items 缩放后两者不等，直接用它会在屏幕两侧留下没被遮罩盖住的缝
+	var main := GlobalNodes.main
+	if main != null and is_instance_valid(main) and main.size.x > 1.0 and main.size.y > 1.0:
+		return main.size
+	return get_tree().root.get_visible_rect().size
+
+## 窗口级设置：铺满主视口、遮罩接管面板外点击、Esc 由自己处理
+func _setup_fullscreen_layer() -> void:
+	initial_position = Window.WINDOW_INITIAL_POSITION_ABSOLUTE
+	# Popup 默认在 ui_cancel / 点窗口外时直接 hide()，窗口已不可见，退场动画等于没播；
+	# 关掉后由 _input 与 WindowDim 统一走 _request_close()
+	popup_window = false
+	# %Window 只是个铺满窗口的布局壳，默认 mouse_filter=STOP 会吃掉面板外的点击
+	%Window.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dim = %WindowDim
+	_dim.color = Color(0, 0, 0, _DIM_ALPHA)
+	_dim.gui_input.connect(_on_dim_input)
+
+## 点击面板外关闭（exclusive 时不可跳过）
+func _on_dim_input(event: InputEvent) -> void:
+	if exclusive:
+		return
+	var mb := event as InputEventMouseButton
+	if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+		_request_close()
+
+## 关闭中标志：退场动画播放期间挡住重复触发
+var _closing := false
+
+## 统一关闭入口：先播退场动画，播完再真正 hide()。
+## 直接 hide() 的话窗口在 popup_hide 时已经不可见，退场动画看不到。
+func _request_close() -> void:
+	if not visible or _closing:
+		return
+	_closing = true
+	var tween := _window_popup_animate(false)
+	if tween == null:
+		hide()
+		return
+	tween.finished.connect(hide, CONNECT_ONE_SHOT)
+
+## 入场来源矩形（全局坐标），Rect2() 表示从中心放大
+var _entry_rect := Rect2()
+
 
 ## 键盘 / 手柄打开时把焦点放进页面：提示页落在确认按钮，其它页落在页面里第一个可聚焦控件。
 ## 鼠标 / 触摸打开时不动焦点，避免触摸操作冒出焦点描边。
@@ -78,6 +168,14 @@ func _focus_current_page(force: bool = false) -> void:
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
+	# 页内控件（如按键录入）先消费的话不抢
+	if get_viewport().is_input_handled():
+		return
+	# Esc / 返回键：走统一关闭路径，才能和按钮关闭一样有退场动画
+	if event.is_action_pressed(&"ui_cancel", true, true):
+		_request_close()
+		get_viewport().set_input_as_handled()
+		return
 	if get_viewport().gui_get_focus_owner() != null:
 		return
 	if not (event is InputEventKey or event is InputEventJoypadButton or event is InputEventJoypadMotion):
@@ -90,26 +188,31 @@ func _input(event: InputEvent) -> void:
 
 func _ready() -> void:
 	instance = self
+	_setup_fullscreen_layer()
 	%WindowTitle.text = PAGE_TITLES.get(%Tabs.current_tab, "")
 	# 默认窗口按钮
 	%MessageCancelBtn.pressed.connect(_on_cancel_pressed)
 	%MessageConfirmBtn.pressed.connect(_on_confirm_pressed)
 	# 标题栏关闭按钮：等同于取消，各页结果值由各自脚本的默认值决定（未选择即取消）
-	%CloseBtn.pressed.connect(hide)
+	%CloseBtn.pressed.connect(_request_close)
 	# DelayAdjust 校准完成 → 隐藏窗口（→ popup_hide → 退出动画 → window_close）
-	%DelayAdjust.finish_requested.connect(hide)
+	%DelayAdjust.finish_requested.connect(_request_close)
 	# StorageLocationAdjust 确认/取消 → 隐藏窗口（必须关闭整个弹窗，不能只隐藏 tab 页）
-	%StorageLocationAdjust.finish_requested.connect(hide)
+	%StorageLocationAdjust.finish_requested.connect(_request_close)
 	# StorageConflictAdjust 选择 → 隐藏窗口
-	%StorageConflictAdjust.finish_requested.connect(hide)
+	%StorageConflictAdjust.finish_requested.connect(_request_close)
 	# 判定类型切换时页面把新标题回传给窗口，标题栏始终只有一处来源
 	%ParticleAdjust.title_changed.connect(set_window_title)
 	# 页面之间直接跳转（例如存储路径校验失败后切回列表）时标题跟随页签
 	%Tabs.tab_changed.connect(_on_tab_changed)
+	# 详情页的下载请求转给宿主
+	%ChartDetailPage.download_requested.connect(func(item: Dictionary) -> void:
+		chart_download_requested.emit(item)
+	)
 
 	# 监听内置 popup 生命周期信号
 	about_to_popup.connect(func() -> void: _window_popup_animate(true))
-	# 点击窗口外部时 Godot 会自动隐藏 popup 并发出 popup_hide，此处兜底处理
+	# 任何路径的 hide() 都会到这里：收尾、复位状态并通知调用方
 	popup_hide.connect(func() -> void:
 		# 任何关闭路径都把模态解除（force 提示的协程可能已被丢弃，不能指望它复位）
 		exclusive = false
@@ -117,7 +220,10 @@ func _ready() -> void:
 		%ParticleAdjust.stop_preview()
 		%KBModeAdjust._cancel_recording()
 		%FallingAdjust.stop_preview()
-		_window_popup_animate(false)
+		# 退场动画已在 _request_close 播过；这里只收尾并通知调用方
+		_closing = false
+		_dim.visible = false
+		window_close.emit()
 	)
 
 	# 注册主题应用者并首次着色
@@ -183,28 +289,60 @@ func _exit_tree() -> void:
 
 func _on_cancel_pressed() -> void:
 	_confirm = false
-	hide()
+	_request_close()
 
 func _on_confirm_pressed() -> void:
 	_confirm = true
-	hide()
+	_request_close()
 
 func _window_popup_animate(is_popup: bool) -> Tween:
-	var popup_tween : Tween = null
+	if _dim == null:
+		return null
+	# 同一 id：重复开关时旧动画连同回调一起作废
+	var tween := AniMGR.create_managed_tween(self, "popup_anim")
+	if tween == null:
+		# 没有动画系统时至少保证关闭信号不被吞（调用方可能正在 await window_close）
+		if not is_popup:
+			window_close.emit()
+		return null
+	tween.set_ease(Tween.EASE_OUT)
+	tween.set_trans(Tween.TRANS_CUBIC)
+	tween.set_parallel(true)
+	%WindowBG.offset_transform_enabled = true
+
+	# 入场与退场共用同一个起点：有来源矩形就缩回那里，否则原地小幅缩放
+	var entry := _entry_transform()
+	var entry_pos: Vector2 = entry[0]
+	var entry_scale: Vector2 = entry[1]
+
 	if is_popup:
 		_confirm = false
-		# 窗口内容
-		for nd in get_children():
-			if nd is Control:
-				nd.offset_transform_scale = Vector2.ZERO if is_popup else Vector2.ONE
-				AniMGR.animate_offset_scale(nd, Vector2.ZERO if not is_popup else Vector2.ONE, 0.4, "popup_%s_scale" % nd.name)
+		%WindowBG.offset_transform_position = entry_pos
+		%WindowBG.offset_transform_scale = entry_scale
+		%WindowBG.modulate.a = 0.0
+		_dim.visible = true
+		_dim.color.a = 0.0
+		tween.tween_property(_dim, "color:a", _DIM_ALPHA, 0.3)
+		tween.tween_property(%WindowBG, "offset_transform_position", Vector2.ZERO, 0.4)
+		tween.tween_property(%WindowBG, "offset_transform_scale", Vector2.ONE, 0.4)
+		tween.tween_property(%WindowBG, "modulate:a", 1.0, 0.3)
+		return tween
 
-		# 背景
-		popup_tween = AniMGR.animate_fade_in(%PopupWindowShader, 0.3, "popup_bg_fade")
-	else:
-		popup_tween = AniMGR.animate_fade_out(%PopupWindowShader, 0.3, "popup_bg_fade")
-		popup_tween.finished.connect(func() -> void: window_close.emit())
-	return popup_tween
+	# 退场：缩回起点并淡出。只缩不淡会像「缩一下然后突然消失」；
+	# 用 EASE_OUT 而不是 EASE_IN —— 后者前半程几乎不动，看起来像没缩
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_property(_dim, "color:a", 0.0, 0.25)
+	tween.tween_property(%WindowBG, "offset_transform_position", entry_pos, 0.28)
+	tween.tween_property(%WindowBG, "offset_transform_scale", entry_scale, 0.28)
+	tween.tween_property(%WindowBG, "modulate:a", 0.0, 0.26)
+	return tween
+
+## 入场 / 退场起点：有来源矩形就用它的中心与相对尺寸，否则原地缩到 _ENTRY_SCALE
+func _entry_transform() -> Array:
+	if _entry_rect.size.x > 1.0 and _entry_rect.size.y > 1.0:
+		var panel_center: Vector2 = %WindowBG.position + %WindowBG.size * 0.5
+		return [_entry_rect.get_center() - panel_center, _entry_rect.size / %WindowBG.size]
+	return [Vector2.ZERO, _ENTRY_SCALE]
 
 func _set_option(options: Array):
 	%MessageOption.clear()
@@ -345,3 +483,57 @@ func show_storage_conflict_adjust(merge_dirs: Array, conflict_files: Array) -> i
 	_pop_up_window(8)
 	await window_close
 	return %StorageConflictAdjust.get_result()
+
+# 弹出收藏夹选择窗口
+## 选中某个收藏夹后关闭，返回其 id；取消（关闭按钮 / 点遮罩）返回空串
+func show_favorite_picker() -> String:
+	_favor_result = ""
+	_rebuild_favor_list()
+	_pop_up_window(9)
+	await window_close
+	return _favor_result
+
+## 选择结果：空串表示取消
+var _favor_result: String = ""
+
+## 重建收藏夹列表（复用快捷菜单的列表项，BROWSE 模式下点击只发 favor_item_clicked）
+func _rebuild_favor_list() -> void:
+	for child in %FpList.get_children():
+		if child != %FpEmpty:
+			child.queue_free()
+	var fav_mgr := FavoriteManager.instance
+	if fav_mgr == null or fav_mgr.favorites.is_empty():
+		%FpEmpty.visible = true
+		return
+	%FpEmpty.visible = false
+	for f in fav_mgr.favorites:
+		var item := FAVOR_ITEM_SCENE.instantiate()
+		%FpList.add_child(item)
+		item.setup(f, item.Mode.BROWSE)
+		item.favor_item_clicked.connect(_on_favor_item_clicked)
+
+func _on_favor_item_clicked(fav_id: String) -> void:
+	_favor_result = fav_id
+	_request_close()
+
+# 弹出谱面详情页
+## from_rect：卡片在屏幕上的矩形，给了就从卡片位置展开
+func show_chart_detail(item: Dictionary, origin_mode: int = 0, from_rect: Rect2 = Rect2()) -> void:
+	%ChartDetailPage.setup(item, origin_mode)
+	var window_title := str(item.get("title", "")).strip_edges()
+	_pop_up_window(10, window_title if not window_title.is_empty() else "谱面详情", true, from_rect)
+	await window_close
+
+## 当前是否停在谱面详情页
+func is_chart_detail_open() -> bool:
+	return visible and %Tabs.current_tab == 10
+
+## 下载状态变化时刷新详情页按钮（页面没开着就忽略）
+func refresh_chart_detail_state() -> void:
+	if is_chart_detail_open():
+		%ChartDetailPage.refresh_download_state()
+
+## 收起详情页（宿主切视图前调用）
+func close_chart_detail() -> void:
+	if is_chart_detail_open():
+		_request_close()
