@@ -783,7 +783,7 @@ size_flags_vertical = 0
 offset_transform_enabled = true
 offset_transform_position = Vector2(0, -25)
 theme_override_font_sizes/font_size = 19
-text = "游玩次数 999 | 平均成绩 99999 | 平均PP 99.99 | 平均准度 99.99%"
+text = "在线统计加载中..."
 horizontal_alignment = 1
 
 [node name="ScoreList" type="ScrollContainer" parent="OptionPanel/OptTabs/RankPanel" unique_id=1921750512]

@@ -28,10 +28,23 @@ var _waiting_online: bool = false
 ## 空排行榜也是有效响应，不能再被后续连接状态提示覆盖。
 var _has_loaded_online_result: bool = false
 
+## Top 汇总行（OptionPanel/OptTabs/RankPanel/Total）是 ScoreList 的兄弟节点。
+## 用相对路径取，不必给场景节点加 unique_name_in_owner。
+@onready var _stats_label: Label = get_node_or_null("../Total") as Label
+
+## 汇总行降级文案：拿不到在线数据时显示一句提示，绝不回落占位假数字。
+const _STATS_LOADING: String = "在线统计加载中..."
+const _STATS_OFFLINE: String = "离线模式，暂无在线统计"
+const _STATS_CONNECTING: String = "正在连接在线服务..."
+const _STATS_UNAVAILABLE: String = "在线统计暂不可用"
+const _STATS_EMPTY: String = "暂无在线成绩统计"
+
 func _ready() -> void:
 	super._ready()
 	EvtBus.online_state_changed.connect(_on_online_state_changed)
 	EvtBus.score_uploaded.connect(_on_score_uploaded)
+	if _stats_label == null:
+		GLogger.warning("RankPanel/Total not found, online stats line disabled", "ScoreList")
 
 ## 可见性变化：排行榜标签页切回时把缓存的消息经 FailMessage 展示
 func _notification(what: int) -> void:
@@ -54,11 +67,13 @@ func _on_online_state_changed(state: int, _latency_ms: int) -> void:
 			if _has_loaded_online_result:
 				return
 			_waiting_online = true
+			_set_stats_message(_STATS_CONNECTING)
 			_show_message("正在连接在线服务...")
 		NetManager.ConnectState.FAILED:
 			if _has_loaded_online_result:
 				return
 			_waiting_online = true
+			_set_stats_message(_STATS_UNAVAILABLE)
 			_show_message("无法连接到在线服务器，请检查网络设置")
 		NetManager.ConnectState.ONLINE:
 			if _waiting_online:
@@ -72,7 +87,7 @@ func _on_score_uploaded(midi_hash: String) -> void:
 		return
 	load_scores(_current_midi)
 
-## 加载排行榜数据
+## 加载排行榜数据 + 顶部汇总行（汇总行取 /api/scores/stats 的全服聚合统计）
 ## midi: 要查询的 MidiData（使用 file_hash 作为 key）
 func load_scores(midi: MidiData) -> void:
 	_current_midi = midi
@@ -83,35 +98,44 @@ func load_scores(midi: MidiData) -> void:
 	_loading = false
 	_waiting_online = false
 	_has_loaded_online_result = false
+	# 每次刷新先清掉上一首谱面的统计，避免过期数值残留
+	_set_stats_message(_STATS_LOADING)
 
 	if NetManager.instance == null:
+		_set_stats_message(_STATS_UNAVAILABLE)
 		_show_message("在线服务未就绪")
 		return
 
 	# 在线模式关闭：显示本地最佳成绩（离线排行榜），无论服务器是否可达
 	if NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE:
+		_set_stats_message(_STATS_OFFLINE)
 		_show_local_best(midi)
 		return
 
 	# 在线模式开启但尚未建立连接：按连接阶段显示具体状态，不伪装成未开启。
 	if NetManager.instance.connect_state == NetManager.ConnectState.CONNECTING:
 		_waiting_online = true
+		_set_stats_message(_STATS_CONNECTING)
 		_show_message("正在连接在线服务...")
 		return
 	if NetManager.instance.connect_state == NetManager.ConnectState.FAILED:
 		_waiting_online = true
+		_set_stats_message(_STATS_UNAVAILABLE)
 		_show_message("无法连接到在线服务器，请检查网络设置")
 		return
 	if not NetManager.instance.is_online:
 		_waiting_online = true
+		_set_stats_message(_STATS_UNAVAILABLE)
 		_show_message("在线服务连接已失效，正在重试...")
 		return
 
 	if midi == null or midi.file_hash.is_empty():
+		_set_stats_message(_STATS_UNAVAILABLE)
 		_show_message("无法获取 MIDI 信息")
 		return
 
 	if ScoreManager.instance == null:
+		_set_stats_message(_STATS_UNAVAILABLE)
 		_show_message("成绩服务未就绪")
 		return
 
@@ -124,17 +148,20 @@ func load_scores(midi: MidiData) -> void:
 	_loading = false
 
 	if not result.get("ok", false):
+		_set_stats_message(_STATS_UNAVAILABLE)
 		_show_message("加载失败")
 		return
 
 	var data = result.get("data")
 	if data == null or not data is Dictionary:
+		_set_stats_message(_STATS_UNAVAILABLE)
 		_show_message("数据格式错误")
 		return
 
 	var scores = data.get("scores", [])
 	_has_loaded_online_result = true
 	if scores.is_empty():
+		_set_stats_message(_STATS_EMPTY)
 		_show_message("暂无成绩记录")
 		return
 
@@ -170,6 +197,45 @@ func load_scores(midi: MidiData) -> void:
 		var avatar_url = s.get("avatarUrl")
 		var avatar_url_str := str(avatar_url) if avatar_url != null else ""
 		node.setup_avatar(avatar_url_str)
+
+	# 列表渲染完后再取全服聚合统计：只在确实有在线成绩时才请求，
+	# 与列表共用 request_version，切谱面时丢弃过期响应。
+	await _load_stats(midi.file_hash, request_version)
+
+## 拉取 /api/scores/stats 并刷新 RankPanel/Total 汇总行。
+## 字段口径：totalPlays = 全服非 W（中途退出）游玩次数，avgScore/avgPp/avgAccuracy 为均值；
+## avgAccuracy 是 0~1 的比率，与 ScoreListItem / PlayerInfoContent 一致，×100 后显示百分比。
+func _load_stats(midi_hash: String, request_version: int) -> void:
+	if ScoreManager.instance == null:
+		_set_stats_message(_STATS_UNAVAILABLE)
+		return
+	var result: Dictionary = await ScoreManager.instance.get_stats(midi_hash)
+	if request_version != _request_version:
+		return  # 切谱面了，丢弃过期统计
+	if not result.get("ok", false):
+		# 404：服务端该谱面还没有任何非 W 成绩
+		if int(result.get("status", 0)) == 404:
+			_set_stats_message(_STATS_EMPTY)
+		else:
+			_set_stats_message(_STATS_UNAVAILABLE)
+		return
+	var data: Variant = result.get("data")
+	if data == null or not data is Dictionary:
+		_set_stats_message(_STATS_UNAVAILABLE)
+		return
+	var s: Dictionary = data
+	var line := "游玩次数 %d | 平均成绩 %.0f | 平均PP %.2f | 平均准度 %.2f%%" % [
+		int(s.get("totalPlays", 0)),
+		float(s.get("avgScore", 0.0)),
+		float(s.get("avgPp", 0.0)),
+		float(s.get("avgAccuracy", 0.0)) * 100.0,
+	]
+	_set_stats_message(line)
+
+## 只改汇总行文案（Label 缺失时静默跳过，不影响排行榜本身）
+func _set_stats_message(msg: String) -> void:
+	if _stats_label != null:
+		_stats_label.text = msg
 
 ## 显示本地最佳成绩（单条，离线排行榜）
 ## 未登录/在线模式关闭时使用，仅展示本机每首 pp 最高的记录
