@@ -455,9 +455,13 @@ func _bind_song_card(node, idx: int) -> void:
 	node.call("set_item", item, _bind_animate)
 
 
+## 歌曲卡片与分类卡片（皮肤/特效/音源）共用本回调：后者是本地资源预览，
+## 没有「已下载跳曲库」的概念，也就没有 open_requested 信号，连接前先判存在
 func _on_card_ready(node) -> void:
 	node.detail_requested.connect(_on_detail_requested)
 	node.download_requested.connect(_on_card_download_requested)
+	if node.has_signal("open_requested"):
+		node.open_requested.connect(_on_card_open_requested)
 
 
 ## 卡片请求打开详情：详情页现在由 PopupWindow 承载，关闭后的焦点还原也由它负责
@@ -792,6 +796,28 @@ func _on_card_download_requested(item: Dictionary) -> void:
 	_request_download(item)
 
 
+## 卡片「已下载」按钮：按 hash 反查本地曲库后进 MIDI_VIEW。
+## 导航调用序列与 PopupWindow/ChartDetailPage._open_midi_view() 保持一致，
+## 只是不需要收起详情弹窗（从卡片进入时弹窗并未打开），
+## 保证「详情弹窗查看谱面」与「商店卡片已下载」两个入口的返回链行为相同。
+func _on_card_open_requested(item: Dictionary) -> void:
+	var hash_str := str(item.get("hash", ""))
+	if hash_str.is_empty():
+		return
+	var midi: MidiData = DataMGR.get_midi_by_id(hash_str)
+	if midi == null:
+		GLogger.warning("谱面已标记本地可用但曲库查不到: %s" % hash_str, "StoreView")
+		return
+	if not midi.album_id.is_empty() and not midi.song_id.is_empty():
+		UiStatMGR.navigate_to_album_song(midi.album_id, midi.song_id, midi.id)
+		if UiStatMGR.current_state != UIStateManager.UIState.MIDI_VIEW:
+			UiStatMGR.change_state(UIStateManager.UIState.MIDI_VIEW)
+			EvtBus.emit_midi_selected(midi.id, midi)
+	else:
+		UiStatMGR.change_state(UIStateManager.UIState.MIDI_VIEW)
+		EvtBus.emit_midi_selected(midi.id, midi)
+
+
 func _on_detail_download_requested(item: Dictionary) -> void:
 	_request_download(item)
 
@@ -994,8 +1020,11 @@ func _on_charts_cache_validated(_changed: bool) -> void:
 		for node in _song_vlist.bound_nodes():
 			if is_instance_valid(node):
 				node.call("refresh_download_state")
-	if %DetailLayer.is_open():
-		%DetailLayer.refresh_download_state()
+	# 详情页已收进 PopupWindow，StoreView.tscn 不再有 DetailLayer 节点。
+	# refresh_chart_detail_state() 内部自带「详情页没打开就忽略」的判断，
+	# 与 _refresh_bound_card() 的写法保持一致。
+	if PopupWindow.instance != null:
+		PopupWindow.instance.refresh_chart_detail_state()
 	if _current_tab == Tab.DOWNLOADS:
 		_refresh_downloads_page(false)
 	_update_batch_button()

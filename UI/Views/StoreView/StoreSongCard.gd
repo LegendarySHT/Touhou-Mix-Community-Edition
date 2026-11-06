@@ -2,7 +2,8 @@
 ##
 ## 交互约定：
 ##   - 点卡片任意非按钮区域（或键盘确认）→ 请求打开详情弹窗（detail_requested）
-##   - 点右下角下载按钮 → 只触发下载（download_requested），不打开详情
+##   - 点右下角下载按钮 → 未下载 / 失败时触发下载（download_requested）；
+##     已下载时请求跳到该谱面的 MidiView（open_requested）；两者都不打开详情
 ## 卡片本身是 Button（键盘焦点 + 四态主题样式），子控件统一 mouse_filter=IGNORE/PASS。
 ##
 ## 该节点由 `VirtualList` 池化复用：位置/尺寸/offset_transform 全部由池模块接管，
@@ -16,6 +17,8 @@ const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 signal detail_requested(item: Dictionary, source_rect: Rect2)
 ## 请求下载/重试
 signal download_requested(item: Dictionary)
+## 已下载：请求跳到该谱面的 MidiView（导航由 StoreView 负责）
+signal open_requested(item: Dictionary)
 
 const TAB_SONG := "song"
 
@@ -188,10 +191,18 @@ func _on_pressed() -> void:
 
 
 func _on_download_pressed() -> void:
+	# 状态按 hash 实时取，避免卡片里缓存的 state 落后于实际下载结果
+	# （与详情页 ChartDetailPage._on_download_pressed 的判定口径一致）
 	var state := int(item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
-	if state == ResourceManager.DownloadState.DOWNLOADING \
-			or state == ResourceManager.DownloadState.DOWNLOADED:
-		return
+	var hash_str := str(item.get("hash", ""))
+	if not hash_str.is_empty():
+		state = ResourceManager.instance.get_download_state(hash_str)
+	match state:
+		ResourceManager.DownloadState.DOWNLOADING:
+			return
+		ResourceManager.DownloadState.DOWNLOADED:
+			open_requested.emit(item)
+			return
 	download_requested.emit(item)
 
 
