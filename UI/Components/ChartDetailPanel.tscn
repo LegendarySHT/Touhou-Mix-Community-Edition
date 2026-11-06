@@ -28,30 +28,6 @@ corner_radius_top_right = 3
 corner_radius_bottom_right = 3
 corner_radius_bottom_left = 3
 
-[sub_resource type="StyleBoxFlat" id="SB_close_normal"]
-bg_color = Color(0.13, 0.16, 0.22, 0)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.2, 0.24, 0.32, 0.8)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
-[sub_resource type="StyleBoxFlat" id="SB_close_hover"]
-bg_color = Color(0.133, 0.164, 0.227, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.6, 0.4, 0.45, 1)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_right = 12
-corner_radius_bottom_left = 12
-
 [sub_resource type="AtlasTexture" id="Atlas_close"]
 atlas = ExtResource("4_set2")
 region = Rect2(80, 80, 80, 80)
@@ -209,10 +185,10 @@ script = ExtResource("6_scroll")
 end_padding = 0.0
 
 [node name="Kind" type="Label" parent="Panel/Content/Header" unique_id=1208175417]
-theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
+theme_type_variation = &"LabelMuted"
 theme_override_font_sizes/font_size = 21
 text = "谱面"
 horizontal_alignment = 2
@@ -223,10 +199,8 @@ custom_minimum_size = Vector2(58, 58)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonClose"
 theme_override_constants/icon_max_width = 30
-theme_override_styles/normal = SubResource("SB_close_normal")
-theme_override_styles/pressed = SubResource("SB_close_hover")
-theme_override_styles/hover = SubResource("SB_close_hover")
 icon = SubResource("Atlas_close")
 icon_alignment = 1
 expand_icon = true
@@ -308,9 +282,9 @@ mouse_filter = 2
 theme_override_constants/separation = 8
 
 [node name="RankTitle" type="Label" parent="Panel/Content/Body/LeftCol/RankBox/RankCol" unique_id=313546632]
-theme_type_variation = &"LabelAccent"
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"LabelAccent"
 theme_override_font_sizes/font_size = 23
 text = "排行榜"
 
@@ -404,9 +378,9 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="DownloadsCount" type="Label" parent="Panel/Content/Body/RightCol/Stats/Downloads" unique_id=946289561]
-theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"LabelMuted"
 theme_override_font_sizes/font_size = 21
 text = "0"
 
@@ -428,16 +402,16 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="PlaysCount" type="Label" parent="Panel/Content/Body/RightCol/Stats/Plays" unique_id=1898725087]
-theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"LabelMuted"
 theme_override_font_sizes/font_size = 21
 text = "0"
 
 [node name="Date" type="Label" parent="Panel/Content/Body/RightCol/Stats" unique_id=1188870493]
-theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"LabelMuted"
 theme_override_font_sizes/font_size = 19
 text = "上传于 2026-10-30"
 vertical_alignment = 1
@@ -449,22 +423,22 @@ mouse_filter = 2
 theme_override_constants/separation = 16
 
 [node name="SizeLabel" type="Label" parent="Panel/Content/Body/RightCol/Actions" unique_id=1699689793]
-theme_type_variation = &"LabelMuted"
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
+theme_type_variation = &"LabelMuted"
 theme_override_font_sizes/font_size = 20
 text = "文件 6.2 MB · 含人声"
 vertical_alignment = 1
 clip_text = true
 
 [node name="DownloadBtn" type="Button" parent="Panel/Content/Body/RightCol/Actions" unique_id=1017878009]
-theme_type_variation = &"ButtonDownloadIdle"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(250, 64)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonDownloadIdle"
 theme_override_constants/icon_max_width = 34
 theme_override_font_sizes/font_size = 26
 text = "下载谱面"

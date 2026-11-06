@@ -1,4 +1,4 @@
-extends HBoxContainer
+extends Control
 
 class_name NoteSkinAdjust
 
@@ -38,7 +38,6 @@ func _ready() -> void:
 	# 三个音符取色器统一配置（无透明度、无预设/吸管），并升级成设置页那套「输入框 + 色块」
 	for picker in [%NoteBlockColorPicker, %NoteSlideColorPicker, %NoteLongColorPicker]:
 		ThemeMGR.setup_color_picker(picker, false)
-		ThemeMGR.attach_hex_edit(picker, false)
 	# 自定义颜色总开关：单独处理，联动启用/禁用后续颜色子项
 	%NoteCustomColor.toggled.connect(_on_custom_color_toggled)
 	%NoteBlockColorCheck.toggled.connect(_on_setting_changed)

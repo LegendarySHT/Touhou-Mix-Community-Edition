@@ -305,7 +305,8 @@ func _generate_mipmaps_deferred(image: Image, gen: int) -> void:
 	# 等待期间背景已被换掉（切谱面 / 切主题）就丢弃这次结果
 	if gen != _texture_gen or image == null or image.is_empty():
 		return
-	image.generate_mipmaps()
+	if not ImageUtil.ensure_mipmaps(image):
+		return
 	texture = ImageTexture.create_from_image(image)
 
 ## 是否可复用已烘焙结果：同谱面 + 同模糊强度 + 同算法 + SubViewport 仍有效
@@ -315,7 +316,7 @@ func _can_reuse_bake(blur: float, style: int) -> bool:
 	return _baked_key == _cover_key and absf(_baked_blur - blur) < 0.001 and _baked_style == style
 
 ## 取带 mipmap 的封面副本。shader 用 textureLod 做大半径降采样，必须依赖 mipmap；
-## 原纹理由 FileSystemManager 缓存并可能被别处引用，不能就地 generate_mipmaps。
+## 原纹理由 FileSystemManager 缓存并可能被别处引用，用副本承载 mipmap 链。
 ## 副本按封面 key 缓存，同一谱面反复进页不重复回读。
 func _get_mip_source(key: String) -> Texture2D:
 	if _cover_texture == null:
@@ -323,10 +324,8 @@ func _get_mip_source(key: String) -> Texture2D:
 	if _cover_mip_texture != null and _cover_mip_key == key:
 		return _cover_mip_texture
 	var img := _cover_texture.get_image()
-	if img == null or img.is_empty():
+	if img == null or img.is_empty() or not ImageUtil.ensure_mipmaps(img):
 		return _cover_texture
-	if not img.has_mipmaps():
-		img.generate_mipmaps()
 	_cover_mip_texture = ImageTexture.create_from_image(img)
 	_cover_mip_key = key
 	return _cover_mip_texture

@@ -1,6 +1,9 @@
-extends HBoxContainer
+extends Control
 
 class_name ParticleAdjust
+
+## 判定类型切换时同步窗口标题（标题栏属于窗口，页面内不再自带标题）
+signal title_changed(text: String)
 
 # ===== 粒子设置页 =====
 ## 支持的判定类型（与配置键 {j}_spark_* 及 FlowArea spark 判定名一一对应）
@@ -63,7 +66,7 @@ func _init_particle_preview() -> void:
 ## judge_type: 初始选中的判定类型（Perfect / Great / Good / Bad），弹窗内可随时切换
 func init_adjust(judge_type: String = "Perfect") -> void:
 	_judge_type = judge_type
-	%ParticleTitle.text = "%s 特效设定" % judge_type
+	title_changed.emit("%s 特效设定" % judge_type)
 	# 刷新粒子样式选项（动态从 ParticleMGR 读取，支持外部导入的粒子包）
 	_refresh_presets()
 	_update_switch_buttons()
@@ -84,7 +87,7 @@ func _update_switch_buttons() -> void:
 	var judge_btns := [%Perfect, %Great, %Good, %Bad]
 	for i in JUDGE_TYPES.size():
 		judge_btns[i].button_pressed = (JUDGE_TYPES[i] == _judge_type)
-	%ParticleTitle.text = "%s 特效设定" % _judge_type
+	title_changed.emit("%s 特效设定" % _judge_type)
 
 ## 从配置读取当前判定类型的数值填充到控件（临时断开信号避免回环）
 func _load_current_values() -> void:

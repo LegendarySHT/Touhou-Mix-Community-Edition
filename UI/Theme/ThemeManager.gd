@@ -847,53 +847,6 @@ func setup_color_picker(btn: ColorPickerButton, edit_alpha: bool = false) -> voi
 	_enlarge_color_picker(pk)
 	style_color_picker_popup(btn)
 
-## 把「裸 ColorPickerButton」升级成 SettingView 那套形态：色块按钮 + 十六进制输入框。
-## 弹窗里原本只有一个小色块，点开才知道颜色是什么；设置页是 色块 + #RRGGBB 输入框，
-## 统一成后者的形态与尺寸。返回输入框（调用方不需要可忽略）。
-## 前提：btn 已在树里（需要取父容器插入兄弟节点）。
-func attach_hex_edit(btn: ColorPickerButton, edit_alpha: bool = false) -> LineEdit:
-	if not btn or not btn.is_inside_tree():
-		return null
-	var parent := btn.get_parent()
-	if parent is not HBoxContainer:
-		return null
-	# 已有就不再建（幂等）
-	var exist := btn.get_node_or_null("HexEdit") as LineEdit
-	if exist:
-		return exist
-
-	var edit := LineEdit.new()
-	edit.name = "HexEdit"
-	edit.max_length = 10
-	edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	edit.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	edit.custom_minimum_size = Vector2(0, 80)
-	edit.add_theme_font_size_override("font_size", 48)
-	# 插到色块左边（与设置页一致：输入框在左、色块在右）
-	parent.add_child(edit)
-	parent.move_child(edit, btn.get_index())
-
-	edit.text = "#" + btn.color.to_html(edit_alpha)
-	btn.color_changed.connect(func(c: Color) -> void:
-		edit.set_block_signals(true)
-		edit.text = "#" + c.to_html(edit_alpha)
-		edit.set_block_signals(false)
-	)
-	edit.text_changed.connect(func(t: String) -> void:
-		var cleaned := t.strip_edges()
-		if cleaned.begins_with("#"):
-			cleaned = cleaned.substr(1)
-		if cleaned.length() != 6 and cleaned.length() != 8:
-			return
-		if not ("#" + cleaned).is_valid_html_color():
-			return
-		btn.set_block_signals(true)
-		btn.color = Color("#" + cleaned)
-		btn.set_block_signals(false)
-	)
-	return edit
-
 # ============ 全局刷新 ============
 
 ## 主题应用者注册表：视图/组件在 _ready 时注册，refresh_theme_only 遍历调用其 apply_theme()
@@ -1209,6 +1162,26 @@ func _refresh_theme_colors_impl(thm: Theme) -> void:
 	_set_theme_stylebox(thm, "ButtonFlat", "hover_pressed", pd, pl)
 	_set_theme_stylebox(thm, "ButtonFlat", "disabled", flat_disabled_bg, border_soft)
 	_set_theme_stylebox(thm, "ButtonFlat", "focus", Color(0, 0, 0, 0), accent)
+
+	# ButtonPrimary：实心强调填充的主操作按钮（确认 / 应用 / 继续这类）。
+	# 三态按 primary 亮度阶梯分档，字色反白固定在变体里。
+	_set_theme_stylebox(thm, "ButtonPrimary", "normal", p, _tint_keep_alpha(pl, 0.8))
+	_set_theme_stylebox(thm, "ButtonPrimary", "hover", p.lightened(0.15), pl)
+	_set_theme_stylebox(thm, "ButtonPrimary", "pressed", p.darkened(0.25), _tint_keep_alpha(pl, 0.8))
+	_set_theme_stylebox(thm, "ButtonPrimary", "hover_pressed", p.darkened(0.25), _tint_keep_alpha(pl, 0.8))
+	_set_theme_stylebox(thm, "ButtonPrimary", "disabled", surface_low, border_soft)
+	_set_theme_stylebox(thm, "ButtonPrimary", "focus", Color(0, 0, 0, 0), pl)
+
+	# ButtonClose：窗口右上角的关闭按钮（详情面板 / 弹窗共用）。
+	# 常态只有细边框不填色，悬停才给面，避免在标题栏上显得过重。
+	_set_theme_stylebox(thm, "ButtonClose", "normal", surface_low, border_soft)
+	_set_theme_stylebox(thm, "ButtonClose", "hover", surface_hover, p)
+	_set_theme_stylebox(thm, "ButtonClose", "pressed", _tint_keep_alpha(p, 0.22), p)
+	_set_theme_stylebox(thm, "ButtonClose", "focus", Color(0, 0, 0, 0), p)
+	tmp.set_color("icon_normal_color", "ButtonClose", text_secondary)
+	tmp.set_color("icon_hover_color", "ButtonClose", get_color("text_primary"))
+	tmp.set_color("icon_pressed_color", "ButtonClose", p)
+	tmp.set_color("icon_focus_color", "ButtonClose", p)
 
 	# 字色 / 图标色：常态次要 → 悬停正文 → 按下强调。
 	# ButtonFlat 按下底色是实心主色，文字必须反白；ButtonTab 浅色下底色很淡，仍用深强调色。

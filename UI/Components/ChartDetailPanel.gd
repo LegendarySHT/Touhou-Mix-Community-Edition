@@ -582,20 +582,7 @@ func apply_theme() -> void:
 	for icon in %Stats.find_children("*", "TextureRect", true, false):
 		(icon as TextureRect).modulate = muted_text
 
-	# 详情里的按钮样式按主题重新着色（与卡片独立的资源，直接改色安全）
-	for btn in [%CloseBtn]:
-		var btn_sb: StyleBoxFlat = (btn as Button).get_theme_stylebox("normal")
-		btn_sb.bg_color = surface_low
-		btn_sb.border_color = border
-		var hover_sb: StyleBoxFlat = (btn as Button).get_theme_stylebox("hover")
-		hover_sb.bg_color = ThemeMGR.get_color("surface_hover")
-		hover_sb.border_color = primary
-
-	# 关闭按钮/赞踩按钮的图标是白色贴图：浅色模式下不染色会直接消失
-	%CloseBtn.add_theme_color_override("icon_normal_color", ThemeMGR.get_color("text_secondary"))
-	%CloseBtn.add_theme_color_override("icon_hover_color", ThemeMGR.get_color("text_primary"))
-	%CloseBtn.add_theme_color_override("icon_pressed_color", primary)
-	%CloseBtn.add_theme_color_override("icon_focus_color", primary)
+	# 赞踩按钮的字色
 	for btn: Button in [%LikeBtn, %DislikeBtn]:
 		btn.add_theme_color_override("font_color", ThemeMGR.get_color("text_secondary"))
 		btn.add_theme_color_override("font_hover_color", ThemeMGR.get_color("text_primary"))

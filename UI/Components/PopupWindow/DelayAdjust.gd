@@ -1,12 +1,9 @@
-extends VBoxContainer
+extends Control
 
 class_name DelayAdjust
 
 ## 校准完成信号（连续 N 个稳定样本后触发），由 PopupWindow 监听并 hide()
 signal finish_requested
-
-@onready var delay_btn: Button = $Button
-# 左右两条校准进度条（子节点挂在 Button 下，纯视觉反馈；fill_mode 已设为对称：L 右→左、R 左→右）
 
 # ===== 延迟校准状态 =====
 ## 校准是否进行中

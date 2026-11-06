@@ -1,4 +1,4 @@
-extends HBoxContainer
+extends Control
 
 class_name ImageAdjust
 
@@ -27,8 +27,7 @@ func _ready() -> void:
 	%EndColorHex.text_changed.connect(_on_hex_color_changed.bind(%EndColorPicker))
 	%SolidColorPicker.color_changed.connect(_on_color_picker_changed.bind(%SolidColorHex))
 	%SolidColorHex.text_changed.connect(_on_hex_color_changed.bind(%SolidColorPicker))
-	# 统一取色器弹层形态。背景色需要透明度滑条，故 edit_alpha=true。
-	# HexColor 输入框是场景里自带的（不走 attach_hex_edit），这里只统一弹层内容。
+	# 统一取色器弹层形态。背景色需要透明度滑条，故 edit_alpha=true
 	for picker in [%StartColorPicker, %EndColorPicker, %SolidColorPicker]:
 		ThemeMGR.setup_color_picker(picker, true)
 
@@ -176,6 +175,7 @@ func _update_image_preview() -> void:
 	var img_type = %ImgType.selected
 	# 默认清除模糊 shader，仅 cover 分支重新设置
 	%ImagePreviewTexture.material = null
+	%ImagePreviewTexture.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	match img_type:
 		IMG_TYPE_DEFAULT:
 			# 跟随主题：直接预览主题衍生的默认背景
@@ -316,6 +316,7 @@ func _apply_preview_cover_blur(blur_strength: float, style: int = 1) -> void:
 		return
 	# shader 靠 textureLod 做大半径降采样，纹理必须先有 mipmap
 	%ImagePreviewTexture.texture = _ensure_preview_mipmap(%ImagePreviewTexture.texture)
+	%ImagePreviewTexture.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
 	mat.set_shader_parameter("style", style)
@@ -326,12 +327,13 @@ func _apply_preview_cover_blur(blur_strength: float, style: int = 1) -> void:
 func _ensure_preview_mipmap(tex: Texture2D) -> Texture2D:
 	if tex == null:
 		return null
-	if tex == _preview_mip_texture:
-		return tex
+	if tex == _preview_mip_key or tex == _preview_mip_texture:
+		return _preview_mip_texture
 	var img := tex.get_image()
 	if img == null or img.is_empty() or img.has_mipmaps():
 		return tex
-	img.generate_mipmaps()
+	if not ImageUtil.ensure_mipmaps(img):
+		return tex
 	_preview_mip_texture = ImageTexture.create_from_image(img)
 	_preview_mip_key = tex
 	return _preview_mip_texture

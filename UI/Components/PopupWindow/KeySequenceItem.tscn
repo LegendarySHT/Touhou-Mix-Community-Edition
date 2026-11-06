@@ -6,7 +6,7 @@
 [sub_resource type="ButtonGroup" id="ButtonGroup_3y6u5"]
 
 [node name="KeySequenceItem" type="Button" unique_id=456885052]
-custom_minimum_size = Vector2(180, 120)
+custom_minimum_size = Vector2(150, 100)
 size_flags_horizontal = 4
 size_flags_vertical = 4
 focus_mode = 0

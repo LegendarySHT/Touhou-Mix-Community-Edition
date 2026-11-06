@@ -108,6 +108,17 @@ static func create_display_texture(image: Image) -> Texture2D:
 static func load_display_texture(path: String) -> Texture2D:
 	return create_display_texture(load_image_file(path))
 
+## 让 Image 具备 mipmap 链。压缩格式不能直接生成 mipmap，先解压。
+## 返回 false 表示无法生成，调用方应回退到原纹理。
+static func ensure_mipmaps(image: Image) -> bool:
+	if image == null or image.is_empty():
+		return false
+	if image.has_mipmaps():
+		return true
+	if image.is_compressed() and image.decompress() != OK:
+		return false
+	return image.generate_mipmaps() == OK
+
 static func _has_png_signature(bytes: PackedByteArray) -> bool:
 	return bytes.size() >= 8 \
 		and bytes[0] == 0x89 and bytes[1] == 0x50 and bytes[2] == 0x4E and bytes[3] == 0x47 \

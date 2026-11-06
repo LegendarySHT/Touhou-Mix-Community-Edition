@@ -1,4 +1,4 @@
-extends VBoxContainer
+extends Control
 
 class_name KBModeAdjust
 
@@ -21,9 +21,21 @@ const BLACKLISTED_KEYS: Array[Key] = [
 ## 键位项场景（用于动态实例化）
 const KEY_ITEM_SCENE := preload("res://UI/Components/PopupWindow/KeySequenceItem.tscn")
 
+## 拖出删除的判定余量（像素）：贴着按键框边缘划过时留一点缓冲，避免擦边就删
+const DELETE_ZONE_MARGIN: float = 16.0
+
+## 拖拽期间的提示文案
+## 静止文案也由脚本写入：KeyArea 的 Hint 是页内普通节点，不依赖 tscn 里的占位文字
+const HINT_IDLE := "拖动排序，拖出框外松开可删除；单击选中后可编辑"
+const HINT_DRAGGING := "拖动排序 · 松开调整顺序"
+const HINT_DELETE := "松开删除该按键"
+
 # 节点引用
 # 键盘模式开关 + 左右间距 + 轨道分隔线（HBox 左列）
 # 交替轨道颜色（HBox 右列）
+
+# 按键框内的拖拽提示
+var _hint: Label = null
 
 # 交替颜色序列按钮颜色（按索引保存，重建时保留）
 var _alt_colors_state: Array[Color] = []
@@ -36,12 +48,22 @@ var _recording_key: bool = false
 # 拖拽状态
 var _dragged_item: KeySequenceItem = null
 var _last_drop_index: int = -1  # 最近一次 drag_over 计算出的插入位置（item 索引）
+var _dragging: bool = false
+var _in_delete_zone: bool = false  # 光标是否已离开按键框（松手即删除）
+var _drop_handled: bool = false    # 本次拖拽是否已按排序落位（落位后不再判定删除）
 
 # 共享 ButtonGroup（确保所有 KeySequenceItem 互斥单选）
 var _shared_button_group: ButtonGroup = ButtonGroup.new()
 
 # 标记 %KeyDisplayNameEdit 的文本由程序设置（避免触发 text_changed 死循环）
 var _suppress_display_name_signal: bool = false
+
+func _ready() -> void:
+	_hint = $KeyArea/Hint
+	_hint.text = HINT_IDLE
+	# 光标是否离开按键框只在拖拽期间需要，平时关掉逐帧轮询
+	set_process(false)
+
 
 ## 由 PopupWindow.show_kb_mode_adjust 调用：解析配置字符串并重建 UI
 ## kb_mode：键盘模式开关（0/1）；gap：左右间距（偶数键位时中间额外间距，最低 0）
@@ -141,6 +163,7 @@ func _rebuild_color_buttons(count: int, colors: Array = []) -> void:
 	for i in count:
 		var btn := ColorPickerButton.new()
 		btn.custom_minimum_size = Vector2(60, 60)
+		btn.mouse_filter = Control.MOUSE_FILTER_PASS
 		btn.size_flags_vertical = 4     # SHRINK_CENTER
 		btn.color = existing[i] if i < existing.size() else Color.WHITE
 		# 只统一取色器弹层形态（色板 + 滑条 + Hex），不挂 HexEdit：
@@ -409,7 +432,59 @@ func _on_item_drag_started(item: KeySequenceItem) -> void:
 	_dragged_item = item
 	# 重置为 -1 表示尚未确定插入位置，确保首次 drag_over 能正确 move_child
 	_last_drop_index = -1
+	_drop_handled = false
+	_dragging = true
+	_in_delete_zone = false
+	_hint.text = HINT_DRAGGING
 	%InsertPlace.visible = true
+	set_process(true)
+
+
+## 拖拽期间逐帧判定光标是否已拖出按键框（拖放系统不会为「框外」发任何回调）
+func _process(_delta: float) -> void:
+	if not _dragging or not is_instance_valid(_dragged_item):
+		return
+	# 拖到一半窗口被关掉时等不到松手，直接复位
+	if not is_visible_in_tree():
+		_reset_drag_state()
+		_hide_insert_place()
+		return
+	var outside := not _is_pointer_in_key_area()
+	if outside == _in_delete_zone:
+		return
+	_set_delete_zone_active(outside)
+	_hint.text = HINT_DELETE if outside else HINT_DRAGGING
+
+
+## 切换「框外删除」高亮：按键框描边转警示色、拖动预览染红（提示文案由调用方设置）
+func _set_delete_zone_active(active: bool) -> void:
+	_in_delete_zone = active
+	if is_instance_valid(_dragged_item):
+		_dragged_item.set_drag_delete_state(active)
+	if active:
+		var danger := ThemeMGR.get_color("danger")
+		# 复制主题里的凹陷盒再改描边：不能直接改，那份 StyleBox 是全主题共享的
+		var base: StyleBox = $KeyArea.get_theme_stylebox("panel")
+		var highlight := StyleBoxFlat.new()
+		if base is StyleBoxFlat:
+			highlight = (base as StyleBoxFlat).duplicate()
+		highlight.bg_color = highlight.bg_color.lerp(danger, 0.12)
+		highlight.border_color = danger
+		highlight.set_border_width_all(2)
+		$KeyArea.add_theme_stylebox_override("panel", highlight)
+		_hint.add_theme_color_override("font_color", danger)
+		# 排序落点标记在删除态没有意义，先收起来
+		%InsertPlace.visible = false
+	else:
+		$KeyArea.remove_theme_stylebox_override("panel")
+		_hint.remove_theme_color_override("font_color")
+		%InsertPlace.visible = true
+
+
+## 光标是否还在按键框内（判定用外扩过的矩形，贴边划过不触发删除）
+func _is_pointer_in_key_area() -> bool:
+	var area := $KeyArea as Control
+	return area.get_global_rect().grow(DELETE_ZONE_MARGIN).has_point(area.get_global_mouse_position())
 
 
 func _on_item_drag_over(target: KeySequenceItem, at_pos: Vector2) -> void:
@@ -440,6 +515,8 @@ func _on_item_drop_received(_target: KeySequenceItem, dragged: KeySequenceItem) 
 	if dragged_idx < 0 or dragged_idx >= _items.size():
 		_hide_insert_place()
 		return
+	# 已经按排序落位，松手时不再判定删除
+	_drop_handled = true
 	# 保存插入位置（_hide_insert_place 会重置 _last_drop_index）
 	var drop_idx := _last_drop_index
 	# 从原位置移除数据
@@ -474,9 +551,50 @@ func _refresh_item_indices() -> void:
 			idx += 1
 
 
-func _on_item_drag_ended(_source: KeySequenceItem) -> void:
+func _on_item_drag_ended(source: KeySequenceItem) -> void:
+	# 只认本次拖拽开始时记下的那个节点：拖拽结束通知是按控件广播的，
+	# 不加这层过滤会把每个键位都当成刚被拖过（一次拖拽删掉多个）
+	if not _dragging or source != _dragged_item:
+		return
+	# 落点再判一次：_process 是逐帧轮询，最后一帧可能已落后于实际松手位置
+	var delete_index := -1
+	if not _drop_handled and is_instance_valid(source) and source.item_index >= 0 \
+			and source.item_index < _items.size() and not _is_pointer_in_key_area():
+		delete_index = source.item_index
+	_reset_drag_state()
+	# 复位会重新显示 InsertPlace，故放到它之后隐藏
 	_hide_insert_place()
+	if delete_index >= 0:
+		# 拖放回调栈里被拖节点仍被拖放系统占用，删除（会 free 该节点）延到下一帧
+		_delete_item_at.call_deferred(delete_index)
+
+
+## 清掉拖拽期间加的高亮与提示，回到静止外观
+func _reset_drag_state() -> void:
+	set_process(false)
+	_dragging = false
+	if _in_delete_zone:
+		_set_delete_zone_active(false)
+	elif is_instance_valid(_dragged_item):
+		_dragged_item.set_drag_delete_state(false)
+	_hint.text = HINT_IDLE
+	_hint.remove_theme_color_override("font_color")
 	_dragged_item = null
+	_drop_handled = false
+
+
+## 拖出框外松开后删除该按键：收尾与 Backspace/Delete 删除选中项一致
+func _delete_item_at(idx: int) -> void:
+	if idx < 0 or idx >= _items.size():
+		return
+	_items.remove_at(idx)
+	# 删除后选中原来的邻位，右侧详情不至于突然空掉
+	_selected_index = mini(idx, _items.size() - 1) if not _items.is_empty() else -1
+	_rebuild_items()
+	if _selected_index >= 0:
+		_select_item_by_index(_selected_index)
+	else:
+		_refresh_detail_panel()
 
 
 func _hide_insert_place() -> void:

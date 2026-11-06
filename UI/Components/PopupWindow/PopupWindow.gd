@@ -12,46 +12,66 @@ var _confirm: bool = false
 ## ParticleAdjust 等子脚本不需要此常量，仅在 PopupWindow 内使用；show_particle_adjust 用它等待动画完成
 const _POPUP_ANIM_DURATION: float = 0.4
 
-func _pop_up_window(page: int) -> void:
+const _WINDOW_SIZE: Array[Vector2] = [
+	Vector2(850, 600),
+	Vector2(1500, 700),
+	Vector2(950, 850)
+	]
+
+## 各页标题。标题栏由窗口本身提供，页面里不再各写一份。
+const PAGE_TITLES := {
+	0: "提示",
+	1: "延迟校准",
+	2: "音符皮肤",
+	3: "判定特效",
+	4: "背景图片",
+	5: "键盘模式",
+	6: "音符下落",
+	7: "资源存储位置",
+	8: "存储目录冲突",
+}
+
+## title 为空时取 PAGE_TITLES；closable=false 时隐藏右上角关闭按钮（强制提示不给绕过入口）
+func _pop_up_window(page: int = 0, window_title: String = "", closable: bool = true) -> void:
 	# 每次开新页前无条件解除模态：exclusive 只在 show_message(force=true) 期间为 true，
 	# 由那个协程自己复位。一旦协程在 await window_close 处被丢弃（节点释放、切场景、
 	# 信号没等到），复位语句就永远不执行，之后所有弹窗点外部都关不掉 = 玩家没法中止操作。
 	# 这里按"打开即恢复可取消"兜底，force 页在 popup 前再置 true。
 	exclusive = false
+	%CloseBtn.visible = closable
+	# 先切页再设标题：切页会触发 tab_changed 把标题重置成本页默认标题
 	%Tabs.current_tab = page
-	match page:
-		1:
-			size = Vector2(850, 600)
-		2:
-			size = Vector2(1500, 700)
-		3:
-			size = Vector2(1500, 700)
-		4:
-			size = Vector2(1500, 700)
-		5:
-			size = Vector2(1500, 800)
-		6:
-			size = Vector2(1300, 950)
-		7:
-			size = Vector2(900, 600)
-		8:
-			size = Vector2(900, 600)
-		_:
-			size = Vector2(850, 600)
-	await get_tree().create_timer(0.1).timeout
+	%WindowTitle.text = window_title if not window_title.is_empty() else PAGE_TITLES.get(page, "")
+	if page in [2, 3, 4, 5]:
+		%Window.custom_minimum_size = _WINDOW_SIZE[1]
+	elif page in [6]:
+		%Window.custom_minimum_size = _WINDOW_SIZE[2]
+	else:
+		%Window.custom_minimum_size = _WINDOW_SIZE[0]
+	%Window.size = Vector2.ZERO
+	size = Vector2.ZERO
+	await get_tree().process_frame
+	# await get_tree().create_timer(0.1).timeout
 	popup()
 
 func _ready() -> void:
 	instance = self
+	%WindowTitle.text = PAGE_TITLES.get(%Tabs.current_tab, "")
 	# 默认窗口按钮
 	%MessageCancelBtn.pressed.connect(_on_cancel_pressed)
 	%MessageConfirmBtn.pressed.connect(_on_confirm_pressed)
+	# 标题栏关闭按钮：等同于取消，各页结果值由各自脚本的默认值决定（未选择即取消）
+	%CloseBtn.pressed.connect(hide)
 	# DelayAdjust 校准完成 → 隐藏窗口（→ popup_hide → 退出动画 → window_close）
 	%DelayAdjust.finish_requested.connect(hide)
 	# StorageLocationAdjust 确认/取消 → 隐藏窗口（必须关闭整个弹窗，不能只隐藏 tab 页）
 	%StorageLocationAdjust.finish_requested.connect(hide)
 	# StorageConflictAdjust 选择 → 隐藏窗口
 	%StorageConflictAdjust.finish_requested.connect(hide)
+	# 判定类型切换时页面把新标题回传给窗口，标题栏始终只有一处来源
+	%ParticleAdjust.title_changed.connect(set_window_title)
+	# 页面之间直接跳转（例如存储路径校验失败后切回列表）时标题跟随页签
+	%Tabs.tab_changed.connect(_on_tab_changed)
 
 	# 监听内置 popup 生命周期信号
 	about_to_popup.connect(func() -> void: _window_popup_animate(true))
@@ -71,19 +91,31 @@ func _ready() -> void:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
 
+## 改标题栏文字（子页需要动态改标题时用，例如切换判定类型）
+func set_window_title(text: String) -> void:
+	%WindowTitle.text = text
+
+func _on_tab_changed(tab: int) -> void:
+	set_window_title(PAGE_TITLES.get(tab, ""))
+
 ## 应用主题色（由 ThemeManager 广播调用 + _ready 首次自调）
 func apply_theme() -> void:
-	# WindowBG — 中性凸起面（保留 tscn 预设的圆角/边框）
-	var sb := ($WindowBG as PanelContainer).get_theme_stylebox("panel")
-	var sh := ThemeMGR.get_color("surface_high")
-	sb.bg_color = Color(sh.r, sh.g, sh.b, 0.98)
+	var is_light := ThemeMGR.get_appearance() == "light"
+	var primary := ThemeMGR.get_color("primary")
+
+	# 窗体：中性面板 + 强调色细描边 + 投影；顶部装饰线与标题栏分隔线跟随强调色层次
+	var sb: StyleBoxFlat = (%WindowBG as Panel).get_theme_stylebox("panel")
+	sb.bg_color = ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("surface"), 0.98)
+	sb.border_color = ThemeMGR._tint_keep_alpha(primary, 0.55 if is_light else 0.45)
+	sb.shadow_color = Color(0, 0, 0, 0.45 if is_light else 0.55)
+	var accent_text := ThemeMGR.get_color("primary_dark") if is_light else ThemeMGR.get_color("primary_light")
+	(%Accent as Panel).get_theme_stylebox("panel").bg_color = accent_text
+	(%HeaderLine as Panel).get_theme_stylebox("panel").bg_color = \
+		ThemeMGR._tint_keep_alpha(ThemeMGR.get_color("border_soft"), 0.9)
+
 	# KBModeAdjust/AddBtn — 强调色主按钮；该按钮在 tscn 里有自己的 normal/pressed/hover 样式框，
 	# 因此可就地改色而不影响共享的 R12NoBorder 主题
-	ThemeMGR._style_button_set_bg_color(%KBModeAdjustAddBtn, ThemeMGR.get_color("primary"))
-	# 默认页 取消/确认按钮：tscn 内写死了深色/蓝色底板，浅色模式下会残留深色块；
-	# 字色不必再写——MainTheme 的 Button/font_color 每次刷新就是 text_primary
-	ThemeMGR._style_button_set_bg_color(%MessageCancelBtn, ThemeMGR.get_color("surface_high"))
-	ThemeMGR._style_button_set_bg_color(%MessageConfirmBtn, ThemeMGR.get_color("primary"))
+	ThemeMGR._style_button_set_bg_color(%KBModeAdjustAddBtn, primary)
 	_style_default_option_button()
 
 ## 默认弹窗里的选项按钮：tscn 内写死了深色 hover/pressed，浅色模式下会变成一块很黑/纯黑，
@@ -156,13 +188,15 @@ func get_selected() -> String:
 
 # 用默认窗口显示消息，要获取确认状态需await
 ## force=true 时弹窗为强制模态（exclusive）：无法点击外部关闭，只能通过按钮/返回键处理，
-## 用于"迁移后必须重启"等不可跳过的提示
-func show_message(message: String, cancel_visible: bool = false, options: Array = [], force: bool = false) -> bool:
+## 用于"迁移后必须重启"等不可跳过的提示（这种情况下不显示标题栏的关闭按钮）
+## title 留空时标题栏显示"提示"
+func show_message(message: String, cancel_visible: bool = false, options: Array = [], force: bool = false,
+		window_title: String = "") -> bool:
 	%MessageText.text = message
 	%MessageCancelBtn.modulate.a = 0 if not cancel_visible else 1
 	_set_option(options)
 
-	_pop_up_window(0)
+	_pop_up_window(0, window_title, not force)
 	if force:
 		exclusive = true  # 模态：点击弹窗外区域不会关闭（popup 失去焦点不隐藏）
 	await window_close
@@ -197,7 +231,7 @@ func show_note_skin_adjust() -> String:
 func show_particle_adjust(judge_type: String = "Perfect") -> Dictionary:
 	%ParticleAdjust.init_adjust(judge_type)
 	
-	_pop_up_window(3)
+	_pop_up_window(3, "%s 特效设定" % judge_type)
 	await get_tree().create_timer(_POPUP_ANIM_DURATION).timeout
 	%ParticleAdjust.start_preview()
 	await window_close
