@@ -14,7 +14,7 @@ general/accessibility_support=2
 
 [application]
 
-config/name="Touhou Mix Community Edition"
+config/name="Touhou Mix CE"
 config/version="1.0.0.645"
 run/main_scene="uid://jvmwtrulpf5g"
 config/quit_on_go_back=false
