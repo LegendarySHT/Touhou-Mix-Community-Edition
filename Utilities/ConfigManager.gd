@@ -240,7 +240,7 @@ func _prune_misplaced_keys(config: Variant = null) -> int:
 			if key_owner.has(key) and key_owner[key] != section:
 				stray.append(key)
 		for key in stray:
-			var home: String = owner[key]
+			var home: String = key_owner[key]
 			var value: Variant = config[section][key]
 			if not (config.get(home, null) is Dictionary):
 				config[home] = {}
