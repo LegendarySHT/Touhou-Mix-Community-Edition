@@ -13,7 +13,6 @@ signal expand_toggled()
 signal stats_refreshed()
 
 # 玩家数据（登录后从 AuthManager.current_user + 服务端 profile/stats 填充）
-# 玩家数据（登录后从 AuthManager.current_user + 服务端 profile/stats 填充）
 var _player_data := {
 	"name": "Anonymous Player",
 	"display_name": "",
@@ -22,12 +21,18 @@ var _player_data := {
 	"level": 1,
 	"pp": 0.0,
 	"rank": 0,
+	"ranked_players": 0,
 	"total_plays": 0,
+	"unique_charts": 0,
 	"accuracy": 0.0,
+	"avg_score": 0.0,
+	"avg_pp": 0.0,
+	"best_pp": 0.0,
 	"max_combo": 0,
 	"play_duration_ms": 0,
 	"level_progress": 0.0,
 	"grades": {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0, "F": 0},
+	"judgments": {"perfect": 0, "great": 0, "good": 0, "bad": 0, "miss": 0},
 	"recent_scores": [],
 }
 
@@ -216,11 +221,17 @@ func _sync_from_auth() -> void:
 		_player_data.avatar_url = ""
 		_player_data.pp = 0.0
 		_player_data.rank = 0
+		_player_data.ranked_players = 0
 		_player_data.accuracy = 0.0
 		_player_data.total_plays = 0
+		_player_data.unique_charts = 0
+		_player_data.avg_score = 0.0
+		_player_data.avg_pp = 0.0
+		_player_data.best_pp = 0.0
 		_player_data.max_combo = 0
 		_player_data.play_duration_ms = 0
 		_player_data.grades = {"S": 0, "A": 0, "B": 0, "C": 0, "D": 0, "F": 0}
+		_player_data.judgments = {"perfect": 0, "great": 0, "good": 0, "bad": 0, "miss": 0}
 		# 重置头像为默认
 		_apply_default_avatar()
 		populate_profile()
@@ -309,12 +320,18 @@ func _fetch_stats_async() -> void:
 	# 全服总榜名次：服务端在没有任何有效成绩时返回 null，用 0 表示「未上榜」
 	var global_rank: Variant = s.get("globalRank", null)
 	_player_data.rank = int(global_rank) if global_rank != null and int(global_rank) > 0 else 0
+	_player_data.ranked_players = int(s.get("rankedPlayers", 0))
 	_player_data.accuracy = float(s.get("avgAccuracy", 0)) * 100.0
 	_player_data.total_plays = int(s.get("totalPlays", 0))
+	_player_data.unique_charts = int(s.get("uniqueCharts", 0))
+	_player_data.avg_score = float(s.get("avgScore", 0))
+	_player_data.avg_pp = float(s.get("avgPp", 0))
+	_player_data.best_pp = float(s.get("bestPp", 0))
 	_player_data.max_combo = int(s.get("maxCombo", 0))
 	_player_data.play_duration_ms = int(s.get("playDurationMs", 0))
 	# 解析评级分布并按 UI 分类分组（S/A/B/C/D/F）
 	_player_data.grades = _group_grades(s.get("gradeDistribution", {}))
+	_player_data.judgments = _parse_judgments(s.get("judgmentDistribution", {}))
 	populate_profile()
 	populate_mini_info()
 	if profile_view:
@@ -348,6 +365,18 @@ func _group_grades(raw_dist: Variant) -> Dictionary:
 		elif rank_str.begins_with("F"):
 			grouped["F"] += count
 	return grouped
+
+## 判定分布：服务端键名大小写不敏感，只取 UI 需要的五项
+func _parse_judgments(raw_dist: Variant) -> Dictionary:
+	var parsed := {"perfect": 0, "great": 0, "good": 0, "bad": 0, "miss": 0}
+	if not raw_dist is Dictionary:
+		return parsed
+	var dist := raw_dist as Dictionary
+	for key in dist:
+		var k := str(key).to_lower()
+		if parsed.has(k):
+			parsed[k] = int(dist[key])
+	return parsed
 
 # ========== 内容可见性（供 PlayerInfo 调用） ==========
 

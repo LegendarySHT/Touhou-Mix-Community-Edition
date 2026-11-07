@@ -9,10 +9,26 @@ signal profile_updated()
 ## 头像上传成功后的新 URL（PlayerInfoContent 据此立即刷新各处头像）
 signal avatar_uploaded(url: String)
 
+# 评级构成环的脚本类型：直接用路径引用，免得依赖全局类名缓存
+const GRADE_RING := preload("res://UI/Views/ProfileView/ProfileGradeRing.gd")
+
 # 被 PlayerInfoPanel 直接访问（pv.page_content.modulate.a）
 @onready var page_content: TabContainer = %PageContent
 # 需要调用 AvatarPreview 的专有方法
 @onready var avatar_preview: AvatarPreview = %AvatarPreviewBorder
+# 评级构成环，需要喂扇段数据
+@onready var _grade_ring: GRADE_RING = %GradeRing
+# 八项概览的值标签；说明文字固定在场景里，这里只按字段名取引用
+@onready var _stat_values := {
+	"plays": %StatPlays,
+	"charts": %StatCharts,
+	"accuracy": %StatAccuracy,
+	"score": %StatScore,
+	"avg_pp": %StatAvgPp,
+	"best_pp": %StatBestPp,
+	"combo": %StatCombo,
+	"time": %StatTime,
+}
 
 # PageContent tab 索引
 const TAB_PROFILE := 0
@@ -31,6 +47,26 @@ const ChartDetailPageLib := preload("res://UI/Components/PopupWindow/ChartDetail
 const RECORD_PAGE_LIMIT := 20
 ## 排名卡片「-」：未上榜 / 未登录 / 离线 / 接口失败
 const RANK_PLACEHOLDER := "-"
+
+## 评级从高到低：环图与图例都按这个顺序排
+const GRADE_ORDER: Array[String] = ["S", "A", "B", "C", "D", "F"]
+## 判定顺序与显示名
+const JUDGE_ORDER: Array[String] = ["perfect", "great", "good", "bad", "miss"]
+const JUDGE_NAMES := {
+	"perfect": "Perfect",
+	"great": "Great",
+	"good": "Good",
+	"bad": "Bad",
+	"miss": "Miss",
+}
+## 判定色：与 PlayHud 的判定色保持一致
+const JUDGE_COLORS := {
+	"perfect": Color("#FF50FD"),
+	"great": Color("#FF7600"),
+	"good": Color("#0AE000"),
+	"bad": Color("#1CB0FF"),
+	"miss": Color("#DC3450"),
+}
 
 ## 操作进行中（防止重复点击）
 var _busy: bool = false
@@ -55,6 +91,16 @@ var _ranks_cache_key: String = ""
 var _ranks_cache: Array = []
 var _last_pp: float = -1.0
 
+## 最近一次收到的评级 / 判定分布：换主题时按当前数据重画环图与条带
+var _grades: Dictionary = {}
+var _judgments: Dictionary = {}
+
+## 待上传曲目：后端还没有草稿接口，先用本地占位数据把列表形态撑起来
+var _drafts: Array = [
+	{"title": "U.N. Owen Was Her?", "uploaded_at": "2026-11-06 21:14"},
+	{"title": "Bad Apple!!", "uploaded_at": "2026-11-05 19:02"},
+]
+
 func _on_view_ready() -> void:
 	%ProfileBtn.pressed.connect(_on_navi_profile_pressed)
 	%HistoryBtn.pressed.connect(_on_navi_history_pressed)
@@ -62,12 +108,20 @@ func _on_view_ready() -> void:
 	%RecentPlayBtn.pressed.connect(_on_recent_play_pressed)
 	%BestPlayBtn.pressed.connect(_on_best_play_pressed)
 	%MostPlayBtn.pressed.connect(_on_most_play_pressed)
+	# 编辑页的控件分散在多个卡片里，按唯一名连接，布局调整不影响信号
+	%AvatarZoomSlider.value_changed.connect(_on_avatar_zoom_changed)
+	%AvatarUploadBtn.pressed.connect(_on_upload_avatar_btn_pressed)
+	%AvatarSaveBtn.pressed.connect(_on_save_avatar_btn_pressed)
+	%NicknameConfirmBtn.pressed.connect(_on_save_nickname_btn_pressed)
+	%DescConfirmBtn.pressed.connect(_on_save_desc_btn_pressed)
+	%PasswordConfirmBtn.pressed.connect(_on_save_pwd_btn_pressed)
 	_sync_navi_selection(%PageContent.current_tab)
 	_sync_topbtn_z_index(%RecentPlayBtn)
 	# 密码输入框设为密文
 	%PasswordEdit.secret = true
 	%NewPasswordEdit.secret = true
 	_reset_avatar_adjust()
+	_render_drafts()
 	_setup_focus_tabs()
 	# 头像卡（Border 整块卡片框）点击进入 Chara_View：卡片框接收点击，头像图透传
 	%CharaCardBorder.gui_input.connect(_on_card_border_gui_input)
@@ -171,10 +225,9 @@ func apply_theme() -> void:
 	var border: Color = ThemeMGR.get_color("border")
 	var accent_border: Color = Color(p.r, p.g, p.b, 0.6)
 
-	# 页面底色为 InfoPanelBtn 的 surface；本页内容面板统一用 surface_high 浮起（简介与最近游玩共享同一 StyleBox）
+	# 页面底色为 InfoPanelBtn 的 surface；下面几块卡片统一用 PanelCard 变体，颜色由主题负责
 	_set_panel(%CharaInfoPanel, surface_high, accent_border)   # 角色立绘旁的信息栏
 	_set_panel(%ProfileHeaderPanel, surface_high, border)      # 头像 / 昵称 / 等级头部
-	_set_panel(%RecentPlayPanel, surface_high, border)         # 最近游玩列表
 	_set_panel(%RankTotal, surface_high, accent_border)        # 总排名卡片
 	# Navi 面板
 	_set_panel(%Navi, surface, border)                         # 底栏与页面底色一致
@@ -194,10 +247,6 @@ func apply_theme() -> void:
 	_set_btn_border(%RecentPlayBtn, "hover", p)
 	# MostPlay hover 用单独 StyleBox
 	_set_btn_border(%MostPlayBtn, "hover", p)
-	# Edit 页面 ConfirmBtn / UploadBtn（共享 StyleBox）
-	_set_btn(%NicknameConfirmBtn, "normal", p.darkened(0.1), p)
-	_set_btn(%NicknameConfirmBtn, "pressed", p.darkened(0.3), p)
-	_set_btn(%NicknameConfirmBtn, "hover", p, p)
 	# 圆角头像 / 角色卡的外圈细描边：tscn 里硬编码成淡蓝 #93B4FF（= primary_light 的初值），
 	# 换主题色后仍是蓝的。这里按外观模式取强调色：深色用 primary_light（亮，暗底上才看得见），
 	# 浅色用 primary（深，浅底上才看得见）。
@@ -205,6 +254,10 @@ func apply_theme() -> void:
 	_set_panel_border_keep_alpha(%ProfileAvatarBorder, _avatar_ring_color())
 	_set_panel_border_keep_alpha(avatar_preview, _avatar_ring_color())
 	_set_panel_border_keep_alpha(%CharaCardBorder, _avatar_ring_color())
+	# 环图扇段、图例圆点、草稿行的文字色都取自主题，换主题后按当前数据重绘
+	_render_grade_mix()
+	_render_judgment_mix()
+	_render_drafts()
 
 ## 设置面板 bg + border
 func _set_panel(node: Control, bg: Color, border: Color) -> void:
@@ -308,17 +361,20 @@ func update_display(data: Dictionary) -> void:
 	var bio_raw = data.get("bio", "")
 	var bio := str(bio_raw) if bio_raw != null else ""
 	%ProfileDescription.text = bio if not bio.is_empty() and bio != "<null>" else "还没有填写简介..."
+	_update_stats(data)
 	# 同步 History 页统计：总 pp + 各评级数量
 	%HistoryPp.text = "%.2f pp" % float(data.get("pp", 0.0))
-	var grades = data.get("grades", {})
-	if grades == null:
-		grades = {}
+	var grades: Dictionary = _dict_field(data, "grades")
 	%GradeCountS.text = str(int(grades.get("S", 0)))
 	%GradeCountA.text = str(int(grades.get("A", 0)))
 	%GradeCountB.text = str(int(grades.get("B", 0)))
 	%GradeCountC.text = str(int(grades.get("C", 0)))
 	%GradeCountD.text = str(int(grades.get("D", 0)))
 	%GradeCountF.text = str(int(grades.get("F", 0)))
+	_grades = grades
+	_render_grade_mix()
+	_judgments = _dict_field(data, "judgments")
+	_render_judgment_mix()
 	# 同步 Edit 页输入框为当前值
 	%NicknameEdit.text = display_name
 	%DescEdit.text = bio
@@ -353,9 +409,15 @@ func _update_level(data: Dictionary) -> void:
 	bar.value = progress * 100.0
 	bar.show_percentage = true
 
-## 总榜名次来自 me/stats 的 globalRank（PlayerInfoContent 写入 _player_data.rank）
+## 总榜名次来自 me/stats 的 globalRank，右侧补充上榜总人数（rankedPlayers）
 func _update_total_rank(data: Dictionary) -> void:
-	%RankTotalValue.text = _format_rank(data.get("rank", 0))
+	var rank_val: Variant = data.get("rank", 0)
+	%RankTotalValue.text = _format_rank(rank_val)
+	var ranked := int(data.get("ranked_players", 0))
+	if rank_val != null and int(rank_val) > 0 and ranked > 0:
+		%RankTotalCount.text = "共 %s 人" % StoreIcons.format_score(ranked)
+	else:
+		%RankTotalCount.text = "完成谱面后参与排名"
 
 ## 未上榜（null / 0 / 非正数）统一显示「-」
 func _format_rank(value: Variant) -> String:
@@ -368,8 +430,8 @@ func _format_rank(value: Variant) -> String:
 ## 接口返回后再用响应里的年份覆盖（服务端才是年份真相）。
 func _init_rank_year_labels() -> void:
 	var y := _current_utc8_year()
-	%RankPastYear.text = str(y)
-	%RankPast2Year.text = str(y - 1)
+	%RankPastYear.text = "%d 年度" % y
+	%RankPast2Year.text = "%d 年度" % (y - 1)
 
 func _current_utc8_year() -> int:
 	# get_datetime_dict_from_unix_time 没有 utc 形参（4.7）：时间戳本身按 UTC 解释，
@@ -444,15 +506,233 @@ func _apply_yearly_ranks(ranks: Array) -> void:
 	if ranks.size() > 1 and ranks[1] is Dictionary:
 		second = ranks[1]
 	if not first.is_empty():
-		%RankPastYear.text = str(int(first.get("year", 0)))
+		%RankPastYear.text = "%d 年度" % int(first.get("year", 0))
 	if not second.is_empty():
-		%RankPast2Year.text = str(int(second.get("year", 0)))
+		%RankPast2Year.text = "%d 年度" % int(second.get("year", 0))
 	_set_yearly_rank_values(_format_rank(first.get("rank", null)),
 		_format_rank(second.get("rank", null)))
 
 func _set_yearly_rank_values(current_year_rank: String, previous_year_rank: String) -> void:
 	%RankPastValue.text = current_year_rank
 	%RankPast2Value.text = previous_year_rank
+
+# ========== 数据统计：八项概览 / 评级构成 / 判定构成 ==========
+
+## 八项概览：数量类统一千分位，比率类保留两位小数
+func _update_stats(data: Dictionary) -> void:
+	_stat_values.plays.text = StoreIcons.format_score(int(data.get("total_plays", 0)))
+	_stat_values.charts.text = StoreIcons.format_score(int(data.get("unique_charts", 0)))
+	_stat_values.accuracy.text = "%.2f%%" % maxf(0.0, float(data.get("accuracy", 0.0)))
+	_stat_values.score.text = StoreIcons.format_score(int(round(float(data.get("avg_score", 0.0)))))
+	_stat_values.avg_pp.text = "%.2f" % maxf(0.0, float(data.get("avg_pp", 0.0)))
+	_stat_values.best_pp.text = "%.2f" % maxf(0.0, float(data.get("best_pp", 0.0)))
+	_stat_values.combo.text = StoreIcons.format_score(int(data.get("max_combo", 0)))
+	@warning_ignore("integer_division")
+	var seconds := int(data.get("play_duration_ms", 0)) / 1000
+	var duration := StoreIcons.format_duration(seconds)
+	_stat_values.time.text = duration if not duration.is_empty() else "0:00"
+
+## 评级构成：环图 + 图例，只列有记录的评级
+func _render_grade_mix() -> void:
+	var total := 0
+	var dominant := ""
+	var dominant_count := 0
+	var segments: Array = []
+	for grade in GRADE_ORDER:
+		var count := maxi(0, int(_grades.get(grade, 0)))
+		total += count
+		if count <= 0:
+			continue
+		segments.append({"color": _grade_color(grade), "weight": float(count)})
+		if count > dominant_count:
+			dominant_count = count
+			dominant = grade
+	_grade_ring.set_segments(segments)
+	%GradeRingCount.text = "%s 次记录" % StoreIcons.format_score(total)
+	%GradeRingDominant.text = dominant if not dominant.is_empty() else "-"
+	# 图例按数据重建：出现的评级随记录变化，不适合写死在场景里
+	var legend: VBoxContainer = %GradeLegend
+	_clear_children(legend)
+	if total <= 0:
+		legend.add_child(_make_hint("暂无可统计的成绩"))
+		return
+	for grade in GRADE_ORDER:
+		var count := maxi(0, int(_grades.get(grade, 0)))
+		if count <= 0:
+			continue
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		row.custom_minimum_size = Vector2(0, 26)
+		row.add_child(_make_dot(_grade_color(grade)))
+		row.add_child(_make_text(grade, 16, ThemeMGR.get_color("text_primary"), 24.0))
+		var pct := _make_text("%.1f%%" % (float(count) / float(total) * 100.0),
+			14, ThemeMGR.get_color("text_secondary"), 0.0)
+		pct.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(pct)
+		row.add_child(_make_text(StoreIcons.format_score(count),
+			13, ThemeMGR.get_color("text_dim"), 0.0))
+		legend.add_child(row)
+
+## 判定构成：条带 + 五列图例，判定项固定，缺数据也按 0 显示
+func _render_judgment_mix() -> void:
+	var total := 0
+	for key in JUDGE_ORDER:
+		total += maxi(0, int(_judgments.get(key, 0)))
+	%JudgmentTotal.text = "%s 个音符" % StoreIcons.format_score(total)
+	# 条带：每段宽度按记录数占比分配，0 的段不占位
+	var stack: HBoxContainer = %JudgmentStack
+	_clear_children(stack)
+	for key in JUDGE_ORDER:
+		var count := maxi(0, int(_judgments.get(key, 0)))
+		if count <= 0:
+			continue
+		var seg := ColorRect.new()
+		seg.color = JUDGE_COLORS[key]
+		seg.custom_minimum_size = Vector2(0, 22)
+		seg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		seg.size_flags_stretch_ratio = float(count)
+		seg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stack.add_child(seg)
+	# 图例：五项固定，便于横向比较
+	var legend: GridContainer = %JudgmentLegend
+	_clear_children(legend)
+	for key in JUDGE_ORDER:
+		var count := maxi(0, int(_judgments.get(key, 0)))
+		var pct := 0.0
+		if total > 0:
+			pct = float(count) / float(total) * 100.0
+		var col := VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.add_theme_constant_override("separation", 2)
+		var head := HBoxContainer.new()
+		head.add_theme_constant_override("separation", 6)
+		head.add_child(_make_dot(JUDGE_COLORS[key]))
+		head.add_child(_make_text(JUDGE_NAMES[key], 14, ThemeMGR.get_color("text_primary"), 0.0))
+		col.add_child(head)
+		col.add_child(_make_text("%.1f%%" % pct, 12, ThemeMGR.get_color("text_secondary"), 0.0))
+		col.add_child(_make_text(StoreIcons.format_score(count),
+			16, ThemeMGR.get_color("text_primary"), 0.0))
+		legend.add_child(col)
+
+## 评级配色：从高到低依次取语义色，换主题自动跟随
+func _grade_color(grade: String) -> Color:
+	match grade:
+		"S":
+			return ThemeMGR.get_color("warning")
+		"A":
+			return ThemeMGR.get_color("success")
+		"B":
+			return ThemeMGR.get_color("info")
+		"C":
+			return ThemeMGR.get_color("secondary", ThemeMGR.get_color("primary"))
+		"D":
+			return ThemeMGR.get_color("text_secondary")
+		_:
+			return ThemeMGR.get_color("danger")
+
+## 图例文字：字号与配色统一在这里收口
+func _make_text(text: String, font_size: int, color: Color, min_width: float) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", color)
+	if min_width > 0.0:
+		label.custom_minimum_size = Vector2(min_width, 0)
+	return label
+
+## 无数据时的提示行
+func _make_hint(text: String) -> Label:
+	var label := _make_text(text, 15, ThemeMGR.get_color("text_dim"), 0.0)
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return label
+
+## 图例前的小圆点：ColorRect 只能画方块，这里用小面板拿圆角
+func _make_dot(color: Color) -> Control:
+	var dot := Panel.new()
+	dot.custom_minimum_size = Vector2(9, 9)
+	dot.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = color
+	sb.corner_radius_top_left = 5
+	sb.corner_radius_top_right = 5
+	sb.corner_radius_bottom_right = 5
+	sb.corner_radius_bottom_left = 5
+	dot.add_theme_stylebox_override("panel", sb)
+	return dot
+
+## 清空容器的子节点（图例每次按数据重建）
+func _clear_children(node: Node) -> void:
+	for child in node.get_children():
+		node.remove_child(child)
+		child.queue_free()
+
+## 取字典字段，缺失或类型不符时退回空字典
+func _dict_field(data: Dictionary, key: String) -> Dictionary:
+	var raw: Variant = data.get(key, {})
+	return raw if raw is Dictionary else {}
+
+# ========== 编辑页：待上传曲目 ==========
+
+## 草稿箱列表：一行「歌名 + 上传时间 + 删除」
+func _render_drafts() -> void:
+	%DraftCount.text = "%d 首" % _drafts.size()
+	var list: VBoxContainer = %DraftList
+	_clear_children(list)
+	if _drafts.is_empty():
+		list.add_child(_make_hint("暂无待上传的曲目"))
+		return
+	for i in _drafts.size():
+		var draft: Dictionary = _drafts[i]
+		list.add_child(_make_draft_row(draft, i))
+
+## 单条草稿卡片：本地曲目没有成绩数据，只放标题与上传时间
+func _make_draft_row(draft: Dictionary, index: int) -> PanelContainer:
+	var row := PanelContainer.new()
+	row.theme_type_variation = &"PanelRecordRow"
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	row.add_child(margin)
+
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	margin.add_child(box)
+
+	var text := VBoxContainer.new()
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.add_theme_constant_override("separation", 2)
+	var title := _make_text(str(draft.get("title", "未命名曲目")), 20,
+		ThemeMGR.get_color("text_primary"), 0.0)
+	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	title.clip_text = true
+	text.add_child(title)
+	text.add_child(_make_text(str(draft.get("uploaded_at", "")), 14,
+		ThemeMGR.get_color("text_dim"), 0.0))
+	box.add_child(text)
+
+	var del := Button.new()
+	del.text = "删除"
+	del.theme_type_variation = &"ButtonFlat"
+	del.custom_minimum_size = Vector2(76, 40)
+	del.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	del.add_theme_font_size_override("font_size", 18)
+	del.add_theme_color_override("font_color", ThemeMGR.get_color("text_secondary"))
+	del.add_theme_color_override("font_hover_color", ThemeMGR.get_color("danger"))
+	del.pressed.connect(_on_draft_delete_pressed.bind(index))
+	box.add_child(del)
+	return row
+
+## 删除草稿：后端没有草稿接口，这里只从本地列表里移除
+func _on_draft_delete_pressed(index: int) -> void:
+	if index < 0 or index >= _drafts.size():
+		return
+	_drafts.remove_at(index)
+	_render_drafts()
 
 ## 头像上屏：Profile 页大图 + Edit 页预览。
 ## 头像由 PlayerInfoContent 统一加载（MiniInfo/Summary 也要用），这里只负责显示。

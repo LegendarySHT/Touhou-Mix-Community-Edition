@@ -5,12 +5,12 @@
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="3_e3e5v"]
 
 [node name="RecordListItem" type="Panel" unique_id=992292245]
-theme_type_variation = &"PanelRecordRow"
 custom_minimum_size = Vector2(0, 130)
 clip_contents = true
 offset_right = 1585.0
 offset_bottom = 130.0
-mouse_filter = 2
+mouse_filter = 1
+theme_type_variation = &"PanelRecordRow"
 script = ExtResource("1_v8uxu")
 
 [node name="Button" type="Button" parent="." unique_id=155156319]
@@ -21,6 +21,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 1
 flat = true
 
 [node name="Cover" type="TextureRect" parent="." unique_id=1349898086]

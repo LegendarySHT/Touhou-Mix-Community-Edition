@@ -1305,6 +1305,8 @@ func _refresh_theme_colors_impl(thm: Theme) -> void:
 	comment_box.border_color = border_soft
 
 	_set_theme_stylebox(thm, "PanelSunken", "panel", surface_low, border)
+	# 浮起卡片（详情页的资料块 / 表单块）：surface_high + 常规描边，阴影几何写在 tres 里
+	_set_theme_stylebox(thm, "PanelCard", "panel", surface_high, border, Color(0, 0, 0, 0.28))
 
 	# RichTextLabel（如 MidiView 谱面简介）：正文色走 default_color，不设会停留在引擎默认的浅色上
 	tmp.set_color("default_color", "RichTextLabel", get_color("text_primary"))

@@ -4,7 +4,10 @@
 [ext_resource type="Shader" uid="uid://dqv8tc32un21r" path="res://UI/Components/ImgRoundCorner.gdshader" id="2_xsa8c"]
 [ext_resource type="Texture2D" uid="uid://cpog56bd63i4e" path="res://Resources/icon/NoAvatar.jpg" id="3_71xqf"]
 [ext_resource type="Script" uid="uid://g8pqawth7e6o" path="res://UI/Views/ProfileView/AvatarPreview.gd" id="4_sgab8"]
+[ext_resource type="Theme" uid="uid://d0x0ea1hnbce6" path="res://UI/Theme/PopupTheme.tres" id="4_xsa8c"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="5_l4gu6"]
+[ext_resource type="Script" uid="uid://o46ed8k4orio" path="res://UI/Views/ProfileView/ProfileGradeRing.gd" id="6_ring"]
+
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_3y6u5"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_i6pqd"]
@@ -76,76 +79,59 @@ shader_parameter/corner_radius = 10.0
 shader_parameter/rect_size = Vector2(150, 150)
 shader_parameter/uv_rect = Vector4(0, 0, 1, 1)
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_moh5i"]
-content_margin_left = 20.0
-content_margin_top = 15.0
-content_margin_right = 20.0
-content_margin_bottom = 40.0
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_2xvos"]
-content_margin_left = 25.0
-content_margin_top = 20.0
-content_margin_right = 25.0
-content_margin_bottom = 20.0
-bg_color = Color(0.0941, 0.1176, 0.1686, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.1686, 0.2039, 0.2745, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-shadow_color = Color(0, 0, 0, 0.3)
-shadow_size = 10
-shadow_offset = Vector2(0, 3)
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_moh5i"]
-content_margin_left = 20.0
-content_margin_top = 20.0
-content_margin_right = 50.0
-content_margin_bottom = 20.0
+content_margin_left = 16.0
+content_margin_top = 16.0
+content_margin_right = 16.0
+content_margin_bottom = 16.0
 bg_color = Color(0.0941, 0.1176, 0.1686, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.1686, 0.2039, 0.2745, 1)
-corner_radius_top_left = 999
-corner_radius_top_right = 999
-corner_radius_bottom_right = 999
-corner_radius_bottom_left = 999
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
 shadow_color = Color(0, 0, 0, 0.3)
 shadow_size = 10
 shadow_offset = Vector2(0, 3)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_ag846"]
+content_margin_left = 16.0
+content_margin_top = 16.0
+content_margin_right = 16.0
+content_margin_bottom = 16.0
 bg_color = Color(0.5451, 0.4118, 0.8588, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.68, 0.56, 0.96, 0.7)
-corner_radius_top_left = 999
-corner_radius_top_right = 999
-corner_radius_bottom_right = 999
-corner_radius_bottom_left = 999
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
 shadow_color = Color(0, 0, 0, 0.3)
 shadow_size = 10
 shadow_offset = Vector2(0, 3)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_j7lut"]
+content_margin_left = 16.0
+content_margin_top = 16.0
+content_margin_right = 16.0
+content_margin_bottom = 16.0
 bg_color = Color(0.7529, 0.4902, 0.3176, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
 border_color = Color(0.88, 0.62, 0.44, 0.7)
-corner_radius_top_left = 999
-corner_radius_top_right = 999
-corner_radius_bottom_right = 999
-corner_radius_bottom_left = 999
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
 shadow_color = Color(0, 0, 0, 0.3)
 shadow_size = 10
 shadow_offset = Vector2(0, 3)
@@ -266,44 +252,6 @@ expand_margin_bottom = 6.0
 
 [sub_resource type="ButtonGroup" id="ButtonGroup_3y6u5"]
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ng81m"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_b1c4s"]
-bg_color = Color(0.2784, 0.4431, 0.8627, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.52, 0.66, 1, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_6cgaj"]
-bg_color = Color(0.1843, 0.3333, 0.7843, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.4, 0.58, 1, 0.8)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_0xjso"]
-bg_color = Color(0.3569, 0.549, 1, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.6, 0.74, 1, 1)
-corner_radius_top_left = 14
-corner_radius_top_right = 14
-corner_radius_bottom_right = 14
-corner_radius_bottom_left = 14
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3xm0o"]
 draw_center = false
 border_width_left = 2
@@ -393,16 +341,21 @@ offset_bottom = -170.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxEmpty_3y6u5")
-current_tab = 1
+current_tab = 0
 tabs_visible = false
 
-[node name="Profile" type="HBoxContainer" parent="PageContent" unique_id=572518356]
-visible = false
+[node name="Profile" type="Control" parent="PageContent" unique_id=354484154]
 layout_mode = 2
 metadata/_tab_index = 0
 
 [node name="Main" type="VBoxContainer" parent="PageContent/Profile" unique_id=1495707607]
-layout_mode = 2
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 0.4
+anchor_bottom = 1.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 2.0
 theme_override_constants/separation = 0
@@ -536,7 +489,6 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 1
-theme_override_font_sizes/font_size = 28
 text = "Level 1"
 vertical_alignment = 2
 
@@ -554,175 +506,649 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
 mouse_filter = 2
-max_value = 100.0
-show_percentage = true
 theme_override_font_sizes/font_size = 24
 rounded = true
 
-[node name="MarginBottom" type="Control" parent="PageContent/Profile/Main" unique_id=306449287]
-custom_minimum_size = Vector2(0, 40)
-layout_mode = 2
+[node name="Data" type="VBoxContainer" parent="PageContent/Profile" unique_id=880862156]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.4
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 16
 
-[node name="Data" type="PanelContainer" parent="PageContent/Profile" unique_id=2116557187]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_stretch_ratio = 3.0
-theme_override_styles/panel = SubResource("StyleBoxEmpty_moh5i")
-
-[node name="DataColumn" type="VBoxContainer" parent="PageContent/Profile/Data" unique_id=825565539]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_stretch_ratio = 3.0
-theme_override_constants/separation = 40
-alignment = 1
-
-[node name="ProfileDescRow" type="HBoxContainer" parent="PageContent/Profile/Data/DataColumn" unique_id=1273076522]
-custom_maximum_size = Vector2(-1, 380)
+[node name="ProfileDescRow" type="HBoxContainer" parent="PageContent/Profile/Data" unique_id=1273076522]
 layout_mode = 2
 size_flags_vertical = 3
-size_flags_stretch_ratio = 4.0
-theme_override_constants/separation = 20
-alignment = 1
+size_flags_stretch_ratio = 2.0
+theme_override_constants/separation = 16
 
-[node name="ProfileDescription" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow" unique_id=124274308]
-unique_name_in_owner = true
-custom_maximum_size = Vector2(650, -1)
+[node name="DescCard" type="Panel" parent="PageContent/Profile/Data/ProfileDescRow" unique_id=385996466]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_vertical = 1
-theme_override_font_sizes/font_size = 32
-theme_override_styles/normal = SubResource("StyleBoxFlat_2xvos")
-text = "个人简介"
-autowrap_mode = 2
+theme_type_variation = &"PanelCard"
 
-[node name="RankColumn" type="VBoxContainer" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow" unique_id=707784553]
-custom_minimum_size = Vector2(400, 0)
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/ProfileDescRow/DescCard" unique_id=990002003]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10
+
+[node name="Head" type="HBoxContainer" parent="PageContent/Profile/Data/ProfileDescRow/DescCard/Box" unique_id=990002004]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="RankTotal" type="Panel" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn" unique_id=569037342]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 150)
+[node name="Titles" type="VBoxContainer" parent="PageContent/Profile/Data/ProfileDescRow/DescCard/Box/Head" unique_id=990002005]
 layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Eyebrow" type="Label" parent="PageContent/Profile/Data/ProfileDescRow/DescCard/Box/Head/Titles" unique_id=990002006]
+layout_mode = 2
+theme_type_variation = &"LabelAccent"
+theme_override_font_sizes/font_size = 13
+text = "PLAYER NOTE"
+
+[node name="Title" type="Label" parent="PageContent/Profile/Data/ProfileDescRow/DescCard/Box/Head/Titles" unique_id=990002007]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "个人简介"
+
+[node name="ProfileDescription" type="RichTextLabel" parent="PageContent/Profile/Data/ProfileDescRow/DescCard/Box" unique_id=124274308]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 130)
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+text = "desc"
+scroll_active = false
+autowrap_mode = 2
+
+[node name="RankRow" type="HBoxContainer" parent="PageContent/Profile/Data/ProfileDescRow" unique_id=707784553]
+custom_minimum_size = Vector2(450, 0)
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="RankTotal" type="PanelContainer" parent="PageContent/Profile/Data/ProfileDescRow/RankRow" unique_id=569037342]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 133)
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_moh5i")
 
-[node name="RankTotalCaption" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankTotal" unique_id=5253447]
-layout_mode = 1
-anchors_preset = -1
-anchor_right = 0.6
-anchor_bottom = 0.5
-theme_override_font_sizes/font_size = 32
-text = "Ranking"
-horizontal_alignment = 1
-vertical_alignment = 2
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/ProfileDescRow/RankRow/RankTotal" unique_id=990001001]
+layout_mode = 2
+theme_override_constants/separation = 4
+alignment = 1
 
-[node name="RankTotalValue" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankTotal" unique_id=995132753]
+[node name="RankTotalCaption" type="Label" parent="PageContent/Profile/Data/ProfileDescRow/RankRow/RankTotal/Box" unique_id=5253447]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = -1
-anchor_top = 0.5
-anchor_right = 0.6
-anchor_bottom = 1.0
-theme_override_font_sizes/font_size = 48
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 17
+text = "全球排名"
+horizontal_alignment = 1
+
+[node name="RankTotalValue" type="Label" parent="PageContent/Profile/Data/ProfileDescRow/RankRow/RankTotal/Box" unique_id=995132753]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
 text = "#0"
 horizontal_alignment = 1
 
-[node name="RankTotalCount" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankTotal" unique_id=396939373]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.6
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_right = -50.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 48
-text = "Total"
-horizontal_alignment = 2
-vertical_alignment = 1
-
-[node name="RankPast" type="Panel" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn" unique_id=634216873]
-custom_minimum_size = Vector2(0, 100)
+[node name="RankTotalCount" type="Label" parent="PageContent/Profile/Data/ProfileDescRow/RankRow/RankTotal/Box" unique_id=396939373]
+unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 13
+text = "完成谱面后参与排名"
+horizontal_alignment = 1
+
+[node name="RankPast" type="PanelContainer" parent="PageContent/Profile/Data/ProfileDescRow/RankRow" unique_id=634216873]
+custom_minimum_size = Vector2(0, 133)
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_ag846")
 
-[node name="RankPastValue" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast" unique_id=1103544077]
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/ProfileDescRow/RankRow/RankPast" unique_id=990001002]
+layout_mode = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="RankPastYear" type="Label" parent="PageContent/Profile/Data/ProfileDescRow/RankRow/RankPast/Box" unique_id=76458199]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = -1
-anchor_right = 0.6
-anchor_bottom = 1.0
-theme_override_font_sizes/font_size = 48
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "2025 年度"
+horizontal_alignment = 1
+
+[node name="RankPastValue" type="Label" parent="PageContent/Profile/Data/ProfileDescRow/RankRow/RankPast/Box" unique_id=1103544077]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
 text = "#1"
 horizontal_alignment = 1
-vertical_alignment = 1
 
-[node name="RankPastYear" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast" unique_id=76458199]
-unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.6
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_right = -50.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 48
-text = "2025"
-horizontal_alignment = 2
-vertical_alignment = 1
-
-[node name="RankPast2" type="Panel" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn" unique_id=1465903314]
-custom_minimum_size = Vector2(0, 100)
+[node name="RankPast2" type="PanelContainer" parent="PageContent/Profile/Data/ProfileDescRow/RankRow" unique_id=1465903314]
+custom_minimum_size = Vector2(0, 133)
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_styles/panel = SubResource("StyleBoxFlat_j7lut")
 
-[node name="RankPast2Value" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast2" unique_id=1428837707]
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/ProfileDescRow/RankRow/RankPast2" unique_id=990001003]
+layout_mode = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="RankPast2Year" type="Label" parent="PageContent/Profile/Data/ProfileDescRow/RankRow/RankPast2/Box" unique_id=2051562825]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = -1
-anchor_right = 0.6
-anchor_bottom = 1.0
-theme_override_font_sizes/font_size = 48
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "2024 年度"
+horizontal_alignment = 1
+
+[node name="RankPast2Value" type="Label" parent="PageContent/Profile/Data/ProfileDescRow/RankRow/RankPast2/Box" unique_id=1428837707]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
 text = "#1"
 horizontal_alignment = 1
-vertical_alignment = 1
 
-[node name="RankPast2Year" type="Label" parent="PageContent/Profile/Data/DataColumn/ProfileDescRow/RankColumn/RankPast2" unique_id=2051562825]
+[node name="StatsPanel" type="Panel" parent="PageContent/Profile/Data" unique_id=159169113]
 unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+size_flags_stretch_ratio = 2.2
+theme_type_variation = &"PanelCard"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/StatsPanel" unique_id=990002011]
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.6
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_right = -50.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 48
-text = "2024"
-horizontal_alignment = 2
-vertical_alignment = 1
+grow_vertical = 2
+theme_override_constants/separation = 10
 
-[node name="RecentPlayPanel" type="PanelContainer" parent="PageContent/Profile/Data/DataColumn" unique_id=311090071]
+[node name="Head" type="HBoxContainer" parent="PageContent/Profile/Data/StatsPanel/Box" unique_id=990002012]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Titles" type="VBoxContainer" parent="PageContent/Profile/Data/StatsPanel/Box/Head" unique_id=990002013]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Eyebrow" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/Head/Titles" unique_id=990002014]
+layout_mode = 2
+theme_type_variation = &"LabelAccent"
+theme_override_font_sizes/font_size = 13
+text = "PLAYER STATS"
+
+[node name="Title" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/Head/Titles" unique_id=990002015]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "数据概览"
+
+[node name="StatGrid" type="GridContainer" parent="PageContent/Profile/Data/StatsPanel/Box" unique_id=990001004]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 10
+columns = 4
+
+[node name="StatTilePlays" type="Panel" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid" unique_id=1251232086]
+custom_minimum_size = Vector2(0, 78)
+clip_contents = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSunken"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTilePlays" unique_id=990002030]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="StatPlays" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTilePlays/Box" unique_id=990001007]
 unique_name_in_owner = true
 layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "0"
+
+[node name="StatPlaysCaption" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTilePlays/Box" unique_id=990001008]
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 15
+text = "完整游玩"
+
+[node name="StatTileCharts" type="Panel" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid" unique_id=265911811]
+custom_minimum_size = Vector2(0, 78)
+clip_contents = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSunken"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileCharts" unique_id=990002031]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="StatCharts" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileCharts/Box" unique_id=990001011]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "0"
+
+[node name="StatChartsCaption" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileCharts/Box" unique_id=990001012]
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 15
+text = "游玩谱面"
+
+[node name="StatTileAccuracy" type="Panel" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid" unique_id=109225511]
+custom_minimum_size = Vector2(0, 78)
+clip_contents = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSunken"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileAccuracy" unique_id=990002032]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="StatAccuracy" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileAccuracy/Box" unique_id=990001015]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "0.00%"
+
+[node name="StatAccuracyCaption" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileAccuracy/Box" unique_id=990001016]
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 15
+text = "平均准确率"
+
+[node name="StatTileScore" type="Panel" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid" unique_id=1805353225]
+custom_minimum_size = Vector2(0, 78)
+clip_contents = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSunken"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileScore" unique_id=990002033]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="StatScore" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileScore/Box" unique_id=990001019]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "0"
+
+[node name="StatScoreCaption" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileScore/Box" unique_id=990001020]
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 15
+text = "平均分数"
+
+[node name="StatTileAvgPp" type="Panel" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid" unique_id=16487713]
+custom_minimum_size = Vector2(0, 78)
+clip_contents = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSunken"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileAvgPp" unique_id=990002034]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="StatAvgPp" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileAvgPp/Box" unique_id=990001023]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "0.00"
+
+[node name="StatAvgPpCaption" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileAvgPp/Box" unique_id=990001024]
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 15
+text = "平均 PP"
+
+[node name="StatTileBestPp" type="Panel" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid" unique_id=403993557]
+custom_minimum_size = Vector2(0, 78)
+clip_contents = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSunken"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileBestPp" unique_id=990002035]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="StatBestPp" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileBestPp/Box" unique_id=990001027]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "0.00"
+
+[node name="StatBestPpCaption" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileBestPp/Box" unique_id=990001028]
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 15
+text = "单曲最佳 PP"
+
+[node name="StatTileCombo" type="Panel" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid" unique_id=1416868616]
+custom_minimum_size = Vector2(0, 78)
+clip_contents = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSunken"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileCombo" unique_id=990002036]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="StatCombo" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileCombo/Box" unique_id=990001031]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "0"
+
+[node name="StatComboCaption" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileCombo/Box" unique_id=990001032]
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 15
+text = "最大连击"
+
+[node name="StatTileTime" type="Panel" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid" unique_id=214935518]
+custom_minimum_size = Vector2(0, 78)
+clip_contents = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelSunken"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileTime" unique_id=990002037]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="StatTime" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileTime/Box" unique_id=990001035]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "0:00"
+
+[node name="StatTimeCaption" type="Label" parent="PageContent/Profile/Data/StatsPanel/Box/StatGrid/StatTileTime/Box" unique_id=990001036]
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 15
+text = "累计演奏"
+
+[node name="InsightsRow" type="HBoxContainer" parent="PageContent/Profile/Data" unique_id=990001037]
+layout_mode = 2
 size_flags_vertical = 3
-size_flags_stretch_ratio = 5.0
-theme_override_styles/panel = SubResource("StyleBoxFlat_2xvos")
+size_flags_stretch_ratio = 3.0
+theme_override_constants/separation = 16
 
-[node name="PlayColumn" type="VBoxContainer" parent="PageContent/Profile/Data/DataColumn/RecentPlayPanel" unique_id=1264760350]
+[node name="GradePanel" type="Panel" parent="PageContent/Profile/Data/InsightsRow" unique_id=1771810384]
+unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelCard"
 
-[node name="PlayCaption" type="Label" parent="PageContent/Profile/Data/DataColumn/RecentPlayPanel/PlayColumn" unique_id=644578656]
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/InsightsRow/GradePanel" unique_id=990002041]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 8
+
+[node name="Head" type="HBoxContainer" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box" unique_id=990002042]
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
-text = "最近游玩"
+theme_override_constants/separation = 12
 
-[node name="List" type="ScrollContainer" parent="PageContent/Profile/Data/DataColumn/RecentPlayPanel/PlayColumn" unique_id=1097666326]
+[node name="Titles" type="VBoxContainer" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box/Head" unique_id=990002043]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Eyebrow" type="Label" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box/Head/Titles" unique_id=990002044]
+layout_mode = 2
+theme_type_variation = &"LabelAccent"
+theme_override_font_sizes/font_size = 13
+text = "RANK MIX"
+
+[node name="Title" type="Label" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box/Head/Titles" unique_id=990002045]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "成绩评级构成"
+
+[node name="GradeRingCount" type="Label" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box/Head" unique_id=990001044]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 8
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 14
+text = "0 次记录"
+horizontal_alignment = 2
+
+[node name="Body" type="HBoxContainer" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box" unique_id=990001045]
 layout_mode = 2
 size_flags_vertical = 3
+theme_override_constants/separation = 18
 
-[node name="PlayRecordList" type="VBoxContainer" parent="PageContent/Profile/Data/DataColumn/RecentPlayPanel/PlayColumn/List" unique_id=615279763]
+[node name="GradeRing" type="Control" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box/Body" unique_id=990001046]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 150)
 layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+script = ExtResource("6_ring")
+
+[node name="Center" type="VBoxContainer" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box/Body/GradeRing" unique_id=990001047]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="GradeRingDominant" type="Label" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box/Body/GradeRing/Center" unique_id=990001048]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 40
+text = "-"
+horizontal_alignment = 1
+
+[node name="Caption" type="Label" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box/Body/GradeRing/Center" unique_id=990001049]
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 12
+text = "最常取得"
+horizontal_alignment = 1
+
+[node name="GradeLegend" type="VBoxContainer" parent="PageContent/Profile/Data/InsightsRow/GradePanel/Box/Body" unique_id=990001050]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 2
+
+[node name="JudgmentPanel" type="Panel" parent="PageContent/Profile/Data/InsightsRow" unique_id=1811285392]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"PanelCard"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Profile/Data/InsightsRow/JudgmentPanel" unique_id=990002051]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 8
+
+[node name="Head" type="HBoxContainer" parent="PageContent/Profile/Data/InsightsRow/JudgmentPanel/Box" unique_id=990002052]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Titles" type="VBoxContainer" parent="PageContent/Profile/Data/InsightsRow/JudgmentPanel/Box/Head" unique_id=990002053]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Eyebrow" type="Label" parent="PageContent/Profile/Data/InsightsRow/JudgmentPanel/Box/Head/Titles" unique_id=990002054]
+layout_mode = 2
+theme_type_variation = &"LabelAccent"
+theme_override_font_sizes/font_size = 13
+text = "TIMING MIX"
+
+[node name="Title" type="Label" parent="PageContent/Profile/Data/InsightsRow/JudgmentPanel/Box/Head/Titles" unique_id=990002055]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "判定构成"
+
+[node name="JudgmentTotal" type="Label" parent="PageContent/Profile/Data/InsightsRow/JudgmentPanel/Box/Head" unique_id=990001057]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 8
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 14
+text = "0 个音符"
+horizontal_alignment = 2
+
+[node name="Body" type="VBoxContainer" parent="PageContent/Profile/Data/InsightsRow/JudgmentPanel/Box" unique_id=990001058]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="JudgmentStack" type="HBoxContainer" parent="PageContent/Profile/Data/InsightsRow/JudgmentPanel/Box/Body" unique_id=990001059]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="JudgmentLegend" type="GridContainer" parent="PageContent/Profile/Data/InsightsRow/JudgmentPanel/Box/Body" unique_id=990001060]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 10
+columns = 5
 
 [node name="History" type="Control" parent="PageContent" unique_id=1889094256]
+visible = false
 layout_mode = 2
 metadata/_tab_index = 1
 
@@ -1001,111 +1427,79 @@ custom_minimum_size = Vector2(40, 0)
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Edit" type="PanelContainer" parent="PageContent" unique_id=638331925]
+[node name="Edit" type="Control" parent="PageContent" unique_id=1170624072]
 visible = false
 layout_mode = 2
-theme_override_styles/panel = SubResource("StyleBoxEmpty_ng81m")
+theme = ExtResource("4_xsa8c")
 metadata/_tab_index = 2
 
-[node name="EditRow" type="HBoxContainer" parent="PageContent/Edit" unique_id=828755108]
-layout_mode = 2
-size_flags_vertical = 4
-theme_override_constants/separation = 50
-
-[node name="ProfileEditColumn" type="VBoxContainer" parent="PageContent/Edit/EditRow" unique_id=1597922371]
-custom_minimum_size = Vector2(0, 720)
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-size_flags_stretch_ratio = 5.0
+[node name="Columns" type="HBoxContainer" parent="PageContent/Edit" unique_id=990003001]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 40.0
+offset_top = 30.0
+offset_right = -40.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 2
 theme_override_constants/separation = 20
+
+[node name="AvatarColumn" type="VBoxContainer" parent="PageContent/Edit/Columns" unique_id=990003002]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 20
+
+[node name="AvatarCard" type="Panel" parent="PageContent/Edit/Columns/AvatarColumn" unique_id=1254361823]
+layout_mode = 2
+size_flags_vertical = 3
+theme_type_variation = &"PanelCard"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard" unique_id=990003005]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 14
+
+[node name="Head" type="HBoxContainer" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard/Box" unique_id=990003006]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Titles" type="VBoxContainer" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard/Box/Head" unique_id=990003007]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
 alignment = 1
 
-[node name="NicknameTitle" type="Label" parent="PageContent/Edit/EditRow/ProfileEditColumn" unique_id=1934781578]
+[node name="Eyebrow" type="Label" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard/Box/Head/Titles" unique_id=990003008]
 layout_mode = 2
-theme_override_font_sizes/font_size = 36
-text = "昵称"
+theme_type_variation = &"LabelAccent"
+theme_override_font_sizes/font_size = 13
+text = "AVATAR"
 
-[node name="Nickname" type="HBoxContainer" parent="PageContent/Edit/EditRow/ProfileEditColumn" unique_id=523899921]
-custom_minimum_size = Vector2(0, 60)
+[node name="Title" type="Label" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard/Box/Head/Titles" unique_id=990003009]
 layout_mode = 2
-theme_override_constants/separation = 50
+theme_override_font_sizes/font_size = 26
+text = "头像"
 
-[node name="NicknameEdit" type="LineEdit" parent="PageContent/Edit/EditRow/ProfileEditColumn/Nickname" unique_id=752248277]
+[node name="AvatarPreviewBorder" type="PanelContainer" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard/Box" unique_id=1644323787]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 60)
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 4
-
-[node name="NicknameConfirmBtn" type="Button" parent="PageContent/Edit/EditRow/ProfileEditColumn/Nickname" unique_id=190632065]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 60)
-layout_mode = 2
-theme_override_font_sizes/font_size = 32
-theme_override_styles/normal = SubResource("StyleBoxFlat_b1c4s")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_6cgaj")
-theme_override_styles/hover = SubResource("StyleBoxFlat_0xjso")
-text = "保存"
-
-[node name="ProfileEditGap" type="Control" parent="PageContent/Edit/EditRow/ProfileEditColumn" unique_id=1002154331]
-custom_minimum_size = Vector2(0, 60)
-layout_mode = 2
-
-[node name="DescTitle" type="Label" parent="PageContent/Edit/EditRow/ProfileEditColumn" unique_id=1497959047]
-layout_mode = 2
-theme_override_font_sizes/font_size = 42
-text = "简介"
-
-[node name="DescBox" type="HBoxContainer" parent="PageContent/Edit/EditRow/ProfileEditColumn" unique_id=1845282896]
-custom_minimum_size = Vector2(0, 80)
-layout_mode = 2
-theme_override_constants/separation = 50
-
-[node name="DescEdit" type="LineEdit" parent="PageContent/Edit/EditRow/ProfileEditColumn/DescBox" unique_id=1121001614]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 400)
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="DescConfirmBtn" type="Button" parent="PageContent/Edit/EditRow/ProfileEditColumn/DescBox" unique_id=2128739761]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 60)
-layout_mode = 2
-size_flags_vertical = 8
-theme_override_font_sizes/font_size = 32
-theme_override_styles/normal = SubResource("StyleBoxFlat_b1c4s")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_6cgaj")
-theme_override_styles/hover = SubResource("StyleBoxFlat_0xjso")
-text = "保存"
-
-[node name="OtherEditColumn" type="VBoxContainer" parent="PageContent/Edit/EditRow" unique_id=1977959493]
-custom_maximum_size = Vector2(-1, 720)
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_stretch_ratio = 4.0
-theme_override_constants/separation = 15
-alignment = 1
-
-[node name="AvatarEdit" type="HBoxContainer" parent="PageContent/Edit/EditRow/OtherEditColumn" unique_id=1186454364]
-layout_mode = 2
-size_flags_vertical = 6
-
-[node name="AvatarPreviewBorder" type="PanelContainer" parent="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit" unique_id=1644323787]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(370, 370)
+custom_minimum_size = Vector2(300, 300)
 clip_contents = true
 layout_mode = 2
+size_flags_horizontal = 4
 theme_override_styles/panel = SubResource("StyleBoxFlat_3xm0o")
 script = ExtResource("4_sgab8")
 
-[node name="AvatarAdjustBar" type="VBoxContainer" parent="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit" unique_id=1816755062]
-layout_mode = 2
-size_flags_horizontal = 6
-theme_override_constants/separation = 15
-alignment = 2
-
-[node name="AvatarZoomSlider" type="HSlider" parent="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar" unique_id=1118033521]
+[node name="AvatarZoomSlider" type="HSlider" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard/Box" unique_id=1118033521]
 unique_name_in_owner = true
 visible = false
 custom_minimum_size = Vector2(0, 30)
@@ -1115,75 +1509,305 @@ max_value = 1.5
 step = 0.01
 value = 1.0
 
-[node name="AvatarUploadBtn" type="Button" parent="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar" unique_id=907560232]
-custom_minimum_size = Vector2(180, 70)
+[node name="Btns" type="HBoxContainer" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard/Box" unique_id=990003010]
 layout_mode = 2
-size_flags_horizontal = 10
-size_flags_vertical = 8
-theme_override_font_sizes/font_size = 32
-theme_override_styles/normal = SubResource("StyleBoxFlat_b1c4s")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_6cgaj")
-theme_override_styles/hover = SubResource("StyleBoxFlat_0xjso")
+size_flags_vertical = 10
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="AvatarUploadBtn" type="Button" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard/Box/Btns" unique_id=907560232]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180, 62)
+layout_mode = 2
+theme_type_variation = &"ButtonPrimary"
+theme_override_font_sizes/font_size = 30
 text = "选取头像"
 
-[node name="AvatarSaveBtn" type="Button" parent="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar" unique_id=228919255]
+[node name="AvatarSaveBtn" type="Button" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard/Box/Btns" unique_id=228919255]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(180, 70)
+custom_minimum_size = Vector2(130, 62)
 layout_mode = 2
-size_flags_horizontal = 10
-size_flags_vertical = 8
-theme_override_font_sizes/font_size = 32
-theme_override_styles/normal = SubResource("StyleBoxFlat_b1c4s")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_6cgaj")
-theme_override_styles/hover = SubResource("StyleBoxFlat_0xjso")
+theme_type_variation = &"ButtonPrimary"
+theme_override_font_sizes/font_size = 30
 text = "保存"
 
-[node name="PasswordTitle" type="Label" parent="PageContent/Edit/EditRow/OtherEditColumn" unique_id=704805091]
+[node name="NicknameCard" type="Panel" parent="PageContent/Edit/Columns/AvatarColumn" unique_id=930669385]
+custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
-theme_override_font_sizes/font_size = 42
+theme_type_variation = &"PanelCard"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Edit/Columns/AvatarColumn/NicknameCard" unique_id=990003022]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10
+
+[node name="Head" type="HBoxContainer" parent="PageContent/Edit/Columns/AvatarColumn/NicknameCard/Box" unique_id=990003023]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Titles" type="VBoxContainer" parent="PageContent/Edit/Columns/AvatarColumn/NicknameCard/Box/Head" unique_id=990003024]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Eyebrow" type="Label" parent="PageContent/Edit/Columns/AvatarColumn/NicknameCard/Box/Head/Titles" unique_id=990003025]
+layout_mode = 2
+theme_type_variation = &"LabelAccent"
+theme_override_font_sizes/font_size = 13
+text = "PROFILE"
+
+[node name="Title" type="Label" parent="PageContent/Edit/Columns/AvatarColumn/NicknameCard/Box/Head/Titles" unique_id=990003026]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "昵称"
+
+[node name="Nickname" type="HBoxContainer" parent="PageContent/Edit/Columns/AvatarColumn/NicknameCard/Box" unique_id=990003027]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="NicknameEdit" type="LineEdit" parent="PageContent/Edit/Columns/AvatarColumn/NicknameCard/Box/Nickname" unique_id=752248277]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+
+[node name="NicknameConfirmBtn" type="Button" parent="PageContent/Edit/Columns/AvatarColumn/NicknameCard/Box/Nickname" unique_id=190632065]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 56)
+layout_mode = 2
+theme_type_variation = &"ButtonPrimary"
+theme_override_font_sizes/font_size = 28
+text = "保存"
+
+[node name="InfoColumn" type="VBoxContainer" parent="PageContent/Edit/Columns" unique_id=990003030]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 20
+
+[node name="DescCard" type="Panel" parent="PageContent/Edit/Columns/InfoColumn" unique_id=1531597313]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+theme_type_variation = &"PanelCard"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Edit/Columns/InfoColumn/DescCard" unique_id=990003033]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10
+
+[node name="Head" type="HBoxContainer" parent="PageContent/Edit/Columns/InfoColumn/DescCard/Box" unique_id=990003034]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Titles" type="VBoxContainer" parent="PageContent/Edit/Columns/InfoColumn/DescCard/Box/Head" unique_id=990003035]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Eyebrow" type="Label" parent="PageContent/Edit/Columns/InfoColumn/DescCard/Box/Head/Titles" unique_id=990003036]
+layout_mode = 2
+theme_type_variation = &"LabelAccent"
+theme_override_font_sizes/font_size = 13
+text = "BIO"
+
+[node name="Title" type="Label" parent="PageContent/Edit/Columns/InfoColumn/DescCard/Box/Head/Titles" unique_id=990003037]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "简介"
+
+[node name="DescBox" type="HBoxContainer" parent="PageContent/Edit/Columns/InfoColumn/DescCard/Box" unique_id=990003038]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="DescEdit" type="LineEdit" parent="PageContent/Edit/Columns/InfoColumn/DescCard/Box/DescBox" unique_id=1121001614]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+
+[node name="DescConfirmBtn" type="Button" parent="PageContent/Edit/Columns/InfoColumn/DescCard/Box/DescBox" unique_id=2128739761]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 56)
+layout_mode = 2
+theme_type_variation = &"ButtonPrimary"
+theme_override_font_sizes/font_size = 28
+text = "保存"
+
+[node name="PasswordCard" type="Panel" parent="PageContent/Edit/Columns/InfoColumn" unique_id=1279065737]
+layout_mode = 2
+size_flags_vertical = 3
+theme_type_variation = &"PanelCard"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard" unique_id=990003042]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 14
+
+[node name="Head" type="HBoxContainer" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box" unique_id=990003043]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Titles" type="VBoxContainer" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box/Head" unique_id=990003044]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Eyebrow" type="Label" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box/Head/Titles" unique_id=990003045]
+layout_mode = 2
+theme_type_variation = &"LabelAccent"
+theme_override_font_sizes/font_size = 13
+text = "ACCOUNT"
+
+[node name="Title" type="Label" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box/Head/Titles" unique_id=990003046]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "修改密码"
+
+[node name="OldPasswordField" type="VBoxContainer" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box" unique_id=990003047]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box/OldPasswordField" unique_id=990003048]
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 18
 text = "原密码"
-vertical_alignment = 2
 
-[node name="Password" type="HBoxContainer" parent="PageContent/Edit/EditRow/OtherEditColumn" unique_id=263827390]
-custom_minimum_size = Vector2(0, 60)
-layout_mode = 2
-theme_override_constants/separation = 50
-
-[node name="PasswordEdit" type="LineEdit" parent="PageContent/Edit/EditRow/OtherEditColumn/Password" unique_id=195476193]
+[node name="PasswordEdit" type="LineEdit" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box/OldPasswordField" unique_id=195476193]
 unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="PasswordGap" type="Control" parent="PageContent/Edit/EditRow/OtherEditColumn/Password" unique_id=302538164]
-custom_minimum_size = Vector2(120, 60)
+custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
 
-[node name="NewPasswordTitle" type="Label" parent="PageContent/Edit/EditRow/OtherEditColumn" unique_id=1215803896]
+[node name="NewPasswordField" type="VBoxContainer" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box" unique_id=990003049]
 layout_mode = 2
-theme_override_font_sizes/font_size = 42
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box/NewPasswordField" unique_id=990003050]
+layout_mode = 2
+theme_type_variation = &"LabelSecondary"
+theme_override_font_sizes/font_size = 18
 text = "新密码"
-vertical_alignment = 2
 
-[node name="NewPassword" type="HBoxContainer" parent="PageContent/Edit/EditRow/OtherEditColumn" unique_id=875889579]
-custom_minimum_size = Vector2(0, 60)
+[node name="NewPassword" type="HBoxContainer" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box/NewPasswordField" unique_id=990003051]
 layout_mode = 2
-theme_override_constants/separation = 50
+theme_override_constants/separation = 16
 
-[node name="NewPasswordEdit" type="LineEdit" parent="PageContent/Edit/EditRow/OtherEditColumn/NewPassword" unique_id=120020574]
+[node name="NewPasswordEdit" type="LineEdit" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box/NewPasswordField/NewPassword" unique_id=120020574]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+
+[node name="PasswordConfirmBtn" type="Button" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box/NewPasswordField/NewPassword" unique_id=1395434135]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 56)
+layout_mode = 2
+theme_type_variation = &"ButtonPrimary"
+theme_override_font_sizes/font_size = 28
+text = "保存"
+
+[node name="Hint" type="Label" parent="PageContent/Edit/Columns/InfoColumn/PasswordCard/Box" unique_id=990003074]
+layout_mode = 2
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 14
+text = "修改成功后需要用新密码重新登录"
+autowrap_mode = 2
+
+[node name="DraftCard" type="Panel" parent="PageContent/Edit/Columns" unique_id=783102871]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_type_variation = &"PanelCard"
+
+[node name="Box" type="VBoxContainer" parent="PageContent/Edit/Columns/DraftCard" unique_id=990003063]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 18.0
+offset_right = -22.0
+offset_bottom = -18.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 12
+
+[node name="Head" type="HBoxContainer" parent="PageContent/Edit/Columns/DraftCard/Box" unique_id=990003064]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Titles" type="VBoxContainer" parent="PageContent/Edit/Columns/DraftCard/Box/Head" unique_id=990003065]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Eyebrow" type="Label" parent="PageContent/Edit/Columns/DraftCard/Box/Head/Titles" unique_id=990003066]
+layout_mode = 2
+theme_type_variation = &"LabelAccent"
+theme_override_font_sizes/font_size = 13
+text = "DRAFT BOX"
+
+[node name="Title" type="Label" parent="PageContent/Edit/Columns/DraftCard/Box/Head/Titles" unique_id=990003067]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "待上传曲目"
+
+[node name="DraftCount" type="Label" parent="PageContent/Edit/Columns/DraftCard/Box/Head" unique_id=990003068]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 8
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 14
+text = "0 首"
+horizontal_alignment = 2
+
+[node name="DraftScroll" type="ScrollContainer" parent="PageContent/Edit/Columns/DraftCard/Box" unique_id=990003069]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="DraftList" type="VBoxContainer" parent="PageContent/Edit/Columns/DraftCard/Box/DraftScroll" unique_id=990003070]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_vertical = 5
+theme_override_constants/separation = 10
 
-[node name="PasswordConfirmBtn" type="Button" parent="PageContent/Edit/EditRow/OtherEditColumn/NewPassword" unique_id=1395434135]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 60)
+[node name="Hint" type="Label" parent="PageContent/Edit/Columns/DraftCard/Box" unique_id=990003075]
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
-theme_override_styles/normal = SubResource("StyleBoxFlat_b1c4s")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_6cgaj")
-theme_override_styles/hover = SubResource("StyleBoxFlat_0xjso")
-text = "保存"
+theme_type_variation = &"LabelMuted"
+theme_override_font_sizes/font_size = 14
+text = "草稿只保存在本机，尚未上传到社区"
+autowrap_mode = 2
 
 [node name="Navi" type="PanelContainer" parent="." unique_id=2000610427]
 unique_name_in_owner = true
@@ -1244,10 +1868,3 @@ toggle_mode = true
 button_group = SubResource("ButtonGroup_ag846")
 icon = SubResource("AtlasTexture_p7r7c")
 icon_alignment = 1
-
-[connection signal="pressed" from="PageContent/Edit/EditRow/ProfileEditColumn/Nickname/NicknameConfirmBtn" to="." method="_on_save_nickname_btn_pressed"]
-[connection signal="pressed" from="PageContent/Edit/EditRow/ProfileEditColumn/DescBox/DescConfirmBtn" to="." method="_on_save_desc_btn_pressed"]
-[connection signal="value_changed" from="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar/AvatarZoomSlider" to="." method="_on_avatar_zoom_changed"]
-[connection signal="pressed" from="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar/AvatarUploadBtn" to="." method="_on_upload_avatar_btn_pressed"]
-[connection signal="pressed" from="PageContent/Edit/EditRow/OtherEditColumn/AvatarEdit/AvatarAdjustBar/AvatarSaveBtn" to="." method="_on_save_avatar_btn_pressed"]
-[connection signal="pressed" from="PageContent/Edit/EditRow/OtherEditColumn/NewPassword/PasswordConfirmBtn" to="." method="_on_save_pwd_btn_pressed"]

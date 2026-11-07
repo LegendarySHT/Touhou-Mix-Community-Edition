@@ -991,6 +991,21 @@ corner_radius_top_right = 12
 corner_radius_bottom_right = 12
 corner_radius_bottom_left = 12
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panelcard_panel"]
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(0, 0, 0, 0.28)
+shadow_size = 10
+shadow_offset = Vector2(0, 3)
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panelcardcover_panel"]
 bg_color = Color(0.062, 0.078, 0.114, 1)
 border_width_left = 1
@@ -1413,6 +1428,8 @@ OptionButton/styles/hover_pressed = SubResource("StyleBoxFlat_bg4s2")
 OptionButton/styles/normal = SubResource("StyleBoxFlat_gb15f")
 OptionButton/styles/pressed = SubResource("StyleBoxFlat_sph85")
 Panel/styles/panel = SubResource("StyleBoxFlat_panel")
+PanelCard/base_type = &"Panel"
+PanelCard/styles/panel = SubResource("StyleBoxFlat_panelcard_panel")
 PanelCardCover/base_type = &"Panel"
 PanelCardCover/styles/panel = SubResource("StyleBoxFlat_panelcardcover_panel")
 PanelCardCoverCompact/base_type = &"Panel"
