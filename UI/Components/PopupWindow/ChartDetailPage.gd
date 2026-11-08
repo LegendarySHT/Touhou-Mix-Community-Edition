@@ -159,7 +159,7 @@ func _load_cover() -> void:
 		if tex:
 			%Cover.texture = tex
 			%Placeholder.visible = false
-	HttpImageLoader.load(url, self, on_cover, true)
+	HttpImageLoader.load(url, self, on_cover)
 
 func _kind_icon() -> Texture2D:
 	match str(_item.get("kind", "")):

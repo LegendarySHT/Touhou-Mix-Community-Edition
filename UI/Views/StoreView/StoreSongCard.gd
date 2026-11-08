@@ -149,8 +149,8 @@ func _load_cover() -> void:
 	if url.is_empty():
 		_release_pending_remote("")
 		return
-	# trust_cache：封面按谱面 hash 取，URL 相同内容就不会变，翻页回来直接读磁盘缓存，
-	# 不再逐张发条件请求（一页 24 张就是 24 次往返，翻页快慢全看网络抖动）
+	# 谱面封面 URL 里带谱面 hash，内容不会原地变：本地有缓存就直接读，
+	# 翻页回来不再逐张发请求（一页 24 张就是 24 次往返，快慢全看网络抖动）
 	_release_pending_remote(url)
 	var on_cover := func(tex: Texture2D) -> void:
 		if not is_instance_valid(self) or version != _cover_version:
@@ -158,7 +158,7 @@ func _load_cover() -> void:
 		if tex:
 			%Cover.texture = tex
 			%Placeholder.visible = false
-	HttpImageLoader.load(url, self, on_cover, true)
+	HttpImageLoader.load(url, self, on_cover)
 
 
 ## 卡片换绑后，上一张封面的请求就别再占着并发槽位了（排队中的直接撤掉）
