@@ -526,8 +526,9 @@ func _make_song_item(chart: Dictionary) -> Dictionary:
 		"likes": int(chart.get("likeCount", chart.get("upCount", -1))),
 		"dislikes": int(chart.get("dislikeCount", chart.get("downCount", -1))),
 		"uploaded_at": str(chart.get("uploadedAt", "")),
-		"cover_url": ("%s/api/charts/%s/cover" % [server, hash_str]) \
-			if (not server.is_empty() and not hash_str.is_empty()) else "",
+		# 封面 URL 必须带 coverVersion（服务端 30 天边缘缓存 + hash 不含封面内容），
+		# 统一走 CoverUrl 构造，见 Core/CoverUrl.gd
+		"cover_url": CoverUrl.from_chart(server, hash_str, chart),
 		"state": state,
 		"raw": chart,
 	}
@@ -1142,6 +1143,9 @@ func _get_download_hint(item: Dictionary) -> Dictionary:
 	return {
 		"fileSize": int(raw.get("fileSize", 0)),
 		"hasCover": bool(raw.get("hasCover", false)),
+		# 并行下载路径在元数据回来之前就要发封面请求，版本串只能从列表项预取；
+		# 缺这个键 → ResourceManager 退化成无版本 URL → 边缘旧图落成本地封面
+		"coverVersion": str(raw.get("coverVersion", "")),
 		"songName": str(raw.get("songName", "")),
 		"difficulty": str(raw.get("difficulty", "")),
 		"hasVocal": bool(raw.get("hasVocal", false)),

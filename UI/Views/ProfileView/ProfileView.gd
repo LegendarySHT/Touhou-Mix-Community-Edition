@@ -1040,8 +1040,9 @@ func _item_for_record(record: Dictionary, hash_str: String) -> Dictionary:
 		"plays": midi.trial_count if midi else -1,
 		"likes": midi.up_count if midi else -1,
 		"dislikes": midi.down_count if midi else -1,
-		"cover_url": ("%s/api/charts/%s/cover" % [server, hash_str]) \
-			if (has_cover and not server.is_empty()) else "",
+		# 成绩记录的封面 URL：服务端成绩接口已透出 coverVersion（2026-11-08），
+		# 与商店列表同一套构造，避免个人页封面停在边缘旧图
+		"cover_url": CoverUrl.from_chart(server, hash_str, record) if has_cover else "",
 	}
 
 
