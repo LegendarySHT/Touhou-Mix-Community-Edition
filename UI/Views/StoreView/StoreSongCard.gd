@@ -27,6 +27,8 @@ var item: Dictionary = {}
 
 var _has_ready := false
 var _cover_version := 0
+## 当前挂着的远程封面 URL（换绑时用来撤掉上一个请求）
+var _pending_cover_url := ""
 ## 鼠标按下位置：用于区分「点击卡片」与「拖动滚动」（触摸滚动时不要误开详情）
 var _press_pos := Vector2.INF
 
@@ -133,6 +135,7 @@ func _load_cover() -> void:
 	# 已下载的谱面直接用本地封面：省一次网络请求，也和曲库 / 播放页看到的是同一张
 	var local_path := ResourceManager.instance.get_local_cover_path(str(item.get("hash", "")))
 	if not local_path.is_empty():
+		_release_pending_remote("")
 		CoverLoader.request_load("store_card_%d" % get_instance_id(), local_path,
 			func(_path: String, tex: Texture2D, _ver: int) -> void:
 				if not is_instance_valid(self) or version != _cover_version:
@@ -144,9 +147,11 @@ func _load_cover() -> void:
 		return
 	var url := str(item.get("cover_url", ""))
 	if url.is_empty():
+		_release_pending_remote("")
 		return
 	# trust_cache：封面按谱面 hash 取，URL 相同内容就不会变，翻页回来直接读磁盘缓存，
 	# 不再逐张发条件请求（一页 24 张就是 24 次往返，翻页快慢全看网络抖动）
+	_release_pending_remote(url)
 	var on_cover := func(tex: Texture2D) -> void:
 		if not is_instance_valid(self) or version != _cover_version:
 			return
@@ -154,6 +159,15 @@ func _load_cover() -> void:
 			%Cover.texture = tex
 			%Placeholder.visible = false
 	HttpImageLoader.load(url, self, on_cover, true)
+
+
+## 卡片换绑后，上一张封面的请求就别再占着并发槽位了（排队中的直接撤掉）
+func _release_pending_remote(next_url: String) -> void:
+	if _pending_cover_url.is_empty() or _pending_cover_url == next_url:
+		_pending_cover_url = next_url
+		return
+	HttpImageLoader.cancel(_pending_cover_url, self)
+	_pending_cover_url = next_url
 
 
 ## 下载状态 → 按钮图标/文案/主色

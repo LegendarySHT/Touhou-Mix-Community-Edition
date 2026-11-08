@@ -19,9 +19,31 @@ const CONTENT_HASH_LENGTH := 32
 ## 缓存文件可用的图片扩展名（无法从 URL 判断时回退 .img，读取按文件内容解码）
 const IMAGE_EXTENSIONS: Array[String] = ["png", "jpg", "jpeg", "webp"]
 
+## 同时在途的图片请求上限。一页卡片会一口气要二十多张封面，而每条连接都要单独握手，
+## TLS 握手又在主线程轮询里做——全发出去会把帧时间和同域名的连接槽位占满，
+## 期间页面数据请求（/api/charts）也得跟着排队
+const MAX_CONCURRENT_REQUESTS := 6
+
+## 单张图片的请求超时（秒）：占着并发槽位的请求必须有终点，否则一条挂死的连接会永久堵住队列
+const REQUEST_TIMEOUT := 20.0
+
+## 连接槽：一条 HTTPRequest 长期复用。Godot 的 HTTPRequest 在 keep-alive 下允许
+## 对同一节点反复 request()，连接（含 TLS 会话）不会重开——一页 24 张封面只需
+## 建立 6 条连接，翻下一页时这 6 条还是热的，握手次数为 0
+class Slot:
+	var http: HTTPRequest
+	var host: String = ""
+	var busy: bool = false
+	## 刚刚完成请求的槽要等到下一帧才能再用（此时 requesting 还停在 RS_DONE，立刻 request() 会返回 ERR_BUSY）
+	var ready_frame: int = 0
+
 static var _texture_cache: Dictionary = {}   # url -> Texture2D
 static var _inflight: Dictionary = {}        # url -> Array[Dictionary{target, callback}]
 static var _holder: Node = null              # HTTPRequest 挂载节点（场景根，与列表项生命周期解耦）
+static var _active_requests: int = 0         # 已在途的请求数
+static var _waiting_requests: Array = []     # 超上限时排队：[{url, trust_cache}]
+static var _slots: Array = []                # 复用的连接槽（Slot）
+static var _pump_scheduled: bool = false     # 已排了一次「下一帧放行」，避免重复建计时器
 
 static func _get_holder() -> Node:
 	if _holder == null or not is_instance_valid(_holder):
@@ -59,7 +81,8 @@ static func load(url: String, target: Node, on_loaded: Callable, trust_cache: bo
 	if has_cache_file(url) and (trust_cache or _is_content_addressed(url)):
 		_load_from_cache_file(url, true)
 		return
-	_start_request(url, trust_cache)
+	if not _start_request(url, trust_cache):
+		_queue_request(url, trust_cache)
 
 ## 只读本地缓存：内存命中直接回调，磁盘命中走后台解码，都没有回调 null。
 ## 全程不发网络请求 —— 供「先用缓存占位、稍后联网刷新」的启动路径使用（如启动时的头像），
@@ -84,31 +107,171 @@ static func load_cached(url: String, target: Node, on_loaded: Callable) -> void:
 		on_loaded.call(tex)
 	)
 
-static func _start_request(url: String, trust_cache: bool = false) -> void:
+## 发起一次图片请求。返回 false 表示当前拿不到连接槽（并发已满 / 槽刚完成要等一帧），
+## 调用方负责把 URL 留在/放进队列，不要在函数内部自行入队（否则会和放行循环互相喂）
+static func _start_request(url: String, trust_cache: bool = false) -> bool:
 	var holder := _get_holder()
 	if holder == null:
 		_inflight.erase(url)
-		return
-	var http := HTTPRequest.new()
-	holder.add_child(http)
+		return true  # 没有可挂载的根节点：当作处理过了，别让 URL 永远排在队里
+	if _active_requests >= MAX_CONCURRENT_REQUESTS:
+		return false
+	var slot := _acquire_slot(holder, url)
+	if slot == null:
+		return false
+	_active_requests += 1
+	slot.busy = true
 	# 带本地记录的 ETag 发条件请求：内容未变时服务端只回 304（无响应体）
 	var headers := PackedStringArray()
 	var etag := _read_etag(url)
 	if not etag.is_empty():
 		headers.append("If-None-Match: %s" % etag)
-	var err := http.request(url, headers)
+	var err := slot.http.request(url, headers)
 	if err != OK:
-		http.queue_free()
+		slot.busy = false
+		# 这里不能同步调 _finish_request：它会立刻放行下一条，失败连锁时会一路递归下去。
+		# 直接还回槽位，交给下一帧的放行计时器继续
+		_active_requests = maxi(0, _active_requests - 1)
+		_schedule_pump()
 		# 请求发不出（离线/URL 非法）：本地有缓存就用缓存
 		if has_cache_file(url):
 			_load_from_cache_file(url)
 		else:
 			_finish_pending(url, null)
-		return
-	http.request_completed.connect(_on_completed.bind(url, http, trust_cache))
+		return true
+	slot.http.request_completed.connect(_on_completed.bind(url, trust_cache, slot), CONNECT_ONE_SHOT)
+	return true
 
-static func _on_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray, url: String, http: HTTPRequest, trust_cache: bool) -> void:
-	http.queue_free()
+
+## 取一个可用连接槽：优先同 host 的空闲槽（连接与 TLS 会话直接复用），
+## 没有就新开一条（上限 MAX_CONCURRENT_REQUESTS）；到达上限后复用空闲槽并换 host 重连
+static func _acquire_slot(holder: Node, url: String) -> Slot:
+	var host := _host_of(url)
+	var now := Engine.get_process_frames()
+	# 清掉场景树重建后失效的槽
+	for i in range(_slots.size() - 1, -1, -1):
+		var s: Slot = _slots[i]
+		if s.http == null or not is_instance_valid(s.http):
+			_slots.remove_at(i)
+	var idle: Slot = null
+	for s in _slots:
+		if s.busy or s.ready_frame > now:
+			continue
+		if s.host == host:
+			return s
+		if idle == null:
+			idle = s
+	if idle != null:
+		_rebind_slot(holder, idle, host)
+		return idle
+	if _slots.size() >= MAX_CONCURRENT_REQUESTS:
+		return null
+	var slot := Slot.new()
+	slot.http = _make_request_node(holder)
+	slot.host = host
+	_slots.append(slot)
+	return slot
+
+
+## 换 host：旧连接用不上了，换一条新的（host 变化只发生在服务器地址变更时）
+static func _rebind_slot(holder: Node, slot: Slot, host: String) -> void:
+	if slot.http != null and is_instance_valid(slot.http):
+		slot.http.queue_free()
+	slot.http = _make_request_node(holder)
+	slot.host = host
+
+
+static func _make_request_node(holder: Node) -> HTTPRequest:
+	var http := HTTPRequest.new()
+	http.timeout = REQUEST_TIMEOUT
+	http.accept_gzip = true
+	holder.add_child(http)
+	return http
+
+
+## 取 URL 的 host（连接复用的键）
+static func _host_of(url: String) -> String:
+	var idx := url.find("://")
+	if idx < 0:
+		return url.get_slice("/", 0)
+	return url.substr(idx + 3).get_slice("/", 0)
+
+
+## 释放一个并发槽位并放行排队项
+static func _finish_request() -> void:
+	_active_requests = maxi(0, _active_requests - 1)
+	_pump_waiting()
+	if not _waiting_requests.is_empty():
+		_schedule_pump()
+
+
+## 按先进先出放行排队项（同一页内的卡片保持从上到下的顺序）。
+## ⚠ 每次循环要么出队要么直接 return：拿不到连接槽时**必须**把条目留在队首退出，
+## 否则「刚完成的槽要等下一帧」这种情况下会原地反复入队、死循环卡死整个程序
+static func _pump_waiting() -> void:
+	while _active_requests < MAX_CONCURRENT_REQUESTS and not _waiting_requests.is_empty():
+		var next: Dictionary = _waiting_requests.pop_front()
+		var next_url := str(next.get("url", ""))
+		if next_url.is_empty() or not _inflight.has(next_url):
+			continue  # 等待者已全部撤走，别为它占槽
+		if not _start_request(next_url, bool(next.get("trust_cache", false))):
+			# 暂时拿不到连接槽：放回队首等下一次机会。
+			# 先出队再发起，是为了失败路径里 _finish_request 递归回来时不会再取到同一条
+			_waiting_requests.push_front(next)
+			return
+
+
+## 排一次「下一帧再放行」：槽刚完成请求时当帧不可用，队列不能就此停住
+static func _schedule_pump() -> void:
+	if _pump_scheduled:
+		return
+	var holder := _get_holder()
+	if holder == null:
+		return
+	var tree := holder.get_tree()
+	if tree == null:
+		return
+	_pump_scheduled = true
+	tree.create_timer(0.0).timeout.connect(_on_pump_timer, CONNECT_ONE_SHOT)
+
+
+static func _on_pump_timer() -> void:
+	_pump_scheduled = false
+	_pump_waiting()
+
+
+## 入队 + 兜底排一次放行（正常由请求完成时兑现，这里防「所有槽都在冷却」把队列晾住）
+static func _queue_request(url: String, trust_cache: bool) -> void:
+	_waiting_requests.append({"url": url, "trust_cache": trust_cache})
+	_schedule_pump()
+
+
+## 撤掉某个目标对某 URL 的等待（卡片换绑封面的必经路径）。
+## 没人等了且请求还在排队时直接从队列摘掉——否则翻页后新一页的封面要排在
+## 上一页没下完的二十多张后面；已在途的请求照常跑完（字节顺手进缓存）
+static func cancel(url: String, target: Object) -> void:
+	if url.is_empty():
+		return
+	var pending: Array = _inflight.get(url, [])
+	if pending.is_empty():
+		return
+	var kept: Array = []
+	for e in pending:
+		if e.get("target") != target:
+			kept.append(e)
+	if not kept.is_empty():
+		_inflight[url] = kept
+		return
+	_inflight.erase(url)
+	for i in range(_waiting_requests.size() - 1, -1, -1):
+		if str(_waiting_requests[i].get("url", "")) == url:
+			_waiting_requests.remove_at(i)
+
+static func _on_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray, url: String, trust_cache: bool, slot: Slot) -> void:
+	# 槽不释放，留给下一张图复用（连接还在，省掉一次 TCP+TLS 握手）
+	slot.busy = false
+	slot.ready_frame = Engine.get_process_frames() + 1
+	_finish_request()
 	if result == HTTPRequest.RESULT_SUCCESS and response_code == 200 and body.size() > 0:
 		if _write_data(url, body):
 			# 信任缓存 / 内容寻址的 URL 不会再发条件请求，ETag 记录纯属白写一次盘
@@ -136,7 +299,8 @@ static func _load_from_cache_file(url: String, fallback_request: bool = false) -
 		# 缓存文件损坏/格式不支持：丢弃后下次请求重新下载
 		_drop_cache(url)
 		if fallback_request:
-			_start_request(url)
+			if not _start_request(url):
+				_queue_request(url, false)
 		else:
 			_finish_pending(url, null)
 	)

@@ -83,6 +83,8 @@ func _ready() -> void:
 ## 按路径去重：同一 path 只入队一个后台任务；后续请求登记为等待者，
 ## 任务完成时主线程统一创建一份纹理并广播给该路径所有等待者
 func request_load(item_id: String, path: String, callback: Callable) -> void:
+	# 同一 item 换绑新路径：上一张封面的等待者登记和排队任务一起作废
+	_drop_waiters_of(item_id)
 	# 递增版本号，使在途任务结果作废
 	var version: int = int(_item_versions.get(item_id, 0)) + 1
 	_item_versions[item_id] = version
@@ -137,14 +139,19 @@ func _load_res_texture(path: String) -> Texture2D:
 
 ## 取消在途任务（主线程调用）
 ## 递增版本号使在途任务结果作废，并清理回调引用避免内存泄漏
-## 注：不主动从 _task_queue 移除任务（后台线程会自然消费并丢弃），
-##     共享后台任务仍会完成，仅本等待者不再接收回调
+## 没人再等这个路径时连排队中的解码任务一起摘掉（见 _drop_waiters_of）
 func cancel(item_id: String) -> void:
 	if not _item_versions.has(item_id):
 		return
 	_item_versions.erase(item_id)
 	_pending_callbacks.erase(item_id)
-	# 从各路径的等待者列表移除本项，避免结果到达时调用已取消回调
+	_drop_waiters_of(item_id)
+
+
+## 摘掉某个 item 在所有路径上的等待者登记；某路径没人等了就把它的排队任务也摘掉。
+## 卡片池复用会让同一张卡频繁换绑不同封面，旧封面解出来也没人要，
+## 留着只会占住两条后台线程，让新一页的封面排在后面
+func _drop_waiters_of(item_id: String) -> void:
 	for path in _path_requests.keys():
 		var reqs: Array = _path_requests[path]
 		var i := reqs.size() - 1
@@ -154,6 +161,22 @@ func cancel(item_id: String) -> void:
 			i -= 1
 		if reqs.is_empty():
 			_path_requests.erase(path)
+			_drop_queued_task(path)
+
+
+## 从排队队列里摘掉某路径的解码任务（只在该路径确实还在排队时动手，
+## 已被后台线程取走的任务无法收回；此时 _queued_paths 保留，避免重复入队）
+func _drop_queued_task(path: String) -> void:
+	_mutex.lock()
+	var removed := false
+	for i in range(_task_queue.size() - 1, -1, -1):
+		if _task_queue[i].path == path:
+			_task_queue.remove_at(i)
+			removed = true
+			break
+	if removed:
+		_queued_paths.erase(path)
+	_mutex.unlock()
 
 
 ## 主线程每帧消费结果队列，触发回调
