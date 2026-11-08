@@ -11,6 +11,9 @@ var _is_creating: bool = false
 
 func _ready() -> void:
 	instance = self
+	# 初始为收起态：内容区整体隐藏。只把 alpha 淡到 0 的话控件仍参与拾取，
+	# 看不见的按钮照样点得到
+	%BgPanel.visible = false
 	_apply_page_focus()
 	_setup_focus_tab_bar()
 	# 连接按钮点击事件
@@ -63,9 +66,6 @@ func _on_state_changed(old_state: UIStateManager.UIState, new_state: UIStateMana
 			%SortTabBtn.button_pressed = true
 
 ## 展开态面板高度（含顶部 120 的标签条）与收起态只剩标签条的高度。
-## 收起靠改 offset_bottom 而不是缩放：标签按钮就在根节点顶部，缩放会把它们一起压扁。
-## 面板背景在独立的 BgPanel 上，收起时连 self_modulate 一起淡到 0——
-## 只剩标签条时不该看见那块面板底；按钮在 BgPanel 之外，不受淡出影响。
 const PANEL_H_OPEN := 825.0
 const PANEL_H_BAR := 120.0
 
@@ -85,6 +85,9 @@ func _apply_menu_state() -> void:
 	var favor_pressed: bool = %FavorListTabBtn.button_pressed
 	var closing := not sort_pressed and not favor_pressed
 
+	# 展开时立即恢复内容区；收起要等淡出结束再整块隐藏
+	%BgPanel.visible = true
+
 	# 同名 tween：切页时旧的动画连同回调一起作废，不会和新动画抢同一批属性
 	var tween := AniMGR.create_managed_tween(self, "menu_panel")
 	tween.set_ease(Tween.EASE_OUT)
@@ -98,9 +101,15 @@ func _apply_menu_state() -> void:
 	# 高度按当前 offset_top 算：面板在 Main 里是"距顶 75"定位的，写死绝对值会错位
 	tween.tween_property(self, "offset_bottom", offset_top + (PANEL_H_BAR if closing else PANEL_H_OPEN), 0.35)
 	tween.tween_property(%BgPanel, "self_modulate:a", 0.0 if closing else 1.0, 0.45)
-	tween.tween_property(%PageContent, "offset_transform_position:x", (-655 if favor_pressed else 0), 0.5)
+	if closing:
+		tween.chain().tween_callback(func() -> void:
+			if _is_all_off():
+				%BgPanel.visible = false
+		)
+	else:
+		tween.tween_property(%PageContent, "offset_transform_position:x", (-655 if favor_pressed else 0), 0.5)
 
-	# 可见性一律不动（两页并排，靠平移切换），只切焦点：
+	# 两页并排，靠平移切换，页内可见性不动，只切焦点：
 	# 没展开的那一页整页不可聚焦，两个标签都收起时除标签按钮外全部不可聚焦
 	_apply_page_focus()
 
