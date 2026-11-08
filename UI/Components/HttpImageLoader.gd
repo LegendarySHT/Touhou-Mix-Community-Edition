@@ -41,7 +41,9 @@ static func get_cached(url: String) -> Texture2D:
 ## 加载远程图片：有缓存立即回调；在途则追加回调等待；否则发起一次请求。
 ## target: 用于挂载 HTTPRequest 的节点（通常传 self）
 ## on_loaded: Callable(Texture2D) —— 加载失败/HTTP 非 200 且无本地缓存时传 null
-static func load(url: String, target: Node, on_loaded: Callable) -> void:
+## trust_cache: 调用方确定「同一 URL 的内容不会变」（如按 hash 取谱面封面）时传 true，
+##              本地有磁盘缓存就直接读，不再发条件请求——列表翻页时省掉一整屏的往返
+static func load(url: String, target: Node, on_loaded: Callable, trust_cache: bool = false) -> void:
 	if url.is_empty() or not on_loaded.is_valid():
 		return
 	var cached := get_cached(url)
@@ -54,10 +56,10 @@ static func load(url: String, target: Node, on_loaded: Callable) -> void:
 	if pending.size() > 1:
 		return  # 已在途，等待首个请求完成
 	# 内容寻址的 URL（文件名即内容哈希）：内容不会原地变，本地有缓存直接读，零请求
-	if has_cache_file(url) and _is_content_addressed(url):
+	if has_cache_file(url) and (trust_cache or _is_content_addressed(url)):
 		_load_from_cache_file(url, true)
 		return
-	_start_request(url)
+	_start_request(url, trust_cache)
 
 ## 只读本地缓存：内存命中直接回调，磁盘命中走后台解码，都没有回调 null。
 ## 全程不发网络请求 —— 供「先用缓存占位、稍后联网刷新」的启动路径使用（如启动时的头像），
@@ -82,7 +84,7 @@ static func load_cached(url: String, target: Node, on_loaded: Callable) -> void:
 		on_loaded.call(tex)
 	)
 
-static func _start_request(url: String) -> void:
+static func _start_request(url: String, trust_cache: bool = false) -> void:
 	var holder := _get_holder()
 	if holder == null:
 		_inflight.erase(url)
@@ -103,13 +105,15 @@ static func _start_request(url: String) -> void:
 		else:
 			_finish_pending(url, null)
 		return
-	http.request_completed.connect(_on_completed.bind(url, http))
+	http.request_completed.connect(_on_completed.bind(url, http, trust_cache))
 
-static func _on_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray, url: String, http: HTTPRequest) -> void:
+static func _on_completed(result: int, response_code: int, headers: PackedStringArray, body: PackedByteArray, url: String, http: HTTPRequest, trust_cache: bool) -> void:
 	http.queue_free()
 	if result == HTTPRequest.RESULT_SUCCESS and response_code == 200 and body.size() > 0:
 		if _write_data(url, body):
-			_write_etag(url, _header_etag(headers))
+			# 信任缓存 / 内容寻址的 URL 不会再发条件请求，ETag 记录纯属白写一次盘
+			if not trust_cache and not _is_content_addressed(url):
+				_write_etag(url, _header_etag(headers))
 			_load_from_cache_file(url)
 			return
 		# 写盘失败（只读/空间不足）：直接用响应体解码，避免缓存不可用导致图片空白
@@ -197,6 +201,21 @@ static func _etag_file(url: String) -> String:
 ## 本地是否存在该 URL 的图片缓存
 static func has_cache_file(url: String) -> bool:
 	return FileAccess.file_exists(_data_file(url))
+
+## 返回该 URL 的本地缓存文件路径（未缓存 / 空文件返回空串）。
+## 供「界面上已经显示过这张图，落盘时别再下一遍」的调用方直接复用字节
+static func get_cache_file(url: String) -> String:
+	if url.is_empty():
+		return ""
+	var path := _data_file(url)
+	if not FileAccess.file_exists(path):
+		return ""
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return ""
+	var size := f.get_length()
+	f.close()
+	return path if size > 0 else ""
 
 ## 读取已记录的 ETag（无缓存返回空串，此时下次请求为无条件下载）
 static func _read_etag(url: String) -> String:

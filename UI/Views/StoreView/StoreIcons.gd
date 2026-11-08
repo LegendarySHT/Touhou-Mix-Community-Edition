@@ -87,6 +87,22 @@ static func mic() -> AtlasTexture:
 static func mic_off() -> AtlasTexture:
 	return atlas(1, 80, 240)
 
+## 暂停（两竖条）
+static func pause() -> AtlasTexture:
+	return atlas(1, 160, 240)
+
+## 继续（播放三角）
+static func play() -> AtlasTexture:
+	return atlas(1, 160, 0)
+
+## 重试（环形箭头）
+static func retry() -> AtlasTexture:
+	return atlas(1, 320, 320)
+
+## 删除（垃圾桶）
+static func trash() -> AtlasTexture:
+	return atlas(1, 0, 0)
+
 ## 上传时间排序
 static func uploaded() -> AtlasTexture:
 	return atlas(2, 240, 320)

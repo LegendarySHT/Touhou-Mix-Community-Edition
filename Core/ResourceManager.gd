@@ -18,6 +18,10 @@ enum DownloadStage { METADATA, COVER, MIDI, JSON, RESCAN, VOCAL }
 ## 只能定时轮询 get_downloaded_bytes() 逼近（完成回调的最大附加延迟即此值）
 const PROGRESS_POLL_INTERVAL := 0.15
 
+## 曲库重载防抖（秒）：下载串行执行，每落一首就通知一次 UI 重建专辑/歌曲列表纯属浪费，
+## 等这一阵下载停下来再通知一次
+const DATA_RELOAD_DEBOUNCE := 1.0
+
 ## 懒加载单例：首次访问时创建并挂入场景树（见 Utilities/LazyService.gd）
 static var instance: ResourceManager:
 	get:
@@ -30,6 +34,13 @@ static var _instance: ResourceManager = null
 
 ## 下载状态缓存 {hash: DownloadState}
 var _download_states: Dictionary = {}
+
+## 本地人声存在性缓存 {hash: bool}：商店页的状态刷新会反复问同一批谱面，
+## 每次开目录列表的代价太大。下载收尾 / 全量重扫时整体作废
+var _local_vocal_memo: Dictionary = {}
+
+## 曲库重载倒计时（见 _schedule_data_reload）
+var _data_reload_delay := 0.0
 
 ## 封面并行下载信箱（download_chart 与 _on_cover_downloaded 回调之间传递结果）。
 ## _cover_done 初始 true（无任务），启动封面下载时置 false，回调置 true 并写 _cover_result。
@@ -48,12 +59,27 @@ var _vocal_result: Dictionary = {"ok": false, "error": "not_started"}
 
 func _ready() -> void:
 	add_to_group("singleton")
+	set_process(false)
 	# 初始化本地已下载状态（此时 FileSystemManager 必然已建立，索引可读）
 	_refresh_local_states()
+
+func _process(delta: float) -> void:
+	_data_reload_delay -= delta
+	if _data_reload_delay > 0.0:
+		return
+	set_process(false)
+	if DataMGR != null:
+		DataMGR.reload_after_import()
+
+## 排一次曲库重载（防抖）：批量下载时只在最后通知一次
+func _schedule_data_reload() -> void:
+	_data_reload_delay = DATA_RELOAD_DEBOUNCE
+	set_process(true)
 
 ## 刷新本地下载状态：扫描 FileSystemManager._hash_to_folder
 func _refresh_local_states() -> void:
 	_download_states.clear()
+	invalidate_local_vocal_cache()
 	if FileSystemManager.instance == null:
 		return
 	for hash_key in FileSystemManager.instance._hash_to_folder:
@@ -135,8 +161,12 @@ func _download_chart_parallel(chart_hash: String, safe_hash: String,
 	var cover_needed := bool(hint.get("hasCover", false))
 	_cover_done = not cover_needed
 	if cover_needed:
-		Callable(self, "_download_file").call(cover_url, cover_path, 0, 3,
-			Callable(self, "_on_cover_downloaded"), on_progress, DownloadStage.COVER)
+		if _try_cover_from_cache(cover_url, cover_path):
+			_cover_result = {"ok": true}
+			_cover_done = true
+		else:
+			Callable(self, "_download_file").call(cover_url, cover_path, 0, 3,
+				Callable(self, "_on_cover_downloaded"), on_progress, DownloadStage.COVER)
 
 	_midi_done = false
 	_midi_result = {"ok": false, "error": "not_started"}
@@ -230,12 +260,16 @@ func _download_chart_sequential(chart_hash: String, safe_hash: String,
 	_cover_done = not cover_needed
 	if cover_needed:
 		var cover_url := "%s/api/charts/%s/cover" % [NetManager.instance.server_url, safe_hash]
-		# ⚠️ 必须用**语句形式**调用（丢弃返回值）：把协程状态对象
-		# （GDScriptFunctionState）赋值给变量会触发引擎运行时错误
-		# "Trying to call an async function without await"（gdscript_vm.cpp
-		# 对 call_ret 且返回协程对象的检查）。下载结果经 on_done 回调回收。
-		Callable(self, "_download_file").call(cover_url, cover_path, 0, 3,
-			Callable(self, "_on_cover_downloaded"), on_progress, DownloadStage.COVER)
+		if _try_cover_from_cache(cover_url, cover_path):
+			_cover_result = {"ok": true}
+			_cover_done = true
+		else:
+			# ⚠️ 必须用**语句形式**调用（丢弃返回值）：把协程状态对象
+			# （GDScriptFunctionState）赋值给变量会触发引擎运行时错误
+			# "Trying to call an async function without await"（gdscript_vm.cpp
+			# 对 call_ret 且返回协程对象的检查）。下载结果经 on_done 回调回收。
+			Callable(self, "_download_file").call(cover_url, cover_path, 0, 3,
+				Callable(self, "_on_cover_downloaded"), on_progress, DownloadStage.COVER)
 
 	# 3.5 人声（可选，2026-10-24）：设置开启且元数据表明有 vocal 时与封面并联发起。
 	#     与封面同策略——失败不阻塞整体流程；vocalFormat 为空（脏数据）时跳过
@@ -304,20 +338,20 @@ func _finalize_download(chart_hash: String, chart_data: Dictionary, chart_dir: S
 	f.store_string(json_content)
 	f.close()
 	
-	# 6. 刷新 FileSystemManager 索引
+	# 6. 刷新 FileSystemManager 索引：只增量刷这一个目录。
+	# 全量 rescan 会清空重建全部索引、重扫皮肤/特效/音源/背景，还要等整个曲库的
+	# 后台校验跑完才算收尾——单首要白等一秒多，批量下载时这笔开销会逐首累积
 	_report_progress(on_progress, DownloadStage.RESCAN, -1.0)
 	if FileSystemManager.instance:
-		await FileSystemManager.instance.rescan_resources()
-		# rescan 走缓存快速路径时，新增谱面目录是交给后台校验协程异步扫描的，
-		# resources_ready 发出时 _hash_to_folder 里还没有本次下载的 hash。若此时就返回，
-		# 调用方 get_download_state() 的自愈逻辑会把刚写入的 DOWNLOADED 抹成
-		# NOT_DOWNLOADED（表现为「实际已下载完成，按钮却不变已下载」）。
-		await FileSystemManager.instance.await_busy_done()
-		# 兜底：扫描若因并发被跳过（_scan_all_resources 的 is_scanning 早退），
-		# 文件既已落盘就直接登记反向索引，不再把状态判定绑在扫描时序上
-		FileSystemManager.instance.register_chart_hash(chart_hash, chart_dir.get_file())
+		var folder_name := chart_dir.get_file()
+		await FileSystemManager.instance.refresh_chart_folders([folder_name])
+		# 兜底：文件既已落盘就直接登记反向索引，不再把状态判定绑在扫描时序上
+		FileSystemManager.instance.register_chart_hash(chart_hash, folder_name)
+		# 曲库数据层跟着重建（与单文件导入后走的是同一条链路；批量下载时防抖成一次）
+		_schedule_data_reload()
 
 	_download_states[chart_hash] = DownloadState.DOWNLOADED
+	invalidate_local_vocal_cache()
 	GLogger.info("Chart downloaded: %s" % str(chart_data.get("hash", "")), "ResMGR")
 	return {"ok": true}
 
@@ -363,6 +397,7 @@ func _fail_download(chart_hash: String, chart_dir: String, created_files: Array,
 				DirAccess.remove_absolute(chart_dir.path_join(part_file))
 	DirAccess.remove_absolute(chart_dir)  # 非空目录删除会失败，忽略
 	_download_states[chart_hash] = DownloadState.FAILED
+	invalidate_local_vocal_cache()
 	return {"ok": false, "error": error_msg}
 
 ## 构建本地 JSON 元数据（白名单结构，camelCase 键，对齐 ChartNormalizer / ChartDb 派生）
@@ -397,6 +432,15 @@ func _build_local_json(chart_data: Dictionary) -> Dictionary:
 			"name": str(chart_data.get("albumName", ""))
 		}
 	}
+
+## 从 web 缓存复制封面到曲包：商店列表已经用同一个 URL 展示过这张图，
+## 缓存字节即同一张封面，没必要再整张下一遍。
+## 返回 true 表示封面已就位；false 表示缓存不可用，调用方自行发起下载
+func _try_cover_from_cache(cover_url: String, cover_path: String) -> bool:
+	var cached := HttpImageLoader.get_cache_file(cover_url)
+	if cached.is_empty():
+		return false
+	return DirAccess.copy_absolute(cached, cover_path) == OK
 
 ## 下载二进制文件到本地路径（流式落盘 + 自适应超时 + 断点续传）
 ## on_done: 可选完成回调，供「即发即弃」式并行启动回收结果——语句形式调用协程
@@ -636,6 +680,46 @@ func _sanitize_folder_name(folder_name: String) -> String:
 func is_chart_downloaded(chart_hash: String) -> bool:
 	return get_download_state(chart_hash) == DownloadState.DOWNLOADED
 
+## 已下载谱面的本地封面路径（未下载 / 只剩默认封面时返回空串）。
+## 供商店这类远程列表复用本地封面，避免同一张图再走一次网络
+func get_local_cover_path(chart_hash: String) -> String:
+	if chart_hash.is_empty() or FileSystemManager.instance == null:
+		return ""
+	if get_download_state(chart_hash) != DownloadState.DOWNLOADED:
+		return ""
+	var path := FileSystemManager.instance.get_cover_path_by_ids(chart_hash, chart_hash)
+	if path.is_empty() or path == FileSystemManager.DEFAULT_COVER_PATH:
+		return ""
+	return path
+
+## 本地谱面目录里是否已带人声文件（只认标准命名 vocal.<ext>）。
+## 不用 get_vocal_path()：它对无人声的谱面会回退到目录里的首个音频，
+## 只有 BGM 的谱面也会被判成有人声，这里要的是「人声是否真的下过」
+func has_local_vocal(chart_hash: String) -> bool:
+	if _local_vocal_memo.has(chart_hash):
+		return bool(_local_vocal_memo[chart_hash])
+	var result := _probe_local_vocal(chart_hash)
+	_local_vocal_memo[chart_hash] = result
+	return result
+
+## 作废本地人声缓存：外部改动（重扫曲库 / 手动放文件）后由调用方显式清一次
+func invalidate_local_vocal_cache() -> void:
+	_local_vocal_memo.clear()
+
+func _probe_local_vocal(chart_hash: String) -> bool:
+	if FileSystemManager.instance == null:
+		return false
+	var folder := str(FileSystemManager.instance._hash_to_folder.get(chart_hash, ""))
+	if folder.is_empty():
+		return false
+	var dir := DirAccess.open(FileSystemManager.CHARTS_DIR.path_join(folder))
+	if dir == null:
+		return false
+	for file_name in dir.get_files():
+		if str(file_name).to_lower().begins_with("vocal."):
+			return true
+	return false
+
 ## 获取下载状态
 func get_download_state(chart_hash: String) -> DownloadState:
 	if _download_states.has(chart_hash):
@@ -697,6 +781,7 @@ func download_vocal(target_hash: String) -> Dictionary:
 	var vocal_url := "%s/media/charts/%s.vocal" % [NetManager.instance.server_url, safe_hash]
 	var result: Dictionary = await _download_file(vocal_url, vocal_path,
 		int(chart_data.get("vocalSize", 0)), 3)
+	invalidate_local_vocal_cache()
 	if not result.get("ok", false):
 		return result
 

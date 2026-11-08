@@ -1330,13 +1330,21 @@ func _save_audio_files_cache() -> void:
 	], "FileSystemMGR")
 
 ## 增量校正音频/人声速查库（后台校验合并后调用）
-## folders：本次发生变化的谱面文件夹（先删其旧条目），entries 为重建后的全量条目（upsert 覆盖）
+## folders：本次发生变化的谱面文件夹（先删其旧条目）。只提交这些文件夹的条目——
+## 传全量的话每下/删一首都要重写整个曲库的音频索引，库越大越慢
 func _update_audio_files_cache(folders: Array) -> void:
 	if ChartDB == null or not ChartDB.IsOpen() or folders.is_empty():
 		return
-	ChartDB.UpsertAudioFiles(folders, _audio_file_entries)
+	var changed: Dictionary = {}
+	for f in folders:
+		changed[str(f)] = true
+	var entries: Array = []
+	for e in _audio_file_entries:
+		if changed.has(str(e.get("folder_name", ""))):
+			entries.append(e)
+	ChartDB.UpsertAudioFiles(folders, entries)
 	GLogger.info("Updated audio files index in DB: %d folders, %d entries (vocal=%d)" % [
-		folders.size(), _audio_file_entries.size(), vocal_files_index.size()
+		folders.size(), entries.size(), vocal_files_index.size()
 	], "FileSystemMGR")
 
 ## 快速变更检测：基于文件夹 mTime 一次性找出 新增/删除/修改 的谱面文件夹
@@ -2519,24 +2527,30 @@ func delete_chart(chart_id: String) -> bool:
 func delete_charts_batch(chart_ids: Array) -> Array:
 	var removed: Array = []
 	var db_keys: Array = []
+	var folders: Array = []
 	var i := 0
 	for chart_id in chart_ids:
-		var info := _delete_single_chart_files(chart_id)
+		# 音频速查库的删除攒到最后一次性提交（见 _delete_single_chart_files 的 persist_audio）
+		var info := _delete_single_chart_files(chart_id, false)
 		if not info.is_empty():
 			removed.append(chart_id)
 			db_keys.append(info["meta"].id)
+			folders.append(info["folder_name"])
 		i += 1
 		if i % 3 == 0:
 			await get_tree().process_frame
 	if ChartDB and ChartDB.IsOpen() and not db_keys.is_empty():
+		ChartDB.RemoveAudioFiles(folders)
 		ChartDB.RemoveCharts(db_keys)
 	clear_cover_cache()
 	GLogger.info("Batch deleted %d charts" % removed.size(), "FileSystemMGR")
 	return removed
 
 ## 删除单个谱面的文件目录 + 清内存索引（不触碰 DB；DB 由调用方单次/批量提交）
+## persist_audio=false 时连音频速查库也不逐条落库，交给批量删除收尾时一次性提交
+## （每首一次 LiteDB 事务 = 一次 fsync，几百首时是删除卡顿的主要来源）
 ## 返回: {"folder_name", "meta"}；未找到或删除失败返回空字典
-func _delete_single_chart_files(chart_id: String) -> Dictionary:
+func _delete_single_chart_files(chart_id: String, persist_audio: bool = true) -> Dictionary:
 	var result = lookup_chart(chart_id)
 	if result.is_empty():
 		GLogger.warning("delete_chart: chart not found: %s" % chart_id, "FileSystemMGR")
@@ -2568,7 +2582,7 @@ func _delete_single_chart_files(chart_id: String) -> Dictionary:
 	for i in range(_audio_file_entries.size() - 1, -1, -1):
 		if _audio_file_entries[i].get("folder_name", "") == folder_name:
 			_audio_file_entries.remove_at(i)
-	if ChartDB and ChartDB.IsOpen():
+	if ChartDB and ChartDB.IsOpen() and persist_audio:
 		ChartDB.RemoveAudioFiles([folder_name])
 
 	# 从 charts_index 移除

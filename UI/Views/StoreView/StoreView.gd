@@ -10,7 +10,7 @@
 ## 数据：
 ##   歌曲来自服务端 ResourceManager.instance.get_chart_list（搜索 / 排序 / 分页）
 ##   皮肤 / 特效 / 音源暂取本地资源索引作为预览数据（远端接口未就绪）
-##   下载管理按本会话经商店发起的下载任务 + 当前页已下载谱面构建
+##   下载管理按本会话经商店发起的下载任务构建（不读本地已下载谱面，重启即清空）
 ##
 ## 下载一律串行：ResourceManager 的并行下载信箱是单实例的，同时发起两次会互相踩。
 extends ViewBase
@@ -60,6 +60,14 @@ var work_state: UIStateManager.UIState = UIStateManager.UIState.STORE_VIEW
 # ── 标签 / 页面 ───────────────────────────────────────
 var _current_tab: int = Tab.SONGS
 var _tab_buttons: Array[Button] = []
+## 下划线滑动动画（判断是否要「补位滑动」还是可以直接摆正）
+var _underline_tween: Tween = null
+## 下划线上一次设定的目标 [位置, 尺寸]，用来判断布局后是否真的需要挪
+var _underline_target: Array = []
+## 已排队一次「布局落地后再对齐」，同帧重复请求只保留一次
+var _underline_realign_pending: bool = false
+## 等待对齐期间又有新变化，本轮量完要再补一轮
+var _underline_realign_dirty: bool = false
 ## 各列表页的空状态文案（空串 = 有内容，显示列表页；非空 = 切到共享空状态页）
 var _empty_text: Dictionary = {
 	Tab.SONGS: "正在加载…",
@@ -69,6 +77,8 @@ var _empty_text: Dictionary = {
 }
 
 # ── 歌曲页状态 ────────────────────────────────────────
+## 正在等服务端返回列表（分页按钮 / 页码框据此禁用，避免连点出一串请求）
+var _songs_loading: bool = false
 var _song_items: Array = []
 var _song_page: int = 1
 var _song_total: int = 0
@@ -85,7 +95,7 @@ var _category_view: Dictionary = {Tab.SKINS: [], Tab.EFFECTS: [], Tab.SOUNDFONTS
 var _category_vlists: Dictionary = {}
 
 # ── 下载管理状态 ──────────────────────────────────────
-## hash → {hash, item, state, stage, percent, order}
+## hash → {hash, item, state, stage, percent, order, vocal_only}
 var _download_entries: Dictionary = {}
 var _download_rows: Array = []
 var _download_order: int = 0
@@ -96,6 +106,8 @@ var _manual_running: bool = false
 var _batch_queue: Array = []
 var _batch_running: bool = false
 var _batch_current: String = ""
+## 暂停态：只拦「开始下一个任务」，正在下的那首会跑完（底层请求没有中途取消的通道）
+var _download_paused: bool = false
 var _hero_hash: String = ""
 var _hero_cover_version: int = 0
 
@@ -170,7 +182,7 @@ func _connect_ui() -> void:
 		# 标签栏被容器压缩时要保持可点区域与视觉一致
 		btn.resized.connect(func() -> void:
 			if i == _current_tab:
-				_update_tab_underline(true)
+				_request_underline_realign()
 		)
 	%SearchEdit.text_changed.connect(_on_search_changed)
 	%SearchEdit.text_submitted.connect(_on_search_submitted)
@@ -180,6 +192,13 @@ func _connect_ui() -> void:
 	%VocalBtn.toggled.connect(_on_vocal_toggled)
 	%PreviBtn.pressed.connect(_on_previ_pressed)
 	%NextBtn.pressed.connect(_on_next_pressed)
+	%PagerText.text_submitted.connect(_on_pager_submitted)
+	%PagerText.focus_entered.connect(_on_pager_focus_entered)
+	%PagerText.focus_exited.connect(_apply_pager_text)
+	%DownloadPauseBtn.pressed.connect(_on_download_pause_pressed)
+	%DownloadRetryBtn.pressed.connect(_on_download_retry_pressed)
+	%DownloadsClearDoneBtn.pressed.connect(_on_downloads_clear_done_pressed)
+	%DownloadsClearBtn.pressed.connect(_on_downloads_clear_pressed)
 	var popup := PopupWindow.instance
 	if popup != null and not popup.chart_download_requested.is_connected(_on_detail_download_requested):
 		popup.chart_download_requested.connect(_on_detail_download_requested)
@@ -187,7 +206,7 @@ func _connect_ui() -> void:
 	# （列表页共用一个空状态页，下载管理有自己的空提示）
 	%PageEmpty.gui_input.connect(_on_empty_gui_input)
 	%DownloadsEmpty.gui_input.connect(_on_empty_gui_input)
-	%TopBar.resized.connect(func() -> void: _update_tab_underline(true))
+	%TopBar.resized.connect(func() -> void: _request_underline_realign())
 
 
 func _init_vocal_toggle() -> void:
@@ -213,6 +232,27 @@ func _on_vocal_toggled(pressed: bool) -> void:
 	if ConfigManager.instance != null:
 		ConfigManager.instance.set_value_and_notify("download_vocal", 1 if pressed else 0)
 	_update_vocal_visual()
+	# 关闭后「只补人声」的排队任务已经没有意义，先出队再重算卡片状态
+	_drop_pending_vocal_tasks()
+	_sync_bound_cards()
+
+
+## 关掉「下载人声」时清掉队列里只补人声的任务：它们提交时的目标是补人声，
+## 现在开关关了，跑起来只会空转一次（整包下载任务不受影响，它在启动时才读开关）
+func _drop_pending_vocal_tasks() -> void:
+	if _vocal_enabled():
+		return
+	_manual_queue = _manual_queue.filter(func(item) -> bool:
+		return not _is_vocal_only(str(item.get("hash", ""))))
+	_batch_queue = _batch_queue.filter(func(item) -> bool:
+		return not _is_vocal_only(str(item.get("hash", ""))))
+	for hash_str in _download_entries.keys():
+		if hash_str == _batch_current or _active_hashes.has(hash_str):
+			continue
+		if _is_vocal_only(hash_str) and int(_download_entries[hash_str].get("state", -1)) \
+				== DownloadRowLib.STATE_QUEUED:
+			_download_entries.erase(hash_str)
+	_update_task_badges()
 
 
 func _update_vocal_visual() -> void:
@@ -250,14 +290,15 @@ func _select_tab(tab: int, instant: bool) -> void:
 		_ensure_category(tab)
 		_rebuild_category(tab)
 	elif tab == Tab.DOWNLOADS:
-		_seed_download_entries()
 		_ensure_download_vlist()
 		_refresh_downloads_page(true)
-	_update_batch_button()
+	_update_task_badges()
 
 	# 上面的构建可能把页面换成共享空状态页，动画只作用于最后真正显示的那一页
 	if not instant:
 		_animate_page_in(_shown_page())
+	# 切页会改按下态（按钮尺寸可能变），布局落地后再对一次下划线
+	_request_underline_realign()
 
 
 ## 逻辑标签页 → TabContainer 下标（列表页与 Tab 前四项同序，下载管理排最后）
@@ -300,34 +341,75 @@ func _apply_toolbar_for_tab() -> void:
 	%FilterDataBtn.disabled = not is_songs
 	%FilterDataBtn.tooltip_text = ("排序字段：%s（点击切换）" % SORT_LABELS[_sort_index]) if is_songs \
 		else "排序字段仅对歌曲页生效"
-	%SortOrderBtn.disabled = false
-	%SortOrderBtn.tooltip_text = "当前%s（点击切换）" % ("升序" if _sort_order == "asc" else "降序")
+	# 下载记录固定「状态分组 + 入队顺序」，这个开关对它无效
+	var is_downloads := _current_tab == Tab.DOWNLOADS
+	%SortOrderBtn.disabled = is_downloads
+	%SortOrderBtn.tooltip_text = "下载记录固定按状态与入队顺序排列" if is_downloads \
+		else "当前%s（点击切换）" % ("升序" if _sort_order == "asc" else "降序")
 
 
 func _update_tab_underline(instant: bool) -> void:
-	if _tab_buttons.is_empty():
+	var rect := _underline_rect()
+	if rect.is_empty():
 		return
-	var index := clampi(_current_tab, 0, _tab_buttons.size() - 1)
-	var btn := _tab_buttons[index]
-	if btn.size.x <= 0.0 or %TopBar.size.y <= 0.0:
-		return
-	var bar_pos: Vector2 = btn.global_position - %TopBar.global_position
-	var target_pos := Vector2(bar_pos.x + 8.0, %TopBar.size.y - 4.0)
-	var target_size := Vector2(maxf(btn.size.x - 16.0, 16.0), 4.0)
+	var target_pos: Vector2 = rect[0]
+	var target_size: Vector2 = rect[1]
+	_underline_target = rect
 	if instant:
+		_underline_tween = null
 		%TabUnderlinePanel.position = target_pos
 		%TabUnderlinePanel.size = target_size
 		return
 	var tw := AniMGR.create_managed_tween(%TabUnderlinePanel, "store_tab_underline")
 	if tw == null:
+		_underline_tween = null
 		%TabUnderlinePanel.position = target_pos
 		%TabUnderlinePanel.size = target_size
 		return
+	_underline_tween = tw
 	tw.set_parallel(true)
 	tw.tween_property(%TabUnderlinePanel, "position", target_pos, 0.26) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.tween_property(%TabUnderlinePanel, "size", target_size, 0.26) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+## 下划线目标矩形 [位置, 尺寸]（相对 %TopBar）；按钮还没布局出来时返回空数组
+func _underline_rect() -> Array:
+	if _tab_buttons.is_empty():
+		return []
+	var btn := _tab_buttons[clampi(_current_tab, 0, _tab_buttons.size() - 1)]
+	if btn.size.x <= 0.0 or %TopBar.size.y <= 0.0:
+		return []
+	var bar_pos: Vector2 = btn.global_position - %TopBar.global_position
+	return [
+		Vector2(bar_pos.x + 8.0, %TopBar.size.y - 4.0),
+		Vector2(maxf(btn.size.x - 16.0, 16.0), 4.0),
+	]
+
+
+## 布局落地后再对一次：改标签文字会先走延迟的 min-size 更新、再走容器重排，
+## 当帧量到的按钮矩形还是旧的，直接摆上去就「歪一截」。
+## 目标没变就什么都不做——否则会把正在跑的切页动画打断成「没有平移动画」
+func _request_underline_realign() -> void:
+	if _underline_realign_pending:
+		# 等待期间又变了（下载数量刷新很密）：这一轮量完再补一轮
+		_underline_realign_dirty = true
+		return
+	_underline_realign_pending = true
+	await get_tree().process_frame
+	_underline_realign_pending = false
+	var dirty := _underline_realign_dirty
+	_underline_realign_dirty = false
+	var rect := _underline_rect()
+	if not rect.is_empty() and rect != _underline_target:
+		_update_tab_underline(not _underline_animating())
+	if dirty:
+		_request_underline_realign()
+
+
+func _underline_animating() -> bool:
+	return _underline_tween != null and _underline_tween.is_valid() and _underline_tween.is_running()
 
 
 func _animate_page_in(page: Control) -> void:
@@ -381,10 +463,15 @@ func _load_songs() -> void:
 	if _song_items.is_empty():
 		_show_songs_message("正在加载…")
 
+	# 翻页要等一次网络往返：期间把分页控件锁住并显示「加载中…」，
+	# 否则旧页留在屏幕上什么都不动，等待时间完全不可预期
+	_songs_loading = true
+	_update_pager()
 	var result: Dictionary = await ResourceManager.instance.get_chart_list(
 		_song_page, PAGE_SIZE, _search_text,
 		SORT_FIELDS[_sort_index], _sort_order
 	)
+	_songs_loading = false
 	if version != _song_req_version:
 		return
 
@@ -406,7 +493,7 @@ func _load_songs() -> void:
 	_bind_animate = true
 	_song_vlist.set_total(_song_items.size(), true)
 	_bind_animate = false
-	_update_batch_button()
+	_update_task_badges()
 
 
 ## 服务端 ChartResponse → 卡片/详情共用的规范化条目
@@ -451,7 +538,7 @@ func _bind_song_card(node, idx: int) -> void:
 		return
 	var item: Dictionary = _song_items[idx]
 	if not str(item.get("hash", "")).is_empty():
-		item["state"] = ResourceManager.instance.get_download_state(str(item.get("hash", "")))
+		item["state"] = _display_state(item)
 	node.call("set_item", item, _bind_animate)
 
 
@@ -519,8 +606,7 @@ func _on_order_pressed() -> void:
 		_load_songs()
 	elif _current_tab >= Tab.SKINS and _current_tab <= Tab.SOUNDFONTS:
 		_rebuild_category(_current_tab)
-	elif _current_tab == Tab.DOWNLOADS:
-		_refresh_downloads_page(false)
+	# 下载管理页固定按「状态分组 + 入队顺序」排列，不跟这个开关走
 
 
 func _apply_sort_icons() -> void:
@@ -553,14 +639,46 @@ func _total_pages() -> int:
 
 
 func _update_pager() -> void:
+	var pages := _total_pages()
+	var can_jump := _song_total > 0 and not _songs_loading
+	%PagerText.editable = can_jump
+	%PagerText.focus_mode = Control.FOCUS_CLICK if can_jump else Control.FOCUS_NONE
+	%PagerText.tooltip_text = "输入页码后按回车跳转" if can_jump else ""
+	%PreviBtn.disabled = not can_jump or _song_page <= 1
+	%NextBtn.disabled = not can_jump or _song_page >= pages
+	# 输入态由用户掌控文本，不要在加载回来时把正在敲的页码冲掉
+	if not %PagerText.has_focus():
+		_apply_pager_text()
+
+
+## 分页信息文本：非输入态一律显示「当前页 / 总页数」
+func _apply_pager_text() -> void:
+	if _songs_loading:
+		%PagerText.text = "加载中…"
+		return
 	if _song_total <= 0:
 		%PagerText.text = "—"
-		%PreviBtn.disabled = true
-		%NextBtn.disabled = true
 		return
 	%PagerText.text = "%d / %d" % [_song_page, _total_pages()]
-	%PreviBtn.disabled = _song_page <= 1
-	%NextBtn.disabled = _song_page >= _total_pages()
+
+
+## 焦点进入分页框：只留当前页码，方便直接覆盖输入
+func _on_pager_focus_entered() -> void:
+	if _song_total <= 0:
+		return
+	%PagerText.text = str(_song_page)
+	%PagerText.select_all()
+
+
+## 回车提交页码：越界夹取到有效范围，跳转失败（离线等）时文本由 focus_exited 还原
+func _on_pager_submitted(text: String) -> void:
+	var trimmed := text.strip_edges()
+	if trimmed.is_valid_int():
+		var page := clampi(trimmed.to_int(), 1, _total_pages())
+		if page != _song_page:
+			_song_page = page
+			_load_songs()
+	%PagerText.release_focus()
 
 
 func _show_songs_message(text: String) -> void:
@@ -570,7 +688,7 @@ func _show_songs_message(text: String) -> void:
 		_song_vlist.clear()
 	_set_empty(Tab.SONGS, text)
 	_update_pager()
-	_update_batch_button()
+	_update_task_badges()
 
 
 # ══════════════════════════════════════════════════════
@@ -741,15 +859,30 @@ func _count_image_files(skin_path: String) -> int:
 func _rebuild_category(tab: int) -> void:
 	_ensure_category(tab)
 	var view := _filtered_category(tab)
+	var prev: Array = _category_view.get(tab, [])
 	_category_view[tab] = view
 	var vl: VirtualListLib = _category_vlists.get(tab)
+	_set_empty(tab, "" if not view.is_empty() \
+		else "没有找到%s" % ["皮肤", "特效", "音源"][clampi(tab - Tab.SKINS, 0, 2)])
 	if vl == null:
+		return
+	# 数据没变（切回同一标签页是最常见的路径）：复用已绑定的池。
+	# 重绑整屏卡片（含逐卡入场 tween）是切页卡顿的主要来源
+	if vl.total == view.size() and _same_item_refs(prev, view):
 		return
 	_bind_animate = true
 	vl.set_total(view.size(), true)
 	_bind_animate = false
-	_set_empty(tab, "" if not view.is_empty() \
-		else "没有找到%s" % ["皮肤", "特效", "音源"][clampi(tab - Tab.SKINS, 0, 2)])
+
+
+## 两个条目数组是否逐项同一个字典（分类页条目由缓存复用，引用不变即内容不变）
+func _same_item_refs(a: Array, b: Array) -> bool:
+	if a.size() != b.size():
+		return false
+	for i in b.size():
+		if not is_same(a[i], b[i]):
+			return false
+	return true
 
 
 func _filtered_category(tab: int) -> Array:
@@ -786,6 +919,10 @@ func _on_resources_ready() -> void:
 		_category_loaded[tab] = false
 	if _current_tab >= Tab.SKINS and _current_tab <= Tab.SOUNDFONTS:
 		_rebuild_category(_current_tab)
+	# 重扫可能带进/带走人声文件，「只缺人声」的判定缓存要跟着作废
+	if ResourceManager.instance != null:
+		ResourceManager.instance.invalidate_local_vocal_cache()
+		_sync_bound_cards()
 
 
 # ══════════════════════════════════════════════════════
@@ -822,54 +959,55 @@ func _on_detail_download_requested(item: Dictionary) -> void:
 	_request_download(item)
 
 
-## 单曲下载入口：空闲时立刻开跑，忙时排队（批量下载/另一个单曲下载进行中）
+## 单曲下载入口：直接入队，队列空闲时立即开跑（批量下载 / 另一个单曲下载进行中就排队）
 func _request_download(item: Dictionary) -> void:
 	var hash_str := str(item.get("hash", ""))
-	if hash_str.is_empty():
+	if hash_str.is_empty() or _is_queued(hash_str):
 		return
+	var vocal_only := false
 	if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
-		_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
-			ResourceManager.DownloadStage.RESCAN, 1.0)
-		return
-	if _is_hash_queue(hash_str) or _active_hashes.has(hash_str):
-		return
-
-	if _batch_running or _manual_running or not _active_hashes.is_empty():
-		_manual_queue.append(item)
-		_ensure_download_entry(item, DownloadRowLib.STATE_QUEUED, -1, -1.0)
-		if _current_tab == Tab.DOWNLOADS:
-			_refresh_downloads_page(false)
-		_update_batch_button()
-		return
+		if not _needs_vocal(hash_str, item):
+			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
+				ResourceManager.DownloadStage.RESCAN, 1.0)
+			return
+		vocal_only = true
 
 	_manual_queue.append(item)
-	_run_manual_queue()
+	_ensure_download_entry(item, DownloadRowLib.STATE_QUEUED, -1, -1.0, vocal_only)
+	_refresh_card_state(hash_str)
+	if _current_tab == Tab.DOWNLOADS:
+		_refresh_downloads_page(false)
+	_pump_download_queue()
 
 
 func _run_manual_queue() -> void:
-	if _manual_running or _batch_running:
+	if _manual_running or _batch_running or not _active_hashes.is_empty():
 		return
 	_manual_running = true
 	while not _manual_queue.is_empty():
-		if _batch_running:
+		if _batch_running or _download_paused:
 			break
 		var item: Dictionary = _manual_queue.pop_front()
 		var hash_str := str(item.get("hash", ""))
-		if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+		if not _is_vocal_only(hash_str) \
+				and ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
 			continue
 		await _start_download(item)
 	_manual_running = false
-	_update_batch_button()
+	_update_task_badges()
 	if _current_tab == Tab.DOWNLOADS:
 		_refresh_downloads_page(false)
+	_pump_download_queue()
 
 
-func _is_hash_queue(hash_str: String) -> bool:
+## 该 hash 是否已在下载队列里（批量队列 / 单曲队列 / 正在下载）
+func _is_queued(hash_str: String) -> bool:
+	if _active_hashes.has(hash_str):
+		return true
 	if _download_entries.has(hash_str):
-		var state := int(_download_entries[hash_str].get("state", -1))
-		if state == DownloadRowLib.STATE_QUEUED:
+		if int(_download_entries[hash_str].get("state", -1)) == DownloadRowLib.STATE_QUEUED:
 			return true
 	for item in _manual_queue:
 		if str(item.get("hash", "")) == hash_str:
@@ -880,31 +1018,93 @@ func _is_hash_queue(hash_str: String) -> bool:
 	return false
 
 
-func _start_download(item: Dictionary, from_batch: bool = false) -> void:
+## 该 hash 的队列任务是否只是「补下已下载谱面缺失的人声」
+func _is_vocal_only(hash_str: String) -> bool:
+	if _download_entries.has(hash_str):
+		return bool(_download_entries[hash_str].get("vocal_only", false))
+	return false
+
+
+## 卡片/详情显示用的下载状态：把「排队中」和「只缺人声」并进 ResourceManager 的四态。
+## ResourceManager 只认谱面本体是否落盘，排队中的谱面在它眼里还是未下载，
+## 直接用它会让卡片在轮到该曲之前一直显示「下载」。
+func _display_state(item: Dictionary) -> int:
 	var hash_str := str(item.get("hash", ""))
 	if hash_str.is_empty():
-		return
-	if _active_hashes.has(hash_str):
-		return
+		return int(item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
+	if _is_queued(hash_str):
+		item["needs_vocal"] = false
+		return ResourceManager.DownloadState.DOWNLOADING
 	var state := ResourceManager.instance.get_download_state(hash_str)
-	if state == ResourceManager.DownloadState.DOWNLOADED:
-		_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
-			ResourceManager.DownloadStage.RESCAN, 1.0)
-		_refresh_card_state(hash_str)
-		return
-	if state == ResourceManager.DownloadState.DOWNLOADING and not from_batch:
-		return
+	if state == ResourceManager.DownloadState.DOWNLOADED and _needs_vocal(hash_str, item):
+		item["needs_vocal"] = true
+		return ResourceManager.DownloadState.NOT_DOWNLOADED
+	item["needs_vocal"] = false
+	return state
 
-	item["state"] = ResourceManager.DownloadState.DOWNLOADING
-	_ensure_download_entry(item, ResourceManager.DownloadState.DOWNLOADING,
-		ResourceManager.DownloadStage.METADATA, 0.0)
+
+## 谱面本体已在本地，「下载人声」开启时却仍缺人声文件 → 按钮照样显示下载（点击只补人声）
+func _needs_vocal(hash_str: String, item: Dictionary) -> bool:
+	if not _vocal_enabled() or not bool(item.get("has_vocal", false)):
+		return false
+	if ResourceManager.instance.get_download_state(hash_str) != ResourceManager.DownloadState.DOWNLOADED:
+		return false
+	return not ResourceManager.instance.has_local_vocal(hash_str)
+
+
+## 「下载人声」开关（与 ResourceManager 读同一配置项，ConfigManager 不可用按开启处理）
+func _vocal_enabled() -> bool:
+	if ConfigManager.instance == null:
+		return true
+	return ConfigManager.instance.get_int("download_vocal", 1) == 1
+
+
+func _start_download(item: Dictionary, from_batch: bool = false) -> void:
+	var hash_str := str(item.get("hash", ""))
+	if hash_str.is_empty() or _active_hashes.has(hash_str):
+		return
+	# 串行通道只有一个：已经有一首在下载时绝不并发启动（信箱是单实例的，会互相踩）
+	if not _active_hashes.is_empty():
+		return
+	if not _download_entries.has(hash_str):
+		_ensure_download_entry(item, DownloadRowLib.STATE_QUEUED, -1, -1.0)
+	var vocal_only := _is_vocal_only(hash_str)
+	if vocal_only and ResourceManager.instance.get_download_state(hash_str) \
+			!= ResourceManager.DownloadState.DOWNLOADED:
+		# 排队期间谱面被本地删掉了：退回整包下载，只补人声会找不到目标目录
+		_download_entries[hash_str]["vocal_only"] = false
+		vocal_only = false
+	if vocal_only:
+		# 人声可能在这条任务排队期间已经补齐（另一次下载带上了），直接收尾
+		if not _needs_vocal(hash_str, item):
+			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
+				ResourceManager.DownloadStage.RESCAN, 1.0)
+			_refresh_card_state(hash_str)
+			return
+	else:
+		var state := ResourceManager.instance.get_download_state(hash_str)
+		if state == ResourceManager.DownloadState.DOWNLOADED:
+			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
+				ResourceManager.DownloadStage.RESCAN, 1.0)
+			_refresh_card_state(hash_str)
+			return
+		if state == ResourceManager.DownloadState.DOWNLOADING and not from_batch:
+			return
+
 	_active_hashes[hash_str] = true
-	_refresh_bound_card(hash_str)
+	_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADING,
+		ResourceManager.DownloadStage.VOCAL if vocal_only else ResourceManager.DownloadStage.METADATA,
+		-1.0 if vocal_only else 0.0)
+	_refresh_card_state(hash_str)
 	if _current_tab == Tab.DOWNLOADS:
 		_refresh_downloads_page(false)
 
-	var result: Dictionary = await ResourceManager.instance.download_chart(hash_str,
-		Callable(self, "_on_download_progress").bind(hash_str), _get_download_hint(item))
+	var result: Dictionary
+	if vocal_only:
+		result = await ResourceManager.instance.download_vocal(hash_str)
+	else:
+		result = await ResourceManager.instance.download_chart(hash_str,
+			Callable(self, "_on_download_progress").bind(hash_str), _get_download_hint(item))
 
 	_active_hashes.erase(hash_str)
 	if result.get("ok", false):
@@ -950,7 +1150,8 @@ func _get_download_hint(item: Dictionary) -> Dictionary:
 	}
 
 
-func _ensure_download_entry(item: Dictionary, state: int, stage: int, percent: float) -> void:
+func _ensure_download_entry(item: Dictionary, state: int, stage: int, percent: float,
+		vocal_only: bool = false) -> void:
 	var hash_str := str(item.get("hash", ""))
 	if hash_str.is_empty():
 		return
@@ -967,6 +1168,7 @@ func _ensure_download_entry(item: Dictionary, state: int, stage: int, percent: f
 		"stage": stage,
 		"percent": percent,
 		"order": order,
+		"vocal_only": vocal_only,
 	}
 
 
@@ -985,10 +1187,16 @@ func _set_entry_state(hash_str: String, state: int, stage: int, percent: float) 
 func _refresh_card_state(hash_str: String) -> void:
 	for item in _song_items:
 		if str(item.get("hash", "")) == hash_str:
-			item["state"] = ResourceManager.instance.get_download_state(hash_str)
+			item["state"] = _display_state(item)
 			break
+	# 下载记录里的条目可能来自早先翻过的页，和当前页不是同一个字典：
+	# 不一起刷的话，从下载记录点进详情会拿到卡在「下载中」的旧状态
+	if _download_entries.has(hash_str):
+		var entry_item: Dictionary = _download_entries[hash_str].get("item", {})
+		if not entry_item.is_empty():
+			entry_item["state"] = _display_state(entry_item)
 	_refresh_bound_card(hash_str)
-	_update_batch_button()
+	_update_task_badges()
 
 
 func _refresh_bound_card(hash_str: String) -> void:
@@ -1005,101 +1213,173 @@ func _refresh_bound_card(hash_str: String) -> void:
 
 func _sync_song_states() -> void:
 	for item in _song_items:
-		var hash_str := str(item.get("hash", ""))
-		if hash_str.is_empty():
-			continue
-		item["state"] = ResourceManager.instance.get_download_state(hash_str)
+		item["state"] = _display_state(item)
+	for entry in _download_entries.values():
+		var entry_item: Dictionary = entry.get("item", {})
+		if not entry_item.is_empty():
+			entry_item["state"] = _display_state(entry_item)
+
+
+## 重取当前页状态并刷新已绑定卡片 / 详情弹窗，队列或本地曲库变化后统一走这里
+func _sync_bound_cards() -> void:
+	_sync_song_states()
+	if _song_vlist != null:
+		for node in _song_vlist.bound_nodes():
+			if is_instance_valid(node):
+				node.call("refresh_download_state")
+	# 详情页已收进 PopupWindow，refresh_chart_detail_state() 内部自带「没打开就忽略」的判断
+	if PopupWindow.instance != null:
+		PopupWindow.instance.refresh_chart_detail_state()
+	_update_task_badges()
 
 
 ## 后台缓存校验完成后本地反向索引才补齐新下载的谱面。此时统一重取状态并刷新
 ## 已绑定卡片 / 详情弹窗 / 下载管理页，消除「下载其实已完成，按钮仍停在下载」的残留窗口。
 ## 该信号在启动扫描、DelView 删除等场景也会触发，所以这里必须能安全处理空数据。
 func _on_charts_cache_validated(_changed: bool) -> void:
-	_sync_song_states()
-	if _song_vlist != null:
-		for node in _song_vlist.bound_nodes():
-			if is_instance_valid(node):
-				node.call("refresh_download_state")
-	# 详情页已收进 PopupWindow，StoreView.tscn 不再有 DetailLayer 节点。
-	# refresh_chart_detail_state() 内部自带「详情页没打开就忽略」的判断，
-	# 与 _refresh_bound_card() 的写法保持一致。
-	if PopupWindow.instance != null:
-		PopupWindow.instance.refresh_chart_detail_state()
+	_sync_bound_cards()
 	if _current_tab == Tab.DOWNLOADS:
 		_refresh_downloads_page(false)
-	_update_batch_button()
-
-
-## 切到下载管理页时，把当前页已经下载的谱面并入记录（只做一次）
-func _seed_download_entries() -> void:
-	for item in _song_items:
-		var hash_str := str(item.get("hash", ""))
-		if hash_str.is_empty() or _download_entries.has(hash_str):
-			continue
-		if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
-			_ensure_download_entry(item, ResourceManager.DownloadState.DOWNLOADED,
-				ResourceManager.DownloadStage.RESCAN, 1.0)
 
 
 # ── 批量下载 ──────────────────────────────────────────
 
+## 批量下载：把当前页还能下的谱面追加进队列。
+## 队列正在跑的时候也允许继续按——新条目排到队尾，不会再起第二条并发下载链
 func _on_batch_download_pressed() -> void:
-	if _batch_running or _manual_running or not _active_hashes.is_empty() \
-			or _current_tab != Tab.SONGS:
+	if _current_tab != Tab.SONGS:
 		return
+	var pending := _collect_pending_songs()
+	if pending.is_empty():
+		return
+	for task in pending:
+		var item: Dictionary = task["item"]
+		_ensure_download_entry(item, DownloadRowLib.STATE_QUEUED, -1, -1.0, bool(task["vocal_only"]))
+		_batch_queue.append(item)
+	_sync_bound_cards()
+	if _current_tab == Tab.DOWNLOADS:
+		_refresh_downloads_page(false)
+	_pump_download_queue()
+
+
+## 队列水泵：同一时刻只允许一条下载链在跑（ResourceManager 的并行信箱是单实例的）。
+## 批量优先——批量任务成批推进，单曲任务等整批跑完再接着来
+func _pump_download_queue() -> void:
+	if _download_paused or _batch_running or _manual_running:
+		return
+	if not _active_hashes.is_empty():
+		return
+	if not _batch_queue.is_empty():
+		_run_batch()
+	elif not _manual_queue.is_empty():
+		_run_manual_queue()
+
+
+## 当前页还能加入下载队列的谱面：[{item, vocal_only}]。
+## vocal_only 表示谱面本体已在本地、只差人声（「下载人声」开启时才算待办）
+func _collect_pending_songs() -> Array:
 	var pending: Array = []
 	for item in _song_items:
 		var hash_str := str(item.get("hash", ""))
-		if hash_str.is_empty() or _download_entries.has(hash_str):
+		if hash_str.is_empty() or _is_queued(hash_str):
 			continue
-		if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+		var state := ResourceManager.instance.get_download_state(hash_str)
+		if state == ResourceManager.DownloadState.DOWNLOADING:
 			continue
-		if _active_hashes.has(hash_str):
+		if state == ResourceManager.DownloadState.DOWNLOADED:
+			if not _needs_vocal(hash_str, item):
+				continue
+			pending.append({"item": item, "vocal_only": true})
 			continue
-		pending.append(item)
-	if pending.is_empty():
-		return
-
-	_batch_running = true
-	for item in pending:
-		_ensure_download_entry(item, DownloadRowLib.STATE_QUEUED, -1, -1.0)
-		_batch_queue.append(item)
-	_update_batch_button()
-	_run_batch()
+		pending.append({"item": item, "vocal_only": false})
+	return pending
 
 
 func _run_batch() -> void:
+	if _batch_running or _manual_running or not _active_hashes.is_empty():
+		return
+	_batch_running = true
 	while not _batch_queue.is_empty():
+		if _download_paused:
+			break
 		var item: Dictionary = _batch_queue.pop_front()
 		var hash_str := str(item.get("hash", ""))
 		_batch_current = hash_str
-		_update_batch_button()
-		if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+		_update_task_badges()
+		if not _is_vocal_only(hash_str) \
+				and ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
 			continue
 		await _start_download(item, true)
 	_batch_current = ""
 	_batch_running = false
-	_update_batch_button()
-	_run_manual_queue()
+	_update_task_badges()
+	_pump_download_queue()
 
 
-func _update_batch_button() -> void:
-	var remain := _batch_queue.size() + (0 if _batch_current.is_empty() else 1)
-	%BatchDownloadBtn.text = "批量下载" if remain <= 0 else "批量下载 (%d)" % remain
-	%BatchDownloadBtn.disabled = _current_tab != Tab.SONGS or _batch_running or _manual_running \
-		or not _active_hashes.is_empty() or not _has_downloadable_songs()
+## 下载任务徽标：排队中 + 下载中的总数统一显示在「下载管理」标签上（批量与单曲合算），
+## 批量下载按钮只表达可用状态——队列在跑时依然可以继续往里加
+func _update_task_badges() -> void:
+	var pending := _pending_task_count()
+	# 队列自然跑空后自动解除暂停态，避免「继续」按钮空挂着
+	if _download_paused and pending <= 0:
+		_download_paused = false
+	var badge_text := "下载管理" if pending <= 0 else "下载管理 (%d)" % pending
+	if %TabDownloadBtn.text != badge_text:
+		%TabDownloadBtn.text = badge_text
+		# 文字变宽/变窄会挤动整条标签栏，下划线要跟着挪（等布局落地后再挪，见 realign）
+		_request_underline_realign()
+	%DownloadPauseBtn.text = "继续" if _download_paused else "暂停"
+	%DownloadPauseBtn.icon = StoreIconsLib.play() if _download_paused else StoreIconsLib.pause()
+	%DownloadPauseBtn.tooltip_text = "继续执行下载队列" if _download_paused \
+		else "不再开始新任务，正在下的谱面下完后停住"
+	%DownloadPauseBtn.disabled = pending <= 0 and not _download_paused
+
+	var failed := _count_entries(ResourceManager.DownloadState.FAILED)
+	%DownloadRetryBtn.icon = StoreIconsLib.retry()
+	%DownloadRetryBtn.tooltip_text = ("把 %d 个失败的谱面重新排队" % failed) if failed > 0 \
+		else "没有失败的下载"
+	%DownloadRetryBtn.disabled = failed <= 0
+
+	var done := _count_entries(ResourceManager.DownloadState.DOWNLOADED)
+	%DownloadsClearDoneBtn.icon = StoreIconsLib.check()
+	%DownloadsClearDoneBtn.tooltip_text = ("清空 %d 条已完成记录" % done) if done > 0 \
+		else "没有已完成的记录"
+	%DownloadsClearDoneBtn.disabled = done <= 0
+	%DownloadsClearBtn.icon = StoreIconsLib.trash()
+	%DownloadsClearBtn.tooltip_text = "清空整个下载列表（正在下载的谱面不受影响）"
+	%DownloadsClearBtn.disabled = _download_entries.is_empty()
+
+	if _current_tab != Tab.SONGS:
+		%BatchDownloadBtn.disabled = true
+		%BatchDownloadBtn.tooltip_text = "批量下载仅对歌曲页生效"
+	elif _collect_pending_songs().is_empty():
+		%BatchDownloadBtn.disabled = true
+		%BatchDownloadBtn.tooltip_text = "当前页没有可下载的谱面"
+	else:
+		%BatchDownloadBtn.disabled = false
+		%BatchDownloadBtn.tooltip_text = "把当前页未下载的谱面加入下载队列"
 
 
-func _has_downloadable_songs() -> bool:
-	for item in _song_items:
-		var hash_str := str(item.get("hash", ""))
-		if hash_str.is_empty() or _active_hashes.has(hash_str):
-			continue
-		if ResourceManager.instance.get_download_state(hash_str) != ResourceManager.DownloadState.DOWNLOADED:
-			return true
-	return false
+## 还没跑完的下载任务数（排队 + 正在下载），作为下载管理页的数量徽标
+func _pending_task_count() -> int:
+	var count := 0
+	for entry in _download_entries.values():
+		var state := int(entry.get("state", -1))
+		if state == DownloadRowLib.STATE_QUEUED \
+				or state == ResourceManager.DownloadState.DOWNLOADING:
+			count += 1
+	return count
+
+
+## 指定状态的条目数（全部重试 / 清空已完成的可点性判断用）
+func _count_entries(state: int) -> int:
+	var count := 0
+	for entry in _download_entries.values():
+		if int(entry.get("state", -1)) == state:
+			count += 1
+	return count
 
 
 # ══════════════════════════════════════════════════════
@@ -1146,13 +1426,15 @@ func _refresh_downloads_page(reset_scroll: bool) -> void:
 			if not haystack.to_lower().contains(query):
 				continue
 		rows.append(entry)
+	# 先按状态分组（等待中 → 失败 → 已完成），组内**一律按入队顺序正序**：
+	# 队列是从上往下执行的，列表也就该从上往下读。这里不受歌曲页的排序开关影响——
+	# 之前跟着 _sort_order 走，默认降序会让「列表最下面那首最先下载」
 	rows.sort_custom(func(a, b) -> bool:
 		var pa := _row_priority(int(a.get("state", 0)))
 		var pb := _row_priority(int(b.get("state", 0)))
 		if pa != pb:
 			return pa < pb
-		return int(a.get("order", 0)) < int(b.get("order", 0)) \
-			if _sort_order == "asc" else int(a.get("order", 0)) > int(b.get("order", 0))
+		return int(a.get("order", 0)) < int(b.get("order", 0))
 	)
 	_download_rows = rows
 
@@ -1166,7 +1448,61 @@ func _refresh_downloads_page(reset_scroll: bool) -> void:
 	_refresh_hero()
 	%DownloadsEmpty.visible = rows.is_empty() and active.is_empty()
 	%DownloadsEmpty.text = "还没有下载记录"
-	_update_batch_button()
+	_update_task_badges()
+
+
+## 暂停 / 继续下载队列：只拦「开始下一个任务」，正在下的谱面会照常跑完
+## （底层 HTTPRequest 没有中途取消的通道，硬掐会留下半截 .part 目录）
+func _on_download_pause_pressed() -> void:
+	_download_paused = not _download_paused
+	if not _download_paused:
+		_pump_download_queue()
+	_update_task_badges()
+
+
+## 失败的全部重试：把失败的条目重新排进队列（保留它原本的任务类型——整包 / 补人声）
+func _on_download_retry_pressed() -> void:
+	var tasks: Array = []
+	for entry in _download_entries.values():
+		if int(entry.get("state", -1)) != ResourceManager.DownloadState.FAILED:
+			continue
+		var hash_str := str(entry.get("hash", ""))
+		var item: Dictionary = entry.get("item", {})
+		if hash_str.is_empty() or item.is_empty() or _is_queued(hash_str):
+			continue
+		tasks.append({"item": item, "vocal_only": bool(entry.get("vocal_only", false))})
+	if tasks.is_empty():
+		return
+	for task in tasks:
+		_ensure_download_entry(task["item"], DownloadRowLib.STATE_QUEUED, -1, -1.0,
+			bool(task["vocal_only"]))
+		_batch_queue.append(task["item"])
+	_sync_bound_cards()
+	_refresh_downloads_page(false)
+	_pump_download_queue()
+
+
+## 清空已完成：只丢掉成功的记录，失败的留着让人能看见 / 重试，在下的不动
+func _on_downloads_clear_done_pressed() -> void:
+	for hash_str in _download_entries.keys():
+		var state := int(_download_entries[hash_str].get("state", -1))
+		if state != ResourceManager.DownloadState.DOWNLOADED or _active_hashes.has(hash_str):
+			continue
+		_download_entries.erase(hash_str)
+	_refresh_downloads_page(true)
+
+
+## 清空列表：丢掉已完成 / 失败的记录和还没开始的任务，
+## 正在下载的那首保留条目，等它自己跑完
+func _on_downloads_clear_pressed() -> void:
+	_manual_queue.clear()
+	_batch_queue.clear()
+	for hash_str in _download_entries.keys():
+		if _active_hashes.has(hash_str):
+			continue
+		_download_entries.erase(hash_str)
+	_sync_bound_cards()
+	_refresh_downloads_page(true)
 
 
 func _row_priority(state: int) -> int:
@@ -1283,14 +1619,15 @@ func _on_empty_gui_input(event: InputEvent) -> void:
 	_reload_page(_current_tab)
 
 
+## 空状态点一下 = 重载当前标签页。歌曲页按**当前页码**重试：
+## 加载失败时 _song_total 已被清零，但用户翻到哪一页就该重试哪一页，
+## 否则第 3 页失败后点重试会被踢回第 1 页
 func _reload_page(tab: int) -> void:
 	match tab:
 		Tab.SONGS:
-			_song_page = 1
 			_load_songs()
 		Tab.DOWNLOADS:
-			_sync_song_states()
-			_seed_download_entries()
+			_sync_bound_cards()
 			_refresh_downloads_page(true)
 		_:
 			_reload_local_category(tab)
@@ -1313,11 +1650,7 @@ func _reload_local_category(tab: int) -> void:
 func _on_state_changed(old_state: UIStateManager.UIState,
 		new_state: UIStateManager.UIState) -> void:
 	if new_state == UIStateManager.UIState.STORE_VIEW:
-		_sync_song_states()
-		if _song_vlist != null:
-			for node in _song_vlist.bound_nodes():
-				if is_instance_valid(node):
-					node.call("refresh_download_state")
+		_sync_bound_cards()
 		if _current_tab == Tab.DOWNLOADS:
 			_refresh_downloads_page(false)
 		_update_tab_underline(true)
@@ -1443,6 +1776,10 @@ func apply_theme() -> void:
 		b.add_theme_color_override("icon_normal_color", text_secondary)
 		b.add_theme_color_override("icon_hover_color", text_primary)
 	%PagerText.get_theme_stylebox("normal").bg_color = surface_low
+	%PagerText.add_theme_color_override("font_color", text_secondary)
+	%PagerText.add_theme_color_override("font_uneditable_color", muted_text)
+	%PagerText.add_theme_color_override("caret_color", primary)
+	%PagerText.add_theme_color_override("selection_color", ThemeMGR._tint_keep_alpha(primary, 0.35))
 
 	# 下载管理
 	var hero_sb: StyleBoxFlat = %HeroPanel.get_theme_stylebox("panel")
@@ -1455,6 +1792,10 @@ func apply_theme() -> void:
 	%HeroProgress.get_theme_stylebox("fill").bg_color = primary
 	%CoverPlaceholder.modulate = muted_text
 	%CoverPlaceholder.modulate.a = 0.35
+	for btn in [%DownloadPauseBtn, %DownloadRetryBtn, %DownloadsClearDoneBtn, %DownloadsClearBtn]:
+		var b := btn as Button
+		b.add_theme_color_override("icon_normal_color", text_secondary)
+		b.add_theme_color_override("icon_hover_color", text_primary)
 
 	_refresh_hero()
-	_update_batch_button()
+	_update_task_badges()

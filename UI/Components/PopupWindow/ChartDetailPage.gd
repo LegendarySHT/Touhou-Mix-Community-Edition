@@ -138,16 +138,28 @@ func _load_cover() -> void:
 		%Cover.texture = local_tex
 		%Placeholder.visible = false
 		return
+	# 已下载的谱面直接用本地封面，省一次网络请求（与商店卡片同一口径）
+	var local_path := ResourceManager.instance.get_local_cover_path(str(_item.get("hash", "")))
+	if not local_path.is_empty():
+		CoverLoader.request_load("chart_detail_%d" % get_instance_id(), local_path,
+			func(_path: String, tex: Texture2D, _ver: int) -> void:
+				if not is_instance_valid(self) or version != _cover_version:
+					return
+				if tex:
+					%Cover.texture = tex
+					%Placeholder.visible = false
+		)
+		return
 	var url := str(_item.get("cover_url", ""))
 	if url.is_empty():
 		return
-	HttpImageLoader.load(url, self, func(tex: Texture2D) -> void:
+	var on_cover := func(tex: Texture2D) -> void:
 		if not is_instance_valid(self) or version != _cover_version:
 			return
 		if tex:
 			%Cover.texture = tex
 			%Placeholder.visible = false
-	)
+	HttpImageLoader.load(url, self, on_cover, true)
 
 func _kind_icon() -> Texture2D:
 	match str(_item.get("kind", "")):
@@ -300,10 +312,7 @@ func _apply_download_state() -> void:
 		%DownloadBtn.theme_type_variation = &"ButtonDownloadDone"
 		return
 
-	var hash_str := str(_item.get("hash", ""))
-	var state := int(_item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
-	if not hash_str.is_empty():
-		state = ResourceManager.instance.get_download_state(hash_str)
+	var state := _resolve_state()
 	var variant := &"ButtonDownloadIdle"
 	var icon: Texture2D = StoreIconsLib.download()
 	var text := "下载谱面"
@@ -316,11 +325,18 @@ func _apply_download_state() -> void:
 			text = "正在下载…"
 			tip = "正在下载…"
 		ResourceManager.DownloadState.DOWNLOADED:
-			# 本地已有：按钮改成「进入曲库查看」，不再是终止态
-			variant = &"ButtonDownloadDone"
-			icon = StoreIconsLib.song()
-			text = "查看谱面"
-			tip = "在曲库中打开该谱面"
+			if bool(_item.get("needs_vocal", false)):
+				# 谱面已在本地但缺人声（「下载人声」开启）：按钮回到下载态，点一下只补人声
+				variant = &"ButtonDownloadIdle"
+				icon = StoreIconsLib.mic()
+				text = "下载人声"
+				tip = "本地缺人声，点击补下"
+			else:
+				# 本地已有：按钮改成「进入曲库查看」，不再是终止态
+				variant = &"ButtonDownloadDone"
+				icon = StoreIconsLib.song()
+				text = "查看谱面"
+				tip = "在曲库中打开该谱面"
 		ResourceManager.DownloadState.FAILED:
 			variant = &"ButtonDownloadError"
 			icon = StoreIconsLib.close()
@@ -330,6 +346,19 @@ func _apply_download_state() -> void:
 	%DownloadBtn.icon = icon
 	%DownloadBtn.tooltip_text = tip
 	%DownloadBtn.theme_type_variation = variant
+
+## 谱面当前状态：商店页会把「已进下载队列」的条目也标成 DOWNLOADING，这里以它为准；
+## 但本地已经失败时必须按失败走，否则下载记录里点进来的详情会永远停在「正在下载」
+func _resolve_state() -> int:
+	var state := int(_item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
+	var hash_str := str(_item.get("hash", ""))
+	if hash_str.is_empty():
+		return state
+	var local_state := ResourceManager.instance.get_download_state(hash_str)
+	if state == ResourceManager.DownloadState.DOWNLOADING \
+			and local_state != ResourceManager.DownloadState.FAILED:
+		return state
+	return local_state
 
 ## 非商店入口：不参与下载状态机，只按本地曲库有无该谱面决定按钮是否可跳
 func _apply_library_action() -> void:
@@ -348,13 +377,11 @@ func _on_download_pressed() -> void:
 	if _mode == Mode.LIBRARY:
 		_open_midi_view()
 		return
-	var state := int(_item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
-	var hash_str := str(_item.get("hash", ""))
-	if not hash_str.is_empty():
-		state = ResourceManager.instance.get_download_state(hash_str)
+	var state := _resolve_state()
 	if state == ResourceManager.DownloadState.DOWNLOADING:
 		return
-	if state == ResourceManager.DownloadState.DOWNLOADED:
+	if state == ResourceManager.DownloadState.DOWNLOADED \
+			and not bool(_item.get("needs_vocal", false)):
 		_open_midi_view()
 		return
 	download_requested.emit(_item)

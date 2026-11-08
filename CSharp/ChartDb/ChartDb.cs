@@ -367,6 +367,10 @@ public partial class ChartDb : Node
         if (!IsOpen()) return;
         lock (_lock)
         {
+            // 记录本次写入里「原本不存在」的谱面：只有全部是新增时才走增量聚合维护，
+            // 覆盖写 / 孤儿归组 / 大批量（全量扫描）仍然整表重建
+            var added = new List<BsonDocument>();
+            var overwritten = 0;
             _db.BeginTrans();
             try
             {
@@ -395,6 +399,9 @@ public partial class ChartDb : Node
                     doc.Remove("data");
                     doc.Remove("_seed_runtime");
                     doc.Remove("_is_full");
+                    var folderId = doc["_id"].AsString;
+                    if (_charts.FindById(folderId) != null) overwritten++;
+                    else added.Add(doc);
                     _charts.Upsert(doc);
                 }
                 _db.Commit();
@@ -404,8 +411,113 @@ public partial class ChartDb : Node
                 _db.Rollback();
                 throw;
             }
-            RebuildAlbumsSongs();
+            if (added.Count > 0 && added.Count <= 4 && overwritten == 0 && CanAppendAggregates(added))
+                AppendAggregates(added);
+            else
+                RebuildAlbumsSongs(added.Count + overwritten > 32);
         }
+    }
+
+    /// <summary>
+    /// 增量维护 albums/songs 聚合（只更新受影响的那一两个文档）。
+    /// 场景：下载落盘 / 单文件导入——每次新增都整表重建是 O(全库)，批量下载时逐首累积成卡顿。
+    /// 前提由调用方保证：全部是新谱面、且都不是孤儿（孤儿要走整表重建来归组）。
+    /// </summary>
+    private bool CanAppendAggregates(List<BsonDocument> docs)
+    {
+        foreach (var doc in docs)
+        {
+            var albumId = BsonConvert.GetStr(doc, "album_id");
+            var songId = BsonConvert.GetStr(doc, "song_id");
+            if (IsOrphanChart(albumId, songId)) return false;
+            if (!doc.ContainsKey("_id")) return false;
+        }
+        return true;
+    }
+
+    private void AppendAggregates(List<BsonDocument> docs)
+    {
+        _db.BeginTrans();
+        try
+        {
+            foreach (var doc in docs)
+            {
+                var albumId = BsonConvert.GetStr(doc, "album_id");
+                var songId = BsonConvert.GetStr(doc, "song_id");
+                var folderId = doc["_id"].AsString;
+
+                // ── album：计数 +1、补 song_ids、刷新最早上传时间（字段口径与整表重建一致）
+                var album = _albums.FindById(albumId);
+                if (album == null)
+                {
+                    album = new BsonDocument
+                    {
+                        ["_id"] = albumId, ["song_ids"] = new BsonArray(),
+                        ["total_midi_count"] = (long)0, ["earliest_uploaded_date"] = ""
+                    };
+                    if (doc.TryGetValue("album", out var albumV) && albumV.IsDocument)
+                    {
+                        var ab = albumV.AsDocument;
+                        album["name"] = BsonConvert.GetStr(ab, "name");
+                        album["abbr"] = BsonConvert.GetStr(ab, "abbr");
+                        album["date"] = BsonConvert.GetStr(ab, "date");
+                        album["description"] = BsonConvert.GetStr(ab, "description");
+                        album["coverHash"] = BsonConvert.GetStr(ab, "coverHash");
+                    }
+                }
+                var albumSongs = album.TryGetValue("song_ids", out var sv) && sv.IsArray ? sv.AsArray : new BsonArray();
+                album["song_ids"] = albumSongs;
+                album["total_midi_count"] = BsonConvert.GetLong(album, "total_midi_count") + 1;
+                bool hasSong = false;
+                foreach (var x in albumSongs)
+                    if (x.IsString && x.AsString == songId) { hasSong = true; break; }
+                if (!hasSong) albumSongs.Add(songId);
+                var uploadedDate = BsonConvert.GetStr(doc, "uploaded_date");
+                if (!string.IsNullOrEmpty(uploadedDate))
+                {
+                    var earliest = BsonConvert.GetStr(album, "earliest_uploaded_date");
+                    if (string.IsNullOrEmpty(earliest) || string.CompareOrdinal(uploadedDate, earliest) < 0)
+                        album["earliest_uploaded_date"] = uploadedDate;
+                }
+                _albums.Upsert(album);
+
+                // ── song：补 midi_ids
+                var song = _songs.FindById(songId);
+                if (song == null)
+                {
+                    song = new BsonDocument
+                    {
+                        ["_id"] = songId, ["album_id"] = albumId, ["albumId"] = albumId,
+                        ["midi_ids"] = new BsonArray(), ["name"] = "", ["nameEn"] = "",
+                        ["track"] = (long)0, ["description"] = ""
+                    };
+                    if (doc.TryGetValue("song", out var songV) && songV.IsDocument)
+                    {
+                        var sb = songV.AsDocument;
+                        song["name"] = BsonConvert.GetStr(sb, "name");
+                        song["nameEn"] = BsonConvert.GetStr(sb, "nameEn");
+                        song["track"] = BsonConvert.GetLong(sb, "track");
+                        song["description"] = BsonConvert.GetStr(sb, "description");
+                    }
+                }
+                var midiIds = song.TryGetValue("midi_ids", out var mv) && mv.IsArray ? mv.AsArray : new BsonArray();
+                song["midi_ids"] = midiIds;
+                bool hasMidi = false;
+                foreach (var x in midiIds)
+                    if (x.IsString && x.AsString == folderId) { hasMidi = true; break; }
+                if (!hasMidi) midiIds.Add(folderId);
+                _songs.Upsert(song);
+            }
+            _db.Commit();
+        }
+        catch
+        {
+            _db.Rollback();
+            throw;
+        }
+        // 规范化缓存是惰性补缺的：整体作废即可，不必在这里全量重算
+        _normCache.Clear();
+        System.Threading.Interlocked.Increment(ref _normCacheGen);
     }
 
     /// <summary>
@@ -439,23 +551,35 @@ public partial class ChartDb : Node
         if (!IsOpen()) return;
         lock (_lock)
         {
-            foreach (var k in keys)
+            // 逐条 Delete 各自刷一次盘（LiteDB 完全持久化），几百首就是几百次 fsync；
+            // 包进一个事务只提交一次。聚合表重建必须放在事务外（里面会 Drop/Create 集合）
+            _db.BeginTrans();
+            try
             {
-                var key = k.AsString();
-                if (string.IsNullOrEmpty(key)) continue;
-                var folderName = LookupChartKey(key);
-                if (string.IsNullOrEmpty(folderName)) continue;
-                var doc = _charts.FindById(folderName);
-                if (doc != null)
+                foreach (var k in keys)
                 {
-                    var chartKey = ComputeChartKey(doc);
-                    if (!string.IsNullOrEmpty(chartKey))
+                    var key = k.AsString();
+                    if (string.IsNullOrEmpty(key)) continue;
+                    var folderName = LookupChartKey(key);
+                    if (string.IsNullOrEmpty(folderName)) continue;
+                    var doc = _charts.FindById(folderName);
+                    if (doc != null)
                     {
-                        _runtime.Delete(chartKey);
-                        _runtimeRevision++;
+                        var chartKey = ComputeChartKey(doc);
+                        if (!string.IsNullOrEmpty(chartKey))
+                        {
+                            _runtime.Delete(chartKey);
+                            _runtimeRevision++;
+                        }
                     }
+                    _charts.Delete(folderName);
                 }
-                _charts.Delete(folderName);
+                _db.Commit();
+            }
+            catch
+            {
+                _db.Rollback();
+                throw;
             }
             RebuildAlbumsSongs();
         }
@@ -2263,15 +2387,17 @@ public partial class ChartDb : Node
     /// 另附聚合字段（song_ids/midi_ids/total_midi_count/earliest_uploaded_date）。
     /// 孤儿（缺 album 或 song）归入 __unknown_album__ / __unknown_song__。
     /// </summary>
-    private void RebuildAlbumsSongs()
+    private void RebuildAlbumsSongs(bool prewarm = true)
     {
         // 图表变更 → 规范化搜索副本缓存失效（song_name/author_name 可能被孤儿归组改写）
         _normCache.Clear();
         System.Threading.Interlocked.Increment(ref _normCacheGen); // 后台预热自取消世代号
         var albums = new Dictionary<string, BsonDocument>();
         var songs = new Dictionary<string, BsonDocument>();
+        // 两趟遍历共用一份快照：FindAll 每次都把全库反序列化成 BsonDocument，多扫一次就是成百毫秒
+        var allDocs = _charts.FindAll().ToList();
 
-        foreach (var doc in _charts.FindAll().ToList())
+        foreach (var doc in allDocs)
         {
             var albumId = BsonConvert.GetStr(doc, "album_id");
             var songId = BsonConvert.GetStr(doc, "song_id");
@@ -2337,7 +2463,7 @@ public partial class ChartDb : Node
             ["midi_ids"] = new BsonArray()
         };
         var anyOrphan = false;
-        foreach (var doc in _charts.FindAll().ToList())
+        foreach (var doc in allDocs)
         {
             var albumId = BsonConvert.GetStr(doc, "album_id");
             var songId = BsonConvert.GetStr(doc, "song_id");
@@ -2374,13 +2500,25 @@ public partial class ChartDb : Node
         _db.DropCollection("albums");
         _db.DropCollection("songs");
         BindCollections();
-        foreach (var kv in albums)
-            _albums.Upsert(kv.Value);
-        foreach (var kv in songs)
-            _songs.Upsert(kv.Value);
+        // 集合重建后是全新文档，逐条 Upsert 会各刷一次盘；包进一个事务只提交一次
+        _db.BeginTrans();
+        try
+        {
+            foreach (var kv in albums)
+                _albums.Upsert(kv.Value);
+            foreach (var kv in songs)
+                _songs.Upsert(kv.Value);
+            _db.Commit();
+        }
+        catch
+        {
+            _db.Rollback();
+            throw;
+        }
 
-        // 规范化缓存已清空 → 后台线程重填（词典就绪时；纯转换，不占主线程）
-        if (_normT2S != null)
-            PrewarmNormCache(_charts.FindAll().ToList());
+        // 规范化缓存已清空 → 后台线程重填（词典就绪时；纯转换，不占主线程）。
+        // 增量写入（下载落盘）时没必要为这一次变更把全库重算一遍：缓存是惰性补缺的
+        if (prewarm && _normT2S != null)
+            PrewarmNormCache(allDocs);
     }
 }

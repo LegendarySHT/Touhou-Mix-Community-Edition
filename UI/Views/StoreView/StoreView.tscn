@@ -222,6 +222,7 @@ theme_override_constants/separation = 22
 [node name="Toolbar" type="HBoxContainer" parent="TopBar/Row" unique_id=2066017376]
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.65
 mouse_filter = 2
 theme_override_constants/separation = 12
 
@@ -304,6 +305,7 @@ icon = SubResource("Atlas_mic")
 
 [node name="TabBar" type="HBoxContainer" parent="TopBar/Row" unique_id=1456142379]
 layout_mode = 2
+size_flags_horizontal = 10
 mouse_filter = 2
 theme_override_constants/separation = 6
 
@@ -652,12 +654,70 @@ anchors_preset = 10
 anchor_right = 1.0
 offset_left = 40.0
 offset_top = 240.0
-offset_right = -40.0
+offset_right = -700.0
 offset_bottom = 272.0
 grow_horizontal = 2
 theme_type_variation = &"LabelSecondary"
 theme_override_font_sizes/font_size = 24
 text = "下载记录"
+
+[node name="RecentActions" type="HBoxContainer" parent="Tabs/DownloadsPage" unique_id=1435590087]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -690.0
+offset_top = 236.0
+offset_right = -40.0
+offset_bottom = 276.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_override_constants/separation = 10
+alignment = 2
+
+[node name="DownloadPauseBtn" type="Button" parent="Tabs/DownloadsPage/RecentActions" unique_id=1676300294]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonFlat"
+theme_override_constants/h_separation = 8
+theme_override_constants/icon_max_width = 24
+theme_override_font_sizes/font_size = 20
+text = "暂停"
+
+[node name="DownloadRetryBtn" type="Button" parent="Tabs/DownloadsPage/RecentActions" unique_id=1093425718]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonFlat"
+theme_override_constants/h_separation = 8
+theme_override_constants/icon_max_width = 24
+theme_override_font_sizes/font_size = 20
+text = "全部重试"
+
+[node name="DownloadsClearDoneBtn" type="Button" parent="Tabs/DownloadsPage/RecentActions" unique_id=1544863726]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonFlat"
+theme_override_constants/h_separation = 8
+theme_override_constants/icon_max_width = 24
+theme_override_font_sizes/font_size = 20
+text = "清空已完成"
+
+[node name="DownloadsClearBtn" type="Button" parent="Tabs/DownloadsPage/RecentActions" unique_id=1081663461]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_type_variation = &"ButtonFlat"
+theme_override_constants/h_separation = 8
+theme_override_constants/icon_max_width = 24
+theme_override_font_sizes/font_size = 20
+text = "清空列表"
 
 [node name="DownloadsScroll" type="ScrollContainer" parent="Tabs/DownloadsPage" unique_id=240579188]
 unique_name_in_owner = true
@@ -731,17 +791,19 @@ theme_override_styles/hover = SubResource("SB_pager_hover")
 icon = SubResource("Atlas_prev")
 icon_alignment = 1
 
-[node name="PagerText" type="Label" parent="Bottom" unique_id=281129194]
+[node name="PagerText" type="LineEdit" parent="Bottom" unique_id=281129194]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(200, 64)
 layout_mode = 2
 size_flags_horizontal = 4
-theme_type_variation = &"LabelSecondary"
+theme_override_colors/font_color = Color(0.8, 0.84, 0.9, 1)
 theme_override_font_sizes/font_size = 24
 theme_override_styles/normal = SubResource("SB_pager_info")
+theme_override_styles/read_only = SubResource("SB_pager_info")
+theme_override_styles/focus = SubResource("SB_pager_info")
 text = "—"
-horizontal_alignment = 1
-vertical_alignment = 1
+alignment = 1
+max_length = 7
 
 [node name="NextBtn" type="Button" parent="Bottom" unique_id=1239685035]
 unique_name_in_owner = true
@@ -754,4 +816,3 @@ theme_override_styles/pressed = SubResource("SB_pager_hover")
 theme_override_styles/hover = SubResource("SB_pager_hover")
 icon = SubResource("Atlas_next")
 icon_alignment = 1
-

@@ -130,16 +130,30 @@ func _load_cover() -> void:
 		%Cover.texture = local_tex
 		%Placeholder.visible = false
 		return
+	# 已下载的谱面直接用本地封面：省一次网络请求，也和曲库 / 播放页看到的是同一张
+	var local_path := ResourceManager.instance.get_local_cover_path(str(item.get("hash", "")))
+	if not local_path.is_empty():
+		CoverLoader.request_load("store_card_%d" % get_instance_id(), local_path,
+			func(_path: String, tex: Texture2D, _ver: int) -> void:
+				if not is_instance_valid(self) or version != _cover_version:
+					return
+				if tex:
+					%Cover.texture = tex
+					%Placeholder.visible = false
+		)
+		return
 	var url := str(item.get("cover_url", ""))
 	if url.is_empty():
 		return
-	HttpImageLoader.load(url, self, func(tex: Texture2D) -> void:
+	# trust_cache：封面按谱面 hash 取，URL 相同内容就不会变，翻页回来直接读磁盘缓存，
+	# 不再逐张发条件请求（一页 24 张就是 24 次往返，翻页快慢全看网络抖动）
+	var on_cover := func(tex: Texture2D) -> void:
 		if not is_instance_valid(self) or version != _cover_version:
 			return
 		if tex:
 			%Cover.texture = tex
 			%Placeholder.visible = false
-	)
+	HttpImageLoader.load(url, self, on_cover, true)
 
 
 ## 下载状态 → 按钮图标/文案/主色
@@ -147,10 +161,16 @@ func _apply_download_state() -> void:
 	if not _has_ready:
 		return
 	var state := int(item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
+	var needs_vocal := bool(item.get("needs_vocal", false))
 	var variant := &"ButtonDownloadIdle"
 	var icon_tex: Texture2D = StoreIconsLib.download()
 	var label_text := "下载"
 	var tip := "下载该谱面"
+	if needs_vocal:
+		# 谱面已在本地但缺人声（「下载人声」开启）：仍然给下载按钮，点一下只补人声
+		icon_tex = StoreIconsLib.mic()
+		label_text = "下载人声"
+		tip = "本地缺人声，点击补下"
 	match state:
 		ResourceManager.DownloadState.DOWNLOADING:
 			variant = &"ButtonDownloadBusy"
@@ -192,11 +212,13 @@ func _on_pressed() -> void:
 
 func _on_download_pressed() -> void:
 	# 状态按 hash 实时取，避免卡片里缓存的 state 落后于实际下载结果
-	# （与详情页 ChartDetailPage._on_download_pressed 的判定口径一致）
+	# （排队中的谱面在 ResourceManager 眼里仍是未下载，这种情况保留卡片上的「下载中」）
 	var state := int(item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
 	var hash_str := str(item.get("hash", ""))
-	if not hash_str.is_empty():
+	if not hash_str.is_empty() and state != ResourceManager.DownloadState.DOWNLOADING:
 		state = ResourceManager.instance.get_download_state(hash_str)
+	if bool(item.get("needs_vocal", false)):
+		state = ResourceManager.DownloadState.NOT_DOWNLOADED
 	match state:
 		ResourceManager.DownloadState.DOWNLOADING:
 			return
