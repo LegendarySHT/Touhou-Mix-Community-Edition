@@ -1548,14 +1548,34 @@ func _refresh_hero() -> void:
 	%PercentText.text = ("%d%%" % int(round(percent * 100.0))) if percent >= 0.0 else "…"
 	var author := str(item.get("author", ""))
 	var album := str(item.get("album", ""))
-	var size_text := StoreIconsLib.format_size(int(item.get("size_bytes", 0)))
 	var meta_parts: Array[String] = []
 	if not author.is_empty():
 		meta_parts.append(author)
 	if not album.is_empty():
 		meta_parts.append(album)
 	%MetaText.set_scroll_text("  ·  ".join(meta_parts))
-	%DetailText.text = "文件 %s" % size_text
+	%DetailText.text = _transfer_size_text(item, stage)
+
+
+## 顶部大卡右下角的尺寸：跟着**当前正在传的文件**走。
+## 进度百分比也是按阶段给的（下 MIDI 时是 MIDI 的进度，下人声时是人声的进度），
+## 固定显示 MIDI 大小的话，人声阶段那个数字就是错的
+func _transfer_size_text(item: Dictionary, stage: int) -> String:
+	var raw: Dictionary = item.get("raw", {})
+	var midi_size := int(item.get("size_bytes", 0))
+	var vocal_size := int(raw.get("vocalSize", 0))
+	match stage:
+		ResourceManager.DownloadStage.VOCAL:
+			if vocal_size > 0:
+				return "人声 %s" % StoreIconsLib.format_size(vocal_size)
+		ResourceManager.DownloadStage.MIDI:
+			if midi_size > 0:
+				return "MIDI %s" % StoreIconsLib.format_size(midi_size)
+		ResourceManager.DownloadStage.COVER:
+			return "封面"
+	if midi_size <= 0:
+		return "—"
+	return "文件 %s" % StoreIconsLib.format_size(midi_size)
 
 
 func _load_hero_cover(item: Dictionary) -> void:
