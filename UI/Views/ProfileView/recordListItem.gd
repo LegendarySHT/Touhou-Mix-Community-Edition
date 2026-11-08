@@ -74,13 +74,18 @@ func setup_record(data: Dictionary, mode: int = -1) -> void:
 func set_withdraw_state(withdraw: bool) -> void:
 	modulate.a = 0.4 if withdraw else 1.0
 
-## 从服务端加载曲包封面（GET /api/charts/{hash}/cover?v={coverVersion}）
-## 版本串取自成绩记录 DTO 的 coverVersion：服务端封面有 30 天边缘缓存而路径只含
-## MIDI 哈希，不带版本串就会一直拿到旧图（2026-11-08，与服务端 01bbf1f 配套）。
+## 从服务端加载曲包封面：优先内容寻址 /media/covers/{封面哈希}.{ext}，
+## 老服务端回退 /api/charts/{hash}/cover?v={coverVersion}（见 Core/CoverUrl.gd）。
+## 内容寻址 URL 同图同 URL，客户端 WebCache 因此不会再把共用封面存成 N 份。
 func _load_remote_cover(chart_hash: String, data: Dictionary) -> void:
 	if NetManager.instance == null or not NetManager.instance.is_online:
 		return
-	var cover_url := CoverUrl.from_chart(NetManager.instance.server_url, chart_hash, data)
+	# 列表项若已拼好绝对 URL（ProfileView._item_for_record）就直接用，
+	# 避免二次构造时丢掉 coverUrl / coverVersion 字段。
+	var raw_url = data.get("cover_url", "")
+	var cover_url := "" if raw_url == null else str(raw_url)
+	if cover_url.is_empty():
+		cover_url = CoverUrl.from_chart(NetManager.instance.server_url, chart_hash, data)
 	if cover_url.is_empty():
 		return
 	# 先隐藏默认封面，避免加载失败时显示占位图

@@ -11,6 +11,12 @@ extends RefCounted
 
 const MAX_CACHE_SIZE := 128
 
+## 磁盘缓存容量上限（字节，2026-11-08 封面去重改造）。
+## 封面 URL 改成内容寻址后新文件不再重复增长，但历史遗留的旧 URL 缓存
+## （包括今晚给 URL 加 ?v= 那批）不会自动消失；给目录设上限并按 mtime 淘汰，
+## 让无引用的旧文件自然退场，避免 WebCache 只增不减。
+const MAX_DISK_CACHE_BYTES := 256 * 1024 * 1024
+
 ## 内容哈希前缀长度：与服务端 AvatarImageProcessor.ContentHashLength 约定一致，
 ## 改动须两端同步，否则内容寻址判定失效、退回条件请求。
 const CONTENT_HASH_LENGTH := 32
@@ -43,6 +49,8 @@ static var _active_requests: int = 0         # 已在途的请求数
 static var _waiting_requests: Array = []     # 超上限时排队：[{url}]
 static var _slots: Array = []                # 复用的连接槽（Slot）
 static var _pump_scheduled: bool = false     # 已排了一次「下一帧放行」，避免重复建计时器
+static var _housekeeping_done: bool = false  # 首次访问 WebCache 时清一次 .etag 残留
+static var _writes_since_budget_check: int = 0
 
 static func _get_holder() -> Node:
 	if _holder == null or not is_instance_valid(_holder):
@@ -65,6 +73,7 @@ static func get_cached(url: String) -> Texture2D:
 static func load(url: String, target: Node, on_loaded: Callable) -> void:
 	if url.is_empty() or not on_loaded.is_valid():
 		return
+	_ensure_disk_housekeeping()
 	var cached := get_cached(url)
 	if cached:
 		on_loaded.call(cached)
@@ -87,6 +96,7 @@ static func load(url: String, target: Node, on_loaded: Callable) -> void:
 static func load_cached(url: String, target: Node, on_loaded: Callable) -> void:
 	if url.is_empty() or not on_loaded.is_valid():
 		return
+	_ensure_disk_housekeeping()
 	var cached := get_cached(url)
 	if cached:
 		on_loaded.call(cached)
@@ -386,7 +396,70 @@ static func _write_data(url: String, body: PackedByteArray) -> bool:
 		return false
 	f.store_buffer(body)
 	f.close()
+	# 每写满 32 张才扫一次目录做容量检查，避免一页 24 张封面就扫 24 次。
+	_writes_since_budget_check += 1
+	if _writes_since_budget_check >= 32:
+		_writes_since_budget_check = 0
+		_enforce_disk_budget()
 	return true
+
+## 启动后首次访问 WebCache 时做一次目录级维护：
+## ① 删掉 099857e 移除 ETag 机制后残留的 .etag 文件；
+## ② 按容量上限做一次 LRU 淘汰，让旧 URL 的无引用缓存自然退场。
+## 目录还不存在时不置 done，等首次真正创建后再跑。
+static func _ensure_disk_housekeeping() -> void:
+	if _housekeeping_done:
+		return
+	var dir_path := PathHelper.get_web_cache_dir()
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	_housekeeping_done = true
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+	while file_name != "":
+		if not dir.current_is_dir() and file_name.ends_with(".etag"):
+			DirAccess.remove_absolute(dir_path.path_join(file_name))
+		file_name = dir.get_next()
+	dir.list_dir_end()
+	_enforce_disk_budget()
+
+## 超过容量上限时按文件修改时间从旧到新删除，降到上限的 90% 为止。
+## 目录内全是可随时重建的派生数据（PathHelper 注释即如此定义）；刚写入的文件
+## mtime 最新，不会被误删，也不会打断正在进行的后台解码。
+static func _enforce_disk_budget() -> void:
+	var dir_path := PathHelper.get_web_cache_dir()
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return
+	var entries: Array = []
+	var total: int = 0
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+	while file_name != "":
+		if not dir.current_is_dir():
+			var full := dir_path.path_join(file_name)
+			var f := FileAccess.open(full, FileAccess.READ)
+			if f:
+				var size := f.get_length()
+				f.close()
+				entries.append({
+					"path": full,
+					"size": size,
+					"mtime": FileAccess.get_modified_time(full)
+				})
+				total += size
+		file_name = dir.get_next()
+	dir.list_dir_end()
+	if total <= MAX_DISK_CACHE_BYTES:
+		return
+	entries.sort_custom(func(a, b): return a["mtime"] < b["mtime"])
+	var target: int = int(MAX_DISK_CACHE_BYTES * 0.9)
+	for entry in entries:
+		if total <= target:
+			break
+		if DirAccess.remove_absolute(str(entry["path"])) == OK:
+			total -= int(entry["size"])
 
 ## 丢弃本地缓存（内容损坏/已失效时回退到重新下载）
 static func _drop_cache(url: String) -> void:

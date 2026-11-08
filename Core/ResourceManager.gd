@@ -420,6 +420,10 @@ func _build_local_json(chart_data: Dictionary) -> Dictionary:
 		"artistName": str(chart_data.get("midiAuthor", "")),
 		"artistUrl": str(chart_data.get("midiAuthorUrl", "")),
 		"coverHash": str(chart_data.get("coverHash", "")),
+		# 2026-11-08：记下内容寻址 URL 与版本串，供已下载谱面日后比对刷新——
+		# 本地 cover.jpg 不会自动更新，重下或按此 URL 重拉才能换图。
+		"coverUrl": str(chart_data.get("coverUrl", "")),
+		"coverVersion": str(chart_data.get("coverVersion", "")),
 		"uploadedDate": str(chart_data.get("uploadedAt", "")),
 		"approvedDate": str(chart_data.get("approvedAt", "")),
 		"status": str(chart_data.get("status", "APPROVED")),

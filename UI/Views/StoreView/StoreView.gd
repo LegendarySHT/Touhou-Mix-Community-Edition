@@ -526,8 +526,8 @@ func _make_song_item(chart: Dictionary) -> Dictionary:
 		"likes": int(chart.get("likeCount", chart.get("upCount", -1))),
 		"dislikes": int(chart.get("dislikeCount", chart.get("downCount", -1))),
 		"uploaded_at": str(chart.get("uploadedAt", "")),
-		# 封面 URL 必须带 coverVersion（服务端 30 天边缘缓存 + hash 不含封面内容），
-		# 统一走 CoverUrl 构造，见 Core/CoverUrl.gd
+		# 封面 URL 统一走 CoverUrl：优先服务端内容寻址 coverUrl（同图同 URL），
+		# 老服务端回退 coverVersion 版本串。见 Core/CoverUrl.gd
 		"cover_url": CoverUrl.from_chart(server, hash_str, chart),
 		"state": state,
 		"raw": chart,
@@ -1143,8 +1143,10 @@ func _get_download_hint(item: Dictionary) -> Dictionary:
 	return {
 		"fileSize": int(raw.get("fileSize", 0)),
 		"hasCover": bool(raw.get("hasCover", false)),
-		# 并行下载路径在元数据回来之前就要发封面请求，版本串只能从列表项预取；
-		# 缺这个键 → ResourceManager 退化成无版本 URL → 边缘旧图落成本地封面
+		# 并行下载路径在元数据回来之前就要发封面请求，URL 信息只能从列表项预取。
+		# 2026-11-08：优先内容寻址 coverUrl（同图同 URL，客户端缓存天然去重）；
+		# 老服务端没有该字段时靠 coverVersion 回退。两个键都缺才会退化成裸 URL。
+		"coverUrl": str(raw.get("coverUrl", "")),
 		"coverVersion": str(raw.get("coverVersion", "")),
 		"songName": str(raw.get("songName", "")),
 		"difficulty": str(raw.get("difficulty", "")),
