@@ -297,11 +297,9 @@ func _render_scores(scores: Array) -> void:
 		)
 		# W 评级（中途退出）：整体半透明
 		node.set_withdraw_state(rank_str == "W")
-		# 填充玩家名
+		# 填充玩家名（服务端返回 username，可能为 null）
 		var username = s.get("username")
-		var name_label = node.get_node_or_null("Name")
-		if name_label:
-			name_label.text = username if username != null and not str(username).is_empty() else "Anonymous"
+		node.setup_player_name("" if username == null else str(username))
 		# 加载玩家头像（服务端返回 avatarUrl，可能为 null）
 		var avatar_url = s.get("avatarUrl")
 		var avatar_url_str := str(avatar_url) if avatar_url != null else ""
@@ -328,7 +326,8 @@ func _show_local_best(midi: MidiData) -> void:
 	_hide_message()
 	clear_items()
 	var node := create_and_add_item("local_best", "score")
-	# 本地最佳固定排名第 1
+	# 本地最佳固定排名第 1，成绩行无头像需求，保持默认头像占位
+	node.setup_player_name("Offline Score")
 	node.setup_score(
 			1,
 			int(local.get("totalScore", 0)),
@@ -337,15 +336,11 @@ func _show_local_best(midi: MidiData) -> void:
 			float(local.get("pp", 0.0)),
 			int(local.get("maxCombo", 0)),
 			int(local.get("perfectCount", 0)),
-		int(local.get("greatCount", 0)),
-		int(local.get("goodCount", 0)),
-		int(local.get("badCount", 0)),
-		int(local.get("missCount", 0))
-	)
-	var name_label := node.get_node_or_null("Name")
-	if name_label:
-		name_label.text = "Offline Score"
-	# 本地成绩无头像，保持默认头像占位
+			int(local.get("greatCount", 0)),
+			int(local.get("goodCount", 0)),
+			int(local.get("badCount", 0)),
+			int(local.get("missCount", 0))
+		)
 
 ## 显示提示信息（经 TabView 下 FailMessage 节点，作为独立页展示）
 ## 排行榜标签页未激活时仅缓存，切回时再展示，避免抢占其它标签页

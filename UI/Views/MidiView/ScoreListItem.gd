@@ -59,6 +59,10 @@ func setup_avatar(avatar_url: String) -> void:
 func set_withdraw_state(withdraw: bool) -> void:
 	modulate.a = 0.4 if withdraw else 1.0
 
+## 设置行内显示的玩家名（空值回落为默认文案）
+func setup_player_name(player_name: String) -> void:
+	%Name.text = player_name if not player_name.is_empty() else "Anonymous"
+
 func setup_player_info(uid):
 	player_uid = uid
 	# 头像，玩家名

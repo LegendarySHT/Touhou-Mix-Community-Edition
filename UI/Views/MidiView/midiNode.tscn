@@ -15,15 +15,14 @@ border_blend = true
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3y6u5"]
 bg_color = Color(1, 1, 1, 0.16)
+expand_margin_left = 15.0
+expand_margin_right = 15.0
 
 [node name="MidiNode" type="Button" unique_id=188973569]
-custom_minimum_size = Vector2(778, 150)
+custom_minimum_size = Vector2(0, 150)
 clip_contents = true
-anchors_preset = -1
-offset_right = 8.0
-offset_bottom = 8.0
-grow_vertical = 2
-size_flags_horizontal = 3
+offset_right = 679.0
+offset_bottom = 150.0
 mouse_filter = 1
 theme_override_styles/normal = SubResource("StyleBoxFlat_pxpjj")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_pxpjj")
@@ -51,18 +50,20 @@ stretch_mode = 6
 [node name="VBoxC" type="VBoxContainer" parent="." unique_id=567127082]
 custom_minimum_size = Vector2(0, 110)
 layout_mode = 1
-anchors_preset = 12
+anchors_preset = -1
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 20.0
 offset_top = -93.0
+offset_right = -20.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2
 
 [node name="MidiName" type="Label" parent="VBoxC" unique_id=2113026606]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(700, 45)
+custom_minimum_size = Vector2(0, 45)
 layout_mode = 2
 size_flags_vertical = 8
 offset_transform_enabled = true
@@ -73,6 +74,7 @@ text = "Midi Name"
 vertical_alignment = 1
 script = ExtResource("4_u2pgb")
 outline_size = 8
+end_padding = 0.0
 
 [node name="Line" type="Panel" parent="VBoxC" unique_id=2102406377]
 custom_minimum_size = Vector2(0, 6)
@@ -81,9 +83,7 @@ mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_3y6u5")
 
 [node name="HBoxC" type="HBoxContainer" parent="VBoxC" unique_id=1276140823]
-custom_minimum_size = Vector2(700, 0)
 layout_mode = 2
-size_flags_horizontal = 4
 mouse_filter = 2
 
 [node name="Author" type="Label" parent="VBoxC/HBoxC" unique_id=282130580]
