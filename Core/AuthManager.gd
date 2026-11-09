@@ -212,7 +212,8 @@ func logout() -> void:
 	GLogger.info("Logged out", "AuthMGR")
 
 ## 带认证的请求（封装 NetManager._request，自动附加 token + 自动续期）
-func authed_request(method: String, path: String, body: Variant = null) -> Dictionary:
+## timeout 用于上传这类耗时接口，<=0 时按 NetManager 默认超时
+func authed_request(method: String, path: String, body: Variant = null, timeout: float = 0.0) -> Dictionary:
 	if not is_logged_in:
 		return { "ok": false, "status": 0, "data": null, "error": "not_logged_in" }
 	# 确保 access token 有效（过期则自动 refresh）
@@ -220,7 +221,7 @@ func authed_request(method: String, path: String, body: Variant = null) -> Dicti
 		return { "ok": false, "status": 0, "data": null, "error": "token_expired" }
 	var url = "%s%s" % [NetManager.instance.server_url, path]
 	return await NetManager.instance._request(
-		method, url, body, PackedStringArray(), current_user.access_token
+		method, url, body, PackedStringArray(), current_user.access_token, timeout
 	)
 
 ## 验证当前 token 是否有效：GET /api/auth/me
@@ -260,7 +261,7 @@ func upload_avatar(image_base64: String, content_type: String = "") -> Dictionar
 	var body := { "imageBase64": image_base64 }
 	if not content_type.is_empty():
 		body["contentType"] = content_type
-	return await authed_request("POST", "/api/users/me/avatar", body)
+	return await authed_request("POST", "/api/users/me/avatar", body, NetManager.UPLOAD_REQUEST_TIMEOUT)
 
 ## 获取当前用户统计：GET /api/users/me/stats
 func get_user_stats() -> Dictionary:

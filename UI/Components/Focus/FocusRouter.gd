@@ -253,19 +253,10 @@ func _track_input_mode(event: InputEvent) -> void:
 func _self_handles_nav(ctl: Control, side: int) -> bool:
 	if ctl == null:
 		return false
-	var horizontal: bool = side == SIDE_LEFT or side == SIDE_RIGHT
 	if ctl is LineEdit:
-		if not horizontal:
-			return false
-		var edit := ctl as LineEdit
-		if edit.has_selection():
-			return true
-		# 光标已经在头/尾时继续往同一方向按键，交给导航离开输入框
-		if side == SIDE_LEFT:
-			return edit.caret_column > 0
-		return edit.caret_column < edit.text.length()
+		return _line_edit_handles_nav(ctl as LineEdit, side)
 	if ctl is TextEdit:
-		return true
+		return _text_edit_handles_nav(ctl as TextEdit, side)
 	if ctl is Range or ctl is TabBar:
 		return true
 	var node: Node = ctl
@@ -274,6 +265,32 @@ func _self_handles_nav(ctl: Control, side: int) -> bool:
 			return true
 		node = node.get_parent()
 	return false
+
+## 单行输入：左右归光标，上下不占用（交给导航离开输入框）
+func _line_edit_handles_nav(edit: LineEdit, side: int) -> bool:
+	if side != SIDE_LEFT and side != SIDE_RIGHT:
+		return false
+	if edit.has_selection():
+		return true
+	# 光标已经在头/尾时继续往同一方向按键，交给导航离开输入框
+	if side == SIDE_LEFT:
+		return edit.caret_column > 0
+	return edit.caret_column < edit.text.length()
+
+func _text_edit_handles_nav(edit: TextEdit, side: int) -> bool:
+	if edit.has_selection():
+		return true
+	var line := edit.get_caret_line()
+	var column := edit.get_caret_column()
+	if side == SIDE_TOP:
+		return edit.get_caret_wrap_index() > 0 or line > 0
+	if side == SIDE_BOTTOM:
+		return edit.get_caret_wrap_index() < edit.get_line_wrap_count(line) \
+			or line < edit.get_line_count() - 1
+	var line_text := edit.get_line(line)
+	if side == SIDE_LEFT:
+		return column > 0
+	return column < line_text.length()
 
 func _navigate(focused: Control, side: int) -> bool:
 	_refresh_registries()

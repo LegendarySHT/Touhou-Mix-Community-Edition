@@ -521,7 +521,7 @@ func _on_bg_image_loaded(file_name: String, img: Image) -> void:
 	var entries: Array = _bg_pending_nodes.get(file_name, [])
 	_bg_pending_nodes.erase(file_name)
 	for entry in entries:
-		var node: Node = entry.get("node")
+		var node: Variant = entry.get("node")
 		# 加载失败：保持占位（ViewBackground 已铺默认背景）
 		if tex and is_instance_valid(node):
 			node.set_background_image(tex, str(entry.get("stretch", "cover")))
@@ -1163,6 +1163,18 @@ func _refresh_theme_colors_impl(thm: Theme) -> void:
 		_set_theme_stylebox(thm, t, "read_only", surface_low.darkened(0.05), border_soft)
 		tmp.set_color("caret_color", t, p)
 		tmp.set_color("font_placeholder_color", t, placeholder_c)
+
+	# TextEdit（多行输入，如个人简介）与 LineEdit 同形：
+	# 引擎默认的 TextEdit 是深灰方角框，和同一张卡片里的单行输入框并排会明显割裂。
+	# 多行框按段落阅读，正文色与占位色都直接复用 LineEdit 那一套语义色。
+	tmp.set_color("selection_color", "TextEdit", p)
+	tmp.set_color("caret_color", "TextEdit", get_color("text_primary"))
+	tmp.set_color("font_color", "TextEdit", get_color("text_primary"))
+	tmp.set_color("font_placeholder_color", "TextEdit", get_color("text_dim"))
+	tmp.set_color("font_readonly_color", "TextEdit", get_color("text_disabled"))
+	_set_theme_stylebox(thm, "TextEdit", "normal", surface_high, border)
+	_set_theme_stylebox(thm, "TextEdit", "focus", Color(0, 0, 0, 0), p)
+	_set_theme_stylebox(thm, "TextEdit", "read_only", surface_low, border_soft)
 
 	# Label
 	tmp.set_color("font_color", "Label", get_color("text_primary"))

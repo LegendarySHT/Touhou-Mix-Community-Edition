@@ -35,6 +35,16 @@ func set_zoom(v: float) -> void:
 	_clamp_offset()
 	queue_redraw()
 
+## 把图像摆到画框正中：选图后按「铺满画框」缩放，再看得到完整取景范围
+func center_offset() -> void:
+	if source_image == null or _source_tex == null:
+		return
+	var view := get_box_size()
+	var st := Vector2(_source_tex.get_width(), _source_tex.get_height()) * scale_factor
+	offset = (view - st) * 0.5
+	_clamp_offset()
+	queue_redraw()
+
 ## 退出编辑：清空待调整图，回到显示当前头像
 func clear_preview() -> void:
 	source_image = null

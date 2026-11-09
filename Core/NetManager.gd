@@ -38,6 +38,9 @@ var _online_mode_enabled: bool = false
 
 ## 请求超时（秒）
 const REQUEST_TIMEOUT: float = 10.0
+## 上传类请求超时（秒）：请求体是 base64 图片，服务端还要解码缩放，
+## 按普通接口的超时容易在慢网络上白等一次失败
+const UPLOAD_REQUEST_TIMEOUT: float = 60.0
 
 ## 启动时快速尝试次数
 const QUICK_RETRY_TIMES: int = 3
@@ -391,11 +394,12 @@ func check_health() -> Dictionary:
 ## body: Dictionary（自动 JSON 序列化）或 null
 ## headers: 额外请求头
 ## auth_token: 可选 Bearer token
+## timeout: 自定义超时（秒），<=0 时用 REQUEST_TIMEOUT
 ## 返回：{ "ok": bool, "status": int, "data": Variant, "error": String }
-func _request(method: String, url: String, body: Variant, headers: PackedStringArray = PackedStringArray(), auth_token: String = "") -> Dictionary:
+func _request(method: String, url: String, body: Variant, headers: PackedStringArray = PackedStringArray(), auth_token: String = "", timeout: float = 0.0) -> Dictionary:
 	var http = HTTPRequest.new()
 	add_child(http)
-	http.timeout = REQUEST_TIMEOUT
+	http.timeout = timeout if timeout > 0.0 else REQUEST_TIMEOUT
 
 	var all_headers = headers.duplicate()
 	all_headers.append("Content-Type: application/json")

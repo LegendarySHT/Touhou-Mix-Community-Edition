@@ -321,7 +321,7 @@ static func _finish_pending(url: String, tex: Texture2D) -> void:
 	_inflight.erase(url)
 	for entry in pending:
 		var callback: Callable = entry.get("callback")
-		var target: Node = entry.get("target")
+		var target: Variant = entry.get("target")
 		if callback.is_valid() and is_instance_valid(target):
 			callback.call(tex)
 

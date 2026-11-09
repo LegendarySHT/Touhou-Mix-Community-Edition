@@ -1167,6 +1167,54 @@ bg_color = Color(0.0627, 0.0784, 0.1137, 1)
 corner_radius_top_left = 6
 corner_radius_top_right = 6
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_textedit_focus"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_textedit_normal"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.0941, 0.1176, 0.1686, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.1686, 0.2039, 0.2745, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_textedit_ro"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.0353, 0.0471, 0.0745, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1216, 0.149, 0.2039, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tooltip"]
 content_margin_left = 14.0
 content_margin_top = 14.0
@@ -1471,6 +1519,15 @@ TabContainer/styles/panel = SubResource("StyleBoxFlat_tab_panel")
 TabContainer/styles/tab_hovered = SubResource("StyleBoxFlat_tab_unselected")
 TabContainer/styles/tab_selected = SubResource("StyleBoxFlat_tab_selected")
 TabContainer/styles/tab_unselected = SubResource("StyleBoxFlat_tab_unselected")
+TextEdit/colors/caret_color = Color(0.949, 0.961, 0.984, 1)
+TextEdit/colors/font_color = Color(0.949, 0.961, 0.984, 1)
+TextEdit/colors/font_placeholder_color = Color(0.5, 0.5, 0.5, 1)
+TextEdit/colors/font_readonly_color = Color(0.3608, 0.4078, 0.5137, 1)
+TextEdit/colors/selection_color = Color(0.0509, 0.5294, 1, 1)
+TextEdit/font_sizes/font_size = 28
+TextEdit/styles/focus = SubResource("StyleBoxFlat_textedit_focus")
+TextEdit/styles/normal = SubResource("StyleBoxFlat_textedit_normal")
+TextEdit/styles/read_only = SubResource("StyleBoxFlat_textedit_ro")
 TooltipPanel/styles/panel = SubResource("StyleBoxFlat_tooltip")
 Tree/constants/button_margin = 10
 Tree/constants/h_separation = 6

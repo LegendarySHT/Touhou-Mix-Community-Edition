@@ -41,6 +41,14 @@ static func decode_image_buffer(bytes: PackedByteArray) -> Image:
 		return null
 	return image
 
+## 文件头是否落在 decode_image_buffer 覆盖的格式内。
+## 供调用方判断「解码失败是文件损坏还是格式不在支持列表」，后一种情况可交给引擎兜底。
+static func is_supported_image_bytes(bytes: PackedByteArray) -> bool:
+	if bytes.is_empty():
+		return false
+	return _has_png_signature(bytes) or _has_jpeg_signature(bytes) \
+		or _has_webp_signature(bytes) or _has_svg_signature(bytes)
+
 ## SVG 是文本 XML：只检查文件头是否含 <svg 根节点，避免整文件转字符串
 static func _has_svg_signature(bytes: PackedByteArray) -> bool:
 	var head := bytes.slice(0, mini(bytes.size(), 1024)).get_string_from_utf8()

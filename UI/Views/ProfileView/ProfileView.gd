@@ -69,6 +69,26 @@ const JUDGE_COLORS := {
 	"miss": Color("#DC3450"),
 }
 
+## 头像源图上限（字节）：解码后的位图要占数倍内存，超过直接拒绝
+const AVATAR_MAX_FILE_BYTES := 8 * 1024 * 1024
+## 预览与裁剪使用的源图最长边
+const AVATAR_MAX_SOURCE_SIDE := 2048
+## 上传输出图的最长边
+const AVATAR_MAX_OUTPUT_SIDE := 512
+## 缩放滑条的默认上限（场景里也是这个值），小图铺满画框时按需临时放宽
+const AVATAR_ZOOM_MAX_DEFAULT := 1.5
+## 简介长度上限：与服务端 /api/users/me 的 bio 限制保持一致
+const BIO_MAX_LENGTH := 500
+## 简介占位文案：未填写时展示页与编辑框都用它，不写进玩家数据
+const BIO_PLACEHOLDER := "还没有填写简介..."
+## 可选图片类型：真正解码按文件头判定，扩展名只用于文件对话框过滤
+const AVATAR_FILE_FILTERS := [
+	"*.png ; PNG 图片",
+	"*.jpg ; JPEG 图片",
+	"*.jpeg ; JPEG 图片",
+	"*.webp ; WebP 图片",
+]
+
 ## 操作进行中（防止重复点击）
 var _busy: bool = false
 ## 打开详情的那条记录的按钮：关闭后把焦点还回去
@@ -76,6 +96,10 @@ var _busy: bool = false
 var _avatar_file_dialog: FileDialog = null
 ## 待保存头像源图（本地选图解码后，保存时裁剪方形区域）
 var _pending_avatar: Image = null
+
+## 简介正在编辑（用户改过且尚未保存）：期间资料刷新不得覆盖输入框，
+## 否则一次后台刷新就把没保存的草稿冲掉，用户看到的就是"内容没了"
+var _desc_dirty: bool = false
 
 # 三个列表的懒加载状态标记
 var _recent_loaded: bool = false
@@ -120,6 +144,10 @@ func _on_view_ready() -> void:
 	%NicknameConfirmBtn.pressed.connect(_on_save_nickname_btn_pressed)
 	%DescConfirmBtn.pressed.connect(_on_save_desc_btn_pressed)
 	%PasswordConfirmBtn.pressed.connect(_on_save_pwd_btn_pressed)
+	# 简介是多行框：回车只换行，不会提交。用户改动后置脏标记，
+	# 期间的后台资料刷新不再回写输入框（见 update_display）
+	if not %DescEdit.text_changed.is_connected(_on_desc_text_changed):
+		%DescEdit.text_changed.connect(_on_desc_text_changed)
 	_sync_navi_selection(%PageContent.current_tab)
 	_sync_topbtn_z_index(%RecentPlayBtn)
 	# 密码输入框设为密文
@@ -365,7 +393,9 @@ func update_display(data: Dictionary) -> void:
 	%ProfilePPText.text = "%.2f pp" % float(data.get("pp", 0.0))
 	var bio_raw = data.get("bio", "")
 	var bio := str(bio_raw) if bio_raw != null else ""
-	%ProfileDescription.text = bio if not bio.is_empty() and bio != "<null>" else "还没有填写简介..."
+	if bio == "<null>":
+		bio = ""
+	%ProfileDescription.text = bio if not bio.is_empty() else BIO_PLACEHOLDER
 	_update_stats(data)
 	# 同步 History 页统计：总 pp + 各评级数量
 	%HistoryPp.text = "%.2f pp" % float(data.get("pp", 0.0))
@@ -380,9 +410,12 @@ func update_display(data: Dictionary) -> void:
 	_render_grade_mix()
 	_judgments = _dict_field(data, "judgments")
 	_render_judgment_mix()
-	# 同步 Edit 页输入框为当前值
+	# 同步 Edit 页输入框为当前值。
+	# 简介正在编辑时跳过：资料刷新带的是服务端旧值（刚保存完那次也不例外），
+	# 直接写回会把用户没保存的草稿冲掉。
 	%NicknameEdit.text = display_name
-	%DescEdit.text = bio
+	if not _desc_dirty:
+		_write_multiline(%DescEdit, bio)
 	_update_level(data)
 	_update_total_rank(data)
 	_last_pp = float(data.get("pp", 0.0))
@@ -794,18 +827,58 @@ func _on_save_desc_btn_pressed() -> void:
 	if _busy:
 		return
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+		EvtBus.notify("请先登录后再修改简介")
 		return
-	var new_bio := (%DescEdit as LineEdit).text.strip_edges()
+	var new_bio := _read_multiline(%DescEdit).strip_edges()
+	# 输入框里可能残留展示用的占位文案，不能当成用户简介存进服务端
+	if new_bio == BIO_PLACEHOLDER:
+		new_bio = ""
+	if new_bio.length() > BIO_MAX_LENGTH:
+		EvtBus.notify("简介最多 %d 个字符" % BIO_MAX_LENGTH)
+		return
 	_busy = true
 	%DescConfirmBtn.disabled = true
 	var result: Dictionary = await AuthManager.instance.update_profile(null, new_bio)
+	if not is_instance_valid(self):
+		return
 	_busy = false
 	%DescConfirmBtn.disabled = false
 	if result.get("ok", false):
 		GLogger.info("Bio updated", "ProfileView")
+		# 已保存：解除脏标记，后续资料刷新可以正常回写输入框
+		_desc_dirty = false
+		_write_multiline(%DescEdit, new_bio)
 		profile_updated.emit()
+		EvtBus.notify("简介已更新")
 	else:
 		GLogger.warning("Bio update failed: %s" % str(result.get("error", "")), "ProfileView")
+		EvtBus.notify("简介保存失败，请稍后重试")
+
+## 简介输入框被用户改动：置脏标记，阻止随后到来的资料刷新覆盖草稿。
+## 程序化写入（update_display / 保存后回写）走 TextEdit.text，不触发 text_changed，
+## 因此不会误标脏。
+func _on_desc_text_changed() -> void:
+	_desc_dirty = true
+
+## 简介输入框可能是单行 LineEdit 也可能是多行 TextEdit（长简介要换行），
+## 按控件类型取值：两者互不继承，用 as 强转会拿到 null 导致保存成空内容。
+func _read_multiline(node: Control) -> String:
+	if node is TextEdit:
+		return (node as TextEdit).text
+	if node is LineEdit:
+		return (node as LineEdit).text
+	return ""
+
+## 写入简介输入框：同样按控件类型写，并清掉展示用占位文案。
+## TextEdit 没有 max_length 属性，长度上限在保存时校验。
+func _write_multiline(node: Control, text: String) -> void:
+	var value := text
+	if value == BIO_PLACEHOLDER or value == "<null>":
+		value = ""
+	if node is TextEdit:
+		(node as TextEdit).text = value
+	elif node is LineEdit:
+		(node as LineEdit).text = value
 
 ## 修改密码
 func _on_save_pwd_btn_pressed() -> void:
@@ -838,15 +911,17 @@ func _on_upload_avatar_btn_pressed() -> void:
 	if _busy:
 		return
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+		EvtBus.notify("请先登录后再修改头像")
 		return
 	if NetManager.instance == null or not NetManager.instance.is_online:
+		EvtBus.notify("当前不在线，无法上传头像")
 		return
 	if _avatar_file_dialog == null:
 		_avatar_file_dialog = FileDialog.new()
 		_avatar_file_dialog.use_native_dialog = true
 		_avatar_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 		_avatar_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
-		_avatar_file_dialog.filters = PackedStringArray(["*.png ; PNG Image", "*.jpg ; JPEG Image", "*.jpeg ; JPEG Image"])
+		_avatar_file_dialog.filters = PackedStringArray(AVATAR_FILE_FILTERS)
 		_avatar_file_dialog.title = "选择头像图片"
 		add_child(_avatar_file_dialog)
 		_avatar_file_dialog.file_selected.connect(_on_avatar_file_selected)
@@ -857,94 +932,142 @@ func _on_save_avatar_btn_pressed() -> void:
 	if _busy:
 		return
 	if _pending_avatar == null:
-		GLogger.info("No avatar selected to save", "ProfileView")
+		EvtBus.notify("请先点「选取头像」选择一张图片")
 		return
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+		EvtBus.notify("请先登录后再修改头像")
 		return
 	if NetManager.instance == null or not NetManager.instance.is_online:
+		EvtBus.notify("当前不在线，无法上传头像")
 		return
-	# 由预览偏移/缩放反推方形裁剪区（源图像素坐标），缩放以左上角为锚点
-	var img := _pending_avatar
-	var s: float = %AvatarZoomSlider.value
-	if s <= 0.0:
-		return
-	var view := avatar_preview.get_box_size()
-	var off := avatar_preview.offset
-	# STRETCH_KEEP + 左上角锚：off 即缩放后图片左上角，源图像素 q=(p-off)/s，
-	# 屏幕 [0, view] 对应源图区域 = -off/s + (view/s)
-	var crop_rect := Rect2(-off / s, view / s)
-	crop_rect = crop_rect.intersection(Rect2(0, 0, img.get_width(), img.get_height()))
-	if crop_rect.size.x < 1 or crop_rect.size.y < 1:
+	var square := _build_avatar_square()
+	if square == null:
 		GLogger.warning("Avatar crop region empty", "ProfileView")
+		EvtBus.notify("头像裁剪失败，请重新选取图片")
 		return
-	var square := img.get_region(Rect2i(crop_rect))
-	# 限制输出最长边 <= 512，避免上传超大图
-	var max_side := maxi(square.get_width(), square.get_height())
-	if max_side > 512:
-		var ratio := 512.0 / max_side
-		square.resize(maxi(1, int(square.get_width() * ratio)), maxi(1, int(square.get_height() * ratio)))
 	var png := square.save_png_to_buffer()
 	if png.is_empty():
 		GLogger.warning("Avatar PNG encode failed", "ProfileView")
+		EvtBus.notify("头像编码失败，请换一张图片")
 		return
 	_busy = true
 	%AvatarSaveBtn.disabled = true
 	var image_base64 := Marshalls.raw_to_base64(png)
 	var result: Dictionary = await AuthManager.instance.upload_avatar(image_base64, "image/png")
+	if not is_instance_valid(self):
+		return
 	_busy = false
 	%AvatarSaveBtn.disabled = false
-	if result.get("ok", false):
-		GLogger.info("Avatar uploaded", "ProfileView")
-		# 上传响应里的新头像 URL 交给 PlayerInfoContent 统一加载，避免等一次资料拉取
-		if result.data is Dictionary:
-			var av = result.data.get("avatarUrl", "")
-			var av_url := str(av) if av != null else ""
-			if not av_url.is_empty():
-				avatar_uploaded.emit(av_url)
-		profile_updated.emit()
-		# 保存成功：复位预览变换并隐藏调整控件（回到「仅显示当前头像」）
-		_reset_avatar_adjust()
-	else:
+	if not result.get("ok", false):
 		GLogger.warning("Avatar upload failed: %s" % str(result.get("error", "")), "ProfileView")
+		EvtBus.notify(_avatar_upload_error_text(result))
+		return
+	GLogger.info("Avatar uploaded", "ProfileView")
+	# 上传响应里的新头像 URL 交给 PlayerInfoContent 统一加载，避免等一次资料拉取
+	var new_url := ""
+	if result.data is Dictionary:
+		var av = result.data.get("avatarUrl", "")
+		new_url = str(av) if av != null else ""
+	# 预览先用本地裁剪结果上屏：不必等新头像下载完成，保存后立刻能看到变化
+	var local_tex := ImageUtil.create_display_texture(square)
+	if local_tex != null:
+		set_avatar_texture(local_tex)
+	if not new_url.is_empty():
+		avatar_uploaded.emit(new_url)
+	profile_updated.emit()
+	# 保存成功：复位预览变换并隐藏调整控件（回到「仅显示当前头像」）
+	_reset_avatar_adjust()
+	EvtBus.notify("头像已更新")
+
+## 按预览的偏移/缩放反推裁剪区（源图像素坐标），输出服务端要求的正方形头像。
+## 缩放以画框左上角为锚点：off 即缩放后图片左上角，源图像素 q=(p-off)/s，
+## 画框 [0, view] 对应源图区域 = -off/s + view/s。
+func _build_avatar_square() -> Image:
+	var img := _pending_avatar
+	var s: float = %AvatarZoomSlider.value
+	if img == null or s <= 0.0:
+		return null
+	var view := avatar_preview.get_box_size()
+	var crop_rect := Rect2(-avatar_preview.offset / s, view / s)
+	crop_rect = crop_rect.intersection(Rect2(0, 0, img.get_width(), img.get_height()))
+	if crop_rect.size.x < 1.0 or crop_rect.size.y < 1.0:
+		return null
+	var region := img.get_region(Rect2i(crop_rect))
+	# 服务端按中心裁方：本地先裁成正方形，上传结果才与预览所见一致
+	var side := mini(region.get_width(), region.get_height())
+	if side < 1:
+		return null
+	region = region.get_region(Rect2i(
+		(region.get_width() - side) / 2, (region.get_height() - side) / 2, side, side))
+	if side > AVATAR_MAX_OUTPUT_SIDE:
+		region.resize(AVATAR_MAX_OUTPUT_SIDE, AVATAR_MAX_OUTPUT_SIDE, Image.INTERPOLATE_LANCZOS)
+	return region
+
+## 上传失败提示：按状态码区分登录失效、文件被拒与网络故障
+func _avatar_upload_error_text(result: Dictionary) -> String:
+	var status := int(result.get("status", 0))
+	if status == 401 or status == 403 or str(result.get("error", "")) == "token_expired":
+		return "登录状态已失效，请重新登录后再上传头像"
+	if status == 413:
+		return "头像文件过大，服务器拒绝接收"
+	if status >= 400:
+		# 服务端会带上拒绝原因（如「无法解析图片文件头」），直接透给用户
+		var detail := ""
+		if result.data is Dictionary:
+			detail = str((result.data as Dictionary).get("error", "")).strip_edges()
+		if not detail.is_empty():
+			return "头像上传失败：%s" % detail
+		return "头像上传被服务器拒绝（HTTP %d）" % status
+	return "头像上传失败，请检查网络后重试"
 
 ## FileDialog 选择图片后：解码载入预览（保存时再裁剪上传）
 func _on_avatar_file_selected(path: String) -> void:
 	if not FileAccess.file_exists(path):
+		EvtBus.notify("找不到所选图片文件")
 		return
 	var bytes := FileAccess.get_file_as_bytes(path)
-	if bytes.size() == 0:
+	if bytes.is_empty():
+		EvtBus.notify("所选文件为空")
 		return
 	# 源图过大时直接拒绝（解码占用内存）
-	if bytes.size() > 8 * 1024 * 1024:
-		GLogger.warning("Avatar too large (>%d bytes), skipping" % (8 * 1024 * 1024), "ProfileView")
+	if bytes.size() > AVATAR_MAX_FILE_BYTES:
+		EvtBus.notify("图片超过 %d MB，请换一张" % (AVATAR_MAX_FILE_BYTES / (1024 * 1024)))
 		return
-	var img := Image.new()
-	var ext := path.get_extension().to_lower()
-	var err := OK
-	if ext == "jpg" or ext == "jpeg":
-		err = img.load_jpg_from_buffer(bytes)
-		if err != OK:
-			err = img.load_png_from_buffer(bytes)
-	else:
-		err = img.load_png_from_buffer(bytes)
-		if err != OK:
-			err = img.load_jpg_from_buffer(bytes)
-	if err != OK or img.get_width() <= 0 or img.get_height() <= 0:
-		GLogger.warning("Avatar image decode failed (not PNG/JPG): %s" % path, "ProfileView")
+	# 按文件头选择解码器：扩展名与内容不符时也不会用错解码器，
+	# 同时避免「用 PNG 解码器试 JPEG」在日志里刷引擎错误
+	var img := ImageUtil.decode_image_buffer(bytes)
+	if img == null and path.get_extension().to_lower() in ["bmp", "tga"]:
+		# 签名不在 ImageUtil 覆盖范围的位图交给引擎按内容兜底，其余格式直接判失败
+		img = Image.load_from_file(path)
+	if img == null or img.is_empty() or img.get_width() <= 0 or img.get_height() <= 0:
+		GLogger.warning("Avatar image decode failed (unsupported or corrupt): %s" % path, "ProfileView")
+		if ImageUtil.is_supported_image_bytes(bytes):
+			EvtBus.notify("图片文件已损坏，无法解析，请换一张")
+		else:
+			EvtBus.notify("不支持的图片格式，请换 PNG / JPEG / WebP 图片")
 		return
-	# 过长边降到 2048 内，避免预览/记忆体浪费
+	# 过长边降到上限内，避免预览/记忆体浪费
 	var max_side := maxi(img.get_width(), img.get_height())
-	if max_side > 2048:
-		var ratio := 2048.0 / max_side
-		img.resize(maxi(1, int(img.get_width() * ratio)), maxi(1, int(img.get_height() * ratio)))
+	if max_side > AVATAR_MAX_SOURCE_SIDE:
+		var ratio := float(AVATAR_MAX_SOURCE_SIDE) / float(max_side)
+		img.resize(maxi(1, int(img.get_width() * ratio)), maxi(1, int(img.get_height() * ratio)),
+			Image.INTERPOLATE_LANCZOS)
 	_show_avatar_preview(img)
-	GLogger.info("Avatar loaded for preview: %s" % path, "ProfileView")
+	GLogger.info("Avatar loaded for preview: %s (%dx%d)" % [path, img.get_width(), img.get_height()], "ProfileView")
 
 ## 载入源图到预览：交给 Border 自绘（可平移/缩放）
 func _show_avatar_preview(img: Image) -> void:
 	_pending_avatar = img
 	avatar_preview.set_source_image(img)
-	%AvatarZoomSlider.value = 1.0
+	# 初始缩放按「铺满画框」计算并居中：图片小于画框会露出空白，无法正确取景
+	var box := avatar_preview.get_box_size()
+	var cover := maxf(box.x / float(maxi(1, img.get_width())), box.y / float(maxi(1, img.get_height())))
+	# 小图需要更大的缩放上限才能铺满画框，滑条上限按本次图片放宽
+	%AvatarZoomSlider.max_value = maxf(1.5, cover)
+	var zoom := clampf(cover, %AvatarZoomSlider.min_value, %AvatarZoomSlider.max_value)
+	%AvatarZoomSlider.value = zoom
+	avatar_preview.set_zoom(zoom)
+	avatar_preview.center_offset()
 	%AvatarZoomSlider.visible = true
 
 ## 缩放滑条：更新缩放并保持位置边界
@@ -958,6 +1081,7 @@ func _on_avatar_zoom_changed(value: float) -> void:
 func _reset_avatar_adjust() -> void:
 	_pending_avatar = null
 	avatar_preview.clear_preview()
+	%AvatarZoomSlider.max_value = AVATAR_ZOOM_MAX_DEFAULT
 	%AvatarZoomSlider.value = 1.0
 	%AvatarZoomSlider.visible = false
 
