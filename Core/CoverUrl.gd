@@ -24,15 +24,15 @@ static func from_cover_url(server_url: String, cover_url: String) -> String:
 	return base + "/" + cover_url
 
 ## 构造裸旧端点 URL，仅作兼容回退。
-static func build(server_url: String, hash: String) -> String:
-	if server_url.is_empty() or hash.is_empty():
+static func build(server_url: String, chart_hash: String) -> String:
+	if server_url.is_empty() or chart_hash.is_empty():
 		return ""
-	return "%s/api/charts/%s/cover" % [server_url, hash.uri_encode()]
+	return "%s/api/charts/%s/cover" % [server_url, chart_hash.uri_encode()]
 
 ## 从任意 DTO（ChartResponse / UserScoreRecordResponse / 列表项 hint）取封面地址。
 ## 优先 `coverUrl`（内容寻址），缺失时回退裸旧端点。
-static func from_chart(server_url: String, hash: String, data: Dictionary) -> String:
+static func from_chart(server_url: String, cover_hash: String, data: Dictionary) -> String:
 	var raw_url = data.get("coverUrl", "")
 	if raw_url != null and not str(raw_url).is_empty():
 		return from_cover_url(server_url, str(raw_url))
-	return build(server_url, hash)
+	return build(server_url, cover_hash)
