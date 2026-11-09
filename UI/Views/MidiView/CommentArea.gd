@@ -1,5 +1,8 @@
 extends VBoxContainer
 
+## 新脚本一律 preload 后按常量调用，不依赖 .godot/global_script_class_cache.cfg
+const OnlineCache := preload("res://Core/OnlineContentCache.gd")
+
 ## 当前 MIDI 的评价与评论区。公开内容在线可读；写操作由服务端按非 W 成绩授权。
 
 const DEFAULT_INPUT_HINT: String = "发表评论..."
@@ -20,6 +23,8 @@ var _reaction_busy: bool = false
 var _comment_busy: bool = false
 var _was_online_ready: bool = false
 var _retry_on_online_heartbeat: bool = false
+## 缓存评论正文是否已上屏：在线请求失败时据此保留缓存，不清空列表
+var _cache_rendered_comments: bool = false
 
 
 func _ready() -> void:
@@ -44,6 +49,7 @@ func load_comments(midi: MidiData) -> void:
 	_comment_busy = false
 	_retry_on_online_heartbeat = false
 	_my_reaction = ""
+	_cache_rendered_comments = false
 	_set_reaction_visual("")
 	_set_interaction_enabled(false)
 	input.placeholder_text = DEFAULT_INPUT_HINT
@@ -54,11 +60,42 @@ func load_comments(midi: MidiData) -> void:
 		return
 
 	_show_cached_counts(midi.file_hash)
+
+	# ① SWR 的 stale 部分：先渲染缓存的评论正文，不等网络。
+	# 线上模式关闭且二级开关为 0（默认）时不展示，保持原有表现。
+	var offline_mode := NetManager.instance != null \
+		and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+	if OnlineCache.is_enabled() \
+			and (not offline_mode or OnlineCache.show_when_offline()):
+		_load_cached_comments(midi.file_hash)
+
 	if not _is_online_ready() or CommunityManager.instance == null:
 		return
 
 	_request_summary(midi.file_hash, version)
 	_request_comments(midi.file_hash, version)
+
+
+## 读取并渲染缓存评论。likedByMe 是账号态，缓存渲染时一律按未点赞处理，
+## 等在线汇总/评论响应给出权威值，避免切账号后按钮显示错误。
+func _load_cached_comments(midi_hash: String) -> bool:
+	var entry := OnlineCache.read("charts", midi_hash + "|comments50")
+	if entry.is_empty():
+		return false
+	var payload: Variant = OnlineCache.payload_of(entry, null)
+	if not payload is Array:
+		return false
+	var cached: Array = payload
+	_comments_data.clear()
+	for value in cached:
+		if value is Dictionary:
+			var raw: Dictionary = value
+			var comment := raw.duplicate(true)
+			comment["likedByMe"] = false
+			_comments_data.append(comment)
+	_render_comments()
+	_cache_rendered_comments = true
+	return true
 
 
 func _request_summary(midi_hash: String, version: int) -> void:
@@ -90,8 +127,14 @@ func _request_comments(midi_hash: String, version: int) -> void:
 	if not _is_current_request(midi_hash, version):
 		return
 	if not result.get("ok", false):
+		# 404 是权威空结果（谱面未收录），可以清空；网络/5xx 失败则保留已上屏的缓存
+		if _cache_rendered_comments and int(result.get("status", 0)) != 404:
+			_schedule_online_retry(result)
+			return
 		comments_list.clear_items()
 		_comments_data.clear()
+		_cache_rendered_comments = false
+		input.tooltip_text = ""
 		if int(result.get("status", 0)) == 404:
 			_set_counts(0, 0)
 			_set_interaction_enabled(false)
@@ -106,6 +149,9 @@ func _request_comments(midi_hash: String, version: int) -> void:
 	var comments = data.get("comments", [])
 	if not comments is Array:
 		return
+	OnlineCache.write("charts", midi_hash + "|comments50", comments)
+	_cache_rendered_comments = false
+	input.tooltip_text = ""
 	_comments_data.clear()
 	for value in comments:
 		if value is Dictionary:
@@ -231,12 +277,15 @@ func _on_online_state_changed(state: int, _latency_ms: int) -> void:
 		load_comments(_current_midi)
 	elif became_unavailable:
 		_request_version += 1
-		_comments_data.clear()
-		comments_list.clear_items()
 		_my_reaction = ""
 		_set_reaction_visual("")
 		_set_interaction_enabled(false)
 		_show_cached_counts(_current_midi.file_hash)
+		# 掉线时回落到缓存评论，而不是留一片空白；开关关闭时走原清空逻辑
+		if not _load_cached_comments(_current_midi.file_hash):
+			_comments_data.clear()
+			comments_list.clear_items()
+			_cache_rendered_comments = false
 
 
 func _on_auth_changed(_user: Variant) -> void:
@@ -279,10 +328,9 @@ func _set_reaction_visual(reaction: String) -> void:
 
 
 func _show_cached_counts(midi_hash: String) -> void:
-	if CommunityManager.instance == null:
-		_set_counts(0, 0)
-		return
-	var cached := CommunityManager.instance.get_cached_counts(midi_hash)
+	var cached: Dictionary = {}
+	if CommunityManager.instance != null:
+		cached = CommunityManager.instance.get_cached_counts(midi_hash)
 	_set_counts(
 		int(cached.get("like_count", 0)),
 		int(cached.get("dislike_count", 0))

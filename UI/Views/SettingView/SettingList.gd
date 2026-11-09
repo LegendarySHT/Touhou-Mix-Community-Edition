@@ -4,6 +4,7 @@ class_name SettingList
 var item_separator: String = "res://UI/Views/SettingView/Seperator.tscn"
 var setting_items: Dictionary = {}  # 存储所有设置项，键为id，值为SettingItem
 
+const OnlineCache := preload("res://Core/OnlineContentCache.gd")
 const VALUE_BUTTON_SCENE := preload("res://UI/Views/SettingView/ValueButton.tscn")
 var _value_button_instance: Button = null
 
@@ -121,6 +122,9 @@ func load_settings(setting: Dictionary = {}):
 
 	# 应用音符颜色的互斥锁定（随机 → 统一 / 单色 二选一）
 	_apply_note_color_dependency_state()
+
+	# 清除缓存按钮的文案带实时占用大小，每次重建设置列表时刷新
+	_refresh_cache_clear_button()
 
 var separators = []
 @onready var separator_scene = load(item_separator)
@@ -602,6 +606,30 @@ func _popup_view_background_adjust(view_name: String) -> void:
 	# play 的 cover 模式由 PlayView 在切回 PLAY_VIEW 时通过 Background 节点（ViewBackground）重新应用
 	ThemeMGR.set_view_background(view_name, config)
 	GLogger.info("%s background updated: type=%s" % [view_name, type_str], "SettingList")
+
+# ===== 在线内容缓存清除入口 =====
+# TYPE_BUTTON 通过 on_click 直连本方法（SettingListItem.gd 用 Callable(setting_list, 方法名)），
+# 不进 _pending_config、不写 config.ini。
+
+## 删除全部在线内容快照（只删缓存目录下的文件，保留目录本身）。
+func _clear_online_cache() -> void:
+	OnlineCache.clear_all()
+	_refresh_cache_clear_button()
+	GLogger.info("Online content cache cleared", "SettingList")
+
+
+## 把当前缓存占用写进按钮文字，用户清完立刻能看到归零。
+func _refresh_cache_clear_button() -> void:
+	var item: SettingItem = setting_items.get("clear_online_cache")
+	if item == null or item.value_node == null:
+		return
+	var btn := item.value_node as Button
+	if btn == null:
+		return
+	var size_text := OnlineCache.format_size(OnlineCache.total_size_bytes())
+	btn.text = "清除（%s）" % size_text
+	btn.tooltip_text = "删除本地保存的在线内容缓存，下次进入各页面将重新联网获取"
+
 
 # 重置内置资源：调用 FileSystemManager 重新复制默认资源
 func _reload_builtin_resources() -> void:

@@ -13,6 +13,7 @@
 class_name ChartDetailPage
 extends Control
 
+const OnlineCache := preload("res://Core/OnlineContentCache.gd")
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 
 signal download_requested(item: Dictionary)
@@ -213,23 +214,48 @@ func _load_rank() -> void:
 
 	%RankTitle.text = "排行榜"
 	var hash_str := str(_item.get("hash", ""))
+	var offline_mode := NetManager.instance != null \
+		and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+	var cache_allowed := OnlineCache.is_enabled() and not hash_str.is_empty() \
+		and (not offline_mode or OnlineCache.show_when_offline())
+	var cache_rendered := false
+	# ① 先显示缓存排行榜。与 MidiView 的 50 条分开存，避免两种 limit 互相覆盖。
+	if cache_allowed:
+		var entry := OnlineCache.read("charts", hash_str + "|leaderboard5")
+		var payload: Variant = OnlineCache.payload_of(entry, null)
+		if payload is Array:
+			var cached: Array = payload
+			_render_rank_scores(cached)
+			cache_rendered = true
+
 	if hash_str.is_empty() or NetManager.instance == null or not NetManager.instance.is_online \
 			or ScoreManager.instance == null:
-		_add_rank_message("暂无排行数据")
+		if not cache_rendered:
+			_add_rank_message("暂无排行数据")
 		return
-	_add_rank_message("加载中…")
+	if not cache_rendered:
+		_add_rank_message("加载中…")
 	var result: Dictionary = await ScoreManager.instance.get_leaderboard(hash_str, 5, 0)
 	if not is_inside_tree() or version != _req_version:
 		return
-	_clear_rank_list()
 	if not result.get("ok", false):
-		_add_rank_message("排行榜加载失败")
+		if not cache_rendered:
+			_add_rank_message("排行榜加载失败")
 		return
 	var data = result.get("data")
 	if not data is Dictionary:
-		_add_rank_message("暂无排行数据")
+		if not cache_rendered:
+			_add_rank_message("暂无排行数据")
 		return
 	var scores: Array = data.get("scores", [])
+	OnlineCache.write("charts", hash_str + "|leaderboard5", scores)
+	%RankTitle.text = "排行榜"
+	_render_rank_scores(scores)
+
+
+## 排行榜行渲染（缓存快照与在线响应共用）。
+func _render_rank_scores(scores: Array) -> void:
+	_clear_rank_list()
 	if scores.is_empty():
 		_add_rank_message("暂无排行数据")
 		return
@@ -261,6 +287,7 @@ func _load_reaction() -> void:
 		if not cached.is_empty():
 			_set_reaction_counts(
 				int(cached.get("like_count", -1)), int(cached.get("dislike_count", -1)))
+			_update_reaction_controls()
 	if not _is_online_ready() or CommunityManager.instance == null:
 		_reaction_loading = false
 		_update_reaction_controls()
@@ -278,6 +305,7 @@ func _load_reaction() -> void:
 	var data = result.get("data")
 	if data is Dictionary:
 		_apply_summary(data)
+		_update_reaction_controls()
 	else:
 		_can_react = false
 		_update_reaction_controls()

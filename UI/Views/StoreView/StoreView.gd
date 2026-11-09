@@ -23,6 +23,7 @@ const DOWNLOAD_ROW_SCENE := preload("res://UI/Views/StoreView/StoreDownloadRow.t
 ## 通用虚拟容器（与曲库 / DelView / 播放列表共用）。preload 而非全局类名，避免类缓存问题
 const VirtualListLib := preload("res://UI/Components/VirtualList.gd")
 ## 新脚本不依赖全局类缓存：一律 preload 后按常量调用，避免未打开编辑器时 "Identifier not declared"
+const OnlineCache := preload("res://Core/OnlineContentCache.gd")
 const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 const CategoryCardLib := preload("res://UI/Views/StoreView/StoreCategoryCard.gd")
 const DownloadRowLib := preload("res://UI/Views/StoreView/StoreDownloadRow.gd")
@@ -452,23 +453,40 @@ func _setup_song_vlist() -> void:
 func _load_songs() -> void:
 	_song_req_version += 1
 	var version := _song_req_version
+	var cache_key := _songs_cache_key()
+
+	# ① SWR 的 stale 部分：先渲染上次缓存的列表，不等网络。
+	# 线上模式关闭且二级开关为 0（默认）时不展示，保持原有的空状态提示。
+	var offline_mode := NetManager.instance != null \
+		and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+	var cache_allowed := OnlineCache.is_enabled() \
+		and (not offline_mode or OnlineCache.show_when_offline())
+	var cache_rendered := false
+	if cache_allowed:
+		var entry := OnlineCache.read("store", cache_key)
+		var payload: Variant = OnlineCache.payload_of(entry, null)
+		if payload is Dictionary:
+			var snapshot: Dictionary = payload
+			_apply_song_payload(snapshot)
+			cache_rendered = true
 
 	if NetManager.instance == null:
-		_show_songs_message("商店服务不可用")
+		if not cache_rendered:
+			_show_songs_message("商店服务不可用")
 		return
 	if not NetManager.instance.is_online:
-		if NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE:
-			_show_songs_message("在线模式未开启")
-		else:
-			_show_songs_message("无法连接到服务器")
+		if not cache_rendered:
+			_show_songs_message("在线模式未开启" if offline_mode else "无法连接到服务器")
 		return
 
 	if _song_items.is_empty():
 		_show_songs_message("正在加载…")
 
 	# 翻页要等一次网络往返：期间把分页控件锁住并显示「加载中…」，
-	# 否则旧页留在屏幕上什么都不动，等待时间完全不可预期
-	_songs_loading = true
+	# 否则旧页留在屏幕上什么都不动，等待时间完全不可预期。
+	# 已经有缓存上屏时不进这个状态：列表本身可用，分页框保持可交互，
+	# 在线结果回来后静默替换即可，否则底栏会闪一下「加载中…」并短暂锁住翻页
+	_songs_loading = not cache_rendered
 	_update_pager()
 	var result: Dictionary = await ResourceManager.instance.get_chart_list(
 		_song_page, PAGE_SIZE, _search_text,
@@ -480,11 +498,39 @@ func _load_songs() -> void:
 
 	if not result.get("ok", false):
 		GLogger.warning("加载商店列表失败: %s" % str(result.get("error", "")), "StoreView")
-		_show_songs_message("加载失败，请稍后重试")
+		if not cache_rendered:
+			_show_songs_message("加载失败，请稍后重试")
 		return
 
 	var data: Dictionary = result.get("data", {})
 	var charts: Array = data.get("charts", [])
+	# 成功响应才写回，且存服务端原始 DTO（读缓存时再走 _make_song_item 规范化），
+	# 避免把下载状态 / 封面 URL 等本地派生字段持久化成陈旧值
+	OnlineCache.write("store", cache_key, {
+		"charts": charts,
+		"total": int(data.get("total", charts.size())),
+	})
+	# 缓存刚上屏过这一页：这次覆盖要「原地换数据」，不能把已经滚动的位置拽回顶部
+	_apply_song_payload(data, cache_rendered)
+
+
+## 缓存 key：分页 / 搜索 / 排序 / 顺序任一变化都是不同快照；server 由缓存层隔离。
+func _songs_cache_key() -> String:
+	return "%d|%d|%s|%s|%s" % [
+		_song_page, PAGE_SIZE, _search_text, SORT_FIELDS[_sort_index], _sort_order,
+	]
+
+
+## 服务端 ChartResponse（或其缓存快照）→ 卡片列表。缓存与在线路径共用。
+##
+## keep_scroll=true 用于「缓存已上屏 → 在线响应到达」的同页刷新：用户这时可能已经
+## 往下滚了一段，整表重建（set_total(..., true)）会把他拽回顶部。因此：
+##   · 条数与顺序都没变 → 只把可见卡片就地换数据，不重建池、不重载封面（完全无感）
+##   · 条数变了         → 重建但保留滚动像素（越界部分由 VirtualList 夹取）
+## 缓存首帧（keep_scroll=false）仍从顶部开始，翻页 / 换搜索 / 换排序的行为不变。
+func _apply_song_payload(data: Dictionary, keep_scroll: bool = false) -> void:
+	var charts: Array = data.get("charts", [])
+	var prev_hashes := _song_hashes()
 	_song_total = int(data.get("total", charts.size()))
 	_song_items.clear()
 	for chart in charts:
@@ -493,10 +539,51 @@ func _load_songs() -> void:
 
 	_set_empty(Tab.SONGS, "" if not _song_items.is_empty() else "没有找到谱面")
 	_update_pager()
-	_bind_animate = true
-	_song_vlist.set_total(_song_items.size(), true)
+
+	if keep_scroll and _same_song_sequence(prev_hashes):
+		_refresh_bound_song_cards()
+		_update_task_badges()
+		return
+
+	# 就地刷新不播入场动画：卡片已经在屏幕上，重播会整体闪一下
+	_bind_animate = not keep_scroll
+	_song_vlist.set_total(_song_items.size(), not keep_scroll)
 	_bind_animate = false
 	_update_task_badges()
+
+
+## 当前列表的谱面 hash 序列，用于判断在线结果是否只是同一页的数值更新
+func _song_hashes() -> Array:
+	var arr: Array = []
+	for item in _song_items:
+		arr.append(str(item.get("hash", "")))
+	return arr
+
+
+## 新旧序列是否完全一致（条数 + 顺序）：一致时无需重建列表
+func _same_song_sequence(prev: Array) -> bool:
+	if prev.size() != _song_items.size():
+		return false
+	for i in range(prev.size()):
+		if str(prev[i]) != str(_song_items[i].get("hash", "")):
+			return false
+	return true
+
+
+## 只刷新当前窗口内已绑定的卡片：下载态按实时状态取，封面保持原样
+func _refresh_bound_song_cards() -> void:
+	if _song_vlist == null:
+		return
+	for node in _song_vlist.bound_nodes():
+		if not is_instance_valid(node) or not node.has_method("refresh_item"):
+			continue
+		var idx := int(node.get_meta(&"row_index", -1))
+		if idx < 0 or idx >= _song_items.size():
+			continue
+		var item: Dictionary = _song_items[idx]
+		if not str(item.get("hash", "")).is_empty():
+			item["state"] = _display_state(item)
+		node.call("refresh_item", item)
 
 
 ## 服务端 ChartResponse → 卡片/详情共用的规范化条目

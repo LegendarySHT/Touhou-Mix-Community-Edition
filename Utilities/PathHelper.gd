@@ -155,6 +155,11 @@ static func get_background_dir() -> String:
 static func get_web_cache_dir() -> String:
 	return get_storage_root() + "WebCache/"
 
+## 在线内容缓存目录（排行榜/评论/统计/商店列表/个人资料的 SWR 快照）
+## 与 WebCache 同属「可随时重建的网络派生数据」，随存储根一起迁移。
+static func get_online_cache_dir() -> String:
+	return get_storage_root() + "OnlineCache/"
+
 ## 日志目录
 static func get_logs_dir() -> String:
 	return get_files_dir() + "Logs/"

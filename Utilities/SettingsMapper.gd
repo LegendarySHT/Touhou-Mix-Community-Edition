@@ -17,6 +17,8 @@ static var mappings: Dictionary = {
 	"album_sort_method": {"key": "album_sort_method", "value_type": "string"},
 	"album_sort_direction": {"key": "album_sort_direction", "value_type": "string"},
 	"online_mode": {"key": "online_mode", "value_type": "int"},
+	"cache_online_content": {"key": "cache_online_content", "value_type": "int"},
+	"cache_show_when_offline": {"key": "cache_show_when_offline", "value_type": "int"},
 	"auto_upload_score": {"key": "auto_upload_score", "value_type": "int"},
 	"show_upload_button": {"key": "show_upload_button", "value_type": "int"},
 	# 商店页工具栏的「下载人声」开关状态；不在设置页显示，但保留键让商店页可持久化

@@ -11,6 +11,7 @@ signal avatar_uploaded(url: String)
 
 # 评级构成环的脚本类型：直接用路径引用，免得依赖全局类名缓存
 const GRADE_RING := preload("res://UI/Views/ProfileView/ProfileGradeRing.gd")
+const OnlineCache := preload("res://Core/OnlineContentCache.gd")
 
 # 被 PlayerInfoPanel 直接访问（pv.page_content.modulate.a）
 @onready var page_content: TabContainer = %PageContent
@@ -90,6 +91,10 @@ var _ranks_busy: bool = false
 var _ranks_cache_key: String = ""
 var _ranks_cache: Array = []
 var _last_pp: float = -1.0
+## 在线内容缓存：年度名次当前展示的是缓存值（在线失败时不要被 placeholder 盖掉）
+var _ranks_from_cache: bool = false
+
+const _CACHE_NS := "users"
 
 ## 最近一次收到的评级 / 判定分布：换主题时按当前数据重画环图与条带
 var _grades: Dictionary = {}
@@ -448,24 +453,41 @@ func _on_rank_auth_changed(_user_data: Variant) -> void:
 
 func _on_rank_online_changed(online: bool, _message: String) -> void:
 	_ranks_cache_key = ""
-	if not online:
+	if not online and not _ranks_from_cache:
 		_set_yearly_rank_values(RANK_PLACEHOLDER, RANK_PLACEHOLDER)
 
 ## 拉取当前用户最近两年的年度名次。force 用于每次进入详情页时绕过缓存取新值。
 func _refresh_yearly_ranks(force: bool = false) -> void:
 	if _ranks_busy:
 		return
+	_ranks_from_cache = false
 	var logged_in := AuthManager.instance != null and AuthManager.instance.is_logged_in
 	var online := NetManager.instance != null and NetManager.instance.is_online
+
+	# ① 先渲染缓存的年度名次（SWR 的 stale 部分）
+	if OnlineCache.is_enabled() and logged_in:
+		var offline_mode := NetManager.instance != null \
+			and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+		if not offline_mode or OnlineCache.show_when_offline():
+			var entry := OnlineCache.read(_CACHE_NS, "ranks", true)
+			var payload: Variant = OnlineCache.payload_of(entry, null)
+			if payload is Array:
+				var cached_ranks: Array = payload
+				_apply_yearly_ranks(cached_ranks)
+				_ranks_from_cache = true
+
 	if not logged_in or not online:
 		_ranks_cache_key = ""
 		_ranks_cache = []
-		_set_yearly_rank_values(RANK_PLACEHOLDER, RANK_PLACEHOLDER)
+		if not _ranks_from_cache:
+			_set_yearly_rank_values(RANK_PLACEHOLDER, RANK_PLACEHOLDER)
 		return
 	var username := str(AuthManager.instance.current_user.get("username", ""))
 	var key := "%s|%s" % [username, "%.2f" % _last_pp]
 	if not force and key == _ranks_cache_key:
-		_apply_yearly_ranks(_ranks_cache)
+		# 缓存名次已上屏时不要被空的内存缓存刷成 placeholder
+		if not _ranks_from_cache:
+			_apply_yearly_ranks(_ranks_cache)
 		return
 	_ranks_busy = true
 	# 语句形式调用协程＝合法的即发即忘；结果由函数内部异步处理
@@ -487,7 +509,8 @@ func _fetch_yearly_ranks(key: String, username: String) -> void:
 		# 失败也记下这一代 key，避免同一次资料刷新里反复重试；网络/登录态变化会重新失效
 		_ranks_cache_key = key
 		_ranks_cache = []
-		_set_yearly_rank_values(RANK_PLACEHOLDER, RANK_PLACEHOLDER)
+		if not _ranks_from_cache:
+			_set_yearly_rank_values(RANK_PLACEHOLDER, RANK_PLACEHOLDER)
 		return
 	var raw: Variant = result.data.get("ranks", null)
 	var ranks: Array = []
@@ -495,6 +518,8 @@ func _fetch_yearly_ranks(key: String, username: String) -> void:
 		ranks = raw
 	_ranks_cache = ranks
 	_ranks_cache_key = key
+	OnlineCache.write(_CACHE_NS, "ranks", ranks, true)
+	_ranks_from_cache = false
 	_apply_yearly_ranks(_ranks_cache)
 
 ## 名次按年份降序：ranks[0] = 当前年，ranks[1] = 上一年
@@ -938,10 +963,31 @@ func _reset_avatar_adjust() -> void:
 
 # ========== History 页成绩列表加载 ==========
 
+## 先渲染缓存的历史记录（SWR 的 stale 部分）。账号相关内容按 username 隔离，
+## 状态标记放在列表容器 tooltip，不新增场景节点。
+func _render_cached_records(kind: String, vbox: VBoxContainer, mode: int) -> bool:
+	if not OnlineCache.is_enabled():
+		return false
+	var offline_mode := NetManager.instance != null \
+		and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+	if offline_mode and not OnlineCache.show_when_offline():
+		return false
+	var entry := OnlineCache.read(_CACHE_NS, "records|" + kind, true)
+	if entry.is_empty():
+		return false
+	var payload: Variant = OnlineCache.payload_of(entry, null)
+	if not payload is Array:
+		return false
+	var records: Array = payload
+	_populate_records(vbox, records, mode)
+	return true
+
+
 ## 加载最近游玩记录
 func _load_recent_scores() -> void:
 	if _recent_loading:
 		return
+	_render_cached_records("recent", %RecentPlayList, RecordListItem.RecordMode.RECENT)
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
 		return
 	if NetManager.instance == null or not NetManager.instance.is_online:
@@ -954,13 +1000,16 @@ func _load_recent_scores() -> void:
 	if not result.get("ok", false) or not result.data is Dictionary:
 		GLogger.warning("Failed to load recent scores: %s" % str(result.get("error", "")), "ProfileView")
 		return
-	_populate_records(%RecentPlayList, result.data.get("records", []), RecordListItem.RecordMode.RECENT)
+	var records: Array = result.data.get("records", [])
+	OnlineCache.write(_CACHE_NS, "records|recent", records, true)
+	_populate_records(%RecentPlayList, records, RecordListItem.RecordMode.RECENT)
 	_recent_loaded = true
 
 ## 加载最佳记录（按 MIDI 去重）
 func _load_best_scores() -> void:
 	if _best_loading:
 		return
+	_render_cached_records("best", %BestPlayList, RecordListItem.RecordMode.BEST)
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
 		return
 	if NetManager.instance == null or not NetManager.instance.is_online:
@@ -973,13 +1022,16 @@ func _load_best_scores() -> void:
 	if not result.get("ok", false) or not result.data is Dictionary:
 		GLogger.warning("Failed to load best scores: %s" % str(result.get("error", "")), "ProfileView")
 		return
-	_populate_records(%BestPlayList, result.data.get("records", []), RecordListItem.RecordMode.BEST)
+	var records: Array = result.data.get("records", [])
+	OnlineCache.write(_CACHE_NS, "records|best", records, true)
+	_populate_records(%BestPlayList, records, RecordListItem.RecordMode.BEST)
 	_best_loaded = true
 
 ## 加载最多游玩记录
 func _load_most_played() -> void:
 	if _most_loading:
 		return
+	_render_cached_records("most", %MostPlayList, RecordListItem.RecordMode.MOST)
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
 		return
 	if NetManager.instance == null or not NetManager.instance.is_online:
@@ -992,7 +1044,9 @@ func _load_most_played() -> void:
 	if not result.get("ok", false) or not result.data is Dictionary:
 		GLogger.warning("Failed to load most played: %s" % str(result.get("error", "")), "ProfileView")
 		return
-	_populate_records(%MostPlayList, result.data.get("records", []), RecordListItem.RecordMode.MOST)
+	var records: Array = result.data.get("records", [])
+	OnlineCache.write(_CACHE_NS, "records|most", records, true)
+	_populate_records(%MostPlayList, records, RecordListItem.RecordMode.MOST)
 	_most_loaded = true
 
 ## 清空 VBox 并填充记录项

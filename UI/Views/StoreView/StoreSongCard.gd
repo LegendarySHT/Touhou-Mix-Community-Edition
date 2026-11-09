@@ -31,6 +31,9 @@ var _cover_version := 0
 var _pending_cover_url := ""
 ## 鼠标按下位置：用于区分「点击卡片」与「拖动滚动」（触摸滚动时不要误开详情）
 var _press_pos := Vector2.INF
+## 已写入各滚动标签的最终文本。TextScrollHelper.set_scroll_text 会把跑马灯偏移归零，
+## 同一页「缓存 → 在线」刷新时重复写入会让标题从左边重新滚一遍，所以文本没变就不重设
+var _applied_text: Dictionary = {}
 
 func _ready() -> void:
 	_has_ready = true
@@ -52,6 +55,17 @@ func set_item(p_item: Dictionary, animate_in: bool = false) -> void:
 	_apply_item(animate_in)
 
 
+## 就地刷新：只换文案 / 计数 / 下载态，**不碰封面**。
+## 用于「缓存已上屏 → 在线数据到达」的同页刷新：整卡重绑会清空并重载封面，
+## 一页 24 张同时闪白比滚动位置跳回顶部还刺眼。封面 URL 含谱面 hash，
+## 同一张谱面的封面不会原地变，跳过重载没有陈旧风险。
+func refresh_item(p_item: Dictionary) -> void:
+	item = p_item
+	if not _has_ready:
+		return
+	_apply_item(false, false)
+
+
 ## 重新按当前下载状态刷按钮（下载完成/失败时由 StoreView 调用）
 func refresh_download_state() -> void:
 	if item.is_empty() or not _has_ready:
@@ -66,7 +80,7 @@ func refresh_reaction_counts(like_count: int) -> void:
 	_update_stat(%Likes, %LikesCount, like_count)
 
 
-func _apply_item(animate_in: bool) -> void:
+func _apply_item(animate_in: bool, reload_cover: bool = true) -> void:
 	if item.is_empty():
 		return
 
@@ -75,15 +89,16 @@ func _apply_item(animate_in: bool) -> void:
 	var song := str(item.get("song", ""))
 	var album := str(item.get("album", ""))
 	var uploader := str(item.get("uploader", ""))
-	%Title.set_scroll_text(title if not title.is_empty() else "未命名谱面")
-	%Author.set_scroll_text(author if not author.is_empty() else "未知作者")
+	_set_label_scroll(%Title, &"title", title if not title.is_empty() else "未命名谱面")
+	_set_label_scroll(%Author, &"author", author if not author.is_empty() else "未知作者")
 	var line := ""
 	if not song.is_empty() and not album.is_empty():
 		line = "%s · %s" % [song, album]
 	else:
 		line = song if not song.is_empty() else album
-	%SongLine.set_scroll_text(line if not line.is_empty() else "未知专辑")
-	%Uploader.set_scroll_text(("由 %s 上传" % uploader) if not uploader.is_empty() else "本地谱面")
+	_set_label_scroll(%SongLine, &"song_line", line if not line.is_empty() else "未知专辑")
+	_set_label_scroll(%Uploader, &"uploader",
+		("由 %s 上传" % uploader) if not uploader.is_empty() else "本地谱面")
 
 	_apply_duration_label()
 
@@ -91,7 +106,8 @@ func _apply_item(animate_in: bool) -> void:
 	_update_stat(%Plays, %PlaysCount, int(item.get("plays", -1)))
 	_update_stat(%Likes, %LikesCount, int(item.get("likes", -1)))
 
-	_load_cover()
+	if reload_cover:
+		_load_cover()
 	_apply_download_state()
 
 	if animate_in:
@@ -102,6 +118,15 @@ func _apply_item(animate_in: bool) -> void:
 				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	else:
 		modulate.a = 1.0
+
+
+## 写入滚动标签，文本未变时跳过（避免跑马灯被重置回起点）
+## 参数名避开 Button.text —— 同名参数会触发 SHADOWED_VARIABLE_BASE_CLASS 警告
+func _set_label_scroll(label: Control, key: StringName, value: String) -> void:
+	if _applied_text.has(key) and str(_applied_text[key]) == value:
+		return
+	_applied_text[key] = value
+	label.call("set_scroll_text", value)
 
 
 ## 封面右下角的状态行：有无人声 + 曲长（无人声时只显示时长）

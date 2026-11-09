@@ -6,6 +6,9 @@ class_name PlayerInfoContent
 ## 负责表单交互、个人信息填充等页面内逻辑；
 ## 状态切换、面板几何动画由 PlayerInfoPanel 处理。
 
+## 新脚本一律 preload 后按常量调用，不依赖 .godot/global_script_class_cache.cfg
+const OnlineCache := preload("res://Core/OnlineContentCache.gd")
+
 signal login_submitted()
 signal logout_submitted()
 signal expand_toggled()
@@ -202,6 +205,8 @@ func _sync_from_auth() -> void:
 			_player_data.bio = str(cached.get("bio", ""))
 		if _player_data.avatar_url.is_empty():
 			_player_data.avatar_url = str(cached.get("avatarUrl", ""))
+		# 在线内容缓存：先把上次的 pp / 统计快照填回去，网络回来后再覆盖
+		_apply_cached_stats()
 		populate_profile()
 		populate_mini_info()
 		if profile_view:
@@ -306,6 +311,62 @@ func _save_cached_profile() -> void:
 	f.store_string(JSON.stringify({"users": cache_users}, "\t"))
 	f.close()
 
+
+# ========== 在线内容缓存：个人统计快照（pp / 等级 / 评级分布等） ==========
+
+## 冷启动或切账号时先把上次的统计快照填回 _player_data，等在线统计回来再覆盖。
+## 与 profile_cache.json（昵称/简介/头像）互补：那边管展示资料，这边管数值。
+func _apply_cached_stats() -> void:
+	if not OnlineCache.is_enabled():
+		return
+	var entry := OnlineCache.read("users", "stats", true)
+	if entry.is_empty():
+		return
+	var payload: Variant = OnlineCache.payload_of(entry, null)
+	if not payload is Dictionary:
+		return
+	var s: Dictionary = payload
+	_player_data.pp = float(s.get("pp", 0.0))
+	_player_data.rank = int(s.get("rank", 0))
+	_player_data.ranked_players = int(s.get("ranked_players", 0))
+	_player_data.accuracy = float(s.get("accuracy", 0.0))
+	_player_data.total_plays = int(s.get("total_plays", 0))
+	_player_data.unique_charts = int(s.get("unique_charts", 0))
+	_player_data.avg_score = float(s.get("avg_score", 0.0))
+	_player_data.avg_pp = float(s.get("avg_pp", 0.0))
+	_player_data.best_pp = float(s.get("best_pp", 0.0))
+	_player_data.max_combo = int(s.get("max_combo", 0))
+	_player_data.play_duration_ms = int(s.get("play_duration_ms", 0))
+	var grades: Variant = s.get("grades", null)
+	if grades is Dictionary:
+		_player_data.grades = grades
+	var judgments: Variant = s.get("judgments", null)
+	if judgments is Dictionary:
+		_player_data.judgments = judgments
+
+
+## 在线统计成功返回后写回快照（只在成功路径调用，失败不写脏数据）。
+func _save_cached_stats() -> void:
+	if not OnlineCache.is_enabled():
+		return
+	var snapshot := {
+		"pp": _player_data.pp,
+		"rank": _player_data.rank,
+		"ranked_players": _player_data.ranked_players,
+		"accuracy": _player_data.accuracy,
+		"total_plays": _player_data.total_plays,
+		"unique_charts": _player_data.unique_charts,
+		"avg_score": _player_data.avg_score,
+		"avg_pp": _player_data.avg_pp,
+		"best_pp": _player_data.best_pp,
+		"max_combo": _player_data.max_combo,
+		"play_duration_ms": _player_data.play_duration_ms,
+		"grades": _player_data.grades,
+		"judgments": _player_data.judgments,
+	}
+	OnlineCache.write("users", "stats", snapshot, true)
+
+
 ## 异步拉取用户统计并刷新显示
 func _fetch_stats_async() -> void:
 	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
@@ -338,6 +399,8 @@ func _fetch_stats_async() -> void:
 		profile_view.update_display(_player_data)
 		# 通知 ProfileView 刷新历史列表（成绩上传后会触发此路径）
 		profile_view.refresh_history_lists()
+	# 在线内容缓存：成功响应才写回；按账号隔离，切账号不会互相覆盖
+	_save_cached_stats()
 	# 通知外部视图（如 ScoreView）统计已刷新，可同步更新显示
 	stats_refreshed.emit()
 

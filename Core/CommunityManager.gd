@@ -6,6 +6,9 @@ class_name CommunityManager
 
 static var instance: CommunityManager = null
 
+## 新脚本一律 preload 后按常量调用，不依赖 .godot/global_script_class_cache.cfg
+const OnlineCache := preload("res://Core/OnlineContentCache.gd")
+
 const COMMENTS_LIMIT: int = 50
 
 
@@ -84,14 +87,33 @@ func set_comment_like(comment_id: int, liked: bool) -> Dictionary:
 
 
 ## 读取本地缓存；无缓存返回空字典。
+## 在线内容缓存开启时以统一层为准，只缓存公开的 likeCount/dislikeCount
+## （myReaction / canInteract 是账号态，一律以在线响应为准，不落盘）。
+## ChartDB 旧表保留作一次性回退源，兼容升级前已写入的数据，不删不改。
 func get_cached_counts(midi_hash: String) -> Dictionary:
-	if ChartDB == null or not ChartDB.IsOpen() or midi_hash.is_empty():
+	if midi_hash.is_empty():
+		return {}
+	if OnlineCache.is_enabled():
+		var entry := OnlineCache.read("charts", midi_hash + "|community")
+		if not entry.is_empty():
+			var payload: Variant = OnlineCache.payload_of(entry, null)
+			if payload is Dictionary:
+				var d: Dictionary = payload
+				return {
+					"like_count": int(d.get("likeCount", 0)),
+					"dislike_count": int(d.get("dislikeCount", 0)),
+				}
+	if ChartDB == null or not ChartDB.IsOpen():
 		return {}
 	return ChartDB.GetCommunityCounts(midi_hash)
 
 
 func delete_cached_counts(midi_hash: String) -> void:
-	if ChartDB != null and ChartDB.IsOpen() and not midi_hash.is_empty():
+	if midi_hash.is_empty():
+		return
+	if OnlineCache.is_enabled():
+		OnlineCache.invalidate("charts", midi_hash + "|community")
+	if ChartDB != null and ChartDB.IsOpen():
 		ChartDB.DeleteCommunityCounts(midi_hash)
 
 
@@ -122,6 +144,13 @@ func _write_request(method: String, path: String, body: Dictionary) -> Dictionar
 
 
 func _save_summary_cache(midi_hash: String, data: Dictionary) -> void:
+	# 开启时写统一缓存层（公开计数）；关闭时完全沿用原有 ChartDB 落盘，行为不变
+	if OnlineCache.is_enabled():
+		OnlineCache.write("charts", midi_hash + "|community", {
+			"likeCount": maxi(int(data.get("likeCount", 0)), 0),
+			"dislikeCount": maxi(int(data.get("dislikeCount", 0)), 0),
+		})
+		return
 	if ChartDB == null or not ChartDB.IsOpen():
 		return
 	ChartDB.SaveCommunityCounts(

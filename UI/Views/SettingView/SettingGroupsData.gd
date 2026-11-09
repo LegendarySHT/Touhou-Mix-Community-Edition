@@ -104,9 +104,40 @@ static func get_setting_groups() -> Array:
 					{"text_en": "On", "text_zh": "开启"}
 				]
 			},
-			{
-				"id": "auto_upload_score",
-				"name_en": "Auto Upload Score",
+		{
+			"id": "cache_online_content",
+			"name_en": "Online Content Cache",
+			"name_zh": "在线内容缓存",
+			"description": "开启后先显示上次缓存的排行榜、评论、统计、商店列表与个人资料，再联网请求实时数据并刷新；关闭则完全沿用原有的在线加载逻辑",
+			"type": "TYPE_OPTION",
+			"options": [
+				{"text_en": "Off", "text_zh": "关闭"},
+				{"text_en": "On", "text_zh": "开启"}
+			]
+		},
+		{
+			"id": "cache_show_when_offline",
+			"name_en": "Show Cache When Offline",
+			"name_zh": "离线显示缓存内容",
+			"description": "线上模式关闭时仍显示已缓存的在线内容（不会发起联网请求）；需先开启在线内容缓存",
+			"type": "TYPE_OPTION",
+			"advanced": true,
+			"options": [
+				{"text_en": "Off", "text_zh": "关闭"},
+				{"text_en": "On", "text_zh": "开启"}
+			]
+		},
+		{
+			"id": "clear_online_cache",
+			"name_en": "Clear Online Cache",
+			"name_zh": "清除在线内容缓存",
+			"description": "删除本地保存的在线内容缓存，下次进入各页面将重新联网获取",
+			"type": "TYPE_BUTTON",
+			"on_click": "_clear_online_cache"
+		},
+		{
+			"id": "auto_upload_score",
+			"name_en": "Auto Upload Score",
 				"name_zh": "自动上传成绩",
 				"description": "开启后将自动在结算页面上传成绩，否则需手动上传",
 				"type": "TYPE_OPTION",
