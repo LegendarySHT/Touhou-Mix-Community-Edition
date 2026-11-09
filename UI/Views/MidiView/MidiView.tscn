@@ -290,7 +290,6 @@ view_layer = 0
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 25
-alignment = 1
 
 [node name="InfoWindow" type="Panel" parent="LeftArea" unique_id=1479286424]
 unique_name_in_owner = true
@@ -451,7 +450,7 @@ icon_alignment = 1
 
 [node name="DetailData" type="Control" parent="LeftArea" unique_id=1910408262]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 350)
+custom_minimum_size = Vector2(0, 300)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 6
@@ -607,6 +606,7 @@ visible = false
 custom_minimum_size = Vector2(850, 100)
 layout_mode = 2
 size_flags_horizontal = 4
+size_flags_vertical = 0
 offset_transform_visual_only = false
 alignment = 1
 
@@ -630,15 +630,17 @@ text = "上传歌曲"
 
 [node name="MainBtn" type="HBoxContainer" parent="LeftArea" unique_id=1543610834]
 layout_mode = 2
-size_flags_horizontal = 4
+size_flags_vertical = 0
 theme_override_constants/separation = 0
 alignment = 1
 
 [node name="TrackViewBtn" type="Button" parent="LeftArea/MainBtn" unique_id=1234650860]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(250, 150)
+custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
+size_flags_horizontal = 3
 size_flags_vertical = 4
+size_flags_stretch_ratio = 5.0
 offset_transform_enabled = true
 offset_transform_position = Vector2(5, 0)
 offset_transform_visual_only = false
@@ -649,9 +651,10 @@ expand_icon = true
 [node name="PlayBtn" type="Button" parent="LeftArea/MainBtn" unique_id=146335706]
 unique_name_in_owner = true
 z_index = 1
-custom_minimum_size = Vector2(300, 200)
+custom_minimum_size = Vector2(0, 200)
 layout_mode = 2
 size_flags_horizontal = 3
+size_flags_stretch_ratio = 6.0
 theme_override_colors/icon_normal_color = Color(1, 1, 1, 1)
 theme_override_colors/icon_hover_color = Color(1, 1, 1, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_btcpj")
@@ -663,10 +666,11 @@ expand_icon = true
 
 [node name="FavorListBtn" type="Button" parent="LeftArea/MainBtn" unique_id=465486697]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(250, 150)
+custom_minimum_size = Vector2(0, 150)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 4
+size_flags_stretch_ratio = 5.0
 offset_transform_enabled = true
 offset_transform_position = Vector2(-5, 0)
 offset_transform_visual_only = false
