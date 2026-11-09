@@ -137,9 +137,8 @@ func _download_chart_parallel(chart_hash: String, safe_hash: String,
 	var base_url := NetManager.instance.server_url
 	var meta_url := "%s/api/charts/%s" % [base_url, safe_hash]
 	var midi_url := "%s/media/charts/%s.mid" % [base_url, safe_hash]
-	# 封面地址必须带 coverVersion（hint 由商店列表项透传）：服务端封面端点有 30 天
-	# 边缘缓存，而路径里的 hash 是 MIDI 内容哈希，换封面不变 → 不拼版本串就会把
-	# 边缘的旧图存成本地 cover.jpg，之后无论怎么刷新都是旧图。
+	# 封面地址走内容寻址 coverUrl（hint 由商店列表项透传）：同图同 URL、换图换 URL，
+	# 并行下载在元数据回来之前就能发请求；老服务端缺该字段时回退裸旧端点。
 	var cover_url := CoverUrl.from_chart(base_url, safe_hash, hint)
 
 	# 1. 先用 hint 建目录。目录名仅人类可读：FileSystemManager 按 info.json 的
@@ -262,9 +261,8 @@ func _download_chart_sequential(chart_hash: String, safe_hash: String,
 	var cover_needed := bool(chart_data.get("hasCover", false))
 	_cover_done = not cover_needed
 	if cover_needed:
-		# 封面地址必须带 coverVersion：服务端封面端点有 30 天边缘缓存，而路径里的
-		# hash 是 MIDI 内容哈希，换封面不变 → 不拼版本串就会把边缘旧图存成本地
-		# cover.jpg。串行路径没有列表项 hint，版本来自刚取回的元数据。
+		# 封面地址走内容寻址 coverUrl：串行路径没有列表项 hint，URL 来自刚取回的元数据；
+		# 换图必换 URL，不会把边缘旧图存成本地 cover.jpg。
 		var cover_url := CoverUrl.from_chart(NetManager.instance.server_url, safe_hash, chart_data)
 		if _try_cover_from_cache(cover_url, cover_path):
 			_cover_result = {"ok": true}
@@ -420,10 +418,9 @@ func _build_local_json(chart_data: Dictionary) -> Dictionary:
 		"artistName": str(chart_data.get("midiAuthor", "")),
 		"artistUrl": str(chart_data.get("midiAuthorUrl", "")),
 		"coverHash": str(chart_data.get("coverHash", "")),
-		# 2026-11-08：记下内容寻址 URL 与版本串，供已下载谱面日后比对刷新——
+		# 2026-11-08：记下内容寻址 URL，供已下载谱面日后比对刷新——
 		# 本地 cover.jpg 不会自动更新，重下或按此 URL 重拉才能换图。
 		"coverUrl": str(chart_data.get("coverUrl", "")),
-		"coverVersion": str(chart_data.get("coverVersion", "")),
 		"uploadedDate": str(chart_data.get("uploadedAt", "")),
 		"approvedDate": str(chart_data.get("approvedAt", "")),
 		"status": str(chart_data.get("status", "APPROVED")),

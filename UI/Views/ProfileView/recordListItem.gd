@@ -75,13 +75,13 @@ func set_withdraw_state(withdraw: bool) -> void:
 	modulate.a = 0.4 if withdraw else 1.0
 
 ## 从服务端加载曲包封面：优先内容寻址 /media/covers/{封面哈希}.{ext}，
-## 老服务端回退 /api/charts/{hash}/cover?v={coverVersion}（见 Core/CoverUrl.gd）。
+## 老服务端回退裸旧端点 /api/charts/{hash}/cover（见 Core/CoverUrl.gd）。
 ## 内容寻址 URL 同图同 URL，客户端 WebCache 因此不会再把共用封面存成 N 份。
 func _load_remote_cover(chart_hash: String, data: Dictionary) -> void:
 	if NetManager.instance == null or not NetManager.instance.is_online:
 		return
 	# 列表项若已拼好绝对 URL（ProfileView._item_for_record）就直接用，
-	# 避免二次构造时丢掉 coverUrl / coverVersion 字段。
+	# 避免二次构造时丢掉 coverUrl 字段。
 	var raw_url = data.get("cover_url", "")
 	var cover_url := "" if raw_url == null else str(raw_url)
 	if cover_url.is_empty():

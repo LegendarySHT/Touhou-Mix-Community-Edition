@@ -1040,11 +1040,10 @@ func _item_for_record(record: Dictionary, hash_str: String) -> Dictionary:
 		"plays": midi.trial_count if midi else -1,
 		"likes": midi.up_count if midi else -1,
 		"dislikes": midi.down_count if midi else -1,
-		# 成绩记录的封面 URL：服务端成绩接口已透出 coverUrl（内容寻址）
-		# 与 coverVersion（老服务端回退），与商店列表同一套构造。
+		# 成绩记录的封面 URL：服务端成绩接口透出 coverUrl（内容寻址），
+		# 与商店列表同一套构造；缺失时 CoverUrl 会回退裸旧端点。
 		"cover_url": CoverUrl.from_chart(server, hash_str, record) if has_cover else "",
 		"coverUrl": str(record.get("coverUrl", "")),
-		"coverVersion": str(record.get("coverVersion", "")),
 	}
 
 
