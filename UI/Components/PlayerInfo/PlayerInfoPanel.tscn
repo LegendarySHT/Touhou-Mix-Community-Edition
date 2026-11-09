@@ -339,27 +339,27 @@ mouse_filter = 2
 theme_override_constants/separation = 8
 alignment = 1
 
-[node name="ProfileName" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox" unique_id=1139186740]
+[node name="Control" type="HBoxContainer" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox" unique_id=1457840789]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 30
+
+[node name="ProfileName" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox/Control" unique_id=1139186740]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 36
 text = "Anonymous Player"
 vertical_alignment = 1
 script = ExtResource("6_au6ng")
 
-[node name="ProfileRank" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox/ProfileName" unique_id=1477374343]
+[node name="ProfileRank" type="Label" parent="InfoPanelBtn/Tabs/Summary/ProfileAvatarPanel/NameLevelBox/Control" unique_id=1477374343]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_left = -138.0
-offset_top = 4.0
-grow_horizontal = 0
-grow_vertical = 2
-size_flags_horizontal = 3
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "Unranked"
 horizontal_alignment = 2
