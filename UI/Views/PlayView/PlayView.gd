@@ -1328,8 +1328,10 @@ func _upload_score_async(midi: MidiData, snapshot: Dictionary) -> void:
 		EvtBus.score_uploaded.emit(midi.file_hash)
 	elif result.get("skipped", false):
 		GLogger.info("Score upload skipped: chart not found on server (midi=%s)" % midi.file_hash, "PlayView")
+		EvtBus.score_upload_failed.emit(midi.file_hash)
 	else:
 		GLogger.warning("Score upload failed: %s (status=%s)" % [result.get("error", "unknown"), str(result.get("status", 0))], "PlayView")
+		EvtBus.score_upload_failed.emit(midi.file_hash)
 
 ## 外部文件导入开始：打歌中收到导入请求时正常退出打歌页。
 ## 走与中途退出相同的 _on_quit_pressed 流程（W 成绩、播放停止、资源清理都由既有逻辑处理）。

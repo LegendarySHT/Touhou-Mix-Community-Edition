@@ -163,8 +163,15 @@ func _on_state_changed(old_state: int, new_state: int) -> void:
 		_start_requested = false
 		var midi: MidiData = %MidiList.get_selection()
 		if midi:
-			%ScoreList.load_scores(midi)
-			%CommentPanel.load_comments(midi)
+			# 中途退出时成绩上传是 fire-and-forget：回到本页时它很可能还在路上。
+			# 此刻不刷新，交给随后到达的 score_uploaded / score_upload_failed 统一刷一次，
+			# 否则「回页刷新 + 上传完成刷新」会连刷两次（列表被 clear_items 清空、
+			# 滚动位置弹回顶部，并多打一轮排行榜/统计/评论请求）。
+			if ScoreManager.instance != null and ScoreManager.instance.is_upload_in_flight(midi.file_hash):
+				GLogger.info("Refresh deferred: score upload in flight (midi=%s)" % midi.file_hash, "MidiView")
+			else:
+				%ScoreList.load_scores(midi)
+				%CommentPanel.load_comments(midi)
 
 ## 释放视图内部资源（midi 列表项 + 当前 MIDI 运行时缓存），保留节点壳和信号连接
 ## 重新进入时由 song_selected 信号重新加载

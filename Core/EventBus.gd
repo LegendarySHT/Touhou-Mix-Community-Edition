@@ -69,8 +69,12 @@ signal online_request_started(endpoint: String)
 signal online_request_finished(endpoint: String, success: bool)
 ## 连接状态变化（携带延迟数值）：state 对应 NetManager.ConnectState 枚举值，latency_ms=-1 表示未知
 signal online_state_changed(state: int, latency_ms: int)
-## 成绩上传成功（携带 midi_hash），用于触发个人信息统计刷新
+## 成绩上传成功（携带 midi_hash），用于触发个人信息统计/排行榜/评论区刷新
 signal score_uploaded(midi_hash: String)
+## 成绩上传结束但未写入（失败或服务端未收录，携带 midi_hash）。
+## 与 score_uploaded 成对：回页时若成绩仍在上传会推迟排行榜刷新（见 MidiView._on_state_changed），
+## 必须有一个"结束"信号兜底，否则上传失败会让排行榜停留在回页前的旧数据上。
+signal score_upload_failed(midi_hash: String)
 
 ## ========== 通知事件 ==========
 ## 顶部横幅通知请求（由 Main/NotiBanner 订阅）：外部模块不用知道节点路径

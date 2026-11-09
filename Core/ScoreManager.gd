@@ -14,6 +14,11 @@ const CHART_NOT_FOUND_ERROR: String = "chart_not_found"
 ## 当前设备标识（首次启动时生成，持久化存储）
 var _device_id: String = ""
 
+## 正在上传成绩的谱面：hash → 并发计数。
+## 供 UI 判断「回页时该谱面的成绩还在路上」——此时排行榜刷新应推迟到
+## score_uploaded / score_upload_failed，避免回页刷新与上传完成刷新连刷两次。
+var _uploading_hashes: Dictionary = {}
+
 func _ready() -> void:
 	if instance == null:
 		instance = self
@@ -116,17 +121,35 @@ func _extract_payload(midi: MidiData, snapshot: Dictionary) -> Dictionary:
 	}
 
 
-## 上传成绩
-## midi: MidiData 对象（需要 file_hash 非空）
-## snapshot: ScoreCalculator.get_snapshot() 返回的字典
-## 返回 { ok, status, data, error, skipped? }
-## 去重逻辑由服务端处理：同设备/同用户 + 同 MIDI 只保留最高分
+## 该谱面是否有成绩上传尚未结束（并行上传会计数，全部结束才回落 false）
+func is_upload_in_flight(midi_hash: String) -> bool:
+	return not midi_hash.is_empty() and _uploading_hashes.has(midi_hash)
+
+
+## 上传成绩（对外入口）：只负责登记/注销在途状态，所有提前返回都在内层函数里，
+## 这样「上传中」标记不会因为中途 return 而泄漏（GDScript 没有 try/finally）。
 func upload_score(midi: MidiData, snapshot: Dictionary) -> Dictionary:
 	if midi.file_hash.is_empty():
 		return { "ok": false, "status": 0, "data": null, "error": "midi_hash_empty" }
 	if NetManager.instance == null:
 		return { "ok": false, "status": 0, "data": null, "error": "network_not_ready" }
+	var midi_hash := midi.file_hash
+	_uploading_hashes[midi_hash] = int(_uploading_hashes.get(midi_hash, 0)) + 1
+	var result: Dictionary = await _upload_score_inner(midi, snapshot)
+	var left := int(_uploading_hashes.get(midi_hash, 0)) - 1
+	if left > 0:
+		_uploading_hashes[midi_hash] = left
+	else:
+		_uploading_hashes.erase(midi_hash)
+	return result
 
+
+## 上传成绩的实际流程
+## midi: MidiData 对象（需要 file_hash 非空）
+## snapshot: ScoreCalculator.get_snapshot() 返回的字典
+## 返回 { ok, status, data, error, skipped? }
+## 去重逻辑由服务端处理：同设备/同用户 + 同 MIDI 只保留最高分
+func _upload_score_inner(midi: MidiData, snapshot: Dictionary) -> Dictionary:
 	# 服务端谱面表是在线成绩的权威来源。本地存在但服务端不存在时静默跳过，
 	# 不进入鉴权和成绩 POST；服务端仍会在 POST 内重复校验以覆盖并发删除。
 	var chart_result: Dictionary = await _check_server_chart(midi.file_hash)

@@ -2,6 +2,7 @@ extends VBoxContainer
 
 ## 新脚本一律 preload 后按常量调用，不依赖 .godot/global_script_class_cache.cfg
 const OnlineCache := preload("res://Core/OnlineContentCache.gd")
+const UploadRefreshGate := preload("res://UI/Views/MidiView/UploadRefreshGate.gd")
 
 ## 当前 MIDI 的评价与评论区。公开内容在线可读；写操作由服务端按非 W 成绩授权。
 
@@ -31,6 +32,7 @@ func _ready() -> void:
 	EvtBus.online_state_changed.connect(_on_online_state_changed)
 	EvtBus.auth_changed.connect(_on_auth_changed)
 	EvtBus.score_uploaded.connect(_on_score_uploaded)
+	EvtBus.score_upload_failed.connect(_on_score_upload_failed)
 	input.placeholder_text = DEFAULT_INPUT_HINT
 	input.max_length = MAX_COMMENT_LENGTH
 	_was_online_ready = _is_online_ready()
@@ -301,10 +303,24 @@ func _on_auth_changed(_user: Variant) -> void:
 
 ## W 上传也会发出 score_uploaded；是否解锁始终以服务端 canInteract 为准。
 func _on_score_uploaded(midi_hash: String) -> void:
-	if _current_midi == null or _current_midi.file_hash != midi_hash:
+	_refresh_after_upload(midi_hash)
+
+
+## 上传结束但未写入时同样补刷：中途退出回页时若成绩还在上传，
+## MidiView 会推迟评论刷新到这里（否则会回页刷一次 + 上传完成再刷一次）。
+func _on_score_upload_failed(midi_hash: String) -> void:
+	_refresh_after_upload(midi_hash)
+
+
+## 只在「本页正是当前视图」时刷新（判定见 UploadRefreshGate）：不在 MIDI_VIEW 时
+## 下次进入的刷新会拿到最新数据，这里再拉一次只会白打一轮 summary + 评论请求。
+func _refresh_after_upload(midi_hash: String) -> void:
+	if _current_midi == null:
 		return
-	if _is_online_ready():
-		load_comments(_current_midi)
+	if not UploadRefreshGate.should_refresh(_current_midi.file_hash, midi_hash,
+			UiStatMGR.current_state, _is_online_ready()):
+		return
+	load_comments(_current_midi)
 
 
 func _set_interaction_enabled(enabled: bool) -> void:

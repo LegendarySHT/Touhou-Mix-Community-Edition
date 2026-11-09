@@ -4,6 +4,7 @@ class_name ScoreList
 
 ## 新脚本一律 preload 后按常量调用，不依赖 .godot/global_script_class_cache.cfg
 const OnlineCache := preload("res://Core/OnlineContentCache.gd")
+const UploadRefreshGate := preload("res://UI/Views/MidiView/UploadRefreshGate.gd")
 
 ## 排行榜单次加载条数
 const LOAD_LIMIT := 50
@@ -52,6 +53,7 @@ func _ready() -> void:
 	super._ready()
 	EvtBus.online_state_changed.connect(_on_online_state_changed)
 	EvtBus.score_uploaded.connect(_on_score_uploaded)
+	EvtBus.score_upload_failed.connect(_on_score_upload_failed)
 	if _stats_label == null:
 		GLogger.warning("RankPanel/Total not found, online stats line disabled", "ScoreList")
 
@@ -93,11 +95,23 @@ func _on_online_state_changed(state: int, _latency_ms: int) -> void:
 			if _waiting_online:
 				load_scores(_current_midi)
 
-## 成绩上传完成后刷新当前 MIDI，覆盖用户快速返回 MidiView 时的竞态。
+## 成绩上传成功 / 未写入（失败、服务端未收录）后刷新当前 MIDI，覆盖用户快速返回 MidiView 时的竞态。
 func _on_score_uploaded(midi_hash: String) -> void:
-	if _current_midi == null or _current_midi.file_hash != midi_hash:
+	_refresh_after_upload(midi_hash)
+
+func _on_score_upload_failed(midi_hash: String) -> void:
+	_refresh_after_upload(midi_hash)
+
+## 上传结束后的刷新：只在「本页正是当前视图」时拉取（判定见 UploadRefreshGate）。
+## - 不在 MIDI_VIEW（如上传还在结算页就完成）：拉取没有意义，因为下次进入 MIDI_VIEW 的
+##   回页刷新会拿到最新数据，否则一次打歌会白打一轮排行榜 + 统计请求；
+## - 中途退出时回页刷新已经推迟到这里（MidiView._on_state_changed），这里刷完即止，不会重复。
+func _refresh_after_upload(midi_hash: String) -> void:
+	if _current_midi == null:
 		return
-	if NetManager.instance == null or NetManager.instance.connect_state != NetManager.ConnectState.ONLINE:
+	if not UploadRefreshGate.should_refresh(_current_midi.file_hash, midi_hash,
+			UiStatMGR.current_state, NetManager.instance != null \
+			and NetManager.instance.connect_state == NetManager.ConnectState.ONLINE):
 		return
 	load_scores(_current_midi)
 
