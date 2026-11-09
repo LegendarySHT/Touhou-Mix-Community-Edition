@@ -32,6 +32,10 @@ var _pending_cleanup: bool = false
 # midi信息框左边的三个按钮
 @onready var left_btns: Array[Button] = [%PreviBtn, %FoldBtn, %NextBtn]
 
+# DetailData 内两块面板按设计尺寸绝对摆放（ForePanel 0~900，BackPanel 错位后 20~920），
+# 内容总宽 920，可用宽度窄于此值时整体按比例缩小
+const _DETAIL_DESIGN_WIDTH := 920.0
+
 var showing_info: bool = false
 
 func _on_view_ready() -> void:
@@ -48,6 +52,24 @@ func _on_view_ready() -> void:
 	UiStatMGR.state_changed.connect(_on_state_changed)
 
 	_setup_focus_tabs()
+	%DetailData.resized.connect(_update_detail_scale)
+	_update_detail_scale.call_deferred()
+
+## 按 DetailData 的可用宽度整体缩放其内容
+func _update_detail_scale() -> void:
+	var dd: Control = %DetailData
+	var sz: Vector2 = dd.size
+	# 尚未完成首次布局时没有可用宽度，等下次尺寸事件再算
+	if sz.x <= 0.0:
+		return
+	var sc := minf(sz.x / _DETAIL_DESIGN_WIDTH, 1.0)
+	# 以左上角为基准缩放：绝对/相对 pivot 都要清零，否则默认的相对 pivot 0.5 会按中心缩放
+	dd.offset_transform_enabled = true
+	# 参与全局变换，让鼠标点击命中跟着缩放后的画面走（visual_only 只挪渲染，命中会错位）
+	dd.offset_transform_visual_only = false
+	dd.offset_transform_pivot = Vector2.ZERO
+	dd.offset_transform_pivot_ratio = Vector2.ZERO
+	dd.offset_transform_scale = Vector2(sc, sc)
 
 ## 右侧面板的三个页签按 Tab 切换，页内控件交给方向键
 func _setup_focus_tabs() -> void:
@@ -172,6 +194,8 @@ func _on_state_changed(old_state: int, new_state: int) -> void:
 			else:
 				%ScoreList.load_scores(midi)
 				%CommentPanel.load_comments(midi)
+		# 从其它页面返回时布局可能已变化（如窗口尺寸、简介展开状态），按当前宽度重算缩放
+		_update_detail_scale()
 
 ## 释放视图内部资源（midi 列表项 + 当前 MIDI 运行时缓存），保留节点壳和信号连接
 ## 重新进入时由 song_selected 信号重新加载

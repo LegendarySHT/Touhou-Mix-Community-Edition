@@ -341,10 +341,11 @@ offset_bottom = -170.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_styles/panel = SubResource("StyleBoxEmpty_3y6u5")
-current_tab = 0
+current_tab = 2
 tabs_visible = false
 
 [node name="Profile" type="Control" parent="PageContent" unique_id=354484154]
+visible = false
 layout_mode = 2
 metadata/_tab_index = 0
 
@@ -1428,7 +1429,6 @@ layout_mode = 2
 mouse_filter = 2
 
 [node name="Edit" type="Control" parent="PageContent" unique_id=1170624072]
-visible = false
 layout_mode = 2
 theme = ExtResource("4_xsa8c")
 metadata/_tab_index = 2
@@ -1492,7 +1492,7 @@ text = "头像"
 
 [node name="AvatarPreviewBorder" type="PanelContainer" parent="PageContent/Edit/Columns/AvatarColumn/AvatarCard/Box" unique_id=1644323787]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(300, 300)
+custom_minimum_size = Vector2(400, 400)
 clip_contents = true
 layout_mode = 2
 size_flags_horizontal = 4

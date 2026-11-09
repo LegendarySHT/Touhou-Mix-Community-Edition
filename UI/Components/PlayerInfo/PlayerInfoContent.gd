@@ -562,7 +562,7 @@ func populate_profile() -> void:
 	%ProfileLevel.text = "Level %d" % lvl
 	%ProfilePp.text = "%.2f pp" % _player_data.pp
 	if _player_data.rank > 0:
-		%ProfileRank.text = "Global Rank: #%d" % _player_data.rank
+		%ProfileRank.text = "Rank: #%d" % _player_data.rank
 	else:
 		%ProfileRank.text = "Unranked"
 	%ProfileProgress.value = lvl_progress * 100.0
