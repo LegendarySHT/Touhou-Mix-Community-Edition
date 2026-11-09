@@ -59,6 +59,13 @@ func refresh_download_state() -> void:
 	_apply_download_state()
 
 
+## 详情页评价成功后只刷点赞行：整卡重绑会触发封面重载，弹窗收起时会闪一下
+func refresh_reaction_counts(like_count: int) -> void:
+	if item.is_empty() or not _has_ready:
+		return
+	_update_stat(%Likes, %LikesCount, like_count)
+
+
 func _apply_item(animate_in: bool) -> void:
 	if item.is_empty():
 		return

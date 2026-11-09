@@ -2490,24 +2490,30 @@ theme_override_constants/separation = 16
 [node name="LikeBtn" type="Button" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats" unique_id=795017511]
 unique_name_in_owner = true
 layout_mode = 2
+toggle_mode = true
+disabled = true
 theme_override_constants/icon_max_width = 26
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("cd_SB_flat")
 theme_override_styles/pressed = SubResource("cd_SB_flat_pressed")
 theme_override_styles/hover = SubResource("cd_SB_flat_hover")
 theme_override_styles/focus = SubResource("cd_SB_flat_hover")
+theme_override_styles/disabled = SubResource("cd_SB_flat")
 text = "  0"
 icon = SubResource("cd_Atlas_up")
 
 [node name="DislikeBtn" type="Button" parent="Window/WindowBG/Tabs/ChartDetailPage/RightCol/Stats" unique_id=103213101]
 unique_name_in_owner = true
 layout_mode = 2
+toggle_mode = true
+disabled = true
 theme_override_constants/icon_max_width = 26
 theme_override_font_sizes/font_size = 22
 theme_override_styles/normal = SubResource("cd_SB_flat")
 theme_override_styles/pressed = SubResource("cd_SB_flat_pressed")
 theme_override_styles/hover = SubResource("cd_SB_flat_hover")
 theme_override_styles/focus = SubResource("cd_SB_flat_hover")
+theme_override_styles/disabled = SubResource("cd_SB_flat")
 text = "  0"
 icon = SubResource("cd_Atlas_down")
 

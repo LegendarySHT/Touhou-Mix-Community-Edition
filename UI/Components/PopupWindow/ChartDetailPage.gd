@@ -6,6 +6,10 @@
 ##
 ## Mode.STORE   商店：按钮承载下载状态机，未下载时发 download_requested 交由宿主处理
 ## Mode.LIBRARY 曲库 / 游玩记录等非商店入口：不发起下载，仅当谱面在本地时提供跳转
+##
+## 赞踩：打开详情时拉 GET /api/charts/{hash}/community，由服务端 canInteract
+##（该谱面有非 W 成绩）决定是否可点。列表里带来的 likeCount 只做首屏兜底，
+## 真正的计数 / 我的评价 / 权限一律以 community 汇总为准。
 class_name ChartDetailPage
 extends Control
 
@@ -14,6 +18,8 @@ const StoreIconsLib := preload("res://UI/Views/StoreView/StoreIcons.gd")
 signal download_requested(item: Dictionary)
 ## 即将跳转 MIDI_VIEW 时通知宿主（跳转本身由本页完成）
 signal open_requested(item: Dictionary)
+## 在线计数变化（宿主可据此刷新商店卡片，避免返回列表时还是旧数字）
+signal reaction_changed(midi_hash: String, like_count: int, dislike_count: int)
 
 enum Mode { STORE, LIBRARY }
 
@@ -22,8 +28,28 @@ var _mode: int = Mode.STORE
 var _cover_version := 0
 var _req_version := 0
 
+# ── 评价状态 ──────────────────────────────────────────
+## 本轮评价请求的代号：换谱面 / 重新拉汇总 / 提交写入都会 +1，用来丢弃迟到的响应
+var _reaction_version := 0
+## 服务端 canInteract 且当前在线；false 时两个按钮一律 disabled
+var _can_react := false
+var _my_reaction := ""
+var _reaction_busy := false
+var _reaction_loading := false
+## 在线心跳每次都会发信号，只在「在线↔离线」翻转时才重拉汇总
+var _reaction_was_online := false
+
 func _ready() -> void:
 	%DownloadBtn.pressed.connect(_on_download_pressed)
+	%LikeBtn.pressed.connect(_on_like_pressed)
+	%DislikeBtn.pressed.connect(_on_dislike_pressed)
+	# 赞踩是「我的评价」状态按钮，需要持久的按下态；toggle_mode 在场景里也要同步设上
+	%LikeBtn.toggle_mode = true
+	%DislikeBtn.toggle_mode = true
+	EvtBus.auth_changed.connect(_on_auth_changed)
+	EvtBus.online_state_changed.connect(_on_online_state_changed)
+	EvtBus.score_uploaded.connect(_on_score_uploaded)
+	_reaction_was_online = _is_online_ready()
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
@@ -37,9 +63,14 @@ func setup(item: Dictionary, mode: int = Mode.STORE) -> void:
 	_req_version += 1
 	_item = item
 	_mode = mode
+	_can_react = false
+	_my_reaction = ""
+	_reaction_busy = false
+	_reaction_loading = true
 	_fill_content()
 	_load_cover()
 	_load_rank()
+	_load_reaction()
 
 ## 当前数据（弹窗标题用）
 func get_item() -> Dictionary:
@@ -62,20 +93,19 @@ func _fill_content() -> void:
 
 	var downloads := int(_item.get("downloads", -1))
 	var plays := int(_item.get("plays", -1))
-	var likes := int(_item.get("likes", -1))
-	var dislikes := int(_item.get("dislikes", -1))
 	%DownloadsCount.text = StoreIconsLib.format_count(downloads)
 	%PlaysCount.text = StoreIconsLib.format_count(plays)
-	%LikeBtn.text = "  " + StoreIconsLib.format_count(likes)
-	%DislikeBtn.text = "  " + StoreIconsLib.format_count(dislikes)
 	var is_song := str(_item.get("kind", "")) == "song"
+	# 列表里的赞踩数只做首屏兜底；汇总回来后由 _set_reaction_counts 覆盖
+	_set_reaction_counts(int(_item.get("likes", -1)), int(_item.get("dislikes", -1)))
+	_set_reaction_visual("")
 	# 分类资源没有在线点赞/游玩统计：整行统计隐藏，信息由左下「资源信息」承担
 	%Stats.visible = is_song
 	%CdDivider.visible = is_song
 	%LikeBtn.visible = is_song
 	%DislikeBtn.visible = is_song
-	%LikeBtn.disabled = not is_song
-	%DislikeBtn.disabled = not is_song
+	# 未拿到服务端 canInteract 之前一律不可点（含未游玩 / 未登录 / 离线）
+	_update_reaction_controls()
 
 	var uploaded := str(_item.get("uploaded_at", ""))
 	if uploaded.is_empty():
@@ -212,6 +242,198 @@ func _load_rank() -> void:
 			str(s.get("username", "Anonymous")),
 			int(s.get("totalScore", 0)),
 			str(s.get("rank", "")))
+
+# ── 评价（赞 / 踩） ──────────────────────────────────
+
+## 打开详情 / 登录态、在线态、成绩变化时重拉汇总。
+## 未游玩者拿到的 canInteract=false，两个按钮会一直保持 disabled。
+func _load_reaction() -> void:
+	_reaction_version += 1
+	var version := _reaction_version
+	var hash_str := str(_item.get("hash", ""))
+	if str(_item.get("kind", "")) != "song" or hash_str.is_empty():
+		_reaction_loading = false
+		_update_reaction_controls()
+		return
+	# 列表没给计数时先用本地缓存顶一下（离线也不至于显示「—」）
+	if int(_item.get("likes", -1)) < 0 and CommunityManager.instance != null:
+		var cached := CommunityManager.instance.get_cached_counts(hash_str)
+		if not cached.is_empty():
+			_set_reaction_counts(
+				int(cached.get("like_count", -1)), int(cached.get("dislike_count", -1)))
+	if not _is_online_ready() or CommunityManager.instance == null:
+		_reaction_loading = false
+		_update_reaction_controls()
+		return
+	var result: Dictionary = await CommunityManager.instance.get_summary(hash_str)
+	if not _is_current_reaction(hash_str, version):
+		return
+	_reaction_loading = false
+	if not result.get("ok", false):
+		_can_react = false
+		if int(result.get("status", 0)) == 404:
+			_set_reaction_counts(0, 0, true)
+		_update_reaction_controls()
+		return
+	var data = result.get("data")
+	if data is Dictionary:
+		_apply_summary(data)
+	else:
+		_can_react = false
+		_update_reaction_controls()
+
+
+func _on_like_pressed() -> void:
+	_submit_reaction("" if _my_reaction == "like" else "like")
+
+
+func _on_dislike_pressed() -> void:
+	_submit_reaction("" if _my_reaction == "dislike" else "dislike")
+
+
+## 再次点击已选中的按钮 = 撤回评价（发 null），与网页社区站 / MidiView 评论区一致
+func _submit_reaction(target: String) -> void:
+	var hash_str := str(_item.get("hash", ""))
+	if not _can_react or _reaction_busy or hash_str.is_empty() \
+			or not _is_online_ready() or CommunityManager.instance == null:
+		_set_reaction_visual(_my_reaction)
+		return
+	var previous := _my_reaction
+	_reaction_busy = true
+	# 提交期间也让版本号前进，丢弃可能还在路上的汇总响应
+	_reaction_version += 1
+	var version := _reaction_version
+	_set_reaction_visual(target)
+	_update_reaction_controls()
+	var body: Variant = null
+	if not target.is_empty():
+		body = target
+	var result: Dictionary = await CommunityManager.instance.set_reaction(hash_str, body)
+	if not _is_current_reaction(hash_str, version):
+		return
+	_reaction_busy = false
+	if not result.get("ok", false):
+		_set_reaction_visual(previous)
+		_handle_reaction_failure(result)
+		return
+	var data = result.get("data")
+	if data is Dictionary:
+		_apply_summary(data)
+		return
+	_set_reaction_visual(previous)
+	EvtBus.notify("评价保存失败，请稍后重试")
+	_update_reaction_controls()
+
+
+func _apply_summary(data: Dictionary) -> void:
+	_set_reaction_counts(
+		int(data.get("likeCount", 0)), int(data.get("dislikeCount", 0)), true)
+	var reaction = data.get("myReaction")
+	_my_reaction = str(reaction) if reaction != null else ""
+	_set_reaction_visual(_my_reaction)
+	_can_react = bool(data.get("canInteract", false)) and _is_online_ready()
+	_reaction_loading = false
+	_update_reaction_controls()
+
+
+func _set_reaction_counts(likes: int, dislikes: int, publish: bool = false) -> void:
+	%LikeBtn.text = "  " + StoreIconsLib.format_count(likes)
+	%DislikeBtn.text = "  " + StoreIconsLib.format_count(dislikes)
+	if publish and likes >= 0 and dislikes >= 0:
+		var hash_str := str(_item.get("hash", ""))
+		if not hash_str.is_empty():
+			reaction_changed.emit(hash_str, likes, dislikes)
+
+
+func _set_reaction_visual(reaction: String) -> void:
+	%LikeBtn.set_pressed_no_signal(reaction == "like")
+	%DislikeBtn.set_pressed_no_signal(reaction == "dislike")
+
+
+func _update_reaction_controls() -> void:
+	var is_song := str(_item.get("kind", "")) == "song"
+	var hash_ready := not str(_item.get("hash", "")).is_empty()
+	var enabled := is_song and hash_ready and _can_react and not _reaction_busy \
+		and _is_online_ready()
+	var reason := ""
+	if not is_song:
+		reason = "该资源不支持在线评价"
+	elif not hash_ready:
+		reason = "该谱面缺少在线标识"
+	elif _reaction_busy:
+		reason = "正在保存评价…"
+	elif not _is_online_ready():
+		reason = "联网后可参与评价"
+	elif AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+		reason = "登录后并完成该谱面可参与评价"
+	elif _reaction_loading:
+		reason = "正在读取评价状态…"
+	elif not _can_react:
+		reason = "完成一次该谱面并上传非 W 成绩后可评价"
+	for btn: Button in [%LikeBtn, %DislikeBtn]:
+		btn.disabled = not enabled
+		if enabled:
+			btn.tooltip_text = "点赞该谱面" if btn == %LikeBtn else "不赞同该谱面"
+		else:
+			btn.tooltip_text = reason
+
+
+func _handle_reaction_failure(result: Dictionary) -> void:
+	# 权限 / 会话发生变化时不能再让按钮保持可点，重开详情会重新拉汇总
+	_can_react = false
+	_my_reaction = ""
+	_set_reaction_visual("")
+	var status := int(result.get("status", 0))
+	var error := str(result.get("error", ""))
+	var message := "评价保存失败，请稍后重试"
+	if status == 401 or error in ["not_logged_in", "token_expired"]:
+		message = "请先登录账号"
+	elif status == 403:
+		message = "请先完成该谱面并上传非 W 成绩"
+	elif status == 404:
+		message = "服务端未收录该谱面"
+		_set_reaction_counts(0, 0, true)
+	EvtBus.notify(message)
+	_update_reaction_controls()
+
+
+func _is_current_reaction(hash_str: String, version: int) -> bool:
+	return is_inside_tree() and version == _reaction_version \
+		and str(_item.get("hash", "")) == hash_str
+
+
+func _is_online_ready() -> bool:
+	return NetManager.instance != null \
+		and NetManager.instance.connect_state == NetManager.ConnectState.ONLINE \
+		and NetManager.instance.is_online
+
+
+## 登录 / 登出、上下线、成绩上传都可能改变 canInteract；写入进行中不打断
+func _on_auth_changed(_user: Variant) -> void:
+	_refresh_reaction_context()
+
+
+func _on_online_state_changed(_state: int, _latency_ms: int) -> void:
+	var online_now := _is_online_ready()
+	if online_now == _reaction_was_online:
+		return
+	_reaction_was_online = online_now
+	_refresh_reaction_context()
+
+
+func _on_score_uploaded(midi_hash: String) -> void:
+	if midi_hash == str(_item.get("hash", "")):
+		_refresh_reaction_context()
+
+
+func _refresh_reaction_context() -> void:
+	if _reaction_busy or str(_item.get("kind", "")) != "song" \
+			or str(_item.get("hash", "")).is_empty():
+		return
+	var popup := PopupWindow.instance
+	if popup == null or not is_instance_valid(popup) or not popup.is_chart_detail_open():
+		return
+	_load_reaction()
 
 # ── 排行榜 / 信息行 ──────────────────────────────────
 
@@ -438,10 +660,12 @@ func apply_theme() -> void:
 	for icon in %Stats.find_children("*", "TextureRect", true, false):
 		(icon as TextureRect).modulate = muted_text
 
-	# 赞踩按钮的字色
+	# 赞踩按钮的字色与图标色（按下态＝我投过这一票，禁用态＝还没有评价权限）
 	for btn: Button in [%LikeBtn, %DislikeBtn]:
 		btn.add_theme_color_override("font_color", ThemeMGR.get_color("text_secondary"))
 		btn.add_theme_color_override("font_hover_color", ThemeMGR.get_color("text_primary"))
+		btn.add_theme_color_override("font_pressed_color", primary)
+		btn.add_theme_color_override("font_disabled_color", muted_text)
 		btn.add_theme_color_override("icon_normal_color", ThemeMGR.get_color("text_secondary"))
 		btn.add_theme_color_override("icon_hover_color", ThemeMGR.get_color("text_primary"))
 		btn.add_theme_color_override("icon_pressed_color", primary)

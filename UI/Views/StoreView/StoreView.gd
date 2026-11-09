@@ -200,8 +200,11 @@ func _connect_ui() -> void:
 	%DownloadsClearDoneBtn.pressed.connect(_on_downloads_clear_done_pressed)
 	%DownloadsClearBtn.pressed.connect(_on_downloads_clear_pressed)
 	var popup := PopupWindow.instance
-	if popup != null and not popup.chart_download_requested.is_connected(_on_detail_download_requested):
-		popup.chart_download_requested.connect(_on_detail_download_requested)
+	if popup != null:
+		if not popup.chart_download_requested.is_connected(_on_detail_download_requested):
+			popup.chart_download_requested.connect(_on_detail_download_requested)
+		if not popup.chart_reaction_changed.is_connected(_on_chart_reaction_changed):
+			popup.chart_reaction_changed.connect(_on_chart_reaction_changed)
 	# 空状态提示兼作「手动重载」入口：加载失败 / 无内容时点一下重新拉取当前标签页
 	# （列表页共用一个空状态页，下载管理有自己的空提示）
 	%PageEmpty.gui_input.connect(_on_empty_gui_input)
@@ -556,6 +559,34 @@ func _on_card_ready(node) -> void:
 func _on_detail_requested(item: Dictionary, source_rect: Rect2) -> void:
 	if PopupWindow.instance != null:
 		PopupWindow.instance.show_chart_detail(item, 0, source_rect)
+
+
+## 详情页评价成功后回写内存条目：翻页 / 重绑时都用新计数，当前已绑定的卡片立即刷新
+func _on_chart_reaction_changed(midi_hash: String, like_count: int, dislike_count: int) -> void:
+	if midi_hash.is_empty():
+		return
+	var likes := maxi(like_count, 0)
+	var dislikes := maxi(dislike_count, 0)
+	for item in _song_items:
+		if str(item.get("hash", "")) == midi_hash:
+			item["likes"] = likes
+			item["dislikes"] = dislikes
+			break
+	# 下载记录里的条目可能来自早先翻过的页，是另一份独立字典
+	if _download_entries.has(midi_hash):
+		var entry_item: Dictionary = _download_entries[midi_hash].get("item", {})
+		if not entry_item.is_empty():
+			entry_item["likes"] = likes
+			entry_item["dislikes"] = dislikes
+	if _song_vlist == null:
+		return
+	for node in _song_vlist.bound_nodes():
+		if not is_instance_valid(node):
+			continue
+		var node_item = node.get("item")
+		if node_item is Dictionary and str(node_item.get("hash", "")) == midi_hash \
+				and node.has_method("refresh_reaction_counts"):
+			node.call("refresh_reaction_counts", likes)
 
 
 # ── 搜索 / 排序 / 分页 ────────────────────────────────

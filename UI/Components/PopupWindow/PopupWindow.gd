@@ -7,6 +7,8 @@ static var instance: PopupWindow
 signal window_close
 ## 详情页点了下载（宿主决定是否真的开始下载）
 signal chart_download_requested(item: Dictionary)
+## 详情页的在线赞踩计数变化（宿主据此刷新商店卡片）
+signal chart_reaction_changed(midi_hash: String, like_count: int, dislike_count: int)
 
 var _confirm: bool = false
 ## 窗口内遮罩（场景里的 %WindowDim）：面板外的暗化与点击都由它承担
@@ -208,6 +210,11 @@ func _ready() -> void:
 	# 详情页的下载请求转给宿主
 	%ChartDetailPage.download_requested.connect(func(item: Dictionary) -> void:
 		chart_download_requested.emit(item)
+	)
+	# 赞踩计数变化转给宿主（详情页是共用组件，宿主才知道自己列表里有哪些条目）
+	%ChartDetailPage.reaction_changed.connect(
+		func(midi_hash: String, like_count: int, dislike_count: int) -> void:
+			chart_reaction_changed.emit(midi_hash, like_count, dislike_count)
 	)
 
 	# 监听内置 popup 生命周期信号
