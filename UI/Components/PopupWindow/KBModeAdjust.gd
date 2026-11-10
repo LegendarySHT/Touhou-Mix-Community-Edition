@@ -186,7 +186,7 @@ func _on_alt_count_changed(new_text: String) -> void:
 
 
 ## 颜色按钮变化：记录到 _alt_colors_state（重建时保留）
-func _on_alt_color_changed(idx: int, col: Color) -> void:
+func _on_alt_color_changed(col: Color, idx: int) -> void:
 	if idx >= 0 and idx < _alt_colors_state.size():
 		_alt_colors_state[idx] = col
 
