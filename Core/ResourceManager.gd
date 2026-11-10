@@ -105,7 +105,7 @@ func get_chart_list(page: int = 1, limit: int = 20, search: String = "",
 ## on_progress: 可选进度回调 Callable(stage: int, percent: float)——阶段见 DownloadStage，
 ##               percent < 0 表示该阶段无字节进度（仅阶段文案）。主线程定时调用，需保持轻量。
 ## hint: 可选列表项预取字段（ChartResponse 全量：fileSize/hasCover/songName/difficulty，
-##        另含人声三键 hasVocal/vocalSize/vocalFormat）。
+##        另含人声四键 hasVocal/vocalSize/vocalFormat/vocalUrl）。
 ##        四键齐全时走**并行流程**（元数据/MIDI/封面同时发起，省一次元数据 TTFB；
 ##        人声在有且设置开启时第四路并行）；否则回退串行流程（元数据前置）。
 ##        商店入口传 hint，其他调用方可不传。
@@ -130,7 +130,7 @@ func download_chart(chart_hash: String, on_progress: Callable = Callable(),
 
 ## 并行下载路径：元数据/MIDI/封面互不依赖同时发起，人声（可选）第四路并行后 join。
 ## 前置条件：hint 四键齐全（fileSize/hasCover/songName/difficulty）——目录可先行建立，
-## MIDI 的期望大小与封面的有无也不必等元数据。人声三键（hasVocal/vocalSize/vocalFormat）
+## MIDI 的期望大小与封面的有无也不必等元数据。人声四键（hasVocal/vocalSize/vocalFormat/vocalUrl）
 ## 随 hint 附带：设置开启且有 vocal 时并行下载，失败不阻塞整体流程。
 func _download_chart_parallel(chart_hash: String, safe_hash: String,
 		on_progress: Callable, hint: Dictionary) -> Dictionary:
@@ -189,7 +189,9 @@ func _download_chart_parallel(chart_hash: String, safe_hash: String,
 	_vocal_done = not vocal_needed
 	if vocal_needed:
 		vocal_path = chart_dir.path_join("vocal.%s" % vocal_format)
-		var vocal_url := "%s/media/charts/%s.vocal" % [base_url, safe_hash]
+		# 人声地址走 VocalUrl（hint 由商店列表项透传）：优先服务端内容寻址 vocalUrl
+		# ——路径带真实扩展名，边缘才能缓存；老服务端缺该字段时回退旧端点。
+		var vocal_url := VocalUrl.from_chart(base_url, safe_hash, hint)
 		Callable(self, "_download_file").call(vocal_url, vocal_path,
 			int(hint.get("vocalSize", 0)), 3,
 			Callable(self, "_on_vocal_downloaded"), on_progress, DownloadStage.VOCAL)
@@ -286,7 +288,8 @@ func _download_chart_sequential(chart_hash: String, safe_hash: String,
 	_vocal_done = not vocal_needed
 	if vocal_needed:
 		vocal_path = chart_dir.path_join("vocal.%s" % vocal_format)
-		var vocal_url := "%s/media/charts/%s.vocal" % [NetManager.instance.server_url, safe_hash]
+		# 串行路径没有列表项 hint，URL 来自刚取回的元数据；同样走 VocalUrl。
+		var vocal_url := VocalUrl.from_chart(NetManager.instance.server_url, safe_hash, chart_data)
 		Callable(self, "_download_file").call(vocal_url, vocal_path,
 			int(chart_data.get("vocalSize", 0)), 3,
 			Callable(self, "_on_vocal_downloaded"), on_progress, DownloadStage.VOCAL)
@@ -785,7 +788,9 @@ func download_vocal(target_hash: String) -> Dictionary:
 	if FileAccess.file_exists(vocal_path) and _file_size(vocal_path) == int(chart_data.get("vocalSize", 0)):
 		return {"ok": true}
 
-	var vocal_url := "%s/media/charts/%s.vocal" % [NetManager.instance.server_url, safe_hash]
+	# 人声地址走 VocalUrl：优先元数据里的内容寻址 vocalUrl（真实扩展名 → 边缘可缓存），
+	# 老服务端缺该字段时回退旧端点。
+	var vocal_url := VocalUrl.from_chart(NetManager.instance.server_url, safe_hash, chart_data)
 	var result: Dictionary = await _download_file(vocal_url, vocal_path,
 		int(chart_data.get("vocalSize", 0)), 3)
 	invalidate_local_vocal_cache()

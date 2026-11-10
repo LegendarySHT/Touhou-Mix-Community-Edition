@@ -1270,6 +1270,9 @@ func _get_download_hint(item: Dictionary) -> Dictionary:
 		"hasVocal": bool(raw.get("hasVocal", false)),
 		"vocalSize": int(raw.get("vocalSize", 0)),
 		"vocalFormat": str(raw.get("vocalFormat", "")),
+		# 并行下载的人声那一路也要 URL：优先服务端内容寻址 vocalUrl（真实扩展名 → 边缘可缓存）。
+		# 老服务端没有该字段时 VocalUrl 会回退旧端点。
+		"vocalUrl": str(raw.get("vocalUrl", "")),
 	}
 
 

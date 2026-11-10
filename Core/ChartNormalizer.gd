@@ -37,7 +37,7 @@ const _STRING_FIELD_KEYS: Array[String] = [
 	"_id", "id", "name", "desc", "description", "status",
 	"artistName", "artist",
 	"uploaderName", "uploaderId", "uploaderAvatarUrl",
-	"artistUrl", "coverHash", "coverUrl", "cover",
+	"artistUrl", "coverHash", "coverUrl", "cover", "vocalUrl",
 	"uploadedDate", "approvedDate",
 	"hash", "file_hash", "folder_hash", "folder_name",
 	"sourceSongName", "sourceAlbumName", "sourceArtistName",
