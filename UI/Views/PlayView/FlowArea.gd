@@ -1131,19 +1131,20 @@ func _clear_lane_index() -> void:
 	_notes_by_lane.clear()
 
 ## 根据触摸X坐标估算轨道索引
+## 必须与音符实际落位（LaneEffect 的 lane_step / start_center_x）用同一套几何：
+## 音符中心并不从 lane_padding 起步，而是从 pad + 光柱半宽起步
 func _estimate_lane_from_x(x: float) -> int:
 	var lc = parent_node.get_lane_count()
 	if lc <= 1:
 		return 0
-	var safe_start = float(parent_node.lane_padding)
-	var relative_x = x - safe_start
-	# 中间间距：偶数键位时右半侧整体右移，估算前先减去间距对齐
-	var mid_gap: int = parent_node.get_mid_lane_gap()
-	var half := int(lc / 2)
-	if mid_gap > 0 and relative_x >= float(half) * lane_width:
-		relative_x -= mid_gap
-	var lane = int(relative_x / lane_width)
-	return clampi(lane, 0, lc - 1)
+	var lane = 0
+	var best_dist := INF
+	for i in range(lc):
+		var d: float = absf(_note_center_x_for_lane(i) - x)
+		if d < best_dist:
+			best_dist = d
+			lane = i
+	return lane
 
 func _gui_input(event: InputEvent) -> void:
 	if parent_node.is_pause or _limit_fail_active:

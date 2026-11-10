@@ -997,6 +997,7 @@ func _build_avatar_square() -> Image:
 	var side := mini(region.get_width(), region.get_height())
 	if side < 1:
 		return null
+	@warning_ignore("integer_division")
 	region = region.get_region(Rect2i(
 		(region.get_width() - side) / 2, (region.get_height() - side) / 2, side, side))
 	if side > AVATAR_MAX_OUTPUT_SIDE:
@@ -1031,6 +1032,7 @@ func _on_avatar_file_selected(path: String) -> void:
 		return
 	# 源图过大时直接拒绝（解码占用内存）
 	if bytes.size() > AVATAR_MAX_FILE_BYTES:
+		@warning_ignore("integer_division")
 		EvtBus.notify("图片超过 %d MB，请换一张" % (AVATAR_MAX_FILE_BYTES / (1024 * 1024)))
 		return
 	# 按文件头选择解码器：扩展名与内容不符时也不会用错解码器，
