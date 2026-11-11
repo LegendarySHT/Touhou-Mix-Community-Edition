@@ -311,9 +311,15 @@ func _render_scores(scores: Array) -> void:
 		)
 		# W 评级（中途退出）：整体半透明
 		node.set_withdraw_state(rank_str == "W")
-		# 填充玩家名（服务端返回 username，可能为 null）
+		# 展示名优先 displayName（昵称），回落登录名 username；username 仍用于账号定位
+		var display_name = s.get("displayName")
 		var username = s.get("username")
-		node.setup_player_name("" if username == null else str(username))
+		var shown: String = ""
+		if display_name != null and not str(display_name).is_empty():
+			shown = str(display_name)
+		elif username != null:
+			shown = str(username)
+		node.setup_player_name(shown)
 		# 加载玩家头像（服务端返回 avatarUrl，可能为 null）
 		var avatar_url = s.get("avatarUrl")
 		var avatar_url_str := str(avatar_url) if avatar_url != null else ""

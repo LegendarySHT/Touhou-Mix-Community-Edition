@@ -264,8 +264,17 @@ func _render_rank_scores(scores: Array) -> void:
 		i += 1
 		if not s is Dictionary:
 			continue
+		# 展示名优先 displayName（昵称），回落登录名 username
+		var display_name = s.get("displayName")
+		var player_name: String = "Anonymous"
+		if display_name != null and not str(display_name).is_empty():
+			player_name = str(display_name)
+		else:
+			var username = s.get("username")
+			if username != null and not str(username).is_empty():
+				player_name = str(username)
 		_add_rank_row(i,
-			str(s.get("username", "Anonymous")),
+			player_name,
 			int(s.get("totalScore", 0)),
 			str(s.get("rank", "")))
 
