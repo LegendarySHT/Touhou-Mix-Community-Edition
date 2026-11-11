@@ -9,6 +9,9 @@
 [ext_resource type="Script" uid="uid://kvvwetb1qkcl" path="res://UI/Components/TextScrollHelper.gd" id="5_y1cb1"]
 [ext_resource type="Texture2D" uid="uid://65e7xhqxd2c6" path="res://Resources/icon/icon_set.png" id="6_iqsw5"]
 [ext_resource type="Script" uid="uid://ciu0utm2fhqdw" path="res://UI/Components/RoundedTextureRect.gd" id="7_a5v8y"]
+[ext_resource type="Script" uid="uid://c4m8rvqx1ywn" path="res://UI/Views/ScoreView/ScoreStatsPanel.gd" id="8_stats"]
+[ext_resource type="Script" uid="uid://s85fj32bkhl4" path="res://UI/Views/ScoreView/JudgeDistributionBar.gd" id="9_distbar"]
+[ext_resource type="Script" uid="uid://b7kq3xmn2svp" path="res://UI/Views/ScoreView/MeterBar.gd" id="10_meter"]
 
 [sub_resource type="Gradient" id="Gradient_01xql"]
 interpolation_mode = 2
@@ -62,54 +65,6 @@ shader_parameter/corner_radius = 14.0
 shader_parameter/rect_size = Vector2(248, 248)
 shader_parameter/uv_rect = Vector4(0, 0, 1, 1)
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_kq2mn"]
-bg_color = Color(0.8745, 0.3176, 0.4745, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(1, 0.45, 0.6, 0.8)
-corner_radius_top_left = 16
-corner_radius_top_right = 4
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 4
-corner_detail = 6
-shadow_color = Color(0, 0, 0, 0.35)
-shadow_size = 6
-shadow_offset = Vector2(0, 3)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_3y6u5"]
-bg_color = Color(0.5451, 0.3725, 0.8824, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.68, 0.52, 0.98, 0.8)
-corner_radius_top_left = 16
-corner_radius_top_right = 4
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 4
-corner_detail = 6
-shadow_color = Color(0, 0, 0, 0.35)
-shadow_size = 6
-shadow_offset = Vector2(0, 3)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_iqsw5"]
-bg_color = Color(0.3529, 0.4471, 0.8471, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.52, 0.62, 0.95, 0.8)
-corner_radius_top_left = 16
-corner_radius_top_right = 4
-corner_radius_bottom_right = 16
-corner_radius_bottom_left = 4
-corner_detail = 6
-shadow_color = Color(0, 0, 0, 0.35)
-shadow_size = 6
-shadow_offset = Vector2(0, 3)
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1u62t"]
 bg_color = Color(0.2784, 0.4431, 0.8627, 0.6)
 skew = Vector2(0.268, 0)
@@ -141,6 +96,187 @@ shadow_size = 10
 [sub_resource type="AtlasTexture" id="AtlasTexture_3y6u5"]
 atlas = ExtResource("6_iqsw5")
 region = Rect2(320, 320, 80, 80)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_flag_auto"]
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+corner_detail = 8
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+content_margin_left = 16.0
+content_margin_right = 16.0
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_flag_ap"]
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+corner_detail = 8
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+content_margin_left = 16.0
+content_margin_right = 16.0
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_flag_fc"]
+corner_radius_top_left = 26
+corner_radius_top_right = 26
+corner_radius_bottom_right = 26
+corner_radius_bottom_left = 26
+corner_detail = 8
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+content_margin_left = 16.0
+content_margin_right = 16.0
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+
+[sub_resource type="StyleBoxFlat" id="SB_chip_perfect"]
+bg_color = Color(0.9569, 0.3137, 0.9922, 0.1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 3
+border_color = Color(0.9569, 0.3137, 0.9922, 0.32)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+[sub_resource type="StyleBoxFlat" id="SB_chip_great"]
+bg_color = Color(0.9608, 0.4627, 0.0, 0.1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 3
+border_color = Color(0.9608, 0.4627, 0.0, 0.32)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+[sub_resource type="StyleBoxFlat" id="SB_chip_good"]
+bg_color = Color(0.0392, 0.8784, 0.0, 0.1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 3
+border_color = Color(0.0392, 0.8784, 0.0, 0.32)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+[sub_resource type="StyleBoxFlat" id="SB_chip_bad"]
+bg_color = Color(0.1098, 0.6902, 1.0, 0.1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 3
+border_color = Color(0.1098, 0.6902, 1.0, 0.32)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+[sub_resource type="StyleBoxFlat" id="SB_chip_miss"]
+bg_color = Color(0.8627, 0.2039, 0.3137, 0.1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 3
+border_color = Color(0.8627, 0.2039, 0.3137, 0.32)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 10.0
+[sub_resource type="StyleBoxFlat" id="SB_dot_perfect"]
+bg_color = Color(0.9569, 0.3137, 0.9922, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+[sub_resource type="StyleBoxFlat" id="SB_dot_great"]
+bg_color = Color(0.9608, 0.4627, 0.0, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+[sub_resource type="StyleBoxFlat" id="SB_dot_good"]
+bg_color = Color(0.0392, 0.8784, 0.0, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+[sub_resource type="StyleBoxFlat" id="SB_dot_bad"]
+bg_color = Color(0.1098, 0.6902, 1.0, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+[sub_resource type="StyleBoxFlat" id="SB_dot_miss"]
+bg_color = Color(0.8627, 0.2039, 0.3137, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+[sub_resource type="StyleBoxFlat" id="SB_metric_combo"]
+bg_color = Color(0.0353, 0.0471, 0.0745, 0.55)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 0.45)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
+[sub_resource type="StyleBoxFlat" id="SB_metric_timing"]
+bg_color = Color(0.0353, 0.0471, 0.0745, 0.55)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.1686, 0.2039, 0.2745, 0.45)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 12.0
 
 [node name="ScoreView" type="Control" unique_id=1631264327]
 clip_contents = true
@@ -388,261 +524,395 @@ text = "Lunatic"
 vertical_alignment = 1
 autowrap_mode = 3
 
-[node name="Flags" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent" unique_id=845442104]
+[node name="StatsColumn" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent" unique_id=1444019217]
+unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_right = 0.9
-anchor_bottom = 0.35
-grow_vertical = 0
-theme_override_constants/separation = 50
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_right = -10.0
+offset_top = 24.0
+offset_bottom = -24.0
+grow_vertical = 2
+theme_override_constants/separation = 14
 
-[node name="AutoMode" type="Label" parent="BottomPanel/Skew/SkewContent/Flags" unique_id=1848675266]
+[node name="Flags" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn" unique_id=845442104]
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 2
+
+[node name="AutoMode" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/Flags" unique_id=1848675266]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 90)
+custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 size_flags_horizontal = 0
-theme_override_font_sizes/font_size = 36
-theme_override_styles/normal = SubResource("StyleBoxFlat_kq2mn")
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_flag_auto")
 text = "AUTO"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="AllPerfect" type="Label" parent="BottomPanel/Skew/SkewContent/Flags" unique_id=608060386]
+[node name="AllPerfect" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/Flags" unique_id=608060386]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 90)
+custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 size_flags_horizontal = 0
-theme_override_font_sizes/font_size = 36
-theme_override_styles/normal = SubResource("StyleBoxFlat_3y6u5")
-text = "AP"
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_flag_ap")
+text = "ALL PERFECT"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="FullCombo" type="Label" parent="BottomPanel/Skew/SkewContent/Flags" unique_id=1938791138]
+[node name="FullCombo" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/Flags" unique_id=1938791138]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 90)
+custom_minimum_size = Vector2(0, 44)
 layout_mode = 2
 size_flags_horizontal = 0
-theme_override_font_sizes/font_size = 36
-theme_override_styles/normal = SubResource("StyleBoxFlat_iqsw5")
-text = "FC"
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxFlat_flag_fc")
+text = "FULL COMBO"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="DataBox" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent" unique_id=1444019217]
+[node name="StatsPanel" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn" unique_id=500000100]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(800, 200)
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.5
-anchor_top = 0.42
-anchor_right = 0.9
-anchor_bottom = 1.0
-offset_left = 20.0
-grow_vertical = 0
-theme_override_constants/separation = 40
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+alignment = 1
+script = ExtResource("8_stats")
 
-[node name="Hbox" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/DataBox" unique_id=888847882]
+[node name="Chips" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel" unique_id=500000101]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PerfectChip" type="PanelContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips" unique_id=500000102]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 104)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("SB_chip_perfect")
+
+[node name="Box" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/PerfectChip" unique_id=500000103]
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="PerfectCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox" unique_id=1700789026]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(170, 60)
+[node name="Head" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/PerfectChip/Box" unique_id=500000104]
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 42
-text = "0"
-vertical_alignment = 2
+theme_override_constants/separation = 7
 
-[node name="Label" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox/PerfectCtn" unique_id=2043875143]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(1, 0.3137, 0.9922, 1)
-theme_override_font_sizes/font_size = 20
+[node name="PerfectDot" type="Panel" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/PerfectChip/Box/Head" unique_id=500000105]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(8, 8)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("SB_dot_perfect")
+
+[node name="PerfectTitle" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/PerfectChip/Box/Head" unique_id=500000106]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9569, 0.3137, 0.9922, 1)
+theme_override_font_sizes/font_size = 19
 text = "Perfect"
+vertical_alignment = 1
 
-[node name="GreatCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox" unique_id=2010235240]
+[node name="PerfectValue" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/PerfectChip/Box" unique_id=500000107]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(170, 60)
 layout_mode = 2
-size_flags_horizontal = 3
+size_flags_vertical = 3
 theme_override_font_sizes/font_size = 42
 text = "0"
-vertical_alignment = 2
+vertical_alignment = 1
 
-[node name="Label2" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox/GreatCtn" unique_id=1428246906]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(1, 0.4627, 0, 1)
-theme_override_font_sizes/font_size = 20
-text = "Great"
-
-[node name="GoodCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox" unique_id=806650545]
+[node name="GreatChip" type="PanelContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips" unique_id=500000108]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(170, 60)
+custom_minimum_size = Vector2(0, 104)
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 42
-text = "0"
-vertical_alignment = 2
+theme_override_styles/panel = SubResource("SB_chip_great")
 
-[node name="Label3" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox/GoodCtn" unique_id=1538563833]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(0.0392, 0.8784, 0, 1)
-theme_override_font_sizes/font_size = 20
-text = "Good"
-
-[node name="BadCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox" unique_id=985791868]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(170, 60)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 42
-text = "0"
-vertical_alignment = 2
-
-[node name="Label4" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox/BadCtn" unique_id=175487585]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(0.1098, 0.6902, 1, 1)
-theme_override_font_sizes/font_size = 20
-text = "Bad"
-
-[node name="MissCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox" unique_id=918746073]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(170, 60)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 42
-text = "0"
-vertical_alignment = 2
-
-[node name="Label5" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/Hbox/MissCtn" unique_id=612375162]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(0.8627, 0.2039, 0.3137, 1)
-theme_override_font_sizes/font_size = 20
-text = "Miss"
-
-[node name="HBox1" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/DataBox" unique_id=165446906]
+[node name="Box" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/GreatChip" unique_id=500000109]
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="EarlyCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1" unique_id=499340368]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(170, 60)
+[node name="Head" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/GreatChip/Box" unique_id=500000110]
 layout_mode = 2
-size_flags_horizontal = 3
+theme_override_constants/separation = 7
+
+[node name="GreatDot" type="Panel" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/GreatChip/Box/Head" unique_id=500000111]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(8, 8)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("SB_dot_great")
+
+[node name="GreatTitle" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/GreatChip/Box/Head" unique_id=500000112]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9608, 0.4627, 0.0, 1)
+theme_override_font_sizes/font_size = 19
+text = "Great"
+vertical_alignment = 1
+
+[node name="GreatValue" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/GreatChip/Box" unique_id=500000113]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
 theme_override_font_sizes/font_size = 42
 text = "0"
-vertical_alignment = 2
+vertical_alignment = 1
 
-[node name="Label6" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1/EarlyCtn" unique_id=1039571725]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(0.1647, 0.8314, 0.8784, 1)
-theme_override_font_sizes/font_size = 20
-text = "Early"
-
-[node name="LateCtn" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1" unique_id=874334327]
+[node name="GoodChip" type="PanelContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips" unique_id=500000114]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(170, 60)
+custom_minimum_size = Vector2(0, 104)
 layout_mode = 2
 size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("SB_chip_good")
+
+[node name="Box" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/GoodChip" unique_id=500000115]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Head" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/GoodChip/Box" unique_id=500000116]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="GoodDot" type="Panel" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/GoodChip/Box/Head" unique_id=500000117]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(8, 8)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("SB_dot_good")
+
+[node name="GoodTitle" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/GoodChip/Box/Head" unique_id=500000118]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.0392, 0.8784, 0.0, 1)
+theme_override_font_sizes/font_size = 19
+text = "Good"
+vertical_alignment = 1
+
+[node name="GoodValue" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/GoodChip/Box" unique_id=500000119]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
 theme_override_font_sizes/font_size = 42
 text = "0"
-vertical_alignment = 2
+vertical_alignment = 1
 
-[node name="Label7" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1/LateCtn" unique_id=1164035922]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-size_flags_horizontal = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(1, 0.4196, 0.6157, 1)
-theme_override_font_sizes/font_size = 20
-text = "Late"
-
-[node name="MaxCombo" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1" unique_id=1699546943]
+[node name="BadChip" type="PanelContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips" unique_id=500000120]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 60)
+custom_minimum_size = Vector2(0, 104)
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 3.0
-theme_override_font_sizes/font_size = 42
-text = "1000000/1000000"
-vertical_alignment = 2
+theme_override_styles/panel = SubResource("SB_chip_bad")
 
-[node name="Label8" type="Label" parent="BottomPanel/Skew/SkewContent/DataBox/HBox1/MaxCombo" unique_id=862610255]
-custom_minimum_size = Vector2(0, 50)
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
+[node name="Box" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/BadChip" unique_id=500000121]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Head" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/BadChip/Box" unique_id=500000122]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="BadDot" type="Panel" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/BadChip/Box/Head" unique_id=500000123]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(8, 8)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("SB_dot_bad")
+
+[node name="BadTitle" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/BadChip/Box/Head" unique_id=500000124]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.1098, 0.6902, 1.0, 1)
+theme_override_font_sizes/font_size = 19
+text = "Bad"
+vertical_alignment = 1
+
+[node name="BadValue" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/BadChip/Box" unique_id=500000125]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 42
+text = "0"
+vertical_alignment = 1
+
+[node name="MissChip" type="PanelContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips" unique_id=500000126]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 104)
+layout_mode = 2
 size_flags_horizontal = 3
-offset_transform_enabled = true
-offset_transform_position = Vector2(0, -10)
-theme_override_colors/font_color = Color(1, 0.7608, 0.2941, 1)
-theme_override_font_sizes/font_size = 20
-text = "MaxCombo"
+theme_override_styles/panel = SubResource("SB_chip_miss")
+
+[node name="Box" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/MissChip" unique_id=500000127]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Head" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/MissChip/Box" unique_id=500000128]
+layout_mode = 2
+theme_override_constants/separation = 7
+
+[node name="MissDot" type="Panel" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/MissChip/Box/Head" unique_id=500000129]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(8, 8)
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_styles/panel = SubResource("SB_dot_miss")
+
+[node name="MissTitle" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/MissChip/Box/Head" unique_id=500000130]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8627, 0.2039, 0.3137, 1)
+theme_override_font_sizes/font_size = 19
+text = "Miss"
+vertical_alignment = 1
+
+[node name="MissValue" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Chips/MissChip/Box" unique_id=500000131]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 42
+text = "0"
+vertical_alignment = 1
+
+[node name="RatioBlock" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel" unique_id=500000132]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Head" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/RatioBlock" unique_id=500000133]
+layout_mode = 2
+
+[node name="RatioCaption" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/RatioBlock/Head" unique_id=500000134]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3608, 0.4078, 0.5137, 1)
+theme_override_font_sizes/font_size = 19
+text = "JUDGE RATIO"
+vertical_alignment = 1
+
+[node name="TotalNotes" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/RatioBlock/Head" unique_id=500000135]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.3608, 0.4078, 0.5137, 1)
+theme_override_font_sizes/font_size = 19
+text = "0 NOTES"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Bar" type="Control" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/RatioBlock" unique_id=500000136]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("9_distbar")
+
+[node name="Metrics" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel" unique_id=500000137]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ComboCard" type="PanelContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics" unique_id=500000138]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 84)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("SB_metric_combo")
+
+[node name="Box" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/ComboCard" unique_id=500000139]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 8
+
+[node name="Head" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/ComboCard/Box" unique_id=500000140]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="ComboCaption" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/ComboCard/Box/Head" unique_id=500000141]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3608, 0.4078, 0.5137, 1)
+theme_override_font_sizes/font_size = 19
+text = "MAX COMBO"
+vertical_alignment = 1
+
+[node name="Value" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/ComboCard/Box/Head" unique_id=500000142]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 25
+text = "0 / 0"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="ComboMeter" type="Control" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/ComboCard/Box" unique_id=500000143]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("10_meter")
+fill_role = "warning"
+
+[node name="TimingCard" type="PanelContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics" unique_id=500000144]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 84)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("SB_metric_timing")
+
+[node name="Box" type="VBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/TimingCard" unique_id=500000145]
+layout_mode = 2
+size_flags_vertical = 4
+theme_override_constants/separation = 8
+
+[node name="Head" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/TimingCard/Box" unique_id=500000146]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TimingCaption" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/TimingCard/Box/Head" unique_id=500000147]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3608, 0.4078, 0.5137, 1)
+theme_override_font_sizes/font_size = 19
+text = "TIMING"
+vertical_alignment = 1
+
+[node name="Values" type="HBoxContainer" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/TimingCard/Box/Head" unique_id=500000148]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+alignment = 2
+
+[node name="EarlyLabel" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/TimingCard/Box/Head/Values" unique_id=500000149]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "Early 0"
+vertical_alignment = 1
+
+[node name="TimingSep" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/TimingCard/Box/Head/Values" unique_id=500000150]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.3608, 0.4078, 0.5137, 1)
+theme_override_font_sizes/font_size = 19
+text = "·"
+vertical_alignment = 1
+
+[node name="LateLabel" type="Label" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/TimingCard/Box/Head/Values" unique_id=500000151]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 25
+text = "Late 0"
+vertical_alignment = 1
+
+[node name="TimingMeter" type="Control" parent="BottomPanel/Skew/SkewContent/StatsColumn/StatsPanel/Metrics/TimingCard/Box" unique_id=500000152]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("10_meter")
 
 [node name="RankText" type="Label" parent="." unique_id=1315821145]
 unique_name_in_owner = true

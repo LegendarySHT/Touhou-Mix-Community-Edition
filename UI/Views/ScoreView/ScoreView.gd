@@ -76,6 +76,10 @@ func apply_theme() -> void:
 	ThemeMGR._style_panel_set_bg_color(%SongInfoPanel, surface)
 	# 等级进度 / 头像面板
 	ThemeMGR._style_panel_set_bg_color(%LevelingProgressPanel, surface_high)
+	# 旗帜胶囊：拿语义色做描边 + 同色淡染底，随深浅色自动翻转
+	_apply_flag_style(%AutoMode, "danger")
+	_apply_flag_style(%AllPerfect, "primary")
+	_apply_flag_style(%FullCombo, "info")
 	# 分数区是一层「上深下透明」的渐隐纹理，无法靠调色变浅：
 	# 浅色模式下直接隐去该深色渐隐，让浅色背景透出、深色分数文字自然可读；深色模式保持原样。
 	%ScorePanel.self_modulate = Color(1, 1, 1, 0) if light else Color.WHITE
@@ -83,6 +87,17 @@ func apply_theme() -> void:
 
 func _on_view_exit() -> void:
 	_disconnect_stats_refreshed()
+
+## 旗帜胶囊着色：强调色描边 + 同色淡染底。文字保持 tscn 原样（已由全局主题给 text_primary）
+func _apply_flag_style(label: Label, color_key: String) -> void:
+	if not ThemeMGR.has_local_stylebox(label, "normal"):
+		return
+	var accent := ThemeMGR.get_color(color_key)
+	var sb := label.get_theme_stylebox("normal") as StyleBoxFlat
+	if sb == null:
+		return
+	sb.bg_color = Color(accent.r, accent.g, accent.b, 0.16)
+	sb.border_color = Color(accent.r, accent.g, accent.b, 0.55)
 
 ## 连接 PlayerInfoContent 的 stats_refreshed 信号
 func _connect_stats_refreshed() -> void:
@@ -116,21 +131,20 @@ func _on_state_changed(old_state: UIStateManager.UIState, new_state: UIStateMana
 func _cleanup() -> void:
 	_kill_loop_ani()
 	_kill_pp_tween()
+	%StatsPanel.stop_reveal()
 	if _upload_tween:
 		_upload_tween.kill()
 		_upload_tween = null
 
 func set_display(result: ScoreData, midi: MidiData = null, is_auto: bool = false):
-	# 判定数据
-	%PerfectCtn.text = str(result.count.Perfect)
-	%GreatCtn.text = str(result.count.Great)
-	%GoodCtn.text = str(result.count.Good)
-	%BadCtn.text = str(result.count.Bad)
-	%MissCtn.text = str(result.count.Miss)
-
-	%EarlyCtn.text = str(result.early_count)
-	%LateCtn.text = str(result.late_count)
-	%MaxCombo.text = "%d/%d" % [result.max_combo, result.total_notes]
+	# 判定数据（判定构成 / 连击 / 偏移统一交给统计面板绘制）
+	%StatsPanel.set_result(
+		PackedInt32Array([
+			result.count.Perfect, result.count.Great, result.count.Good,
+			result.count.Bad, result.count.Miss,
+		]),
+		result.early_count, result.late_count,
+		result.max_combo, result.total_notes)
 
 	%RankText.text = result.get_rank()
 	%AccuracyText.text = result.get_accuracy()
@@ -325,9 +339,10 @@ func _play_enter_stages() -> void:
 	ani.animate_fade_scale_in(%Background, Vector2.ONE * 0.8, 0.35, "sv_bg")
 	await get_tree().create_timer(0.35).timeout
 
-	# 第 2 阶段：Score 左滑、Bottom 上滑淡入
+	# 第 2 阶段：Score 左滑、Bottom 上滑淡入；面板落位后判定卡片数字与比例条再生长一轮
 	ani.animate_fade_slide_in(%ScorePanel, Vector2(-100, 0), 0.4, "sv_score")
 	ani.animate_fade_slide_in(%BottomPanel, Vector2(0, 150), 0.4, "sv_bottom")
+	%StatsPanel.play_reveal()
 	await get_tree().create_timer(0.4).timeout
 
 	# 第 3 阶段：Rank / Accuracy / Chara 上滑淡入（Accuracy 时长略短）
