@@ -36,6 +36,10 @@ public partial class KeySequenceCore : RefCounted
     private const float HOME_BIAS_COEFF = 0.4f;
     private const float CROSS_HAND_PENALTY_MULT = 2.0f;
     private const float CHORD_TOLERANCE_MS = 10.0f;
+    // 最终间距复检的滑动时间窗（毫秒）。与 CHORD_TOLERANCE_MS 的「相对批首音」切批彻底解耦：
+    // 覆盖 10ms 批容差之外的人性化/分解和弦散开（典型 15~40ms），也覆盖钳位改轨后的近同刻冲突。
+    // 取值只表达「视觉上算同刻」的时间尺度，不参与任何像素/判定宽度的几何换算。
+    private const float FINAL_SPACING_WINDOW_MS = 50.0f;
     private const float DEFAULT_BPM = 120.0f;
     private const int TYPE_LONG = 2;   // 块类型：0=Block 1=Slide 2=Long（与 GDScript BlockType 一致）
 
@@ -274,7 +278,7 @@ public partial class KeySequenceCore : RefCounted
         _inVelocity = ve; _inTrack = tr; _inChannel = ch;
     }
 
-    /// <summary>一次性全量生成：清输出 → 建块/时长分类/密度削减/触点判定/输出 → 背景收尾。</summary>
+    /// <summary>一次性全量生成：清输出 → 建块/时长分类/密度削减/触点判定/钳位/最终间距复检/输出 → 背景收尾。</summary>
     private void GenerateAll()
     {
         ResetGenerate();
@@ -285,6 +289,10 @@ public partial class KeySequenceCore : RefCounted
         ReduceDensity(allBlocks);
         // 削减后再对幸存音符推导手指移动并钳位，避免在会删掉的音符上浪费几何计算
         RepositionSurvivors(allBlocks);
+        // 钳位会用 CalcLaneFromX 覆写 Lane，且 10ms 批容差漏掉分解和弦：
+        // 在「最终 Lane」上补一次与 batch 无关的全局间距复检。
+        // 必须早于 ConvertToSequences（每块恰 1 个原音符，manual_at(seq_index) 依赖一一对应）。
+        ApplyFinalSpacing(allBlocks);
         ConvertToSequences(allBlocks);
         FinalizeBackgroundAndClassify();
     }
@@ -864,6 +872,76 @@ public partial class KeySequenceCore : RefCounted
         return (cost, prio, nonSlide == 0);
     }
 
+    // ========== Step 6.5 最终间距复检（钳位之后 / 转序列之前）==========
+    /// <summary>
+    /// 在「最终 Lane」上做一次与 batch 无关的滑动时间窗间距复检，保证：
+    /// 任意两个保留块只要 |ΔStartMs| &lt;= FINAL_SPACING_WINDOW_MS，就有 |ΔLane| &gt; _minBlockSpacing。
+    ///
+    /// 为什么不能只靠 BuildChords 里的 EnforceMinSpacing：
+    ///  (a) 它只在「相对批首音 <= CHORD_TOLERANCE_MS(10ms)」的同一批内生效，15ms 级的
+    ///      分解和弦/人性化演奏被切成多个单块批，每批 Count<=1 直接 return，约束完全落空；
+    ///  (b) RepositionSurvivors 会用 CalcLaneFromX 覆写 Lane，批内检查的结论在钳位后失效。
+    /// batch 仍只负责和弦合并 / 过载保护 / 密度削减，不再承担间距职责。
+    ///
+    /// 判据沿用配置语义：|ΔLane| &lt;= _minBlockSpacing 视为冲突（配置 1 = 至少空一轨）。
+    /// 不做 note_visual_width / note_judge_width 的几何换算，也不改钳位与轨道分配。
+    /// _minBlockSpacing &lt;= 0 时整段跳过（配置上的「关闭间距保护」保持原样，不改校验器）。
+    ///
+    /// 冲突消解：按 StartMs 升序扫描，先到的保留块占位，后到的冲突块整块转背景。
+    /// 这样不会撤销已保留块（无震荡），且比「高优先级抢位」保留更多可玩音符；
+    /// 落败块的原音符写回 _bgNoteIdx，由合成器照常自动播放，不会丢声。
+    /// 无需重跑钳位：删掉手指链中间一环后 v·(Δt1+Δt2) &gt;= dist1+dist2 &gt;= 直达距离，
+    /// 可达性只会更宽松，不会引入新违规。
+    /// </summary>
+    private void ApplyFinalSpacing(List<BlockInfo> blocks)
+    {
+        if (blocks.Count <= 1 || _minBlockSpacing <= 0) return;
+
+        // 稳定排序仅用于确定扫描顺序；输出仍按 blocks 原顺序压缩（下游依赖 StartMs 有序）。
+        var order = new List<int>(blocks.Count);
+        for (int i = 0; i < blocks.Count; i++) order.Add(i);
+        order.Sort((a, b) =>
+        {
+            int c = blocks[a].StartMs.CompareTo(blocks[b].StartMs);
+            return c != 0 ? c : a.CompareTo(b);
+        });
+
+        var keep = new bool[blocks.Count];
+        // recent = 已保留块（按扫描序即 StartMs 升序）；head 是窗口内最早元素的逻辑下标，
+        // 用单调前移代替 RemoveAt(0)，避免稠密段反复搬移。
+        var recent = new List<int>();
+        int head = 0;
+        foreach (int bi in order)
+        {
+            var b = blocks[bi];
+            while (head < recent.Count
+                   && b.StartMs - blocks[recent[head]].StartMs > FINAL_SPACING_WINDOW_MS)
+                head++;
+            bool conflict = false;
+            for (int k = head; k < recent.Count; k++)
+            {
+                if (System.Math.Abs(b.Lane - blocks[recent[k]].Lane) <= _minBlockSpacing)
+                {
+                    conflict = true;
+                    break;
+                }
+            }
+            if (conflict) continue;
+            keep[bi] = true;
+            recent.Add(bi);
+        }
+
+        // 就地保序压缩；落败块的音符写回背景（与 ReduceDensity 淘汰的块互不重叠，不会重复添加）。
+        int w = 0;
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            var b = blocks[i];
+            if (keep[i]) blocks[w++] = b;
+            else foreach (int note in b.Notes) _bgNoteIdx.Add(note);
+        }
+        blocks.RemoveRange(w, blocks.Count - w);
+    }
+
     // ========== Step 7 转 GameSequence（SOA 输出）+ 填充手动索引 ==========
     // 手动 = 全部 game 原音符；每 seq 恰 1 个音符（BuildChords 按 lane 去重），故 manual_at(seq_index) 即该 seq 原音符
     private void ConvertToSequences(List<BlockInfo> blocks)
@@ -886,7 +964,8 @@ public partial class KeySequenceCore : RefCounted
     // ========== Step 8 背景排序 + 分类 ==========
     private void FinalizeBackgroundAndClassify()
     {
-        // 背景单音符块（BuildChords/ReduceDensity 已直写 _bgNoteIdx），按 (时间, 音高) 排序
+        // 背景单音符块（BuildChords/EnforceMinSpacing/RemoveOverload/ReduceDensity/
+        // ApplyFinalSpacing 已直写 _bgNoteIdx，各阶段淘汰的块互不重叠），按 (时间, 音高) 排序
         var idx = new List<int>(_bgNoteIdx.Count);
         for (int i = 0; i < _bgNoteIdx.Count; i++) idx.Add(i);
         idx.Sort((a, b) =>
