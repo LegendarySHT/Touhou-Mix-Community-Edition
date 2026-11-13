@@ -93,6 +93,13 @@ var _snap_clamped_frames: int = 0 # 连续无法移动帧计数（滚动到 0/ma
 ## 滚动速度追踪（像素/秒）—— 替代手动拖拽检测
 var _prev_scroll_vertical: int = 0
 var _scroll_speed: float = 0.0
+
+## 上一帧的滚动范围（page / max）：列表尺寸或内容高度变化后，滚动值会被钳制进新区间
+var _prev_v_scroll_page: float = -1.0
+var _prev_v_scroll_max: float = -1.0
+
+## 本帧滚动值的变化是否由布局变化引起的钳制（不是用户滚动）
+var _scroll_clamped_by_layout: bool = false
 const SCROLL_SPEED_COLLAPSE: float = 80.0   # 超过此速度 → 收起展开项
 const SCROLL_SPEED_SNAP: float = 30.0       # 低于此速度 → 允许吸附
 
@@ -420,9 +427,20 @@ func _process(delta: float) -> void:
 		return
 
 	# 计算滚动速度
+	var vbar := get_v_scroll_bar()
+	_scroll_clamped_by_layout = not is_equal_approx(vbar.page, _prev_v_scroll_page) \
+			or not is_equal_approx(vbar.max_value, _prev_v_scroll_max)
+	_prev_v_scroll_page = vbar.page
+	_prev_v_scroll_max = vbar.max_value
+
 	var sv := scroll_vertical
-	_scroll_speed = abs(sv - _prev_scroll_vertical) / max(delta, 0.001)
-	_prev_scroll_vertical = sv
+	if _scroll_clamped_by_layout:
+		# 布局变化钳制滚动值：不是用户滚动，不计入速度，也不让后续逻辑当作滚动处理
+		_scroll_speed = 0.0
+		_prev_scroll_vertical = sv
+	else:
+		_scroll_speed = abs(sv - _prev_scroll_vertical) / max(delta, 0.001)
+		_prev_scroll_vertical = sv
 
 	# 滚动速度快 → 不稳定，自动收起展开项
 	# 吸附期间跳过速度检测（吸附自己驱动 scroll_vertical，不应自中断）

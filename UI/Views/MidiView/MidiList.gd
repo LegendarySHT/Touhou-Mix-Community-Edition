@@ -114,7 +114,10 @@ func _clear_list() -> void:
 ## 展开状态下被滚动了 → 立即收起
 func _process(delta):
 	super._process(delta)
-	if not _collapsed and not _snap_active and scroll_vertical != _prev_scroll:
+	# 只有列表可见且滚动值不是被布局变化钳制时，变化才算用户滚动。
+	# 简介展开/收起会改变列表尺寸并钳制滚动值，若当成滚动会误收起列表并清空选中。
+	if not _collapsed and not _snap_active and not _scroll_clamped_by_layout \
+			and visible and scroll_vertical != _prev_scroll:
 		_show_midi_list()
 	_prev_scroll = scroll_vertical
 

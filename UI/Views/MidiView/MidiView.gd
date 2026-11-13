@@ -354,7 +354,8 @@ func _hide_favor_panel(exiting_page: bool = false) -> void:
 
 # 显示简介什么的
 func _on_info_btn_pressed():
-	if %MidiList.selected_item == -1:
+	# 展开简介需要选中项；收起不受选中状态限制，否则选中项丢失后简介永远关不掉
+	if not showing_info and %MidiList.selected_item == -1:
 		return
 	_set_info_visible(not showing_info)
 
@@ -376,7 +377,8 @@ func _set_info_visible(v: bool) -> void:
 		_refresh_redirect_buttons(%MidiList.get_selection())
 	else:
 		%RedirectButtons.visible = false
-	%MidiList.need_snap = true
+	# 只在重新显示列表时请求吸附：简介展开期间列表不可见，吸附没有意义
+	%MidiList.need_snap = not v
 
 ## 刷新简介下方的操作按钮组：
 ## - 商店下载的谱面（存在服务端详情页）→ 显示「在网页查看」
