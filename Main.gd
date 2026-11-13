@@ -309,8 +309,7 @@ func _initialize_core_systems() -> void:
 	# （6 个 _init_ui 视图已改为懒加载，启动阶段不再实例化）
 	await get_tree().process_frame
 
-	# 13.5. 预加载 SoundFont 到后端（~30MB，同步阻塞 3-5 秒）
-	# 放在 UI 渲染后、信号连接/MIDI 数据加载前，确保阻塞发生在启动阶段而非用户交互阶段
+	# 13.5. 下发音源到后端：后台异步解析 ~30MB，主线程不阻塞，由 MeltySynth._Process 完成绑定
 	PlaybackDisplay.instance.load_soundfont_from_config()
 	PlaybackDisplay.instance.preload_soundfont()
 
@@ -444,6 +443,8 @@ func _load_configuration() -> void:
 	# （ConfigManager 是懒创建单例、不入场景树，C# 无法按节点路径自取，必须显式推送）
 	if PlaybackDisplay.instance != null:
 		PlaybackDisplay.instance.push_global_playback_config()
+		PlaybackDisplay.instance.apply_ui_midi_volume(
+			PlaybackDisplay.instance.get_effective_midi_volume(-1.0))
 		# 校准延迟也要在此刻按真实配置应用一次：PlaybackDisplay 是 autoload，
 		# 它的 _ready 早于本次配置加载，那时只能读到默认值
 		PlaybackDisplay.instance.refresh_audio_delay()

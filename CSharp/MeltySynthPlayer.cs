@@ -229,6 +229,8 @@ public partial class MeltySynthPlayer : Node
 	private readonly object _sfLock = new object();
 	private volatile bool _sfParseDone = false;
 	private bool _sfFinalized = false;
+	// 最近一次后台加载是否失败（仅主线程读写）：失败后停止 _Process 空转，并允许同一音源重新下发触发重试
+	private bool _sfLoadFailed = false;
 	private SoundFont _sfPendingSoundFont;
 	private Synthesizer _sfPendingAuto;
 	private Synthesizer _sfPendingManual;
@@ -856,7 +858,8 @@ public partial class MeltySynthPlayer : Node
 
 		// 缓存后台线程要用的主线程侧依赖（节点引用不能从后台线程取）
 		// 后台 SoundFont 解析完成后，在主线程完成合成器/音频桥绑定（音频相关 API 必须主线程）
-		if (_sfParseDone && !_sfFinalized && (_sfLoadThread == null || !_sfLoadThread.IsAlive))
+		// _sfLoadFailed 后停止空转，等待重新下发同一音源触发重试
+		if (_sfParseDone && !_sfFinalized && !_sfLoadFailed && (_sfLoadThread == null || !_sfLoadThread.IsAlive))
 		{
 			_sfLoadThread = null;
 			FinalizeSoundfontLoad();
@@ -1482,14 +1485,21 @@ public partial class MeltySynthPlayer : Node
 	public void set_soundfont(string soundfontPath)
 	{
 		EnsureAudioInitialized();
-		_soundfont = soundfontPath;
 		if (playing)
 		{
 			// 播放中切换音源：保持原有同步行为（无法在播放时后台替换合成器）
+			_soundfont = soundfontPath;
 			LoadSoundfont(soundfontPath);
 			return;
 		}
-		// 若已有后台加载在飞，先等它完成并 finalize（主线程），避免并发与重复加载
+		// 同一音源重复下发：后台加载在飞或已就绪时直接返回，由 _Process 自然 finalize。
+		// 启动期会连续下发同一路径，短路后主线程不再等待后台解析。
+		// 加载失败时放行，让同一路径可以重新下发以触发重试。
+		if (_soundfont == soundfontPath && !_sfLoadFailed && (_sfLoadThread != null || _sfFinalized))
+		{
+			return;
+		}
+		// 切换音源时若旧加载仍在飞，先等它收尾再起新加载，避免两个线程竞争 _sfPending*。
 		if (_sfLoadThread != null && _sfLoadThread.IsAlive)
 		{
 			_sfLoadThread.Join();
@@ -1498,13 +1508,34 @@ public partial class MeltySynthPlayer : Node
 			{
 				FinalizeSoundfontLoad();
 			}
-			if (_soundfont == soundfontPath)
-			{
-				return;
-			}
 		}
-		// 否则在后台线程解析 SoundFont（30MB / 3-5s），主线程继续渲染不阻塞
+		// 在后台线程解析 SoundFont（30MB / 3-5s），主线程继续渲染不阻塞
+		_soundfont = soundfontPath;
+		_sfLoadFailed = false;
 		StartSoundfontLoadAsync(soundfontPath);
+	}
+
+	/// <summary>打印音源与当前生效音量，供启动/切换后对照音量差异。</summary>
+	private void LogSoundfontState(string stage)
+	{
+		ThreadSafeLog.Print($"[MeltySynthPlayer] {stage}: soundfont={_soundfont}, " +
+			$"volume_db={_volume_db:F2}, volume_linear={_volumeLinear:F4}, " +
+			$"default_midi={_cachedDefaultMidiVolume:F3}, player_midi={_playerMidiVolumeLinear:F3}");
+	}
+
+	/// <summary>等待后台音源解析完成并绑定到合成器（供校准等需要立即发声的入口使用）。</summary>
+	public void wait_for_soundfont_ready()
+	{
+		if (_sfFinalized) return;
+		if (_sfLoadThread != null && _sfLoadThread.IsAlive)
+		{
+			_sfLoadThread.Join();
+			_sfLoadThread = null;
+		}
+		if (!_sfFinalized && _sfParseDone)
+		{
+			FinalizeSoundfontLoad();
+		}
 	}
 
 	public void set_file(string midiPath)
@@ -3323,7 +3354,7 @@ public partial class MeltySynthPlayer : Node
 		catch (Exception e)
 		{
 			ThreadSafeLog.PrintErr($"[MeltySynthPlayer] background SoundFont parse failed: {e.Message}");
-			_sfParseDone = true; // 标记完成（即便失败），避免 _Process 反复重试
+			_sfParseDone = true; // 标记完成（即便失败），由主线程 finalize 判定失败并输出
 		}
 	}
 
@@ -3348,6 +3379,13 @@ public partial class MeltySynthPlayer : Node
 		}
 		if (soundFont == null)
 		{
+			// 后台解析失败（或产物不完整）：输出一次明确日志，并标记失败以停止 _Process 反复重试，
+			// 后续重新下发同一音源仍可触发重试。
+			if (!_sfLoadFailed)
+			{
+				_sfLoadFailed = true;
+				ThreadSafeLog.PrintErr($"[MeltySynthPlayer] SoundFont load failed or produced no synthesizer: {_soundfont}");
+			}
 			return;
 		}
 
@@ -3368,9 +3406,8 @@ public partial class MeltySynthPlayer : Node
 		_messageContext = msgCtx;
 		_handlers = handlers;
 
-		// 【TMX-005】合成器重建后清理手动通道状态缓存，并重新应用乐器覆盖
+		// 【TMX-005】合成器重建后清理手动通道状态缓存
 		_channelStateAppliedToManual.Clear();
-		ApplyInstrumentOverridesToSynth();
 
 	_sequencerStarted = false;
 	_hasEnteredTimeline = false;
@@ -3381,14 +3418,27 @@ public partial class MeltySynthPlayer : Node
 			LoadMidiFile(_file);
 		}
 
+		// LoadMidiFile 清掉了轨道音量/静音/乐器覆盖；按当前谱面运行时配置完整重放一次
+		// （与换曲、reload_soundfont_preserving_position 同一份实现），保证切音源后
+		// 后端音色/音量与 UI 显示一致。pending 分支专供"换曲时 MIDI 未载入"的补应用，
+		// 与这里的重放互斥：重放已覆盖时清掉 pending，避免同轮双跑。
+		if (_midiFile != null && !string.IsNullOrEmpty(_currentKey))
+		{
+			apply_chart_audio_config(_currentKey,
+				usePlayerVolumeConfig: _currentSongMode == (int)SongMode.Playlist);
+			_pendingConfigChartKey = "";
+		}
+		else
+		{
+			ApplyPendingChartConfigIfAny();
+		}
+
 		_audioOutput?.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
 		_audioOutput?.SetVolume(_volumeLinear);
 		_sfFinalized = true;
+		LogSoundfontState("async finalize");
 		EmitSignal(SignalName.soundfont_changed, _soundfont);
 		EmitSignal(SignalName.soundfont_reload_completed);
-
-		// 换曲时 MIDI 因音源未就绪而推迟载入：轨配置已在上面 LoadMidiFile 里被清空，补应用一次
-		ApplyPendingChartConfigIfAny();
 
 		// 异步加载完成前若已请求播放，现在后端已就绪，自动续播
 		if (_pendingPlayAfterLoad && _midiFile != null)
@@ -3567,6 +3617,7 @@ public partial class MeltySynthPlayer : Node
 		// ========== 新架构：将合成器引用传递给音频桥接器 ==========
 		_audioOutput?.SetSynthesizers(_sequencer, _autoSynth, _manualSynth, _useSeparateSynthForManual);
 		_audioOutput?.SetVolume(_volumeLinear);
+		LogSoundfontState("sync load");
 		ThreadSafeLog.Print("[MeltySynthPlayer] Synthesizers passed to audio bridge");
 
 		EmitSignal(SignalName.soundfont_changed, path);

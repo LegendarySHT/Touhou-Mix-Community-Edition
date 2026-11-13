@@ -116,11 +116,15 @@ func push_global_playback_config() -> void:
 	if cfg == null:
 		return
 	# 默认值不写在这里：config.ini 是唯一权威来源（见 Game/PlayerSettings.gd 头部说明）
+	var default_midi := float(cfg.get_float("default_midi_volume"))
+	var default_vocal := float(cfg.get_float("default_vocal_volume"))
 	MeltySynth.set_global_playback_config(
-		float(cfg.get_float("default_midi_volume")),
+		default_midi,
 		cfg.get_int("use_system_stopwatch") != 0,
 		float(cfg.get_int("audio_sync_threshold")),
-		float(cfg.get_float("default_vocal_volume")))
+		default_vocal)
+	GLogger.info("Playback config pushed: default_midi=%.3f default_vocal=%.3f soundfont=%s" % [
+		default_midi, default_vocal, str(cfg.get_value("soundfont_file"))], "PlaybackDisplay")
 	# 恢复"播放器页音量"：它只属于播放器页会话（换曲模式 Playlist），与谱面配置互不覆盖。
 	# 不接这一步，存进 [Playback] 的值永远读不回来
 	_load_player_volumes()
@@ -530,15 +534,18 @@ func _locate_soundfont(soundfont_name: String) -> String:
 		return res_path
 	return ""
 
-## 启动时预加载音源到后端（异步解析，不阻塞主线程）
+## 启动时下发音源到后端（后台异步解析，不阻塞主线程）
+## 配置为空时 load_soundfont_from_config 只设置了路径，这里补一次下发
 func preload_soundfont() -> void:
 	if current_soundfont_path.is_empty() or MeltySynth == null:
 		return
 	MeltySynth.set_soundfont(current_soundfont_path)
 
-## 供即时音符（DelayAdjust 校准等）确保音源已加载
+## 供即时音符（DelayAdjust 校准等）确保音源已就绪：等待后台解析完成
 func ensure_soundfont_loaded() -> void:
 	preload_soundfont()
+	if MeltySynth != null:
+		MeltySynth.wait_for_soundfont_ready()
 
 # ===================== 手动音符（从 KeySequenceCore 组装下发 C#） =====================
 
