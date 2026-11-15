@@ -231,9 +231,21 @@ layout_mode = 2
 metadata/_tab_index = 1
 metadata/_tab_name = "许可证"
 
-[node name="LicenseText" type="RichTextLabel" parent="SettingView/AboutPage/TabContainer/License" unique_id=1219638257]
+[node name="Margin" type="MarginContainer" parent="SettingView/AboutPage/TabContainer/License" unique_id=1468964410]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="LicenseText" type="RichTextLabel" parent="SettingView/AboutPage/TabContainer/License/Margin" unique_id=1219638257]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
 
 [node name="History" type="Panel" parent="SettingView/AboutPage/TabContainer" unique_id=1475621820]
 visible = false

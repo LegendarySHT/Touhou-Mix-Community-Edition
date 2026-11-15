@@ -16,6 +16,26 @@ const WEBSITE_URL := "https://thmixce.org"
 ## 富文本链接颜色（暗/亮背景都可读的中蓝）
 const LINK_COLOR := "#5aa9ff"
 
+# ============ 许可证页链接 ============
+## 本项目许可：CC BY-NC-SA 4.0（中文摘要页 / 英文法律全文）
+const CC_LICENSE_DEED_URL := "https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans"
+const CC_LICENSE_FULL_URL := "https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode"
+## 第三方组件与内置资源的主页，均为上游官方地址
+const GODOT_LICENSE_URL := "https://godotengine.org/license/"
+const MELTYSYNTH_URL := "https://github.com/sinshu/meltysynth"
+const MINIAUDIO_URL := "https://github.com/mackron/miniaudio"
+const STB_VORBIS_URL := "https://github.com/nothings/stb"
+const OPENCC_URL := "https://github.com/BYVoid/OpenCC"
+const LITEDB_URL := "https://github.com/litedb-org/LiteDB"
+const GENERALUSER_GS_URL := "https://github.com/mrbumpy409/GeneralUser-GS"
+## 内置立绘作者 dairi 的主页与素材 / 约稿入口（原文中给出的地址）
+const DAIRI_PIXIV_URL := "https://www.pixiv.net/users/4920496/"
+const DAIRI_NICO_URL := "https://www.nicovideo.jp/user/3494232"
+const DAIRI_FANBOX_URL := "https://dairi.fanbox.cc/"
+const DAIRI_SKEB_URL := "https://skeb.jp/@dairi155"
+## 原项目 Touhou Mix 的公开仓库
+const ORIGINAL_PROJECT_URL := "https://github.com/DotLab/TouhouMix"
+
 ## 进入「关于」前停留的分组按钮下标，从关于页返回时用它还原位置
 var _last_group_btn_idx: int = 0
 
@@ -374,12 +394,75 @@ func _about_project_bbcode() -> String:
 	lines.append("[url=%s][color=%s]项目地址[/color][/url]	[url=%s][color=%s]临时官网[/color][/url]" % [PROJECT_URL, LINK_COLOR, WEBSITE_URL, LINK_COLOR])
 	return "\n".join(lines)
 
+## 生成可点击的 BBCode 链接（meta_clicked 统一由 _on_link_clicked 处理）
+func _license_link(url: String, label: String) -> String:
+	return "[url=%s][color=%s]%s[/color][/url]" % [url, LINK_COLOR, label]
+
+## 构建许可证页的 BBCode。
+## 内容刻意内嵌在代码里：导出预设（尤其 Android 的 include_filter）不包含 *.txt，
+## 运行时读 res://LICENSE.txt 在发行包里可能读不到，内嵌可保证离线一定有内容。
+## 本页是便于查阅的中文摘要，具约束力的条款以各许可证原文、作者规约原文与随附文件为准。
+func _license_bbcode() -> String:
+	var lines := PackedStringArray()
+
+	# 1) 本项目许可
+	lines.append("[b][font_size=34]本项目许可[/font_size][/b]")
+	lines.append("TouHou Mix Community Edition 采用 [b]CC BY-NC-SA 4.0[/b]（知识共享 署名-非商业性使用-相同方式共享 4.0 国际）许可。")
+	lines.append("    • 署名：使用、转载时须保留作者、来源与许可说明")
+	lines.append("    • 非商业性使用：不得将本作品用于商业目的")
+	lines.append("    • 相同方式共享：基于本作品的演绎作品须以相同许可发布")
+	lines.append("    " + _license_link(CC_LICENSE_DEED_URL, "中文条款摘要") + "　" + _license_link(CC_LICENSE_FULL_URL, "许可全文（英文）") + "　" + _license_link(PROJECT_URL, "项目仓库"))
+	lines.append("    [color=#8b93a1][i]仓库根目录 LICENSE.txt 附完整许可文本；以上仅为便于阅读的摘要。[/i][/color]")
+
+	# 2) 第三方开源组件致谢
+	lines.append("")
+	lines.append("[b][font_size=34]第三方开源组件[/font_size][/b]")
+	lines.append("感谢以下开源项目，各自的版权声明与许可原文见其上游仓库。")
+	lines.append("    • [b]Godot Engine[/b] — MIT · " + _license_link(GODOT_LICENSE_URL, "许可说明"))
+	lines.append("    • [b]MeltySynth[/b]（含 C# Synth、TinySoundFont、SFZero）— MIT · " + _license_link(MELTYSYNTH_URL, "源码"))
+	lines.append("    • [b]miniaudio[/b] — 公有领域（Unlicense）或 MIT-0（二选一） · " + _license_link(MINIAUDIO_URL, "源码"))
+	lines.append("    • [b]stb_vorbis[/b] — MIT 或公有领域（二选一） · " + _license_link(STB_VORBIS_URL, "源码"))
+	lines.append("    • [b]OpenCC[/b]（词典数据）— Apache-2.0 · " + _license_link(OPENCC_URL, "项目主页"))
+	lines.append("    • [b]LiteDB / OpenccNetLib[/b]（.NET 依赖）— MIT · " + _license_link(LITEDB_URL, "LiteDB"))
+
+	# 3) 内置资源（音源 / 词典 / 社区素材）
+	lines.append("")
+	lines.append("[b][font_size=34]内置资源[/font_size][/b]")
+	lines.append("    • [b]GeneralUser GS 2.0.2[/b] 音源 — S. Christian Collins，GeneralUser GS License v2.0：允许在软件项目中免费使用、修改与再分发；所含采样沿用各自来源的授权，完整许可文本内嵌于音源文件。 " + _license_link(GENERALUSER_GS_URL, "项目主页"))
+	lines.append("    • [b]OpenCC 词典[/b]（CSharp/ChartDb/dicts/dictionary_maxlength.zstd）— Apache-2.0，用于中文简繁转换与名称规范化。 " + _license_link(OPENCC_URL, "项目主页"))
+	lines.append("    • 游戏内收录的谱面、封面与人声音频由社区作者提供，权利归各自权利人所有。")
+
+	# 4) 立绘素材（dairi 的免费素材利用规约）
+	lines.append("")
+	lines.append("[b][font_size=34]立绘素材（dairi）[/font_size][/b]")
+	lines.append("内置角色立绘作者为 [b]dairi[/b]，按其公开的免费素材利用规约使用。")
+	lines.append("    " + _license_link(DAIRI_PIXIV_URL, "Pixiv 主页") + "　" + _license_link(DAIRI_NICO_URL, "niconico（素材差分）") + "　" + _license_link(DAIRI_FANBOX_URL, "FANBOX") + "　" + _license_link(DAIRI_SKEB_URL, "Skeb"))
+
+	# 5) 原项目 Touhou Mix（与「东方 Project 原作」区分开）
+	lines.append("")
+	lines.append("[b][font_size=34]原项目[/font_size][/b]")
+	lines.append("本作是 [b]Touhou Mix[/b] 的社区版本，原项目公开仓库：" + _license_link(ORIGINAL_PROJECT_URL, "DotLab/TouhouMix") + "。")
+
+	# 6) 东方 Project 原作版权声明与侵权反馈
+	lines.append("")
+	lines.append("[b][font_size=34]关于原作[/font_size][/b]")
+	lines.append("本作是爱好者制作的非官方二次创作作品，与上海爱丽丝幻乐团（ZUN）及任何官方机构无关联。")
+	lines.append("「东方 Project」系列原作的游戏、角色、音乐及相关素材，著作权归上海爱丽丝幻乐团及各权利方所有，本项目不主张任何权利。")
+	lines.append("如认为本作收录的内容涉及侵权或授权信息有误，请通过 " + _license_link(PROJECT_URL, "GitHub 项目仓库") + " 或 THMIX QQ 群（β群: 1020610194 γ群: 140497416）联系我们，我们会及时处理。")
+	lines.append("")
+	lines.append("[color=#8b93a1][i]本页为授权信息摘要，不具有法律效力；完整条款以各许可证原文、作者规约原文与随附文件为准。[/i][/color]")
+	return "\n".join(lines)
+
 ## 绑定关于页各 RichTextLabel 的动态内容与链接点击、检查更新按钮。
 ## 外观/滚动/字号/布局等静态属性全部在 SettingView.tscn 中定义，代码不覆盖。
 func _setup_about_content() -> void:
 	# 关于项目
 	_bind_link_signal(%AboutProjectText)
 	%AboutProjectText.text = _about_project_bbcode()
+
+	# 许可证（项目许可 / 第三方致谢 / 内置资源 / 立绘规约 / 原项目 / 原作声明，内容内嵌不读文件）
+	_bind_link_signal(%LicenseText)
+	%LicenseText.text = _license_bbcode()
 
 	# 版本历史
 	_bind_link_signal(%VersionHistoryText)
