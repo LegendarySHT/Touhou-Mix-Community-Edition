@@ -39,8 +39,8 @@ const ORIGINAL_PROJECT_URL := "https://github.com/DotLab/TouhouMix"
 ## 进入「关于」前停留的分组按钮下标，从关于页返回时用它还原位置
 var _last_group_btn_idx: int = 0
 
-## 关于页「自动检查更新」开关（会话内状态；联网接入后可持久化到配置）
-var _auto_update_enabled: bool = false
+## 检查更新结果里的下载候选（主地址 + 镜像），供「前往下载」按钮按序回退
+var _pending_download_urls: PackedStringArray = PackedStringArray()
 
 ## 配置文件路径（通过 PathHelper 动态获取，兼容 Android）
 ## 使用 getter 确保运行时才求值
@@ -468,11 +468,27 @@ func _setup_about_content() -> void:
 	_bind_link_signal(%VersionHistoryText)
 	%VersionHistoryText.text = _history_bbcode()
 
-	# 检查更新按钮
+	# 检查更新
 	if %ManualUpdateBtn and not %ManualUpdateBtn.pressed.is_connected(_on_manual_update_pressed):
 		%ManualUpdateBtn.pressed.connect(_on_manual_update_pressed)
+	if %DownloadUpdateBtn and not %DownloadUpdateBtn.pressed.is_connected(_on_download_update_pressed):
+		%DownloadUpdateBtn.pressed.connect(_on_download_update_pressed)
 	if %AutoUpdateBtn and not %AutoUpdateBtn.toggled.is_connected(_on_auto_update_toggled):
 		%AutoUpdateBtn.toggled.connect(_on_auto_update_toggled)
+	# 结果信号常驻监听：启动时的自动检查也能在这里回显
+	if not ServiceHub.version.update_check_finished.is_connected(_on_update_check_finished):
+		ServiceHub.version.update_check_finished.connect(_on_update_check_finished)
+	if not EvtBus.config_changed.is_connected(_on_update_config_changed):
+		EvtBus.config_changed.connect(_on_update_config_changed)
+	_sync_auto_update_toggle()
+
+	# 重新进入关于页时回显本次会话内的上一次检查结果
+	var last_result := ServiceHub.version.get_last_result()
+	if last_result.is_empty():
+		_set_update_status("")
+		_set_download_visible(false)
+	else:
+		_render_update_result(last_result)
 
 ## 统一配置 RichTextLabel：只负责行为（[url] 点击），
 ## 富文本/滚动/字号/布局等静态属性全部在 SettingView.tscn 中定义。
@@ -553,34 +569,118 @@ func _channel_label(channel: String) -> String:
 
 ## 「手动检查更新」按钮
 func _on_manual_update_pressed() -> void:
-	check_for_update(%UpdateStatusText)
+	if ServiceHub.version.is_checking():
+		return
+	_set_update_status("正在检查更新…")
+	_set_update_buttons_busy(true)
+	ServiceHub.version.check_for_updates()
 
-## 「自动检查更新」开关（当前仅记录会话内状态；联网接入后可持久化）
+## 「启动时自动检查」开关：持久化到 config.ini，关闭后下次启动不再联网检查
 func _on_auto_update_toggled(on: bool) -> void:
-	_auto_update_enabled = on
+	ServiceHub.config.set_value_and_notify("auto_check_update", 1 if on else 0)
 	if on:
 		_on_manual_update_pressed()
 
-## 检查更新入口（也供外部调用）。
-func check_for_update(status_label: Label = null) -> void:
-	if status_label:
-		status_label.text = "正在检查更新…"
-	ServiceHub.version.update_check_finished.connect(func(result: Dictionary) -> void:
-		if status_label == null:
+## 检查结束统一入口（启动自动检查 / 手动检查共用）
+func _on_update_check_finished(result: Dictionary) -> void:
+	_set_update_buttons_busy(false)
+	_render_update_result(result)
+
+## 把检查结果映射到状态文案与「前往下载」按钮
+func _render_update_result(result: Dictionary) -> void:
+	if result.is_empty():
+		_set_update_status("")
+		_set_download_visible(false)
+		return
+
+	if not result.get("ok", false):
+		var reason := str(result.get("reason", ""))
+		if reason == "busy":
+			_set_update_status("正在检查更新…")
+			_set_update_buttons_busy(true)
 			return
-		if not result.get("ok", false):
-			var reason := str(result.get("reason", ""))
-			if reason == "disabled":
-				status_label.text = "在线更新尚未接入"
-			else:
-				status_label.text = "检查更新失败：%s" % reason
-			return
-		if result.get("has_update", false):
-			status_label.text = "发现新版本：v%s" % str(result.get("latest", ""))
+		_set_update_status("检查更新失败：%s" % _friendly_update_reason(reason))
+		_set_download_visible(false)
+		return
+
+	if not result.get("has_update", false):
+		if str(result.get("reason", "")) == "platform_not_listed":
+			_set_update_status("当前平台暂无可用更新")
 		else:
-			status_label.text = "已是最新版本（v%s）" % str(result.get("current", ""))
-	, CONNECT_ONE_SHOT)
-	ServiceHub.version.check_for_updates()
+			_set_update_status("已是最新版本（v%s）" % str(result.get("current", "")))
+		_set_download_visible(false)
+		return
+
+	var status := "发现新版本：v%s" % str(result.get("latest", ""))
+	if result.get("forced", false):
+		status += "（当前版本已不再支持，请尽快更新）"
+	_set_update_status(status)
+	_pending_download_urls = _collect_download_urls(result)
+	_set_download_visible(not _pending_download_urls.is_empty())
+
+## 主下载地址 + 镜像（均已在 VersionManager 侧过滤为 HTTPS）
+func _collect_download_urls(result: Dictionary) -> PackedStringArray:
+	var urls := PackedStringArray()
+	var entry: Variant = result.get("latest_entry", {})
+	if not (entry is Dictionary):
+		return urls
+	var primary := str(entry.get("url", "")).strip_edges()
+	if not primary.is_empty():
+		urls.append(primary)
+	var mirrors: Variant = entry.get("mirrors", [])
+	if mirrors is Array:
+		for mirror in mirrors:
+			var url := str(mirror).strip_edges()
+			if not url.is_empty() and not urls.has(url):
+				urls.append(url)
+	return urls
+
+## 「前往下载」：按主地址→镜像顺序尝试，交给系统浏览器/下载管理器
+func _on_download_update_pressed() -> void:
+	for url in _pending_download_urls:
+		if OS.shell_open(url) == OK:
+			return
+	GLogger.warning("打开更新下载链接失败（全部地址不可用）", "SettingView")
+	_set_update_status("无法打开下载链接，请手动访问项目发布页")
+
+func _friendly_update_reason(reason: String) -> String:
+	match reason:
+		"disabled":
+			return "在线更新尚未配置"
+		"invalid_manifest_url":
+			return "更新地址无效"
+		"invalid_json":
+			return "更新清单格式错误"
+	if reason.begins_with("HTTP "):
+		return "服务暂不可用（%s）" % reason
+	if reason.begins_with("request_failed"):
+		return "网络请求发送失败"
+	if reason.begins_with("manifest_"):
+		return "更新清单内容异常"
+	return reason if not reason.is_empty() else "未知错误"
+
+func _set_update_status(text: String) -> void:
+	if %UpdateStatusText:
+		%UpdateStatusText.text = text
+
+func _set_update_buttons_busy(busy: bool) -> void:
+	if %ManualUpdateBtn:
+		%ManualUpdateBtn.disabled = busy
+
+func _set_download_visible(is_visible: bool) -> void:
+	if %DownloadUpdateBtn:
+		%DownloadUpdateBtn.visible = is_visible
+
+## 常规设置里的同名开关改动时，保持关于页开关同步（set_pressed_no_signal 不会反向触发）
+func _on_update_config_changed(key: String, _value: Variant) -> void:
+	if key == "auto_check_update":
+		_sync_auto_update_toggle()
+
+## 用配置文件的值回填开关，且不触发 toggled（避免每次进入关于页都主动联网）
+func _sync_auto_update_toggle() -> void:
+	if %AutoUpdateBtn == null:
+		return
+	%AutoUpdateBtn.set_pressed_no_signal(ServiceHub.config.get_int("auto_check_update", 1) == 1)
 
 ## 获取特定设置的值
 ## 此方法由其他模块（如TrackView、PlayView）调用，用于查询当前设置值

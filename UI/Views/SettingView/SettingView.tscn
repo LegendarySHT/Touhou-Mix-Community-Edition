@@ -281,7 +281,7 @@ custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 toggle_mode = true
-text = "自动检查更新"
+text = "启动时自动检查"
 
 [node name="ManualUpdateBtn" type="Button" parent="SettingView/AboutPage/TabContainer/History/Update" unique_id=1792173923]
 unique_name_in_owner = true
@@ -289,6 +289,14 @@ custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
 text = "手动检查更新"
+
+[node name="DownloadUpdateBtn" type="Button" parent="SettingView/AboutPage/TabContainer/History/Update" unique_id=1731450288]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(120, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "前往下载"
 
 [node name="Content" type="ScrollContainer" parent="SettingView/AboutPage/TabContainer/History" unique_id=793487029]
 layout_mode = 1

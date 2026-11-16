@@ -8,9 +8,9 @@
 ## 改版本只改这一个 JSON 文件即可（见 tools/sync_version.py 与 git pre-commit 钩子）。
 ##
 ## 设计为「可联网扩展」：
-##   - 更新历史 entries 是自由结构字典，未来可直接从服务端拉取同名结构。
-##   - check_for_updates() 已留出异步联网检查骨架（默认未配置 manifest_url 时直接返回，
-##     不会触发任何网络请求），接入后端时只需 set_update_manifest_url() 即可。
+##   - 更新历史 entries 是自由结构字典，本地历史保持离线可用。
+##   - 远程更新清单由后端只读接口提供（schema=1，按 platforms.windows / platforms.android 区分平台），
+##     二进制安装包放在 GitHub Releases，客户端只向本服务要几 KB 的清单，避免占用服务器上行带宽。
 
 class_name VersionManager
 extends Node
@@ -41,10 +41,15 @@ const FALLBACK_BUILD := 1
 var _data: Dictionary = {}
 var _loaded: bool = false
 
-## 远程更新清单地址。留空 = 不联网（check_for_updates 直接返回 disabled）。
-## 接入后端时调用 set_update_manifest_url("https://.../update_manifest.json") 即可，
-## 远程 JSON 结构与本地 version_history.json 一致（至少含 current / entries[0].version）。
+## 远程更新清单地址覆盖值。为空时读 config.ini 的 update_manifest_url，
+## 再为空则用官方地址。刻意不跟随用户可改的 server_address：
+## 社区服务器可以提供服务，但更新信任源不能跟着服务器地址漂移。
 var _manifest_url: String = ""
+
+## idle / checking。同一时刻只允许一个检查请求，防止连点导致回调错乱。
+var _check_state: String = "idle"
+## 最近一次检查结果（供关于页重新进入时回显，不参与版本比较）
+var _last_result: Dictionary = {}
 
 # ============ 信号 ============
 ## 发现新版本时发射（info 含 latest / current / has_update 等）
@@ -60,7 +65,7 @@ func _ready() -> void:
 func ensure_loaded() -> void:
 	if _loaded:
 		return
-	if ConfigManager != null:
+	if ServiceHub.config != null:
 		_data = ServiceHub.config.load_json_file(HISTORY_PATH)
 	else:
 		_data = {}
@@ -153,61 +158,180 @@ static func compare_versions(a: String, b: String) -> int:
 func is_newer(remote_version: String) -> bool:
 	return compare_versions(remote_version, get_version_string()) > 0
 
-# ============ 联网更新（骨架，默认关闭） ============
+# ============ 联网更新 ============
+## 官方更新清单地址（后端只读接口，几 KB JSON）。自建镜像/本地调试可用
+## config.ini 的 update_manifest_url 覆盖；不读 server_address。
+const DEFAULT_UPDATE_MANIFEST_URL := "https://thmixce.org/api/update/beta"
+const UPDATE_TIMEOUT_SEC := 8.0
+const HTTPS_PREFIX := "https://"
+
 func set_update_manifest_url(url: String) -> void:
 	_manifest_url = url.strip_edges()
 
 func get_update_manifest_url() -> String:
-	return _manifest_url
+	if not _manifest_url.is_empty():
+		return _manifest_url
+	if ServiceHub.config != null:
+		return ServiceHub.config.get_string("update_manifest_url", DEFAULT_UPDATE_MANIFEST_URL).strip_edges()
+	return DEFAULT_UPDATE_MANIFEST_URL
 
-## 异步检查更新。
-## 未配置 manifest_url → 立即返回 {ok:false, reason:"disabled"}，不发起任何网络请求。
-## 已配置 → GET 远程清单（与本地同构），与当前版本比对，发射 update_available / update_check_finished。
-## 返回结果字典（调用方也可用 await 拿结果）：
-##   { ok, has_update, current, latest, latest_entry(若有), reason(若失败) }
+func is_checking() -> bool:
+	return _check_state == "checking"
+
+## 最近一次检查结果（空字典 = 本次会话还没检查过）。UI 重新进入关于页时用它回显。
+func get_last_result() -> Dictionary:
+	return _last_result.duplicate(true)
+
+## 当前运行平台在清单里的键名（与后端 platforms 的键一致）
+static func get_platform_key() -> String:
+	match OS.get_name():
+		"Windows":
+			return "windows"
+		"Android":
+			return "android"
+		"iOS":
+			return "ios"
+		"macOS":
+			return "macos"
+		"Linux":
+			return "linux"
+		_:
+			return OS.get_name().to_lower()
+
+## 异步检查更新（结果同时通过 update_check_finished 信号广播，调用方也可 await 取返回值）。
+## 返回结果字典：
+##   { ok, has_update, forced, current, current_build, latest, latest_build,
+##     latest_entry(平台条目，已过滤非法链接), platform, reason(失败/无平台时), checked_at }
 func check_for_updates() -> Dictionary:
-	if _manifest_url.is_empty():
-		var disabled_result := {"ok": false, "has_update": false, "reason": "disabled", "current": get_version_string()}
-		update_check_finished.emit(disabled_result)
-		return disabled_result
+	if is_checking():
+		return {"ok": false, "has_update": false, "reason": "busy", "current": get_version_string()}
+
+	var url := get_update_manifest_url()
+	if url.is_empty():
+		return _finish_check({"ok": false, "has_update": false, "reason": "disabled",
+			"current": get_version_string()})
+	if not url.begins_with(HTTPS_PREFIX):
+		# 只允许 HTTPS：清单与下载地址都可能被中间人替换，明文 HTTP 直接拒绝。
+		return _finish_check({"ok": false, "has_update": false, "reason": "invalid_manifest_url",
+			"current": get_version_string()})
+
+	_check_state = "checking"
 	var http := HTTPRequest.new()
+	http.timeout = UPDATE_TIMEOUT_SEC
 	add_child(http)
-	http.timeout = 10.0
-	var err := http.request(_manifest_url)
+	var err := http.request(url)
 	if err != OK:
 		http.queue_free()
-		var request_fail_result := {"ok": false, "has_update": false, "reason": "request_failed:%d" % err, "current": get_version_string()}
-		update_check_finished.emit(request_fail_result)
-		return request_fail_result
-	var resp = await http.request_completed
+		return _finish_check({"ok": false, "has_update": false,
+			"reason": "request_failed:%d" % err, "current": get_version_string()})
+
+	var resp: Array = await http.request_completed
 	http.queue_free()
-	var result_code: int = resp[0]
-	var response_code: int = resp[1]
+	return _finish_check(_evaluate_response(resp))
+
+## 收尾：落状态、记录最近结果、按需发信号
+func _finish_check(result: Dictionary) -> Dictionary:
+	_check_state = "idle"
+	result["checked_at"] = Time.get_datetime_string_from_system(false, true)
+	_last_result = result.duplicate(true)
+	if result.get("has_update", false):
+		update_available.emit(result)
+	update_check_finished.emit(result)
+	return result
+
+## 把 HTTPRequest 的 4 元返回转成结果字典
+func _evaluate_response(resp: Array) -> Dictionary:
+	var base := {"current": get_version_string(), "current_build": get_build_number()}
+	var result_code: int = int(resp[0])
+	var response_code: int = int(resp[1])
 	var body: PackedByteArray = resp[3]
 	if result_code != HTTPRequest.RESULT_SUCCESS or response_code < 200 or response_code >= 300:
-		var http_fail_result := {"ok": false, "has_update": false, "reason": "HTTP %d (result=%d)" % [response_code, result_code], "current": get_version_string()}
-		update_check_finished.emit(http_fail_result)
-		return http_fail_result
-	var text := body.get_string_from_utf8()
-	var remote: Variant = JSON.parse_string(text)
+		var http_fail := base.duplicate()
+		http_fail["ok"] = false
+		http_fail["has_update"] = false
+		http_fail["reason"] = "HTTP %d (result=%d)" % [response_code, result_code]
+		return http_fail
+
+	var remote: Variant = JSON.parse_string(body.get_string_from_utf8())
 	if remote == null or not (remote is Dictionary):
-		var json_fail_result := {"ok": false, "has_update": false, "reason": "invalid_json", "current": get_version_string()}
-		update_check_finished.emit(json_fail_result)
-		return json_fail_result
-	var remote_current: String = str(remote.get("current", ""))
-	var remote_entries: Array = remote.get("entries", [])
-	if not remote_current.is_empty() and not remote_entries.is_empty():
-		remote_current = str(remote_entries[0].get("version", remote_current))
-	var has_update := not remote_current.is_empty() and is_newer(remote_current)
-	var r := {
-		"ok": true,
-		"has_update": has_update,
-		"current": get_version_string(),
-		"latest": remote_current,
-	}
-	if has_update and not remote_entries.is_empty():
-		r["latest_entry"] = remote_entries[0]
-	if has_update:
-		update_available.emit(r)
-	update_check_finished.emit(r)
-	return r
+		var json_fail := base.duplicate()
+		json_fail["ok"] = false
+		json_fail["has_update"] = false
+		json_fail["reason"] = "invalid_json"
+		return json_fail
+	var remote_dict: Dictionary = remote
+	return _evaluate_manifest(remote_dict, base)
+
+## 按后端清单 schema（schema=1，platforms.{windows,android,...}）解析并比较版本
+func _evaluate_manifest(remote: Dictionary, base: Dictionary) -> Dictionary:
+	if int(remote.get("schema", 0)) <= 0:
+		return _manifest_error(base, "manifest_missing_schema")
+
+	var platforms: Variant = remote.get("platforms", null)
+	if not (platforms is Dictionary):
+		return _manifest_error(base, "manifest_missing_platforms")
+
+	var platform_key := get_platform_key()
+	var entry: Variant = platforms.get(platform_key, null)
+	if not (entry is Dictionary):
+		# 清单合法但没收录当前平台：属于正常状态，不当作失败
+		var no_platform := base.duplicate()
+		no_platform["ok"] = true
+		no_platform["has_update"] = false
+		no_platform["platform"] = platform_key
+		no_platform["reason"] = "platform_not_listed"
+		return no_platform
+	var entry_dict: Dictionary = entry
+
+	var latest := str(entry_dict.get("version", "")).strip_edges()
+	var latest_build := int(entry_dict.get("build", 0))
+	if latest.is_empty() or latest_build <= 0:
+		return _manifest_error(base, "manifest_invalid_entry")
+
+	var local_build: int = int(base["current_build"])
+	var has_update := latest_build > local_build
+	var min_supported_build := int(entry_dict.get("min_supported_build", 0))
+	var result := base.duplicate()
+	result["ok"] = true
+	result["has_update"] = has_update
+	# 当前版本已低于最低支持版本时标记为强制更新（只在确实有新版本可升时成立）
+	result["forced"] = has_update and min_supported_build > 0 and local_build < min_supported_build
+	result["latest"] = latest
+	result["latest_build"] = latest_build
+	result["platform"] = platform_key
+	result["latest_entry"] = _sanitize_entry(entry_dict)
+	return result
+
+func _manifest_error(base: Dictionary, reason: String) -> Dictionary:
+	var result := base.duplicate()
+	result["ok"] = false
+	result["has_update"] = false
+	result["reason"] = reason
+	return result
+
+## 只保留可安全展示/打开的内容：下载链接与镜像必须是 HTTPS
+func _sanitize_entry(entry: Dictionary) -> Dictionary:
+	var out := entry.duplicate(true)
+	var url := str(out.get("url", "")).strip_edges()
+	out["url"] = url if url.begins_with(HTTPS_PREFIX) else ""
+
+	var mirrors := []
+	var raw_mirrors: Variant = out.get("mirrors", [])
+	if raw_mirrors is Array:
+		for m in raw_mirrors:
+			var mirror := str(m).strip_edges()
+			if mirror.begins_with(HTTPS_PREFIX):
+				mirrors.append(mirror)
+	out["mirrors"] = mirrors
+
+	var changes := []
+	var raw_changes: Variant = out.get("changes", [])
+	if raw_changes is Array:
+		for c in raw_changes:
+			var line := str(c).strip_edges()
+			if not line.is_empty():
+				changes.append(line)
+	out["changes"] = changes
+
+	out["sha256"] = str(out.get("sha256", "")).strip_edges().to_lower()
+	return out

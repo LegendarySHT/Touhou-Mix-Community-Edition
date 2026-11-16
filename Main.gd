@@ -487,6 +487,27 @@ func _on_data_loaded() -> void:
 	# 发送数据就绪事件
 	EvtBus.data_loaded_complete.emit()
 
+	# 启动自动检查更新（不阻塞启动，失败静默）
+	_check_updates_on_startup()
+
+## 启动时自动检查更新。设置项 auto_check_update 关闭、或线上模式关闭时不联网。
+## 刻意等两帧再发请求：让首屏绘制与音频初始化先完成，避免与启动阶段抢帧。
+func _check_updates_on_startup() -> void:
+	if ServiceHub.config.get_int("auto_check_update", 1) != 1:
+		return
+	if ServiceHub.config.get_int("online_mode", 1) != 1:
+		return
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	ServiceHub.version.update_check_finished.connect(_on_startup_update_finished, CONNECT_ONE_SHOT)
+	ServiceHub.version.check_for_updates()
+
+func _on_startup_update_finished(result: Dictionary) -> void:
+	GLogger.info("启动自动检查更新完成：has_update=%s reason=%s" % [
+		str(result.get("has_update", false)), str(result.get("reason", ""))], "Main")
+
 ## UI状态改变回调
 func _on_state_changed(old_state: int, new_state: int) -> void:
 	var old_name = UiStatMGR.get_state_name(old_state)
