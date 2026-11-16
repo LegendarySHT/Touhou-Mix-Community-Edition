@@ -370,30 +370,34 @@ def run(args: argparse.Namespace) -> int:
         print("[DRY-RUN] 未执行导出与上传")
         return 0
 
-    # 写入提交数版本号；失败时文件未改，无需还原
-    if sv.run(write=True, git_build=True) != 0:
-        raise ReleaseError("sync_version.py 执行失败")
-    version, build = sv.read_history()
-    if build != sv.git_commit_count():
-        raise ReleaseError(f"build={build} 与 git 提交数={sv.git_commit_count()} 不一致")
-
-    check_monotonic(manifest_path, build, args.force)
-
-    tag = f"v{version}"
+    # 先做只读校验，避免校验失败时留下未还原的版本号文件
+    expected_build = sv.git_commit_count()
+    expected_version = f"{version_prefix()}.{expected_build}"
+    check_monotonic(manifest_path, expected_build, args.force)
+    tag = f"v{expected_version}"
     ensure_tag_absent(tag)
 
-    notes_text, changes = build_notes(version, args.notes_file)
-    notes_path = DIST_DIR / f"release-notes-{version}.md"
-    notes_path.parent.mkdir(parents=True, exist_ok=True)
-    notes_path.write_text(notes_text, encoding="utf-8")
-
-    # 版本号文件还原前先取条目快照（此时条目仍是新版本号）
-    entry = dict(current_history_entry(version))
-    entry["changes"] = changes or entry.get("changes", [])
-    if args.min_supported_build is not None:
-        entry["min_supported_build"] = args.min_supported_build
+    if sv.run(write=True, git_build=True) != 0:
+        raise ReleaseError("sync_version.py 执行失败")
 
     try:
+        version, build = sv.read_history()
+        if version != expected_version or build != expected_build:
+            raise ReleaseError(
+                f"版本号写入结果与预期不一致: {version}/{build} != {expected_version}/{expected_build}"
+            )
+
+        notes_text, changes = build_notes(version, args.notes_file)
+        notes_path = DIST_DIR / f"release-notes-{version}.md"
+        notes_path.parent.mkdir(parents=True, exist_ok=True)
+        notes_path.write_text(notes_text, encoding="utf-8")
+
+        # 版本号文件还原前先取条目快照（此时条目仍是新版本号）
+        entry = dict(current_history_entry(version))
+        entry["changes"] = changes or entry.get("changes", [])
+        if args.min_supported_build is not None:
+            entry["min_supported_build"] = args.min_supported_build
+
         artifact = export_windows(godot, version)
         if not args.keep_version_files:
             restore_version_files()
