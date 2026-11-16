@@ -34,6 +34,10 @@ extends Node
 
 class_name StorageManager
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "StorageManager"
+const SERVICE_DEPS := []
+
 static var instance: StorageManager
 
 ## 迁移日志文件名（存于引导目录）

@@ -1,6 +1,10 @@
 extends Node
 class_name AuthManager
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "AuthManager"
+const SERVICE_DEPS := ["NetManager"]
+
 ## 认证管理器：登录态、token 持久化、带认证的请求
 ## 通过 Main.gd 手动 add_child，使用 ServiceHub.auth 访问
 

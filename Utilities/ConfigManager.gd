@@ -25,6 +25,10 @@
 class_name ConfigManager
 extends Node
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "ConfigManager"
+const SERVICE_DEPS := ["StorageManager"]
+
 # ============ 单例实现 ============
 
 static var instance: ConfigManager:

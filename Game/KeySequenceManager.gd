@@ -6,6 +6,10 @@
 class_name KeySequenceManager
 extends Node
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "KeySequenceManager"
+const SERVICE_DEPS := ["ChartDB", "DataMGR"]
+
 ## 单例实例
 static var instance: KeySequenceManager
 

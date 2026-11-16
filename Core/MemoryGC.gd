@@ -2,6 +2,10 @@ extends Node
 
 class_name MemoryGC
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "MemoryGC"
+const SERVICE_DEPS := ["CommunityManager"]
+
 ## 后台内存回收管理器（Android 专用；非 Android 平台整体空转）
 ##
 ## 触发来自 addons/android_bridge 的 AndroidBridge 插件：

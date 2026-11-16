@@ -5,6 +5,10 @@ extends Node
 
 class_name FavoriteManager
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "FavoriteManager"
+const SERVICE_DEPS := ["DataMGR"]
+
 static var instance: FavoriteManager
 
 const FAVORITES_FILE = "favorites.json"

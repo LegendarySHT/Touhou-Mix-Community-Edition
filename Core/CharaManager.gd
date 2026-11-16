@@ -8,6 +8,10 @@ extends Node
 
 class_name CharaManager
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "CharaMGR"
+const SERVICE_DEPS := []
+
 ## 全局单例引用（由 ServiceHub 在 core 阶段实例化时设置）
 static var instance: CharaManager
 

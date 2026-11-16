@@ -1,6 +1,10 @@
 extends Node
 class_name ResourceManager
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "ResourceManager"
+const SERVICE_DEPS := []
+
 ## 资源下载管理器：管理 MIDI 等资源的下载、状态追踪
 ## 按需单例 `ServiceHub.resource`（见 Services/ServiceHub.gd），不是 autoload：
 ## 只有商店页会用到，没必要在启动时就占一个常驻节点。

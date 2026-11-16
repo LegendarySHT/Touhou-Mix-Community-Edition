@@ -5,6 +5,10 @@ extends Node
 
 class_name ScoreCalculator
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "ScoreCalculator"
+const SERVICE_DEPS := ["DataMGR"]
+
 # ============================================================
 #  常量 & 枚举
 # ============================================================

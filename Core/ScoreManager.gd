@@ -1,6 +1,10 @@
 extends Node
 class_name ScoreManager
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "ScoreManager"
+const SERVICE_DEPS := ["AuthManager"]
+
 ## 成绩管理器：成绩上传、排行榜查询、设备标识管理
 ## 通过 Main.gd 手动 add_child，使用 ServiceHub.score 访问
 

@@ -163,7 +163,6 @@ func _initialize_core_systems() -> void:
 	var config_def := ServiceDef.gd("ConfigManager", "res://Utilities/ConfigManager.gd")
 	config_def.phase = "core"
 	config_def.factory = func() -> Node: return ServiceHub.config
-	config_def.deps = ["StorageManager"]
 	config_def.on_started = func(_inst: Node) -> void:
 		var cfg := ServiceHub.config
 		GLogger.info("ConfigManager initialized", "Main")
@@ -183,27 +182,25 @@ func _initialize_core_systems() -> void:
 	hub.register(config_def)
 
 	# ---- 轻量内容管理器（原薄 autoload）：改为 core 阶段实例化，经静态 instance 访问 ----
+	# 依赖声明已下沉到各服务脚本的 SERVICE_DEPS 常量，注册时由 ServiceHub 自动读取。
 	var content_defs: Array = [
-		["SkinMGR", "res://Core/SkinManager.gd", []],
-		["ParticleMGR", "res://Core/ParticleManager.gd", []],
-		["CharaMGR", "res://Core/CharaManager.gd", []],
-		["SortEngine", "res://Core/SortingEngine.gd", []],
-		["TextScrollMGR", "res://Game/TextScrollMGR.gd", []],
+		["SkinMGR", "res://Core/SkinManager.gd"],
+		["ParticleMGR", "res://Core/ParticleManager.gd"],
+		["CharaMGR", "res://Core/CharaManager.gd"],
+		["SortEngine", "res://Core/SortingEngine.gd"],
+		["TextScrollMGR", "res://Game/TextScrollMGR.gd"],
 	]
 	for spec in content_defs:
 		var def := ServiceDef.gd(spec[0], spec[1])
 		def.phase = "core"
-		def.deps = spec[2]
 		hub.register(def)
 
 	var bt_def := ServiceDef.gd("AudioBtDetector", "res://Utilities/AudioBtDetector.gd")
 	bt_def.phase = "core"
-	bt_def.deps = ["PlaybackDisplay"]
 	hub.register(bt_def)
 
 	var fs_def := ServiceDef.gd("FileSystemManager", "res://Core/FileSystemManager.gd")
 	fs_def.phase = "core"
-	fs_def.deps = ["ConfigManager", "ChartDB", "SkinMGR", "ParticleMGR", "CharaMGR"]
 	# 数据就绪门：扫描合并完成才算真正就绪，供 service_ready("FileSystemManager") 等待
 	fs_def.ready_by = func(inst: Node) -> bool: return (inst as FileSystemManager).resources_scanned
 	fs_def.on_started = func(_inst: Node) -> void:
@@ -218,7 +215,6 @@ func _initialize_core_systems() -> void:
 
 	var import_def := ServiceDef.gd("ImportManager", "res://Core/ImportManager.gd")
 	import_def.phase = "core"
-	import_def.deps = ["FileSystemManager"]
 	import_def.on_started = func(_inst: Node) -> void:
 		GLogger.info("ImportManager initialized", "Main")
 		# 依赖导入管理器就绪后，触发文件系统「建目录 → 复制默认资源 → 导入外部文件 → 扫描」管线
@@ -228,22 +224,18 @@ func _initialize_core_systems() -> void:
 
 	var fav_def := ServiceDef.gd("FavoriteManager", "res://Core/FavoriteManager.gd")
 	fav_def.phase = "pre"
-	fav_def.deps = ["DataMGR"]
 	hub.register(fav_def)
 
 	var sc_def := ServiceDef.gd("ScoreCalculator", "res://Game/ScoreCalculator.gd")
 	sc_def.phase = "pre"
-	sc_def.deps = ["DataMGR"]
 	hub.register(sc_def)
 
 	var ksq_def := ServiceDef.gd("KeySequenceManager", "res://Game/KeySequenceManager.gd")
 	ksq_def.phase = "post"
-	ksq_def.deps = ["ChartDB", "DataMGR"]
 	hub.register(ksq_def)
 
 	var net_def := ServiceDef.gd("NetManager", "res://Core/NetManager.gd")
 	net_def.phase = "post"
-	net_def.deps = ["KeySequenceManager"]
 	net_def.on_started = func(_inst: Node) -> void:
 		var online_mode := ServiceHub.config.get_int("online_mode", 0)
 		ServiceHub.net.set_online_mode(online_mode == 1)
@@ -251,15 +243,14 @@ func _initialize_core_systems() -> void:
 	hub.register(net_def)
 
 	var post_list: Array = [
-		["AuthManager", "res://Core/AuthManager.gd", ["NetManager"]],
-		["ScoreManager", "res://Core/ScoreManager.gd", ["AuthManager"]],
-		["CommunityManager", "res://Core/CommunityManager.gd", ["ScoreManager"]],
-		["MemoryGC", "res://Core/MemoryGC.gd", ["CommunityManager"]],
+		["AuthManager", "res://Core/AuthManager.gd"],
+		["ScoreManager", "res://Core/ScoreManager.gd"],
+		["CommunityManager", "res://Core/CommunityManager.gd"],
+		["MemoryGC", "res://Core/MemoryGC.gd"],
 	]
 	for spec in post_list:
 		var def := ServiceDef.gd(spec[0], spec[1])
 		def.phase = "post"
-		def.deps = spec[2]
 		hub.register(def)
 
 	# ---- 按需（lazy）服务：不进启动队列，首次 .service(id) 时创建挂载 ----

@@ -20,6 +20,10 @@
 class_name ImportManager
 extends Node
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "ImportManager"
+const SERVICE_DEPS := ["FileSystemManager"]
+
 static var instance: ImportManager
 
 const AUDIO_EXTS: Array[String] = ["mp3", "wav", "ogg", "flac"]

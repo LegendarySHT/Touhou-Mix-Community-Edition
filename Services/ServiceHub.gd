@@ -10,6 +10,11 @@
 ##   - get(id) / lazy(id)   首次访问才实例化的非启动服务（on-demand）
 ##   - service_ready(id)    等待某服务「就绪」的协议（就绪不依赖启动顺序）
 ##
+## 依赖声明位置：服务脚本顶部的 const SERVICE_ID / SERVICE_DEPS（如
+##   Core/FileSystemManager.gd），register() 读取：SERVICE_DEPS 填入 ServiceDef.deps，
+##   SERVICE_ID 仅校验与注册 id 一致。Main 不再手写 deps。若需临时覆盖，注册前
+##   给 def.deps 赋值并把 def.deps_declared 置 true 即可阻止脚本常量覆盖。
+##
 ## 就绪语义：
 ##   - 缺省：节点入树（_ready 跑完）即视为就绪。
 ##   - 数据就绪门：服务可提供 ready_by Callable(instance)->bool，如
@@ -117,9 +122,33 @@ func register(def: ServiceDef) -> void:
 	if def == null or def.id.is_empty():
 		push_error("ServiceHub: 服务缺少 id")
 		return
+	# 依赖声明下沉到服务脚本：脚本顶部可用 const SERVICE_ID / SERVICE_DEPS 声明自身 id 与依赖，
+	# 注册时自动读取填入 def；Main 里显式赋的值（如 on_started 相关的动态依赖）优先。
+	_load_decl_from_script(def)
 	if _defs.has(def.id):
 		push_warning("ServiceHub: 服务 %s 重复注册，覆盖" % def.id)
 	_defs[def.id] = def
+
+
+## 从服务脚本读取 SERVICE_ID / SERVICE_DEPS 常量：SERVICE_ID 做一致性校验，
+## SERVICE_DEPS 在 Main 未显式声明时填入。脚本常量表在不实例化节点的情况下可读；
+## 加载失败时静默跳过（由 Main 显式声明兜底）。
+func _load_decl_from_script(def: ServiceDef) -> void:
+	var path := def.gd_script
+	if path.is_empty():
+		return
+	var script := load(path) as Script
+	if script == null:
+		return
+	var constants: Dictionary = script.get_script_constant_map()
+	# id：以注册处传入为准，脚本 SERVICE_ID 仅做一致性校验，防止 id 漂移
+	if constants.has(&"SERVICE_ID"):
+		var declared_id := str(constants[&"SERVICE_ID"])
+		if declared_id != def.id:
+			push_warning("ServiceHub: 服务 %s 的 SERVICE_ID(%s) 与注册 id 不一致" % [def.id, declared_id])
+	# deps：Main 未显式声明才采用脚本的 SERVICE_DEPS
+	if not def.deps_declared and constants.has(&"SERVICE_DEPS"):
+		def.deps = PackedStringArray(constants[&"SERVICE_DEPS"])
 
 
 ## 收编一个「由 Godot/其它路径已实例化」的服务（如保留的 autoload 锚点：

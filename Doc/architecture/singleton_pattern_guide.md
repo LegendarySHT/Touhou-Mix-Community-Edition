@@ -36,10 +36,13 @@
 
 `Main._initialize_core_systems()` 不再手写 `new() + add_child()` 固定顺序，而是：
 1. `ServiceHub.adopt(...)` 收编已由引擎实例化的 autoload 锚点（`EvtBus` / `GLogger` / `ChartDB` / 等），作为依赖节点。
-2. `ServiceHub.register(ServiceDef)` 声明管理器的创建方式、依赖与阶段，依赖图拓扑排序推导出启动顺序。
+2. `ServiceHub.register(ServiceDef)` 声明管理器的创建方式与阶段；**依赖由各服务脚本顶部的
+   `const SERVICE_ID / SERVICE_DEPS` 声明**，`register()` 时自动读取填入 `ServiceDef`，
+   Main 不再手写 `deps`（需临时覆盖时给 `def.deps` 赋值并置 `def.deps_declared = true`）。
 3. `ServiceHub.start_phase("core"/"pre"/"post")` 在入场动画前后分批实例化。
 
-依赖表达顺序，`phase` 只负责与入场动画切分；调整注册顺序或依赖列表不需要改业务逻辑。
+依赖顺序由服务脚本的 `SERVICE_DEPS` 推导，`phase` 只负责与入场动画切分；新增/调整依赖
+改服务脚本自身即可，不需要动 Main 的注册处。
 
 | 类 | 依赖（简化） | 说明 |
 |---|---|---|

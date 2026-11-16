@@ -15,6 +15,10 @@
 class_name VersionManager
 extends Node
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "VersionManager"
+const SERVICE_DEPS := []
+
 # ============ 按需单例 ============
 
 ## 首次访问时由 ServiceHub 创建并挂到懒挂载点

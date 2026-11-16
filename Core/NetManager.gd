@@ -1,6 +1,10 @@
 extends Node
 class_name NetManager
 
+## ServiceHub 服务声明：id 与依赖，注册时自动读取（见 Services/ServiceHub.gd）
+const SERVICE_ID := "NetManager"
+const SERVICE_DEPS := ["KeySequenceManager"]
+
 ## 在线管理器：HTTP 请求封装、服务端连接管理、延迟测量
 ## 通过 Main.gd 手动 add_child，使用 ServiceHub.net 访问
 

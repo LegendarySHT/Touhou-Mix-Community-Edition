@@ -34,8 +34,12 @@ var node_name: String = ""
 ## （仅语义，ServiceHub 会根据本值选择实际父节点）。
 var parent: String = "hub"
 
-## 依赖服务 id 列表（必须先于本服务就绪）
+## 依赖服务 id 列表（必须先于本服务就绪）。
+## 可由服务脚本顶部 const SERVICE_DEPS 声明，ServiceHub.register 自动读取；
+## 若由 Main 显式赋值，请把 deps_declared 置 true 以阻止脚本常量覆盖。
 var deps: PackedStringArray = []
+## deps 是否已由调用方显式指定（true 时忽略脚本的 SERVICE_DEPS 常量）
+var deps_declared: bool = false
 
 ## 是否属于「非启动必需」服务：不在 start_all() 的拓扑启动队列里，
 ## 而是首次 ServiceHub.get(id) 时才实例化（如 VersionManager / ResourceManager）。
