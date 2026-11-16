@@ -2,7 +2,7 @@ extends Node
 class_name AuthManager
 
 ## 认证管理器：登录态、token 持久化、带认证的请求
-## 通过 Main.gd 手动 add_child，使用 AuthManager.instance 访问
+## 通过 Main.gd 手动 add_child，使用 ServiceHub.auth 访问
 
 static var instance: AuthManager = null
 
@@ -39,7 +39,7 @@ func _ready() -> void:
 
 ## 从本地加载已保存的会话
 func _load_session() -> void:
-	var data = ConfigManager.instance.load_json_file(get_token_file())
+	var data = ServiceHub.config.load_json_file(get_token_file())
 	if data.is_empty():
 		return
 	var expires_at = data.get("expires_at", 0)
@@ -64,7 +64,7 @@ func _load_session() -> void:
 func _save_session(data: Dictionary) -> void:
 	current_user = data
 	ever_authenticated = true
-	ConfigManager.instance.save_json_file(get_token_file(), data, true)
+	ServiceHub.config.save_json_file(get_token_file(), data, true)
 	EvtBus.auth_changed.emit(current_user)
 
 ## 清除本地会话
@@ -92,9 +92,9 @@ func _try_refresh() -> bool:
 		_is_refreshing = false
 		_clear_session()
 		return false
-	var result = await NetManager.instance._request(
+	var result = await ServiceHub.net._request(
 		"POST",
-		"%s/api/auth/refresh" % NetManager.instance.server_url,
+		"%s/api/auth/refresh" % ServiceHub.net.server_url,
 		{ "refreshToken": refresh_token }
 	)
 	if not result.ok or result.data == null or not result.data is Dictionary:
@@ -140,9 +140,9 @@ func ensure_valid_token() -> bool:
 ## 保留方法是为了给调用方一个明确语义（code == "register_requires_web"），
 ## UI 据此引导玩家去网页注册，而不是显示"HTTP 428"这种无从下手的提示。
 func register(username: String, password: String) -> Dictionary:
-	var result = await NetManager.instance._request(
+	var result = await ServiceHub.net._request(
 		"POST",
-		"%s/api/auth/register" % NetManager.instance.server_url,
+		"%s/api/auth/register" % ServiceHub.net.server_url,
 		{ "username": username, "password": password }
 	)
 	if not result.ok:
@@ -182,9 +182,9 @@ func _describe_failure(result: Dictionary) -> Dictionary:
 ## 成功后自动保存 token
 ## 返回 { "ok": bool, "status": int, "error": String, "code": String, "message": String }
 func login(username: String, password: String) -> Dictionary:
-	var result = await NetManager.instance._request(
+	var result = await ServiceHub.net._request(
 		"POST",
-		"%s/api/auth/login" % NetManager.instance.server_url,
+		"%s/api/auth/login" % ServiceHub.net.server_url,
 		{ "username": username, "password": password }
 	)
 	if not result.ok:
@@ -219,8 +219,8 @@ func authed_request(method: String, path: String, body: Variant = null, timeout:
 	# 确保 access token 有效（过期则自动 refresh）
 	if not await ensure_valid_token():
 		return { "ok": false, "status": 0, "data": null, "error": "token_expired" }
-	var url = "%s%s" % [NetManager.instance.server_url, path]
-	return await NetManager.instance._request(
+	var url = "%s%s" % [ServiceHub.net.server_url, path]
+	return await ServiceHub.net._request(
 		method, url, body, PackedStringArray(), current_user.access_token, timeout
 	)
 

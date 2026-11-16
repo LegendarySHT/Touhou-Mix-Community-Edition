@@ -88,13 +88,8 @@ func _ready() -> void:
 	# 此刻读只会拿到默认值、并给每个键附一条 "Config key not found" 告警。
 	# Main 在配置加载完成后会调 push_global_playback_config() + refresh_audio_delay()
 	# ——那才是旧实现（手动单例，_ready 晚于配置加载）的等价时点。
-	# 输出设备变化（蓝牙/有线插拔）事件订阅：Android 由 Java AudioDeviceCallback 触发，
-	# 立刻重算延迟预设（息屏/后台也不会漏）。
-	# 【必须有这条订阅】旧实现只在事件通路不可用时才轮询兜底；若事件通路就绪却没人订阅，
-	# 事件发了也无人处理，而轮询又主动让位 → 播放中插拔蓝牙彻底没人响应。
-	if AudioBtDetector != null and AudioBtDetector.has_signal("output_changed"):
-		if not AudioBtDetector.output_changed.is_connected(_on_audio_output_changed):
-			AudioBtDetector.output_changed.connect(_on_audio_output_changed)
+	# 蓝牙输出变化事件订阅由 AudioBtDetector 在自身 _ready 里建立（届时本实例已就位），
+	# 这里无需重复订阅。
 
 ## 输出设备变化（插拔蓝牙/有线）：立刻重算延迟预设
 func _on_audio_output_changed() -> void:
@@ -112,7 +107,7 @@ func _on_audio_output_changed() -> void:
 func push_global_playback_config() -> void:
 	if MeltySynth == null or not MeltySynth.has_method("set_global_playback_config"):
 		return
-	var cfg := ConfigManager.instance
+	var cfg := ServiceHub.config
 	if cfg == null:
 		return
 	# 默认值不写在这里：config.ini 是唯一权威来源（见 Game/PlayerSettings.gd 头部说明）
@@ -452,7 +447,7 @@ func _resolve_parse_paths(path: String) -> Dictionary:
 	return {"read": path, "key": path}
 
 func _locate_midi_file(midi_data: MidiData) -> String:
-	var filesystem_manager = FileSystemManager.instance
+	var filesystem_manager = ServiceHub.fs
 	if filesystem_manager == null:
 		return ""
 	var lookup = filesystem_manager.lookup_chart(
@@ -508,7 +503,7 @@ func get_backend_volume_db() -> float:
 	return MeltySynth.get_volume_db() if MeltySynth != null else -20.0
 
 func load_soundfont_from_config() -> void:
-	var sf_name: String = str(ConfigManager.instance.get_value("soundfont_file"))
+	var sf_name: String = str(ServiceHub.config.get_value("soundfont_file"))
 	sf_name = sf_name.replace(".sf2", "").replace("[内置]", "").strip_edges()
 	if not sf_name.is_empty() and set_soundfont(sf_name):
 		return
@@ -590,7 +585,7 @@ var _last_switch_notify_ms: float = -1000000.0
 ## 早退会让新校准值永远不生效，必须每次都重读一次配置（一次 ConfigManager.get_int，可忽略）。
 ## 只有"输出类型变化引发的重建音频桥"才需要按变化与否去重。
 func refresh_audio_delay() -> void:
-	var is_bt := AudioBtDetector.is_bluetooth_output(true)
+	var is_bt := ServiceHub.audioBt.is_bluetooth_output(true)
 	var first_check := not _bt_state_initialized
 	var output_changed := is_bt != _delay_using_bt
 	_bt_state_initialized = true
@@ -618,7 +613,7 @@ func active_delay_key() -> String:
 func _apply_delay_preset() -> void:
 	var key := "audio_playback_delay_bt" if _delay_using_bt else "audio_playback_delay"
 	var default_value := 200 if _delay_using_bt else 0
-	audio_delay_ms = float(ConfigManager.instance.get_int(key, default_value))
+	audio_delay_ms = float(ServiceHub.config.get_int(key, default_value))
 	if MeltySynth != null:
 		MeltySynth.set_audio_delay_ms(audio_delay_ms)
 	# 生效值只在"预设键或数值变化"时打一条：设备切换后能直接从 logcat 看到最终生效的延迟
@@ -633,7 +628,7 @@ func _notify_output_switched(is_bt: bool) -> void:
 	if now - _last_switch_notify_ms < SWITCH_NOTIFY_COOLDOWN_MS:
 		return
 	_last_switch_notify_ms = now
-	var dev := AudioBtDetector.get_output_name().strip_edges()
+	var dev := ServiceHub.audioBt.get_output_name().strip_edges()
 	if dev.is_empty():
 		# Android 未取端点名，按输出类型给个通称
 		dev = "蓝牙设备" if is_bt else "有线/扬声器"
@@ -905,7 +900,7 @@ func set_player_volumes(midi_linear: float, vocal_db: float) -> void:
 	set_vocal_volume_db(v)
 	if MeltySynth != null:
 		MeltySynth.set_player_volumes(m, clampf(db_to_linear(v), 0.0, 4.0))
-	var cfg := ConfigManager.instance
+	var cfg := ServiceHub.config
 	if cfg != null:
 		cfg.set_value(PLAYER_MIDI_KEY, m, PLAYER_VOL_SECTION)
 		cfg.set_value(PLAYER_VOCAL_KEY, v, PLAYER_VOL_SECTION)
@@ -914,7 +909,7 @@ func set_player_volumes(midi_linear: float, vocal_db: float) -> void:
 
 ## 启动时恢复上次的播放器页音量（没有存过则不覆盖，走全局默认/0dB）
 func _load_player_volumes() -> void:
-	var cfg := ConfigManager.instance
+	var cfg := ServiceHub.config
 	if cfg == null or MeltySynth == null:
 		return
 	var m := cfg.get_float(PLAYER_MIDI_KEY, -1.0)
@@ -946,7 +941,7 @@ func _process(delta: float) -> void:
 func _tick_bluetooth_fallback(delta: float) -> void:
 	if not is_playing or OS.get_name() != "Android":
 		return
-	if AudioBtDetector.has_output_listener():
+	if ServiceHub.audioBt.has_output_listener():
 		return
 	_bt_poll_accum += delta
 	if _bt_poll_accum < BT_POLL_INTERVAL_SEC:
@@ -962,9 +957,9 @@ func _tick_volume_save(delta: float) -> void:
 		return
 	_vol_save_pending = false
 	GLogger.info("Player volume saved: midi=%.2f vocal=%.1fdB" % [
-		ConfigManager.instance.get_float(PLAYER_MIDI_KEY, -1.0),
-		ConfigManager.instance.get_float(PLAYER_VOCAL_KEY, 0.0)], "PlaybackDisplay")
-	var cfg := ConfigManager.instance
+		ServiceHub.config.get_float(PLAYER_MIDI_KEY, -1.0),
+		ServiceHub.config.get_float(PLAYER_VOCAL_KEY, 0.0)], "PlaybackDisplay")
+	var cfg := ServiceHub.config
 	if cfg != null:
 		cfg.save_config(ConfigManager.USER_CONFIG_PATH, cfg.get_current_config())
 

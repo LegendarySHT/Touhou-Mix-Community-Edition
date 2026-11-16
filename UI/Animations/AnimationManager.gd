@@ -115,7 +115,7 @@ func animate_fade_in(target: Node, duration: float = DURATION_NORMAL,
 	tween.set_trans(Tween.TRANS_CUBIC)
 	if not target.visible:
 		target.visible = true
-	TextScrollMGR.resume_page(target)
+	ServiceHub.textScroll.resume_page(target)
 
 	target.modulate.a = 0.0
 	tween.tween_property(target, "modulate:a", 1.0, duration)
@@ -133,7 +133,7 @@ func animate_fade_out(target: Node, duration: float = DURATION_NORMAL,
 	tween.finished.connect(func() -> void:
 		if is_instance_valid(target):
 			target.visible = false
-			TextScrollMGR.suspend_page(target)
+			ServiceHub.textScroll.suspend_page(target)
 	)
 	return tween
 
@@ -240,7 +240,7 @@ func animate_fade_scale_in(target: Control, from_scale: Vector2 = Vector2(1.1, 1
 	tween.set_trans(Tween.TRANS_CUBIC)
 	if not target.visible:
 		target.visible = true
-	TextScrollMGR.resume_page(target)
+	ServiceHub.textScroll.resume_page(target)
 	target.modulate.a = 0.0
 	target.offset_transform_enabled = true
 	target.offset_transform_scale = from_scale
@@ -259,7 +259,7 @@ func animate_fade_scale_out(target: Control, to_scale: Vector2 = Vector2(0.96, 0
 	tween.finished.connect(func() -> void:
 		if is_instance_valid(target):
 			target.visible = false
-			TextScrollMGR.suspend_page(target)
+			ServiceHub.textScroll.suspend_page(target)
 	)
 	return tween
 
@@ -271,7 +271,7 @@ func animate_fade_slide_in(target: Control, from_offset: Vector2,
 	tween.set_trans(Tween.TRANS_CUBIC)
 	if not target.visible:
 		target.visible = true
-	TextScrollMGR.resume_page(target)
+	ServiceHub.textScroll.resume_page(target)
 	target.modulate.a = 0.0
 	target.offset_transform_enabled = true
 	target.offset_transform_position = from_offset
@@ -305,7 +305,7 @@ func animate_fade_slide_out(target: Control, to_offset: Vector2,
 	tween.finished.connect(func() -> void:
 		if is_instance_valid(target):
 			target.visible = false
-			TextScrollMGR.suspend_page(target)
+			ServiceHub.textScroll.suspend_page(target)
 	)
 	return tween
 
@@ -317,7 +317,7 @@ func animate_fade_slide_scale_in(target: Control, from_offset: Vector2, from_sca
 	tween.set_trans(Tween.TRANS_CUBIC)
 	if not target.visible:
 		target.visible = true
-	TextScrollMGR.resume_page(target)
+	ServiceHub.textScroll.resume_page(target)
 	target.modulate.a = 0.0
 	target.offset_transform_enabled = true
 	target.offset_transform_position = from_offset
@@ -629,7 +629,7 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 				sa_tween.finished.connect(func() -> void:
 					if is_instance_valid(sa):
 						sa.visible = false
-						TextScrollMGR.suspend_page(sa)
+						ServiceHub.textScroll.suspend_page(sa)
 						sa.offset_transform_position = Vector2.ZERO
 				)
 
@@ -642,30 +642,30 @@ func animate_ui_out(ui_name: String, _old_state: UIStateManager.UIState, new_sta
 			tween = animate_offset_to(ani_comp, Vector2(-1500, 0), 0.25, tween_id)
 			tween.finished.connect(func() -> void:
 				ani_comp.visible = false
-				TextScrollMGR.suspend_page(ani_comp)
+				ServiceHub.textScroll.suspend_page(ani_comp)
 			)
 		"Player_Info":
 			var player_info_tween := animate_offset_to(ani_comp, Vector2(ani_comp.size.x * 1.3, ani_comp.offset_transform_position.y), 0.55, "PlayerInfoPosition")
 			player_info_tween.finished.connect(func() -> void:
 				if is_instance_valid(ani_comp):
-					TextScrollMGR.suspend_page(ani_comp)
+					ServiceHub.textScroll.suspend_page(ani_comp)
 			)
 		"Character":
 			var character_tween := animate_offset_to(ani_comp, Vector2(0, ani_comp.size.y), 0.35, "CharacterPosition")
 			character_tween.finished.connect(func() -> void:
 				if is_instance_valid(ani_comp):
-					TextScrollMGR.suspend_page(ani_comp)
+					ServiceHub.textScroll.suspend_page(ani_comp)
 			)
 		"Shortcut_Menu":
 			var shortcut_tween: Tween = ani_comp.play_transition_animation(true)
 			shortcut_tween.finished.connect(func() -> void:
 				if is_instance_valid(ani_comp):
-					TextScrollMGR.suspend_page(ani_comp)
+					ServiceHub.textScroll.suspend_page(ani_comp)
 			)
 	if tween and tween.is_valid() and is_instance_valid(ani_comp):
 		tween.finished.connect(func() -> void:
 			if is_instance_valid(ani_comp):
-				TextScrollMGR.suspend_page(ani_comp)
+				ServiceHub.textScroll.suspend_page(ani_comp)
 		)
 	return tween
 
@@ -687,19 +687,19 @@ func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween
 	if is_instance_valid(ani_comp) and ani_comp is CanvasItem:
 		ani_comp.visible = true
 		ani_comp.modulate.a = 1.0
-		TextScrollMGR.resume_page(ani_comp)
+		ServiceHub.textScroll.resume_page(ani_comp)
 
 	match ui_name:
 		"Album_List":
 			animate_fade_in(album_list, 0.35, "AlbumListFadeIn")
 			song_list.visible = false
-			TextScrollMGR.suspend_page(song_list)
+			ServiceHub.textScroll.suspend_page(song_list)
 			
 			# 静态 SelectedAlbum 常驻：回到 AlbumView 时确保隐藏复位（原 SS 为临时节点此处 queue_free）
 			var sa := GlobalNodes.selected_album
 			if sa:
 				sa.visible = false
-				TextScrollMGR.suspend_page(sa)
+				ServiceHub.textScroll.suspend_page(sa)
 				sa.modulate.a = 1.0
 				sa.offset_transform_position = Vector2.ZERO
 			
@@ -721,14 +721,14 @@ func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween
 				if not album_data.is_empty():
 					sa.set_display_album(album_data)
 				sa.visible = true
-				TextScrollMGR.resume_page(sa)
+				ServiceHub.textScroll.resume_page(sa)
 				sa.modulate.a = 1.0
 				sa.offset_transform_enabled = true
 				sa.offset_transform_position = Vector2(-1200, 0)
 				animate_offset_back(sa, 0.35, "SSPosition")
 
 			song_list.visible = true
-			TextScrollMGR.resume_page(song_list)
+			ServiceHub.textScroll.resume_page(song_list)
 			song_list.offset_transform_position = Vector2(0, -1150)
 			animate_offset_back(song_list, 0.15, tween_id)
 			tween = animate_fade_in(song_list, 0.4, "SongListFadeIn")
@@ -741,7 +741,7 @@ func animate_ui_in(ui_name: String, _old_state: UIStateManager.UIState) -> Tween
 			# 离线模式下不显示玩家面板（仅检查 online_mode 配置，与 RB_Btn 商店图标一致）
 			if not NetManager.is_online_mode():
 				ani_comp.visible = false
-				TextScrollMGR.suspend_page(ani_comp)
+				ServiceHub.textScroll.suspend_page(ani_comp)
 				return null
 			ani_comp.offset_transform_position = Vector2(900, 200)
 			animate_offset_back(ani_comp, 0.35, "PlayerInfoPosition")

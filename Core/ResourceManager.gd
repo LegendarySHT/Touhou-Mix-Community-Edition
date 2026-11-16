@@ -2,7 +2,7 @@ extends Node
 class_name ResourceManager
 
 ## 资源下载管理器：管理 MIDI 等资源的下载、状态追踪
-## 懒加载单例 `ResourceManager.instance`（见 Utilities/LazyService.gd），不是 autoload：
+## 按需单例 `ServiceHub.resource`（见 Services/ServiceHub.gd），不是 autoload：
 ## 只有商店页会用到，没必要在启动时就占一个常驻节点。
 ## 顺带修正了一个时序问题：autoload 的 _ready 早于 FileSystemManager 建立，
 ## 那时的 _refresh_local_states() 恒为空转；改为懒加载后首次访问时索引已经就绪。
@@ -22,12 +22,11 @@ const PROGRESS_POLL_INTERVAL := 0.15
 ## 等这一阵下载停下来再通知一次
 const DATA_RELOAD_DEBOUNCE := 1.0
 
-## 懒加载单例：首次访问时创建并挂入场景树（见 Utilities/LazyService.gd）
+## 按需单例：首次访问时由 ServiceHub 创建并挂到懒挂载点
 static var instance: ResourceManager:
 	get:
 		if _instance == null:
-			_instance = ResourceManager.new()
-			LazyService.mount(_instance, "ResourceManager")
+			_instance = ServiceHub.service("ResourceManager") as ResourceManager
 		return _instance
 
 static var _instance: ResourceManager = null
@@ -80,9 +79,9 @@ func _schedule_data_reload() -> void:
 func _refresh_local_states() -> void:
 	_download_states.clear()
 	invalidate_local_vocal_cache()
-	if FileSystemManager.instance == null:
+	if ServiceHub.fs == null:
 		return
-	for hash_key in FileSystemManager.instance._hash_to_folder:
+	for hash_key in ServiceHub.fs._hash_to_folder:
 		_download_states[hash_key] = DownloadState.DOWNLOADED
 
 # ========== MIDI 资源 API ==========
@@ -93,13 +92,13 @@ func _refresh_local_states() -> void:
 ## 返回 {ok, data: {charts: [], total: int}}
 func get_chart_list(page: int = 1, limit: int = 20, search: String = "",
 		sort: String = "", order: String = "") -> Dictionary:
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return {"ok": false, "error": "offline"}
 	var url := "%s/api/charts?page=%d&limit=%d&search=%s&sort=%s&order=%s" % [
-		NetManager.instance.server_url, page, limit,
+		ServiceHub.net.server_url, page, limit,
 		search.uri_encode(), sort.uri_encode(), order.uri_encode()
 	]
-	return await NetManager.instance._request("GET", url, null)
+	return await ServiceHub.net._request("GET", url, null)
 
 ## 下载 MIDI 到本地
 ## on_progress: 可选进度回调 Callable(stage: int, percent: float)——阶段见 DownloadStage，
@@ -112,7 +111,7 @@ func get_chart_list(page: int = 1, limit: int = 20, search: String = "",
 ## 返回 {"ok": bool, "error": String}
 func download_chart(chart_hash: String, on_progress: Callable = Callable(),
 		hint: Dictionary = {}) -> Dictionary:
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return {"ok": false, "error": "offline"}
 	if chart_hash.is_empty():
 		return {"ok": false, "error": "hash_empty"}
@@ -134,7 +133,7 @@ func download_chart(chart_hash: String, on_progress: Callable = Callable(),
 ## 随 hint 附带：设置开启且有 vocal 时并行下载，失败不阻塞整体流程。
 func _download_chart_parallel(chart_hash: String, safe_hash: String,
 		on_progress: Callable, hint: Dictionary) -> Dictionary:
-	var base_url := NetManager.instance.server_url
+	var base_url := ServiceHub.net.server_url
 	var meta_url := "%s/api/charts/%s" % [base_url, safe_hash]
 	var midi_url := "%s/media/charts/%s.mid" % [base_url, safe_hash]
 	# 封面地址走内容寻址 coverUrl（hint 由商店列表项透传）：同图同 URL、换图换 URL，
@@ -240,8 +239,8 @@ func _download_chart_sequential(chart_hash: String, safe_hash: String,
 		on_progress: Callable) -> Dictionary:
 	# 1. 获取元数据
 	_report_progress(on_progress, DownloadStage.METADATA, -1.0)
-	var meta_url := "%s/api/charts/%s" % [NetManager.instance.server_url, safe_hash]
-	var meta_result := await NetManager.instance._request("GET", meta_url, null)
+	var meta_url := "%s/api/charts/%s" % [ServiceHub.net.server_url, safe_hash]
+	var meta_result := await ServiceHub.net._request("GET", meta_url, null)
 	if not meta_result.get("ok", false):
 		_download_states[chart_hash] = DownloadState.FAILED
 		return {"ok": false, "error": "metadata_fetch_failed: %s" % str(meta_result.get("error", ""))}
@@ -265,7 +264,7 @@ func _download_chart_sequential(chart_hash: String, safe_hash: String,
 	if cover_needed:
 		# 封面地址走内容寻址 coverUrl：串行路径没有列表项 hint，URL 来自刚取回的元数据；
 		# 换图必换 URL，不会把边缘旧图存成本地 cover.jpg。
-		var cover_url := CoverUrl.from_chart(NetManager.instance.server_url, safe_hash, chart_data)
+		var cover_url := CoverUrl.from_chart(ServiceHub.net.server_url, safe_hash, chart_data)
 		if _try_cover_from_cache(cover_url, cover_path):
 			_cover_result = {"ok": true}
 			_cover_done = true
@@ -289,14 +288,14 @@ func _download_chart_sequential(chart_hash: String, safe_hash: String,
 	if vocal_needed:
 		vocal_path = chart_dir.path_join("vocal.%s" % vocal_format)
 		# 串行路径没有列表项 hint，URL 来自刚取回的元数据；同样走 VocalUrl。
-		var vocal_url := VocalUrl.from_chart(NetManager.instance.server_url, safe_hash, chart_data)
+		var vocal_url := VocalUrl.from_chart(ServiceHub.net.server_url, safe_hash, chart_data)
 		Callable(self, "_download_file").call(vocal_url, vocal_path,
 			int(chart_data.get("vocalSize", 0)), 3,
 			Callable(self, "_on_vocal_downloaded"), on_progress, DownloadStage.VOCAL)
 
 	# 4. 下载 MIDI：走可缓存媒体路径 /media/charts/{hash}.mid（CF 边缘命中 ~2s），
 	#    计数用并行 beacon 上报（不等待、失败静默）
-	var midi_url := "%s/media/charts/%s.mid" % [NetManager.instance.server_url, safe_hash]
+	var midi_url := "%s/media/charts/%s.mid" % [ServiceHub.net.server_url, safe_hash]
 	var midi_path := chart_dir.path_join("song.mid")
 	_report_download(safe_hash)
 	var midi_result: Dictionary = await _download_file(midi_url, midi_path,
@@ -349,11 +348,11 @@ func _finalize_download(chart_hash: String, chart_data: Dictionary, chart_dir: S
 	# 全量 rescan 会清空重建全部索引、重扫皮肤/特效/音源/背景，还要等整个曲库的
 	# 后台校验跑完才算收尾——单首要白等一秒多，批量下载时这笔开销会逐首累积
 	_report_progress(on_progress, DownloadStage.RESCAN, -1.0)
-	if FileSystemManager.instance:
+	if ServiceHub.fs:
 		var folder_name := chart_dir.get_file()
-		await FileSystemManager.instance.refresh_chart_folders([folder_name])
+		await ServiceHub.fs.refresh_chart_folders([folder_name])
 		# 兜底：文件既已落盘就直接登记反向索引，不再把状态判定绑在扫描时序上
-		FileSystemManager.instance.register_chart_hash(chart_hash, folder_name)
+		ServiceHub.fs.register_chart_hash(chart_hash, folder_name)
 		# 曲库数据层跟着重建（与单文件导入后走的是同一条链路；批量下载时防抖成一次）
 		_schedule_data_reload()
 
@@ -584,10 +583,10 @@ func _download_file_impl(url: String, save_path: String, expected_size: int, max
 ## 是合法姿势；切勿改成 `var r = _request(...)`——那会触发引擎运行时错误
 ## "Trying to call an async function without await"。
 func _report_download(chart_hash: String) -> void:
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return
-	var url := "%s/api/charts/%s/downloaded" % [NetManager.instance.server_url, chart_hash]
-	NetManager.instance._request("POST", url, null)
+	var url := "%s/api/charts/%s/downloaded" % [ServiceHub.net.server_url, chart_hash]
+	ServiceHub.net._request("POST", url, null)
 
 ## 封面并行下载完成回调（经 _download_file 的 on_done 触发）：置位信箱，
 ## 唤醒 download_chart 中的 join 轮询
@@ -615,15 +614,15 @@ func _on_vocal_downloaded(result: Dictionary) -> void:
 ## 与 config.ini 默认值一致——ConfigManager 不可用（单测/极早期初始化）时按开启处理。
 ## 关闭时仅影响「随谱面一并下载」，不影响 download_vocal() 单独补下入口
 func _vocal_download_enabled() -> bool:
-	if ConfigManager.instance == null:
+	if ServiceHub.config == null:
 		return true
-	return ConfigManager.instance.get_int("download_vocal", 1) == 1
+	return ServiceHub.config.get_int("download_vocal", 1) == 1
 
 ## 拉取谱面元数据（供三请求并行路径使用）：完成时经 on_done 回调回收结果。
 ## ⚠️ 由 download_chart 以**语句形式** Callable 启动（协程状态禁止赋值给变量，
 ## 见 download_chart 注释），结果经 on_done 传回信箱
 func _fetch_metadata(meta_url: String, on_done: Callable) -> void:
-	var result: Dictionary = await NetManager.instance._request("GET", meta_url, null)
+	var result: Dictionary = await ServiceHub.net._request("GET", meta_url, null)
 	if on_done.is_valid():
 		on_done.call(result)
 
@@ -693,11 +692,11 @@ func is_chart_downloaded(chart_hash: String) -> bool:
 ## 已下载谱面的本地封面路径（未下载 / 只剩默认封面时返回空串）。
 ## 供商店这类远程列表复用本地封面，避免同一张图再走一次网络
 func get_local_cover_path(chart_hash: String) -> String:
-	if chart_hash.is_empty() or FileSystemManager.instance == null:
+	if chart_hash.is_empty() or ServiceHub.fs == null:
 		return ""
 	if get_download_state(chart_hash) != DownloadState.DOWNLOADED:
 		return ""
-	var path := FileSystemManager.instance.get_cover_path_by_ids(chart_hash, chart_hash)
+	var path := ServiceHub.fs.get_cover_path_by_ids(chart_hash, chart_hash)
 	if path.is_empty() or path == FileSystemManager.DEFAULT_COVER_PATH:
 		return ""
 	return path
@@ -717,9 +716,9 @@ func invalidate_local_vocal_cache() -> void:
 	_local_vocal_memo.clear()
 
 func _probe_local_vocal(chart_hash: String) -> bool:
-	if FileSystemManager.instance == null:
+	if ServiceHub.fs == null:
 		return false
-	var folder := str(FileSystemManager.instance._hash_to_folder.get(chart_hash, ""))
+	var folder := str(ServiceHub.fs._hash_to_folder.get(chart_hash, ""))
 	if folder.is_empty():
 		return false
 	var dir := DirAccess.open(FileSystemManager.CHARTS_DIR.path_join(folder))
@@ -738,13 +737,13 @@ func get_download_state(chart_hash: String) -> DownloadState:
 		# 缓存的 DOWNLOADED 会残留，导致 StoreView 仍显示"已下载"且点击无反应。
 		# 已下载状态以文件系统索引为准：命中缓存时再校验 _hash_to_folder，不存在则自愈回落。
 		if cached == DownloadState.DOWNLOADED:
-			if FileSystemManager.instance and FileSystemManager.instance._hash_to_folder.has(chart_hash):
+			if ServiceHub.fs and ServiceHub.fs._hash_to_folder.has(chart_hash):
 				return cached as DownloadState
 			_download_states.erase(chart_hash)
 			return DownloadState.NOT_DOWNLOADED
 		return cached as DownloadState
 	# 检查 FileSystemManager 是否有该 hash
-	if FileSystemManager.instance and FileSystemManager.instance._hash_to_folder.has(chart_hash):
+	if ServiceHub.fs and ServiceHub.fs._hash_to_folder.has(chart_hash):
 		_download_states[chart_hash] = DownloadState.DOWNLOADED
 		return DownloadState.DOWNLOADED
 	return DownloadState.NOT_DOWNLOADED
@@ -758,22 +757,22 @@ func get_download_state(chart_hash: String) -> DownloadState:
 ## 幂等：本地 vocal.<ext> 已存在且字节数与服务端一致时直接返回 ok。
 ## 返回 {"ok": bool, "error": String}
 func download_vocal(target_hash: String) -> Dictionary:
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return {"ok": false, "error": "offline"}
 	var safe_hash := _sanitize_hash(target_hash)
 	if safe_hash.is_empty():
 		return {"ok": false, "error": "invalid_hash"}
 	# 本地必须已有该谱面目录：本函数是「补下」，不负责谱面本体
 	var folder_name := ""
-	if FileSystemManager.instance and FileSystemManager.instance._hash_to_folder.has(safe_hash):
-		folder_name = str(FileSystemManager.instance._hash_to_folder[safe_hash])
+	if ServiceHub.fs and ServiceHub.fs._hash_to_folder.has(safe_hash):
+		folder_name = str(ServiceHub.fs._hash_to_folder[safe_hash])
 	if folder_name.is_empty():
 		return {"ok": false, "error": "chart_not_downloaded"}
 	var chart_dir := FileSystemManager.CHARTS_DIR.path_join(folder_name)
 
 	# 元数据：hasVocal / vocalFormat / vocalSize（与列表/详情同源）
-	var meta_url := "%s/api/charts/%s" % [NetManager.instance.server_url, safe_hash]
-	var meta_result: Dictionary = await NetManager.instance._request("GET", meta_url, null)
+	var meta_url := "%s/api/charts/%s" % [ServiceHub.net.server_url, safe_hash]
+	var meta_result: Dictionary = await ServiceHub.net._request("GET", meta_url, null)
 	if not meta_result.get("ok", false):
 		return {"ok": false, "error": "metadata_fetch_failed: %s" % str(meta_result.get("error", ""))}
 	var chart_data: Dictionary = meta_result.data
@@ -790,7 +789,7 @@ func download_vocal(target_hash: String) -> Dictionary:
 
 	# 人声地址走 VocalUrl：优先元数据里的内容寻址 vocalUrl（真实扩展名 → 边缘可缓存），
 	# 老服务端缺该字段时回退旧端点。
-	var vocal_url := VocalUrl.from_chart(NetManager.instance.server_url, safe_hash, chart_data)
+	var vocal_url := VocalUrl.from_chart(ServiceHub.net.server_url, safe_hash, chart_data)
 	var result: Dictionary = await _download_file(vocal_url, vocal_path,
 		int(chart_data.get("vocalSize", 0)), 3)
 	invalidate_local_vocal_cache()
@@ -798,8 +797,8 @@ func download_vocal(target_hash: String) -> Dictionary:
 		return result
 
 	# 刷新本地索引（vocal_files_index / DB audio_files），让 MidiData 立刻指到新人声
-	if FileSystemManager.instance:
-		await FileSystemManager.instance.rescan_resources()
+	if ServiceHub.fs:
+		await ServiceHub.fs.rescan_resources()
 	GLogger.info("Vocal downloaded: %s (%s)" % [safe_hash, vocal_format], "ResMGR")
 	return {"ok": true}
 

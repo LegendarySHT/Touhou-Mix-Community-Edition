@@ -2,7 +2,7 @@ extends Node
 class_name NetManager
 
 ## 在线管理器：HTTP 请求封装、服务端连接管理、延迟测量
-## 通过 Main.gd 手动 add_child，使用 NetManager.instance 访问
+## 通过 Main.gd 手动 add_child，使用 ServiceHub.net 访问
 
 static var instance: NetManager = null
 
@@ -78,7 +78,7 @@ func _ready() -> void:
 
 ## 从配置加载服务器地址
 func _load_server_url() -> void:
-	var addr = ConfigManager.instance.get_string("server_address", "thmix.org")
+	var addr = ServiceHub.config.get_string("server_address", "thmix.org")
 	server_url = _normalize_server_url(addr)
 	GLogger.info("Server URL loaded: %s" % server_url, "NetMGR")
 
@@ -144,7 +144,7 @@ func upload_local_chart(midi: MidiData) -> Dictionary:
 
 	var chart_key := midi.chart_key if not midi.chart_key.is_empty() \
 		else (midi.file_hash if not midi.file_hash.is_empty() else midi.id)
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 
 	var midi_path := midi.midi_file_path
 	if midi_path.is_empty() and fs_mgr != null:

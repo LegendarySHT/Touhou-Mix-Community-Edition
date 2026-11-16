@@ -18,7 +18,7 @@ const PlaybackTypesLib := preload("res://Game/PlaybackTypes.gd")
 
 
 # MIDI播放相关
-@onready var midi_playback_manager: PlaybackDisplay = PlaybackDisplay.instance
+@onready var midi_playback_manager: PlaybackDisplay = ServiceHub.playback
 @onready var ui_stat_mgr: UIStateManager = UiStatMGR
 
 var current_midi_data: MidiData = null
@@ -427,7 +427,7 @@ func _on_transport_song_changed(data: MidiData) -> void:
 
 ## 本次播放是否归本页管（页内复用；判据见 PlaybackDisplay.is_session_owner）
 func _owns_session() -> bool:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	return mgr != null and mgr.is_session_owner(self)
 
 func _reload_for_song(data: MidiData) -> void:
@@ -1112,7 +1112,7 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 	if old_state == work_state \
 			and new_state != UIStateManager.UIState.MUSIC_PLAYER_VIEW \
 			and new_state != UIStateManager.UIState.SETTINGS_VIEW:
-		PlaybackDisplay.instance.unregister_view(self)
+		ServiceHub.playback.unregister_view(self)
 		if midi_playback_manager:
 			if new_state == ui_stat_mgr.UIState.MIDI_VIEW:
 				midi_playback_manager.stop()
@@ -1124,7 +1124,7 @@ func _on_ui_state_changed(old_state: UIStateManager.UIState, new_state: UIStateM
 
 	# 进入本视图时接管系统媒体控制（切后台继续播放由 miniaudio 音频线程维持）
 	if new_state == work_state:
-		PlaybackDisplay.instance.register_view(self)
+		ServiceHub.playback.register_view(self)
 
 	# Reload MIDI when returning from settings (handles backend switch)
 	if old_state == ui_stat_mgr.UIState.SETTINGS_VIEW and new_state == work_state:

@@ -72,7 +72,7 @@ var _setup_done: bool = false
 
 func _ready() -> void:
 	if not visible:
-		TextScrollMGR.suspend_page(self)
+		ServiceHub.textScroll.suspend_page(self)
 
 func _ensure_setup() -> void:
 	if _setup_done:
@@ -87,7 +87,7 @@ func _ensure_setup() -> void:
 	_vlist.on_row_bind = _on_row_bind
 	# resized（建池/补行）由 VirtualList 内部接管，这里只跟用户滚动
 	_pl_scroll.get_v_scroll_bar().value_changed.connect(_on_scroll_moved)
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.playlist_index_changed.connect(_refresh_playlist_highlight)
 		# 列表被手动改动 → 歌单选择框复位（视图常驻，绑一次即可）
@@ -111,7 +111,7 @@ func _ensure_setup() -> void:
 ## 播放模式存在盘里、由 MidiCore 懒加载读回，所以本面板建好那一刻读到的可能还是默认模式；
 ## _ready / 打开面板 / 收到 playlist_changed 都刷一次，保证显示的是当前模式
 func _refresh_mode_ui() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	%ReshuffleBtn.visible = mgr != null and mgr.repeat_mode == RepeatMode.SHUFFLE
 
 func _on_repeat_mode_changed(_mode: int) -> void:
@@ -119,7 +119,7 @@ func _on_repeat_mode_changed(_mode: int) -> void:
 
 ## 「打乱列表」：整表打乱并从头播（manager 侧清空历史/重放栈，全新收听会话）
 func _on_reshuffle_pressed() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.shuffle_playlist_from_head()
 
@@ -145,7 +145,7 @@ func _follow_current_song_if_needed(force: bool = false) -> void:
 		return
 	if not force and Time.get_ticks_msec() - _last_user_scroll_ms < FOLLOW_IDLE_MS:
 		return
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null:
 		return
 	var idx := mgr.playlist_index
@@ -190,7 +190,7 @@ func _on_scroll_moved(_value: float) -> void:
 func open() -> void:
 	_ensure_setup()
 	visible = true
-	TextScrollMGR.resume_page(self)
+	ServiceHub.textScroll.resume_page(self)
 	_refresh_mode_ui()
 	_rebuild_fav_select()
 	_rebuild_playlist_list()
@@ -226,7 +226,7 @@ func close() -> void:
 	# 正在被拖动的项会继续收 gui_input，先停掉再隐藏
 	_stop_all_dragging()
 	visible = false
-	TextScrollMGR.suspend_page(self)
+	ServiceHub.textScroll.suspend_page(self)
 
 # ── 行池 ──────────────────────────────────────────────
 
@@ -243,7 +243,7 @@ func _on_row_ready(node) -> void:
 ## 会把图元数顶上去
 func _on_row_bind(node, idx: int) -> void:
 	var item: ITEM_SCRIPT = node
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	var cur := mgr.playlist_index if mgr != null else -1
 	item.setup_with(_midi_for_key(MidiCore.GetKeyAt(idx)), idx, idx == cur)
 
@@ -254,7 +254,7 @@ func _on_row_bind(node, idx: int) -> void:
 func _sync_row_window(force: bool = false) -> void:
 	if _vlist == null or _vlist.row_stride <= 0.0:
 		return
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	var n := mgr.playlist_count() if mgr != null else 0
 	if n != _vlist.total:
 		_vlist.set_total(n, false)
@@ -285,7 +285,7 @@ func _playlist_sig(keys: Array) -> PackedStringArray:
 	return sig
 
 func _rebuild_playlist_list() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	# 列表以 C# MidiCore 为唯一事实来源（改收藏夹/增删/打乱时 manager 已推过去）；
 	# 这里只读 keys 做签名与总数，不整表水合 MidiData
 	var keys: Array = mgr.playlist_keys() if mgr != null else []
@@ -321,7 +321,7 @@ func _refresh_playlist_highlight(_changed_index: int = -1) -> void:
 	# 面板未打开时行池内容仍是旧的，打开时 open() 会全量重绑
 	if not visible:
 		return
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	var cur: int = mgr.playlist_index if mgr != null else -1
 	# 只遍历真在显示的槽位：pool 里含已解绑但仍在树上（平移出视口）的行
 	for item in _vlist.bound_nodes():
@@ -339,25 +339,25 @@ func _refresh_playlist_highlight(_changed_index: int = -1) -> void:
 ## 注意：下面是 PlaylistItem 信号的回调。immediate 重建会 queue_free「正在处理
 ## 输入事件的那个节点」，其后续语句访问已释放的 self 而崩溃，故一律 call_deferred。
 func _on_pl_remove(idx: int) -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.remove_from_playlist(idx)
 	_rebuild_playlist_list.call_deferred()
 
 func _on_pl_move(from_idx: int, to_idx: int) -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.move_in_playlist(from_idx, to_idx)
 	_rebuild_playlist_list.call_deferred()
 
 func _on_pl_activated(idx: int) -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.play_playlist_index(idx)
 	_rebuild_playlist_list.call_deferred()
 
 func _on_pl_add_fav_pressed() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null:
 		return
 	# 列表 key 即规范键（folder_name）= 收藏夹条目 id，直接上报，无需水合 MidiData
@@ -370,7 +370,7 @@ func _on_pl_add_fav_pressed() -> void:
 	favorite_requested.emit(ids)
 
 func _on_pl_clear_pressed() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.clear_playlist()
 	_rebuild_playlist_list()
@@ -382,7 +382,7 @@ func _rebuild_fav_select() -> void:
 	%FavSelectBtn.clear()
 	%FavSelectBtn.add_item("未选择歌单")
 	%FavSelectBtn.set_item_metadata(0, "")
-	var fav_mgr := FavoriteManager.instance
+	var fav_mgr := ServiceHub.favorite
 	if fav_mgr != null:
 		for f in fav_mgr.favorites:
 			%FavSelectBtn.add_item(f.name)
@@ -402,7 +402,7 @@ func _rebuild_fav_select() -> void:
 
 ## 收藏夹 → 规范键数组（收藏夹按 chart_id/chart_key 存储，与列表 key 同源）
 func _keys_of_favorite(fav_id: String) -> Array:
-	var fav_mgr := FavoriteManager.instance
+	var fav_mgr := ServiceHub.favorite
 	if fav_mgr == null:
 		return []
 	var out: Array = []
@@ -412,7 +412,7 @@ func _keys_of_favorite(fav_id: String) -> Array:
 
 func _on_fav_select_selected(idx: int) -> void:
 	var fav_id := str(%FavSelectBtn.get_item_metadata(idx))
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null:
 		return
 	if fav_id.is_empty():

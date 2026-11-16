@@ -66,6 +66,7 @@ func _ready() -> void:
 		instance = self
 	else:
 		queue_free()
+		return
 
 # ============================================================
 # 纯静态工具（无副作用，headless 可测）
@@ -412,11 +413,11 @@ func migrate(old_root: String, new_root: String, ui: Dictionary = {},
 
 	# 2. 停止播放 + 关闭 DB（LiteDB 单文件锁，必须先关再复制/合并 charts.ldb）
 	#    先等后台缓存校验/扫描退出：它会读写 ChartDB，与关库并发会撞上已释放的库
-	var fsm := FileSystemManager.instance
+	var fsm := ServiceHub.fs
 	if fsm != null and fsm.is_busy() and get_tree() != null:
 		await fsm.await_busy_done()
-	if PlaybackDisplay.instance != null:
-		PlaybackDisplay.instance.stop()
+	if ServiceHub.playback != null:
+		ServiceHub.playback.stop()
 	var db_closed: bool = false
 	if ChartDB != null and ChartDB.IsOpen():
 		ChartDB.CloseDb()

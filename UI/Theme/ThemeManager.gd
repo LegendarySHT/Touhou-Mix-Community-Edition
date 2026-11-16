@@ -258,7 +258,7 @@ func load_theme(file_path: String = "") -> bool:
 	_font_sizes.clear()
 	_backgrounds.clear()
 
-	var default_cfg := ConfigManager.instance.load_config(DEFAULT_THEME_PATH)
+	var default_cfg := ServiceHub.config.load_config(DEFAULT_THEME_PATH)
 	if default_cfg.is_empty():
 		push_error("ThemeManager: 默认主题配置加载失败: " + DEFAULT_THEME_PATH)
 		return false
@@ -266,7 +266,7 @@ func load_theme(file_path: String = "") -> bool:
 	var user_path := file_path if not file_path.is_empty() else USER_THEME_PATH
 	var user_cfg: Dictionary = {}
 	if FileAccess.file_exists(user_path):
-		user_cfg = ConfigManager.instance.load_config(user_path)
+		user_cfg = ServiceHub.config.load_config(user_path)
 
 	# 版本迁移：丢弃旧版存下的 [backgrounds]（背景默认值语义变了，见 THEME_VERSION）
 	if _get_str(user_cfg, "Theme", "version", "") != THEME_VERSION:
@@ -274,7 +274,7 @@ func load_theme(file_path: String = "") -> bool:
 			GLogger.info("旧版背景配置已丢弃，改用主题衍生默认背景", "ThemeManager")
 			user_cfg.erase("backgrounds")
 
-	var merged := ConfigManager.instance.merge_with_defaults(user_cfg, default_cfg)
+	var merged := ServiceHub.config.merge_with_defaults(user_cfg, default_cfg)
 	_parse_theme_config(merged)
 
 	var active: String = _get_str(merged, "Theme", "active_preset", DEFAULT_PRESET)
@@ -345,7 +345,7 @@ func save_theme(file_path: String = "") -> bool:
 	for key in _font_sizes:
 		cfg["font_sizes"][key] = str(_font_sizes[key])
 
-	return ConfigManager.instance.save_config(user_path, cfg)
+	return ServiceHub.config.save_config(user_path, cfg)
 
 # ============ 字号 API ============
 

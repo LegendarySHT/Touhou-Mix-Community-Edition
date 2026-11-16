@@ -39,12 +39,15 @@ var _bind_animate: bool = false
 @onready var sm: UIStateManager = UiStatMGR
 @onready var dm: DataManager = DataMGR
 @onready var eb: EventBus = EvtBus
-@onready var se: SortingEngine = SortEngine
+## 业务组件的排序引擎：本视图的 _ready 可能早于 core 阶段实例化，改用动态访问取当前实例
+var se: SortingEngine:
+	get:
+		return ServiceHub.sort
 
 var item_bg: ButtonGroup = null
 
 func _ready() -> void:
-	if not dm or not eb or not se:
+	if not dm or not eb:
 		push_error("SortedMidiView: Missing manager instances")
 		return
 
@@ -307,9 +310,9 @@ func _hide_label(_old,_new):
 
 ## 收藏夹被选中浏览：加载该收藏夹的所有 midi（轻量投影）
 func _on_favorite_selected_for_browse(fav_id: String) -> void:
-	if not FavoriteManager.instance:
+	if not ServiceHub.favorite:
 		return
-	var fav = FavoriteManager.instance.get_favorite(fav_id)
+	var fav = ServiceHub.favorite.get_favorite(fav_id)
 	if not fav:
 		return
 	_favorites_mode = true

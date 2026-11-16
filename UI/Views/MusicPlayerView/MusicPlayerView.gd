@@ -39,7 +39,7 @@ func _on_view_ready() -> void:
 	%LibraryLayer.favorite_requested.connect(_on_favorite_requested)
 	%PlaylistPanel.favorite_requested.connect(_on_favorite_requested)
 
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.current_song_changed.connect(_on_current_song_changed)
 		mgr.transport_changed.connect(_on_transport_changed)
@@ -71,7 +71,7 @@ func _on_transport_changed() -> void:
 ## 自动换曲都走 play_playlist_index），彼时 is_playing 还是 false，只靠它同步
 ## 按钮会慢一拍——真正的状态翻转在 playback_state_changed 里
 func _on_playback_state_changed() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	_set_play_pause_pressed(mgr != null and mgr.is_playing)
 
 func _on_repeat_mode_changed(_mode: int) -> void:
@@ -89,7 +89,7 @@ func _on_ui_state_changed(_old: int, new: int) -> void:
 		AniMGR.stop_tween(STAGE_FADE_TWEEN_ID)
 		_snap_stage_views(%StageSwitchBtn.button_pressed)
 		Engine.max_fps = 0
-		var mgr := PlaybackDisplay.instance
+		var mgr := ServiceHub.playback
 		# 去 TrackView（同一首歌的另一种视图）与设置页都保留媒体会话：
 		# unregister_view 会 clear() 通知并 stop() 播放，切回来又要重建 —— 表现为
 		# 通知闪一下、歌曲被停掉再重播。其余出口才注销并交还会话。
@@ -107,7 +107,7 @@ func _process(_delta: float) -> void:
 func _refresh_progress() -> void:
 	if _progress_dragging:
 		return
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null:
 		return
 	# 时长是 load 后才可知的；若 max 停在 HSlider 默认 100，value 会被 clamp 满
@@ -122,7 +122,7 @@ func _on_progress_drag_ended(value_changed: bool) -> void:
 	_progress_dragging = false
 	if not value_changed:
 		return
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.handle_media_command("seek", %ProgressSlider.value)
 
@@ -133,8 +133,8 @@ func _activate_page() -> void:
 	set_process(true)
 	# 每次进页面都要重新注册：离开本页时 _on_ui_state_changed 会 unregister_view，
 	# 不重新注册则 has_view() 为 false，系统媒体卡片不显示、媒体命令被直接丢弃。
-	PlaybackDisplay.instance.register_view(self)
-	var mgr := PlaybackDisplay.instance
+	ServiceHub.playback.register_view(self)
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		# 本页会话读自己的总音量配置（[Playback]），不读谱面音量：回页面后重新下发
 		mgr.set_player_volumes(%MidiVolSlider.value, %VocalVolSlider.value)
@@ -292,7 +292,7 @@ func _on_stage_switch_pressed() -> void:
 ## 封面 ↔ 可视化交叉淡入（唯一带过渡的切换入口：用户点击）。
 ##
 ## 【为什么不用 AniMGR.animate_fade_in/out】那两个方法会写 visible（fade_out 收尾时隐藏）
-## 并调 TextScrollMGR.resume/suspend_page —— 那是**页面级**语义，用在 Stage 子视图上会让
+## 并调 ServiceHub.textScroll.resume/suspend_page —— 那是**页面级**语义，用在 Stage 子视图上会让
 ## 淡出的一方当场消失、还会误动页面文字滚动（同 NoteSkinAdjust 里记下的教训）。
 ## 这里只补 modulate:a，避开三处属性所有权：
 ##   - Stage 自己的 modulate 归入场动画（"mpv_stage"）
@@ -364,7 +364,7 @@ func _on_back_pressed() -> void:
 
 ## 去音轨编辑页：把当前播放的 MIDI 整给 TrackView（当前没有在播的歌则不响应）
 func _on_track_view_pressed() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	var midi: MidiData = mgr.current_midi_data if mgr != null else null
 	if midi == null:
 		return
@@ -377,12 +377,12 @@ func _on_track_view_pressed() -> void:
 	EvtBus.enter_track_view_with.emit.call_deferred(midi)
 
 func _on_prev_pressed() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.handle_media_command("prev", -1.0)
 
 func _on_next_pressed() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.handle_media_command("next", -1.0)
 
@@ -391,7 +391,7 @@ func _on_play_pause_toggled(_pressed: bool) -> void:
 	# 只处理「因播放状态变化而被动更新」之外的用户点击，避免与状态同步互相触发
 	if _syncing_pause_btn:
 		return
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null:
 		return
 	# 点击时的目标状态 = 本次点击后按钮将处的状态
@@ -405,7 +405,7 @@ var _syncing_pause_btn: bool = false
 ## 播放方式两态：默认=循环播放（顺序），按下=随机。
 ## 三态循环（顺序/列表循环/单曲）由媒体控件的 repeat 键承担，按钮只做两态。
 func _on_repeat_toggled(pressed: bool) -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null:
 		return
 	if _syncing_repeat_btn:
@@ -466,12 +466,12 @@ func _refresh_panel_btn_tint() -> void:
 		b.self_modulate = on if b.button_pressed else off
 
 func _on_midi_volume_changed(value: float) -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.set_player_volumes(value, %VocalVolSlider.value)
 
 func _on_vocal_volume_changed(value: float) -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		mgr.set_player_volumes(%MidiVolSlider.value, value)
 
@@ -505,12 +505,12 @@ func _on_favorite_requested(midis: Array) -> void:
 	var fav_id: String = await PopupWindow.instance.show_favorite_picker()
 	if fav_id.is_empty():
 		return
-	FavoriteManager.instance.add_ids_to_favorite(fav_id, midis)
+	ServiceHub.favorite.add_ids_to_favorite(fav_id, midis)
 
 # ── 状态刷新 ──────────────────────────────────────────
 
 func _refresh_song_info() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr != null:
 		# 后台换曲后显示侧可能还没对账：读之前先按需对齐，避免页面停在旧歌
 		mgr.sync_display_if_needed()
@@ -541,7 +541,7 @@ func _update_time_labels(mgr) -> void:
 
 ## 进度条上限随当前曲目时长
 func _sync_progress_range() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	var dur: float = mgr.get_backend_duration_ms() if mgr != null else 0.0
 	%ProgressSlider.max_value = maxf(dur, 1.0)
 	%ProgressSlider.step = 1.0
@@ -556,7 +556,7 @@ func _set_play_pause_pressed(playing: bool) -> void:
 
 ## 以 button_pressed 反映播放方式：按下=随机，默认=循环
 func _sync_repeat_btn() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null:
 		return
 	var random_on := mgr.repeat_mode == RepeatMode.SHUFFLE
@@ -585,7 +585,7 @@ var _cover_first_load: bool = true
 var _cover_chart_id: String = ""
 
 func _refresh_cover() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	var data: MidiData = mgr.current_midi_data if mgr != null else null
 	if data == null:
 		CoverLoader.cancel(COVER_ITEM_ID)
@@ -595,7 +595,7 @@ func _refresh_cover() -> void:
 		%CoverImage.texture = null
 		%CoverEmptyText.visible = true
 		return
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if fs_mgr == null:
 		return
 	var chart_id := data.file_hash if not data.file_hash.is_empty() else data.id

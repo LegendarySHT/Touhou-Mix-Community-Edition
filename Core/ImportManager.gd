@@ -199,7 +199,7 @@ func _process_files(files: Array, startup: bool) -> Dictionary:
 			and bool(acc.get("changed", false)) and not str(acc.get("nav_folder", "")).is_empty():
 		# 冷启动单文件导入：先把目标谱面增量写进 DB/索引，保证随后的导航恢复时专辑/歌曲已存在
 		# （启动扫描仍在之后执行，这里只补导入项，不代替启动扫描；ZIP 导入的谱面交给启动扫描）
-		var fsm := FileSystemManager.instance
+		var fsm := ServiceHub.fs
 		if fsm != null:
 			await fsm.refresh_chart_folders([str(acc.get("nav_folder", ""))])
 	if not bool(acc.get("restart_required", false)):
@@ -937,7 +937,7 @@ func _prompt_restart() -> void:
 # ============================================================
 
 func _refresh_resources(acc: Dictionary) -> void:
-	var fsm := FileSystemManager.instance
+	var fsm := ServiceHub.fs
 	if fsm == null:
 		return
 
@@ -961,20 +961,20 @@ func _refresh_resources(acc: Dictionary) -> void:
 
 	# 贴图缓存与索引是两套数据，重扫后仍需按资源类别清理
 	if bool(acc.get("skins_imported", false)):
-		SkinMGR.clear_skin_cache()
+		ServiceHub.skin.clear_skin_cache()
 	if bool(acc.get("particles_imported", false)):
-		ParticleMGR.clear_texture_cache()
+		ServiceHub.particle.clear_texture_cache()
 	if bool(acc.get("backgrounds_imported", false)):
 		ThemeMGR.invalidate_background_cache()
 		ThemeMGR.refresh_backgrounds()
 
 	# 当前使用的音源被同名覆盖时，后端仍持有旧数据，需要重新加载
 	var soundfonts: Array = acc.get("soundfonts", [])
-	if not soundfonts.is_empty() and PlaybackDisplay.instance != null:
-		var current := PlaybackDisplay.instance.current_soundfont_path.get_file().get_basename().to_lower()
+	if not soundfonts.is_empty() and ServiceHub.playback != null:
+		var current := ServiceHub.playback.current_soundfont_path.get_file().get_basename().to_lower()
 		for sf in soundfonts:
 			if str(sf).to_lower() == current:
-				PlaybackDisplay.instance.reload_soundfont_preserving_position()
+				ServiceHub.playback.reload_soundfont_preserving_position()
 				break
 
 	_hide_progress()
@@ -984,13 +984,13 @@ func _refresh_resources(acc: Dictionary) -> void:
 # ============================================================
 
 func _show_progress(text: String, max_value: int) -> Dictionary:
-	var fsm := FileSystemManager.instance
+	var fsm := ServiceHub.fs
 	if fsm == null:
 		return {}
 	return fsm.show_progress_ui(text, max_value)
 
 func _hide_progress() -> void:
-	var fsm := FileSystemManager.instance
+	var fsm := ServiceHub.fs
 	if fsm != null:
 		fsm.hide_progress_ui()
 	# 启动期保留「加载中」提示，运行期导入结束后不应留下常驻提示
@@ -1021,7 +1021,7 @@ func _find_chart_folder_by_hash(hash_str: String) -> String:
 			fn = dir.get_next()
 		dir.list_dir_end()
 
-	var fsm := FileSystemManager.instance
+	var fsm := ServiceHub.fs
 	if fsm != null:
 		var found := fsm.lookup_chart(low)
 		if not found.is_empty():

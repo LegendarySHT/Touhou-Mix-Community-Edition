@@ -234,70 +234,70 @@ func collapse_panel() -> void:
 		%FavorListTabBtn.button_pressed = false
 
 # 筛选按钮部分
-var sortByStatus: SortEngine.SortStatField = SortEngine.SortStatField.ALL
-var sortByData: SortEngine.SortDataField = SortEngine.SortDataField.DOWNLOAD_COUNT
-var sortDirection: SortEngine.SortDirection = SortEngine.SortDirection.ASCENDING
+var sortByStatus: SortingEngine.SortStatField = SortingEngine.SortStatField.ALL
+var sortByData: SortingEngine.SortDataField = SortingEngine.SortDataField.DOWNLOAD_COUNT
+var sortDirection: SortingEngine.SortDirection = SortingEngine.SortDirection.ASCENDING
 
 # icon_set2.png 各筛选图标 region（80x80）：第三行状态 / 第四行升降序 / 第五行数据
 const _STATUS_REGION := {
-	SortEngine.SortStatField.ALL: Rect2(0, 160, 80, 80),
-	SortEngine.SortStatField.PENDING: Rect2(80, 160, 80, 80),
-	SortEngine.SortStatField.APPROVED: Rect2(160, 160, 80, 80),
-	SortEngine.SortStatField.INCLUDED: Rect2(240, 160, 80, 80),
-	SortEngine.SortStatField.DEAD: Rect2(320, 160, 80, 80),
+	SortingEngine.SortStatField.ALL: Rect2(0, 160, 80, 80),
+	SortingEngine.SortStatField.PENDING: Rect2(80, 160, 80, 80),
+	SortingEngine.SortStatField.APPROVED: Rect2(160, 160, 80, 80),
+	SortingEngine.SortStatField.INCLUDED: Rect2(240, 160, 80, 80),
+	SortingEngine.SortStatField.DEAD: Rect2(320, 160, 80, 80),
 }
 const _ASC_REGION := Rect2(0, 240, 80, 80)
 const _DESC_REGION := Rect2(80, 240, 80, 80)
 const _DATA_REGION := {
-	SortEngine.SortDataField.DOWNLOAD_COUNT: Rect2(0, 320, 80, 80),
-	SortEngine.SortDataField.TRIAL_COUNT: Rect2(80, 320, 80, 80),
-	SortEngine.SortDataField.UP_COUNT: Rect2(160, 320, 80, 80),
-	SortEngine.SortDataField.UPLOADED_DATE: Rect2(240, 320, 80, 80),
+	SortingEngine.SortDataField.DOWNLOAD_COUNT: Rect2(0, 320, 80, 80),
+	SortingEngine.SortDataField.TRIAL_COUNT: Rect2(80, 320, 80, 80),
+	SortingEngine.SortDataField.UP_COUNT: Rect2(160, 320, 80, 80),
+	SortingEngine.SortDataField.UPLOADED_DATE: Rect2(240, 320, 80, 80),
 }
 # 数据可切换字段顺序（按第五行图标顺序，已移除收藏/默认排序）
 var _data_fields: Array = [
-	SortEngine.SortDataField.DOWNLOAD_COUNT,
-	SortEngine.SortDataField.TRIAL_COUNT,
-	SortEngine.SortDataField.UP_COUNT,
-	SortEngine.SortDataField.UPLOADED_DATE,
+	SortingEngine.SortDataField.DOWNLOAD_COUNT,
+	SortingEngine.SortDataField.TRIAL_COUNT,
+	SortingEngine.SortDataField.UP_COUNT,
+	SortingEngine.SortDataField.UPLOADED_DATE,
 ]
 
 func _on_status_pressed() -> void:
 	# 未进入 SortedMidiView：本此点击仅进入视图并应用当前筛选状态，不切换字段
 	if UiStatMGR.current_state != UiStatMGR.UIState.SORTED_VIEW:
-		SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
+		ServiceHub.sort.set_sort_mode(sortByStatus, sortByData, sortDirection)
 		UiStatMGR.change_state(UiStatMGR.UIState.SORTED_VIEW)
 		return
 	# 已进入：Midi状态循环切换（第三行图标）
-	sortByStatus=(sortByStatus+1)%5 as SortEngine.SortStatField
+	sortByStatus=(sortByStatus+1)%5 as SortingEngine.SortStatField
 	(%StateBtn.icon as AtlasTexture).region = _STATUS_REGION[sortByStatus]
-	SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
+	ServiceHub.sort.set_sort_mode(sortByStatus, sortByData, sortDirection)
 
 # 数据筛选（第五行图标循环）
 func _on_data_pressed() -> void:
 	# 未进入 SortedMidiView：本此点击仅进入视图并应用当前筛选状态，不切换字段
 	if UiStatMGR.current_state != UiStatMGR.UIState.SORTED_VIEW:
-		SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
+		ServiceHub.sort.set_sort_mode(sortByStatus, sortByData, sortDirection)
 		UiStatMGR.change_state(UiStatMGR.UIState.SORTED_VIEW)
 		return
 	# 已进入：在当前可用字段内循环
 	var cur := _data_fields.find(int(sortByData))
 	var next := (cur + 1) % _data_fields.size() if cur >= 0 else 0
-	sortByData = _data_fields[next] as SortEngine.SortDataField
+	sortByData = _data_fields[next] as SortingEngine.SortDataField
 
 	(%DataBtn.icon as AtlasTexture).region = _DATA_REGION[sortByData]
-	SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
+	ServiceHub.sort.set_sort_mode(sortByStatus, sortByData, sortDirection)
 
 func _on_ordering_pressed() -> void:
 	# 未进入 SortedMidiView：本此点击仅进入视图并应用当前筛选状态，不切换字段
 	if UiStatMGR.current_state != UiStatMGR.UIState.SORTED_VIEW:
-		SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
+		ServiceHub.sort.set_sort_mode(sortByStatus, sortByData, sortDirection)
 		UiStatMGR.change_state(UiStatMGR.UIState.SORTED_VIEW)
 		return
 	# 已进入：升序/降序循环切换（第四行图标）
-	sortDirection = (sortDirection + 1) % 2 as SortEngine.SortDirection
-	(%OrderingBtn.icon as AtlasTexture).region = _ASC_REGION if sortDirection == SortEngine.SortDirection.ASCENDING else _DESC_REGION
-	SortEngine.set_sort_mode(sortByStatus, sortByData, sortDirection)
+	sortDirection = (sortDirection + 1) % 2 as SortingEngine.SortDirection
+	(%OrderingBtn.icon as AtlasTexture).region = _ASC_REGION if sortDirection == SortingEngine.SortDirection.ASCENDING else _DESC_REGION
+	ServiceHub.sort.set_sort_mode(sortByStatus, sortByData, sortDirection)
 
 
 func _on_search_query(query: String = "") -> void:
@@ -310,7 +310,7 @@ func _on_search_query(query: String = "") -> void:
 
 ## 刷新收藏夹列表
 func _refresh_favor_list(_arg1 = null, _arg2 = null, _arg3 = null) -> void:
-	if not FavoriteManager.instance:
+	if not ServiceHub.favorite:
 		return
 	# 记住当前聚焦项：重建会销毁节点，重建后恢复焦点（如重命名完成后的场景）
 	var focused_id := ""
@@ -323,7 +323,7 @@ func _refresh_favor_list(_arg1 = null, _arg2 = null, _arg3 = null) -> void:
 		child.queue_free()
 	# 重新填充
 	var target_item: FavorListItem = null
-	for fav in FavoriteManager.instance.favorites:
+	for fav in ServiceHub.favorite.favorites:
 		var item = FAVOR_ITEM_SCENE.instantiate()
 		%FavorList.add_child(item)
 		item.setup(fav, FavorListItem.Mode.BROWSE)
@@ -366,7 +366,7 @@ func _confirm_create(_new_text: String = "") -> void:
 	%AddBtn.icon.region = Rect2(160, 80, 80, 80)
 	# 创建收藏夹
 	if not fav_name.is_empty():
-		FavoriteManager.instance.create_favorite(fav_name)
+		ServiceHub.favorite.create_favorite(fav_name)
 
 
 ## 点击收藏夹项：跳转到 SortedMidiView 浏览

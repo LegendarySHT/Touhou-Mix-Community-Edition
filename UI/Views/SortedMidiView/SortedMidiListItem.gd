@@ -104,7 +104,7 @@ func _is_in_viewport() -> bool:
 func _get_cover_texture() -> Texture2D:
 	if item_dict.is_empty():
 		return null
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if not fs_mgr:
 		return null
 	return fs_mgr.get_cover_by_ids(String(item_dict.get("file_hash", "")), String(item_dict.get("id", "")))
@@ -113,7 +113,7 @@ func _get_cover_texture() -> Texture2D:
 func _resolve_cover_path() -> String:
 	if item_dict.is_empty():
 		return ""
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if not fs_mgr:
 		return ""
 	var real := fs_mgr.get_cover_path_by_ids(String(item_dict.get("file_hash", "")), String(item_dict.get("id", "")))

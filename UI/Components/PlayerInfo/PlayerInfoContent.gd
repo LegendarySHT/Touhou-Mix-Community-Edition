@@ -151,9 +151,9 @@ func _apply_default_avatar() -> void:
 ## 头像属于玩家数据，不能依赖懒加载的 ProfileView 是否存在。
 func _load_avatar_async() -> void:
 	var avatar_url := str(_player_data.get("avatar_url", ""))
-	if avatar_url.is_empty() or NetManager.instance == null:
+	if avatar_url.is_empty() or ServiceHub.net == null:
 		return
-	var full_url := "%s%s" % [NetManager.instance.server_url, avatar_url]
+	var full_url := "%s%s" % [ServiceHub.net.server_url, avatar_url]
 	_avatar_load_token += 1
 	var my_token := _avatar_load_token
 	HttpImageLoader.load_cached(full_url, self, func(tex: Texture2D) -> void:
@@ -161,7 +161,7 @@ func _load_avatar_async() -> void:
 			return
 		_apply_avatar_texture(tex)
 	)
-	if not NetManager.instance.is_online:
+	if not ServiceHub.net.is_online:
 		return
 	HttpImageLoader.load(full_url, self, func(tex: Texture2D) -> void:
 		if my_token != _avatar_load_token or tex == null:
@@ -182,18 +182,18 @@ func _on_auth_changed(_user_data: Variant) -> void:
 
 ## 网络状态变化回调：连接成功后若已登录，自动拉取资料/统计
 func _on_online_status_changed(online: bool, _latency: String) -> void:
-	if online and AuthManager.instance != null and AuthManager.instance.is_logged_in:
+	if online and ServiceHub.auth != null and ServiceHub.auth.is_logged_in:
 		_fetch_profile_and_stats_async()
 
 ## 成绩上传成功回调：刷新统计
 func _on_score_uploaded(_midi_hash: String) -> void:
-	if AuthManager.instance != null and AuthManager.instance.is_logged_in:
+	if ServiceHub.auth != null and ServiceHub.auth.is_logged_in:
 		_fetch_stats_async()
 
 ## 从 AuthManager 同步登录态到本地显示，并拉取资料/统计
 func _sync_from_auth() -> void:
-	if AuthManager.instance != null and AuthManager.instance.is_logged_in:
-		var username := str(AuthManager.instance.current_user.get("username", ""))
+	if ServiceHub.auth != null and ServiceHub.auth.is_logged_in:
+		var username := str(ServiceHub.auth.current_user.get("username", ""))
 		_player_data.name = username
 		# 先用上次已知的资料（本地缓存）占位：昵称/简介/头像 URL 立刻有值，
 		# 头像可直接命中 WebCache 上屏；网络返回后再覆盖，避免每次都先闪一遍默认头像
@@ -248,12 +248,12 @@ func _sync_from_auth() -> void:
 
 ## 异步拉取用户资料（昵称/简介/头像）并刷新显示
 func _fetch_profile_and_stats_async() -> void:
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return
 	# 拉取资料
-	var profile_result: Dictionary = await AuthManager.instance.get_profile()
+	var profile_result: Dictionary = await ServiceHub.auth.get_profile()
 	if profile_result.get("ok", false) and profile_result.data is Dictionary:
 		var p: Dictionary = profile_result.data
 		_player_data.display_name = str(p.get("displayName", _player_data.name))
@@ -278,7 +278,7 @@ func _fetch_profile_and_stats_async() -> void:
 func _load_cached_profile(username: String) -> Dictionary:
 	if username.is_empty():
 		return {}
-	var all := ConfigManager.instance.load_json_file(PathHelper.get_profile_cache_file())
+	var all := ServiceHub.config.load_json_file(PathHelper.get_profile_cache_file())
 	var users: Variant = all.get("users", {})
 	if not users is Dictionary:
 		return {}
@@ -288,13 +288,13 @@ func _load_cached_profile(username: String) -> Dictionary:
 ## 写回当前账号的资料快照（服务端资料拉取成功后调用）
 ## 按 username 分别存，切换账号不会互相覆盖
 func _save_cached_profile() -> void:
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		return
-	var username := str(AuthManager.instance.current_user.get("username", ""))
+	var username := str(ServiceHub.auth.current_user.get("username", ""))
 	if username.is_empty():
 		return
 	var path := PathHelper.get_profile_cache_file()
-	var all := ConfigManager.instance.load_json_file(path)
+	var all := ServiceHub.config.load_json_file(path)
 	var users: Variant = all.get("users", {})
 	var cache_users: Dictionary = users if users is Dictionary else {}
 	cache_users[username] = {
@@ -369,11 +369,11 @@ func _save_cached_stats() -> void:
 
 ## 异步拉取用户统计并刷新显示
 func _fetch_stats_async() -> void:
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return
-	var stats_result: Dictionary = await AuthManager.instance.get_user_stats()
+	var stats_result: Dictionary = await ServiceHub.auth.get_user_stats()
 	if not stats_result.get("ok", false) or not stats_result.data is Dictionary:
 		return
 	var s: Dictionary = stats_result.data
@@ -487,10 +487,10 @@ func _show_hint(text: String, is_error: bool) -> void:
 func _on_submit_btn_pressed() -> void:
 	if _submitting:
 		return
-	if AuthManager.instance == null:
+	if ServiceHub.auth == null:
 		_show_hint("认证服务未就绪", true)
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		_show_hint("未连接服务器", true)
 		return
 	var account: String = %AccountEdit.text.strip_edges()
@@ -503,7 +503,7 @@ func _on_submit_btn_pressed() -> void:
 	%SubmitBtn.disabled = true
 	_show_hint("处理中...", false)
 
-	var result: Dictionary = await AuthManager.instance.login(account, pwd)
+	var result: Dictionary = await ServiceHub.auth.login(account, pwd)
 	var ok: bool = result.ok
 
 	_submitting = false
@@ -527,9 +527,9 @@ func _on_submit_btn_pressed() -> void:
 
 ## 登出按钮
 func _on_logout_btn_pressed() -> void:
-	if AuthManager.instance == null:
+	if ServiceHub.auth == null:
 		return
-	AuthManager.instance.logout()
+	ServiceHub.auth.logout()
 	logout_submitted.emit()
 
 ## 将服务端错误码转为中文提示

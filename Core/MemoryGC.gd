@@ -208,7 +208,7 @@ func _apply(level: int) -> void:
 
 ## 纹理类缓存：全部有现成的公开清空 API，且都有按需重载路径
 func _drop_texture_caches() -> void:
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if fs_mgr != null:
 		# 封面强引用 LRU（COVER_TEXTURE_CACHE_MAX = 24 条）。
 		# 当前播放曲的封面保留：播放页正展示着它（TextureRect 持引用，清了也不会立刻
@@ -220,25 +220,25 @@ func _drop_texture_caches() -> void:
 		GLogger.info("[MEMGC]   cover cache cleared (keep current: %s)" %
 				("yes" if not keep_cover.is_empty() else "no"), "MemoryGC")
 
-	if SkinMGR != null:
+	if is_instance_valid(ServiceHub.skin):
 		# 音符皮肤贴图（只留最近两套，清了下次用时重扫）
-		SkinMGR.clear_skin_cache()
+		ServiceHub.skin.clear_skin_cache()
 		GLogger.info("[MEMGC]   skin texture cache cleared", "MemoryGC")
 
-	if ParticleMGR != null:
+	if is_instance_valid(ServiceHub.particle):
 		# 粒子精灵图（基础 + 散射两类）
-		ParticleMGR.clear_texture_cache()
+		ServiceHub.particle.clear_texture_cache()
 		GLogger.info("[MEMGC]   particle texture cache cleared", "MemoryGC")
 
-	if CharaMGR != null:
+	if is_instance_valid(ServiceHub.chara):
 		# 立绘合成缓存（每份是一整张合成图，单笔不小）
-		CharaMGR.clear_composite_cache()
+		ServiceHub.chara.clear_composite_cache()
 		GLogger.info("[MEMGC]   chara composite cache cleared", "MemoryGC")
 
 ## 杂项缓存（纯内存字典，无 GPU 资源）
 func _drop_misc_caches() -> void:
-	if SortEngine != null:
-		SortEngine.clear_cache()
+	if is_instance_valid(ServiceHub.sort):
+		ServiceHub.sort.clear_cache()
 	# 谱面详情列表的静态信息缓存（MidiListItem._info_cache）：MidiView 自己也有清的先例
 	var midi_list_item := load("res://UI/Views/MidiView/MidiListItem.gd")
 	if midi_list_item != null and midi_list_item.has_method("clear_info_cache"):
@@ -318,7 +318,7 @@ func _playback_display() -> Node:
 ## 当前播放曲的封面缓存键（与 MusicPlayerView._refresh_cover 取的是同一条路径，
 ## 保证 keep_path 能命中缓存里的键）。无曲目/后端未就绪时返回空串（整表清空）。
 func _current_cover_path() -> String:
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	var pd := _playback_display()
 	if fs_mgr == null or pd == null:
 		return ""

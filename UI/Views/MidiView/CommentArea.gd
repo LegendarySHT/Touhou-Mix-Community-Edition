@@ -65,13 +65,13 @@ func load_comments(midi: MidiData) -> void:
 
 	# ① SWR 的 stale 部分：先渲染缓存的评论正文，不等网络。
 	# 线上模式关闭且二级开关为 0（默认）时不展示，保持原有表现。
-	var offline_mode := NetManager.instance != null \
-		and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+	var offline_mode := ServiceHub.net != null \
+		and ServiceHub.net.connect_state == NetManager.ConnectState.OFFLINE_MODE
 	if OnlineCache.is_enabled() \
 			and (not offline_mode or OnlineCache.show_when_offline()):
 		_load_cached_comments(midi.file_hash)
 
-	if not _is_online_ready() or CommunityManager.instance == null:
+	if not _is_online_ready() or ServiceHub.community == null:
 		return
 
 	_request_summary(midi.file_hash, version)
@@ -101,7 +101,7 @@ func _load_cached_comments(midi_hash: String) -> bool:
 
 
 func _request_summary(midi_hash: String, version: int) -> void:
-	var result: Dictionary = await CommunityManager.instance.get_summary(midi_hash)
+	var result: Dictionary = await ServiceHub.community.get_summary(midi_hash)
 	if not _is_current_request(midi_hash, version):
 		return
 	if not result.get("ok", false):
@@ -125,7 +125,7 @@ func _request_summary(midi_hash: String, version: int) -> void:
 
 
 func _request_comments(midi_hash: String, version: int) -> void:
-	var result: Dictionary = await CommunityManager.instance.get_comments(midi_hash)
+	var result: Dictionary = await ServiceHub.community.get_comments(midi_hash)
 	if not _is_current_request(midi_hash, version):
 		return
 	if not result.get("ok", false):
@@ -191,7 +191,7 @@ func _submit_comment(content: String) -> void:
 	_update_controls()
 	var version := _request_version
 	var midi_hash := _current_midi.file_hash
-	var result: Dictionary = await CommunityManager.instance.create_comment(midi_hash, content)
+	var result: Dictionary = await ServiceHub.community.create_comment(midi_hash, content)
 	if not _is_current_request(midi_hash, version):
 		return
 	_comment_busy = false
@@ -239,7 +239,7 @@ func _submit_reaction(target: String) -> void:
 	var body_value: Variant = null
 	if not target.is_empty():
 		body_value = target
-	var result: Dictionary = await CommunityManager.instance.set_reaction(midi_hash, body_value)
+	var result: Dictionary = await ServiceHub.community.set_reaction(midi_hash, body_value)
 	if not _is_current_request(midi_hash, version):
 		return
 	_reaction_busy = false
@@ -268,7 +268,7 @@ func _submit_reaction(target: String) -> void:
 
 func _on_online_state_changed(state: int, _latency_ms: int) -> void:
 	var online_now := state == NetManager.ConnectState.ONLINE \
-		and NetManager.instance != null and NetManager.instance.is_online
+		and ServiceHub.net != null and ServiceHub.net.is_online
 	var became_online := online_now and not _was_online_ready
 	var became_unavailable := not online_now and _was_online_ready
 	_was_online_ready = online_now
@@ -345,8 +345,8 @@ func _set_reaction_visual(reaction: String) -> void:
 
 func _show_cached_counts(midi_hash: String) -> void:
 	var cached: Dictionary = {}
-	if CommunityManager.instance != null:
-		cached = CommunityManager.instance.get_cached_counts(midi_hash)
+	if ServiceHub.community != null:
+		cached = ServiceHub.community.get_cached_counts(midi_hash)
 	_set_counts(
 		int(cached.get("like_count", 0)),
 		int(cached.get("dislike_count", 0))
@@ -415,6 +415,6 @@ func _is_current_request(midi_hash: String, version: int) -> bool:
 
 
 func _is_online_ready() -> bool:
-	return NetManager.instance != null \
-		and NetManager.instance.connect_state == NetManager.ConnectState.ONLINE \
-		and NetManager.instance.is_online
+	return ServiceHub.net != null \
+		and ServiceHub.net.connect_state == NetManager.ConnectState.ONLINE \
+		and ServiceHub.net.is_online

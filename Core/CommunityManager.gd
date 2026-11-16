@@ -2,7 +2,7 @@ extends Node
 class_name CommunityManager
 
 ## MIDI 社区功能管理器：评价、评论、评论点赞与赞踩计数缓存。
-## 通过 Main.gd 手动 add_child，使用 CommunityManager.instance 访问。
+## 通过 Main.gd 手动 add_child，使用 ServiceHub.community 访问。
 
 static var instance: CommunityManager = null
 
@@ -122,25 +122,25 @@ func delete_cached_counts(midi_hash: String) -> void:
 func _read_request(path: String) -> Dictionary:
 	if not _is_online_ready():
 		return _error_result("offline")
-	if AuthManager.instance != null and AuthManager.instance.is_logged_in:
-		var authed: Dictionary = await AuthManager.instance.authed_request("GET", path)
+	if ServiceHub.auth != null and ServiceHub.auth.is_logged_in:
+		var authed: Dictionary = await ServiceHub.auth.authed_request("GET", path)
 		if authed.get("ok", false) or int(authed.get("status", 0)) == 404:
 			return authed
 		var error := str(authed.get("error", ""))
 		var status := int(authed.get("status", 0))
 		if status != 401 and error not in ["not_logged_in", "token_expired"]:
 			return authed
-	return await NetManager.instance._request(
-		"GET", "%s%s" % [NetManager.instance.server_url, path], null
+	return await ServiceHub.net._request(
+		"GET", "%s%s" % [ServiceHub.net.server_url, path], null
 	)
 
 
 func _write_request(method: String, path: String, body: Dictionary) -> Dictionary:
 	if not _is_online_ready():
 		return _error_result("offline")
-	if AuthManager.instance == null:
+	if ServiceHub.auth == null:
 		return _error_result("auth_not_ready")
-	return await AuthManager.instance.authed_request(method, path, body)
+	return await ServiceHub.auth.authed_request(method, path, body)
 
 
 func _save_summary_cache(midi_hash: String, data: Dictionary) -> void:
@@ -162,9 +162,9 @@ func _save_summary_cache(midi_hash: String, data: Dictionary) -> void:
 
 
 func _is_online_ready() -> bool:
-	return NetManager.instance != null \
-		and NetManager.instance.connect_state == NetManager.ConnectState.ONLINE \
-		and NetManager.instance.is_online
+	return ServiceHub.net != null \
+		and ServiceHub.net.connect_state == NetManager.ConnectState.ONLINE \
+		and ServiceHub.net.is_online
 
 
 func _error_result(error: String) -> Dictionary:

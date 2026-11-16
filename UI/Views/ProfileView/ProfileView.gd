@@ -187,8 +187,8 @@ func _setup_focus_tabs() -> void:
 		_sync_navi_selection(%PageContent.current_tab)
 	FocusMGR.register_tab_bar(bar)
 
-func _connect_scan_ready() -> void:	if FileSystemManager.instance and not FileSystemManager.instance.resources_ready.is_connected(_load_chara_display):
-		FileSystemManager.instance.resources_ready.connect(_load_chara_display)
+func _connect_scan_ready() -> void:	if ServiceHub.fs and not ServiceHub.fs.resources_ready.is_connected(_load_chara_display):
+		ServiceHub.fs.resources_ready.connect(_load_chara_display)
 
 ## 角色切换（[Chara] chara_id）时刷新展示
 func _on_config_changed(key: String, _value: Variant) -> void:
@@ -197,14 +197,14 @@ func _on_config_changed(key: String, _value: Variant) -> void:
 
 ## 加载当前选中角色的立绘、背景与名字/作者到 Displayer
 func _load_chara_display() -> void:
-	var key := CharaMGR.get_current_chara_key()
+	var key := ServiceHub.chara.get_current_chara_key()
 	if key.is_empty():
 		return
-	var data: Dictionary = CharaMGR.get_chara_data(key)
-	var tex := CharaMGR.get_portrait(key, 0)
+	var data: Dictionary = ServiceHub.chara.get_chara_data(key)
+	var tex := ServiceHub.chara.get_portrait(key, 0)
 	if tex:
 		%CharaPortrait.texture = tex
-	var bg := CharaMGR.get_background(key)
+	var bg := ServiceHub.chara.get_background(key)
 	if bg:
 		%CharaBackground.texture = bg
 	# 名字与作者
@@ -494,13 +494,13 @@ func _refresh_yearly_ranks(force: bool = false) -> void:
 	if _ranks_busy:
 		return
 	_ranks_from_cache = false
-	var logged_in := AuthManager.instance != null and AuthManager.instance.is_logged_in
-	var online := NetManager.instance != null and NetManager.instance.is_online
+	var logged_in := ServiceHub.auth != null and ServiceHub.auth.is_logged_in
+	var online := ServiceHub.net != null and ServiceHub.net.is_online
 
 	# ① 先渲染缓存的年度名次（SWR 的 stale 部分）
 	if OnlineCache.is_enabled() and logged_in:
-		var offline_mode := NetManager.instance != null \
-			and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+		var offline_mode := ServiceHub.net != null \
+			and ServiceHub.net.connect_state == NetManager.ConnectState.OFFLINE_MODE
 		if not offline_mode or OnlineCache.show_when_offline():
 			var entry := OnlineCache.read(_CACHE_NS, "ranks", true)
 			var payload: Variant = OnlineCache.payload_of(entry, null)
@@ -515,7 +515,7 @@ func _refresh_yearly_ranks(force: bool = false) -> void:
 		if not _ranks_from_cache:
 			_set_yearly_rank_values(RANK_PLACEHOLDER, RANK_PLACEHOLDER)
 		return
-	var username := str(AuthManager.instance.current_user.get("username", ""))
+	var username := str(ServiceHub.auth.current_user.get("username", ""))
 	var key := "%s|%s" % [username, "%.2f" % _last_pp]
 	if not force and key == _ranks_cache_key:
 		# 缓存名次已上屏时不要被空的内存缓存刷成 placeholder
@@ -527,14 +527,14 @@ func _refresh_yearly_ranks(force: bool = false) -> void:
 	_fetch_yearly_ranks(key, username)
 
 func _fetch_yearly_ranks(key: String, username: String) -> void:
-	var result: Dictionary = await AuthManager.instance.get_my_rankings()
+	var result: Dictionary = await ServiceHub.auth.get_my_rankings()
 	_ranks_busy = false
 	if not is_instance_valid(self):
 		return
 	# 请求期间切换账号 / 登出：丢弃过期结果
 	var current := ""
-	if AuthManager.instance and AuthManager.instance.is_logged_in:
-		current = str(AuthManager.instance.current_user.get("username", ""))
+	if ServiceHub.auth and ServiceHub.auth.is_logged_in:
+		current = str(ServiceHub.auth.current_user.get("username", ""))
 	if current != username:
 		return
 	if not result.get("ok", false) or not result.data is Dictionary:
@@ -806,14 +806,14 @@ func set_avatar_texture(tex: Texture2D) -> void:
 func _on_save_nickname_btn_pressed() -> void:
 	if _busy:
 		return
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		return
 	var new_name := (%NicknameEdit as LineEdit).text.strip_edges()
 	if new_name.is_empty():
 		return
 	_busy = true
 	%NicknameConfirmBtn.disabled = true
-	var result: Dictionary = await AuthManager.instance.update_profile(new_name, null)
+	var result: Dictionary = await ServiceHub.auth.update_profile(new_name, null)
 	_busy = false
 	%NicknameConfirmBtn.disabled = false
 	if result.get("ok", false):
@@ -826,7 +826,7 @@ func _on_save_nickname_btn_pressed() -> void:
 func _on_save_desc_btn_pressed() -> void:
 	if _busy:
 		return
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		EvtBus.notify("请先登录后再修改简介")
 		return
 	var new_bio := _read_multiline(%DescEdit).strip_edges()
@@ -838,7 +838,7 @@ func _on_save_desc_btn_pressed() -> void:
 		return
 	_busy = true
 	%DescConfirmBtn.disabled = true
-	var result: Dictionary = await AuthManager.instance.update_profile(null, new_bio)
+	var result: Dictionary = await ServiceHub.auth.update_profile(null, new_bio)
 	if not is_instance_valid(self):
 		return
 	_busy = false
@@ -884,7 +884,7 @@ func _write_multiline(node: Control, text: String) -> void:
 func _on_save_pwd_btn_pressed() -> void:
 	if _busy:
 		return
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		return
 	var old_pwd: String = %PasswordEdit.text
 	var new_pwd: String = %NewPasswordEdit.text
@@ -895,7 +895,7 @@ func _on_save_pwd_btn_pressed() -> void:
 		return
 	_busy = true
 	%PasswordConfirmBtn.disabled = true
-	var result: Dictionary = await AuthManager.instance.change_password(old_pwd, new_pwd)
+	var result: Dictionary = await ServiceHub.auth.change_password(old_pwd, new_pwd)
 	_busy = false
 	%PasswordConfirmBtn.disabled = false
 	if result.get("ok", false):
@@ -910,10 +910,10 @@ func _on_save_pwd_btn_pressed() -> void:
 func _on_upload_avatar_btn_pressed() -> void:
 	if _busy:
 		return
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		EvtBus.notify("请先登录后再修改头像")
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		EvtBus.notify("当前不在线，无法上传头像")
 		return
 	if _avatar_file_dialog == null:
@@ -934,10 +934,10 @@ func _on_save_avatar_btn_pressed() -> void:
 	if _pending_avatar == null:
 		EvtBus.notify("请先点「选取头像」选择一张图片")
 		return
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		EvtBus.notify("请先登录后再修改头像")
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		EvtBus.notify("当前不在线，无法上传头像")
 		return
 	var square := _build_avatar_square()
@@ -953,7 +953,7 @@ func _on_save_avatar_btn_pressed() -> void:
 	_busy = true
 	%AvatarSaveBtn.disabled = true
 	var image_base64 := Marshalls.raw_to_base64(png)
-	var result: Dictionary = await AuthManager.instance.upload_avatar(image_base64, "image/png")
+	var result: Dictionary = await ServiceHub.auth.upload_avatar(image_base64, "image/png")
 	if not is_instance_valid(self):
 		return
 	_busy = false
@@ -1094,8 +1094,8 @@ func _reset_avatar_adjust() -> void:
 func _render_cached_records(kind: String, vbox: VBoxContainer, mode: int) -> bool:
 	if not OnlineCache.is_enabled():
 		return false
-	var offline_mode := NetManager.instance != null \
-		and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+	var offline_mode := ServiceHub.net != null \
+		and ServiceHub.net.connect_state == NetManager.ConnectState.OFFLINE_MODE
 	if offline_mode and not OnlineCache.show_when_offline():
 		return false
 	var entry := OnlineCache.read(_CACHE_NS, "records|" + kind, true)
@@ -1114,12 +1114,12 @@ func _load_recent_scores() -> void:
 	if _recent_loading:
 		return
 	_render_cached_records("recent", %RecentPlayList, RecordListItem.RecordMode.RECENT)
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return
 	_recent_loading = true
-	var result: Dictionary = await AuthManager.instance.get_recent_scores(RECORD_PAGE_LIMIT, 0)
+	var result: Dictionary = await ServiceHub.auth.get_recent_scores(RECORD_PAGE_LIMIT, 0)
 	_recent_loading = false
 	if not is_instance_valid(self):
 		return
@@ -1136,12 +1136,12 @@ func _load_best_scores() -> void:
 	if _best_loading:
 		return
 	_render_cached_records("best", %BestPlayList, RecordListItem.RecordMode.BEST)
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return
 	_best_loading = true
-	var result: Dictionary = await AuthManager.instance.get_best_scores(RECORD_PAGE_LIMIT, 0)
+	var result: Dictionary = await ServiceHub.auth.get_best_scores(RECORD_PAGE_LIMIT, 0)
 	_best_loading = false
 	if not is_instance_valid(self):
 		return
@@ -1158,12 +1158,12 @@ func _load_most_played() -> void:
 	if _most_loading:
 		return
 	_render_cached_records("most", %MostPlayList, RecordListItem.RecordMode.MOST)
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return
 	_most_loading = true
-	var result: Dictionary = await AuthManager.instance.get_most_played(RECORD_PAGE_LIMIT, 0)
+	var result: Dictionary = await ServiceHub.auth.get_most_played(RECORD_PAGE_LIMIT, 0)
 	_most_loading = false
 	if not is_instance_valid(self):
 		return
@@ -1199,7 +1199,7 @@ func _on_record_detail_requested(record: Dictionary, source_rect: Rect2, _source
 ## 记录 DTO + 本地 MidiData 拼成详情条目（字段口径与商店归一化一致）
 func _item_for_record(record: Dictionary, hash_str: String) -> Dictionary:
 	var midi: MidiData = DataMGR.get_midi_by_id(hash_str)
-	var server := NetManager.instance.server_url if NetManager.instance else ""
+	var server := ServiceHub.net.server_url if ServiceHub.net else ""
 	var has_cover := bool(record.get("hasCover", false))
 	return {
 		"kind": "song",

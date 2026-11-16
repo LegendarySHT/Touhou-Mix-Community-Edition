@@ -127,7 +127,7 @@ func _make_white_texture() -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 func _process(_delta: float) -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null or not is_visible_in_tree():
 		return
 	var pos := mgr.get_realtime_position_ms()

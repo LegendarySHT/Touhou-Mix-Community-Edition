@@ -34,8 +34,8 @@ class ScoreData:
 
 	## 评级 - 委托 ScoreCalculator（唯一计分真源）
 	func get_rank() -> String:
-		if ScoreCalculator.instance:
-			return ScoreCalculator.instance.get_rank()
+		if ServiceHub.scoreCalc:
+			return ServiceHub.scoreCalc.get_rank()
 		# 回退：使用本地 accuracy 按阈值查找
 		for threshold in ScoreCalculator.RANK_THRESHOLDS:
 			if accuracy >= threshold[0]:
@@ -175,9 +175,9 @@ func set_display(result: ScoreData, midi: MidiData = null, is_auto: bool = false
 
 ## 按评级合成并切换人物立绘（人物未就绪或合成失败时静默跳过，保留原立绘）
 func _update_chara_art(rank_str: String) -> void:
-	if CharaMGR.charas_index.is_empty():
+	if ServiceHub.chara.charas_index.is_empty():
 		return
-	var tex := CharaMGR.get_current_portrait_by_rank(rank_str)
+	var tex := ServiceHub.chara.get_current_portrait_by_rank(rank_str)
 	if tex:
 		%Chara.texture = tex
 
@@ -185,7 +185,7 @@ func _update_chara_art(rank_str: String) -> void:
 func _update_song_info(midi: MidiData) -> void:
 	if midi == null:
 		return
-	%SongCover.texture = FileSystemManager.instance.get_cover_by_midiData(midi)
+	%SongCover.texture = ServiceHub.fs.get_cover_by_midiData(midi)
 	%Album.set_scroll_text(midi.album_name if not midi.album_name.is_empty() else midi.artist_name)
 	%Song.set_scroll_text(midi.song_name)
 	%MidiName.set_scroll_text(midi.name)
@@ -237,10 +237,10 @@ var _pp_tween: Tween = null
 
 ## 是否已登录（未登录或在线模式关闭时不播放 LevelingProgress 出现动画，也不做上涨动画）
 func _is_logged_in() -> bool:
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		return false
 	# 在线模式关闭时视为未登录（临时关闭后不展示玩家等级面板）
-	if NetManager.instance == null or NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE:
+	if ServiceHub.net == null or ServiceHub.net.connect_state == NetManager.ConnectState.OFFLINE_MODE:
 		return false
 	return true
 
@@ -370,7 +370,7 @@ func request_upload(midi: MidiData, snapshot: Dictionary) -> void:
 		_do_upload_score()
 	else:
 		# 手动上传模式：仅在线时提示点击上传，点击后才触发上传
-		if NetManager.instance != null and NetManager.instance.connect_state != NetManager.ConnectState.OFFLINE_MODE:
+		if ServiceHub.net != null and ServiceHub.net.connect_state != NetManager.ConnectState.OFFLINE_MODE:
 			_manual_pending = true
 			_show_upload_slide()
 			%UploadState.text = "点击此处上传成绩"
@@ -380,9 +380,9 @@ func request_upload(midi: MidiData, snapshot: Dictionary) -> void:
 
 ## 是否自动上传成绩（读配置，默认开启）
 func _is_auto_upload_enabled() -> bool:
-	if ConfigManager.instance == null:
+	if ServiceHub.config == null:
 		return true
-	return ConfigManager.instance.get_int("auto_upload_score", 1) == 1
+	return ServiceHub.config.get_int("auto_upload_score", 1) == 1
 
 ## 点击上传提示（手动上传模式）
 func _on_upload_state_gui_input(event: InputEvent) -> void:
@@ -423,14 +423,14 @@ func _do_upload_score() -> void:
 		%UploadState.visible = false
 		return
 	# 本地成绩记录（无论上传成败都保留）
-	if ScoreManager.instance:
-		ScoreManager.instance.save_local_score(midi, _upload_snapshot)
+	if ServiceHub.score:
+		ServiceHub.score.save_local_score(midi, _upload_snapshot)
 	# 仅在线模式关闭时才不展示/不尝试上传
 	# （连接失败也尝试上传，从而展示失败提示与重试按钮）
-	if NetManager.instance == null or NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE:
+	if ServiceHub.net == null or ServiceHub.net.connect_state == NetManager.ConnectState.OFFLINE_MODE:
 		%UploadState.visible = false
 		return
-	if ScoreManager.instance == null:
+	if ServiceHub.score == null:
 		_show_upload_slide()
 		%UploadState.text = "成绩上传失败"
 		%RetryBtn.visible = true
@@ -439,7 +439,7 @@ func _do_upload_score() -> void:
 	%UploadState.text = "正在上传成绩..."
 	%RetryBtn.visible = false
 	var gen := _upload_generation
-	var result = await ScoreManager.instance.upload_score(midi, _upload_snapshot)
+	var result = await ServiceHub.score.upload_score(midi, _upload_snapshot)
 	# 期间离开本页或已进入新一局，丢弃本次结果
 	if not is_inside_tree() or gen != _upload_generation:
 		return

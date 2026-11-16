@@ -189,8 +189,8 @@ func check_critical_resources() -> void:
 		"Soundfont Directory": DEFAULT_SOUNDFONT_SRC,
 		"Background Directory": DEFAULT_BACKGROUND_SRC,
 		"Skins Directory": SkinManager.DEFAULT_SKINS_SRC,
-		"Particles Directory": ParticleMGR.DEFAULT_PARTICLES_SRC,
-		"Charas Directory": CharaMGR.DEFAULT_CHARAS_SRC
+		"Particles Directory": ServiceHub.particle.DEFAULT_PARTICLES_SRC,
+		"Charas Directory": ServiceHub.chara.DEFAULT_CHARAS_SRC
 	}
 	
 	for resource_name in critical_resources.keys():
@@ -238,8 +238,8 @@ func initialize_directory_structure() -> void:
 	
 	# 启动文件处理串行管线：先复制默认资源 → 再导入外部文件 → 最后扫描并更新数据库缓存
 	await _copy_default_resources_async()
-	if ImportManager.instance != null:
-		var can_continue := await ImportManager.instance.process_startup_files()
+	if ServiceHub.importer != null:
+		var can_continue := await ServiceHub.importer.process_startup_files()
 		if not can_continue:
 			# 导入的配置需要重启：不再继续扫描，等待导入模块退出游戏
 			return
@@ -799,9 +799,9 @@ func _scan_all_resources() -> void:
 	charts_index.clear()
 	_clear_chart_reverse_index()
 	audio_files_index.clear()
-	SkinMGR.clear_index()
-	ParticleMGR.clear_index()
-	CharaMGR.clear_index()
+	ServiceHub.skin.clear_index()
+	ServiceHub.particle.clear_index()
+	ServiceHub.chara.clear_index()
 	soundfonts_index.clear()
 	backgrounds_index.clear()
 
@@ -839,19 +839,24 @@ func _scan_all_resources() -> void:
 		_build_charts_index_from_data(all_charts_data, [])
 
 	# === 阶段 A.4：启动 skins/particles/sf/bg 并行扫描 ===
+	# 先在主线程解析出管理器实例再交给 worker：worker 线程禁止触碰场景树，
+	# 而 ServiceHub 的 getter 带「未启动则 add_child」副作用，不能留在 lambda 里访问。
+	var skin_mgr := ServiceHub.skin
+	var particle_mgr := ServiceHub.particle
+	var chara_mgr := ServiceHub.chara
 	var skins_rw: Dictionary = {}
 	var skins_task := WorkerThreadPool.add_task(
-		func(): SkinMGR._build_skins_index_worker(skins_rw),
+		func(): skin_mgr._build_skins_index_worker(skins_rw),
 		false, "ScanSkins"
 	)
 	var particles_rw: Dictionary = {}
 	var particles_task := WorkerThreadPool.add_task(
-		func(): ParticleMGR._build_particles_index_worker(particles_rw),
+		func(): particle_mgr._build_particles_index_worker(particles_rw),
 		false, "ScanParticles"
 	)
 	var charas_rw: Dictionary = {}
 	var charas_task := WorkerThreadPool.add_task(
-		func(): CharaMGR._build_charas_index_worker(charas_rw),
+		func(): chara_mgr._build_charas_index_worker(charas_rw),
 		false, "ScanCharas"
 	)
 	var sf_rw: Dictionary = {}
@@ -901,19 +906,19 @@ func _scan_all_resources() -> void:
 	# 合并 skins/particles/sf/bg 结果
 	var skins_data: Dictionary = skins_rw.get("skins", {})
 	for skin_key in skins_data:
-		SkinMGR.skins_index[skin_key] = SkinMetadata.from_dict(skins_data[skin_key])
+		ServiceHub.skin.skins_index[skin_key] = SkinMetadata.from_dict(skins_data[skin_key])
 	for log_entry in skins_rw.get("logs", []):
 		if log_entry.get("is_warning", true):
 			GLogger.warning(log_entry.msg, "SkinMGR")
 		else:
 			GLogger.info(log_entry.msg, "SkinMGR")
-	ParticleMGR.particles_index = particles_rw.get("particles", {})
+	ServiceHub.particle.particles_index = particles_rw.get("particles", {})
 	for log_entry in particles_rw.get("logs", []):
 		if log_entry.get("is_warning", true):
 			GLogger.warning(log_entry.msg, "ParticleMGR")
 		else:
 			GLogger.info(log_entry.msg, "ParticleMGR")
-	CharaMGR.charas_index = charas_rw.get("charas", {})
+	ServiceHub.chara.charas_index = charas_rw.get("charas", {})
 	for log_entry in charas_rw.get("logs", []):
 		if log_entry.get("is_warning", true):
 			GLogger.warning(log_entry.msg, "CharaMGR")
@@ -946,15 +951,15 @@ func _scan_all_resources() -> void:
 	if use_fast_path:
 		GLogger.info("Resources ready in %.0fms (charts=%d from cache, skins=%d, particles=%d, charas=%d, sf=%d, bg=%d)" % [
 			(t_end - t_start) / 1000.0,
-			charts_index.size(), SkinMGR.skins_index.size(),
-			ParticleMGR.particles_index.size(), CharaMGR.charas_index.size(),
+			charts_index.size(), ServiceHub.skin.skins_index.size(),
+			ServiceHub.particle.particles_index.size(), ServiceHub.chara.charas_index.size(),
 			soundfonts_index.size(), backgrounds_index.size()
 		], "FileSystemMGR")
 	else:
 		GLogger.info("Directory structure initialized in %.0fms (charts=%d, skins=%d, particles=%d, charas=%d, sf=%d, bg=%d)" % [
 			(t_end - t_start) / 1000.0,
-			charts_index.size(), SkinMGR.skins_index.size(),
-			ParticleMGR.particles_index.size(), CharaMGR.charas_index.size(),
+			charts_index.size(), ServiceHub.skin.skins_index.size(),
+			ServiceHub.particle.particles_index.size(), ServiceHub.chara.charas_index.size(),
 			soundfonts_index.size(), backgrounds_index.size()
 		], "FileSystemMGR")
 

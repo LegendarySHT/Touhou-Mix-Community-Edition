@@ -4,6 +4,9 @@ extends Node
 
 class_name SortingEngine
 
+## 全局单例引用（由 ServiceHub 在 core 阶段实例化时设置）
+static var instance: SortingEngine
+
 ## 排序方向枚举
 enum SortDirection {
 	ASCENDING,  # 升序
@@ -30,6 +33,11 @@ enum SortStatField {
 
 ## 初始化函数
 func _ready() -> void:
+	if instance == null:
+		instance = self
+	else:
+		queue_free()
+		return
 	add_to_group("singleton")
 
 ## 排序配置

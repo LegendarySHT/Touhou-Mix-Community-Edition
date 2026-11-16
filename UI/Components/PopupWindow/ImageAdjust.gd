@@ -293,7 +293,7 @@ func _get_preview_cover_texture() -> Texture2D:
 				return covers[randi() % covers.size()]
 	# 回退：数据层取第一个可用封面
 	var data_mgr := DataMGR
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if not data_mgr or not fs_mgr:
 		return null
 	var albums := data_mgr.get_all_albums()

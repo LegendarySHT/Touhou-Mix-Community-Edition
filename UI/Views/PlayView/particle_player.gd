@@ -106,8 +106,8 @@ func spawn(base_pack_key: String, emitter_pack_key: String, pos: Vector2,
 ## 层创建后按 tex_id 写入对应角色分桶；pos/alpha 快照到层（绘制桶直接取用，避免循环引用）
 func _add_role_layer(p: ActiveParticle, pack_key: String, is_emitter: bool, scale_mult: float,
 		pos: Vector2, alpha: float) -> void:
-	var tpl := ParticleMGR.get_layer_template(pack_key,
-		ParticleMGR.ROLE_EMITTER if is_emitter else ParticleMGR.ROLE_BASE)
+	var tpl := ServiceHub.particle.get_layer_template(pack_key,
+		ServiceHub.particle.ROLE_EMITTER if is_emitter else ServiceHub.particle.ROLE_BASE)
 	if tpl.is_empty():
 		return
 	var textures: Array = tpl.get("textures", [])
@@ -146,7 +146,7 @@ func _add_role_layer(p: ActiveParticle, pack_key: String, is_emitter: bool, scal
 
 
 ## 从旋转规格中采样一次该层的旋转角度（返回弧度）
-## spec 为 ParticleMGR._parse_rotation 的产物：null→0；{mode:"fixed"}→固定角；
+## spec 为 ServiceHub.particle._parse_rotation 的产物：null→0；{mode:"fixed"}→固定角；
 ## {mode:"range"}→连续范围随机；{mode:"set"}→离散集随机；未知→0
 func _sample_rotation(spec) -> float:
 	if spec == null or not (spec is Dictionary):

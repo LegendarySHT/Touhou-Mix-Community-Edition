@@ -51,7 +51,7 @@ func play_transition(entering: bool) -> Tween:
 	if entering:
 		visible = true
 		modulate.a = 1.0
-		TextScrollMGR.resume_page(self)
+		ServiceHub.textScroll.resume_page(self)
 		return _play_enter()
 	var tw: Tween = _play_exit()
 	if tw == null or not tw.is_valid():
@@ -62,7 +62,7 @@ func play_transition(entering: bool) -> Tween:
 
 func suspend_text_scroll() -> void:
 	if is_instance_valid(self):
-		TextScrollMGR.suspend_page(self)
+		ServiceHub.textScroll.suspend_page(self)
 
 ## 入场动画，默认整页淡入
 func _play_enter() -> Tween:

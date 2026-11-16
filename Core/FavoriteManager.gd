@@ -35,7 +35,7 @@ func _load_favorites() -> void:
 		_create_default_favorite()
 		_save_favorites()
 		return
-	var data: Dictionary = ConfigManager.instance.load_json_file(path)
+	var data: Dictionary = ServiceHub.config.load_json_file(path)
 	favorites.clear()
 	var raw_favorites = data.get("favorites", [])
 	for fav_dict in raw_favorites:
@@ -95,7 +95,7 @@ func _validate_favorites() -> void:
 		EvtBus.favorites_updated.emit()
 		return
 
-	var fsm := FileSystemManager.instance
+	var fsm := ServiceHub.fs
 	# 索引为空或扫描还没完成 = 磁盘扫描没产出可信结果（存储根刚迁移/换根后重建索引中、
 	# Charts 目录还没落地）。此时 lookup_chart 必然全部未命中，继续走下去会把所有收藏
 	# 引用清空并写回磁盘，玩家重启后收藏就没了。未完成的扫描不作为"谱面已删除"的证据。

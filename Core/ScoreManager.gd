@@ -2,7 +2,7 @@ extends Node
 class_name ScoreManager
 
 ## 成绩管理器：成绩上传、排行榜查询、设备标识管理
-## 通过 Main.gd 手动 add_child，使用 ScoreManager.instance 访问
+## 通过 Main.gd 手动 add_child，使用 ServiceHub.score 访问
 
 static var instance: ScoreManager = null
 
@@ -131,7 +131,7 @@ func is_upload_in_flight(midi_hash: String) -> bool:
 func upload_score(midi: MidiData, snapshot: Dictionary) -> Dictionary:
 	if midi.file_hash.is_empty():
 		return { "ok": false, "status": 0, "data": null, "error": "midi_hash_empty" }
-	if NetManager.instance == null:
+	if ServiceHub.net == null:
 		return { "ok": false, "status": 0, "data": null, "error": "network_not_ready" }
 	var midi_hash := midi.file_hash
 	_uploading_hashes[midi_hash] = int(_uploading_hashes.get(midi_hash, 0)) + 1
@@ -160,20 +160,20 @@ func _upload_score_inner(midi: MidiData, snapshot: Dictionary) -> Dictionary:
 
 	# 已登录：确保 access token 有效（过期则自动 refresh）
 	var token := ""
-	if AuthManager.instance != null and AuthManager.instance.is_logged_in:
-		if await AuthManager.instance.ensure_valid_token():
-			token = AuthManager.instance.current_user.access_token
-		elif AuthManager.instance.ever_authenticated:
+	if ServiceHub.auth != null and ServiceHub.auth.is_logged_in:
+		if await ServiceHub.auth.ensure_valid_token():
+			token = ServiceHub.auth.current_user.access_token
+		elif ServiceHub.auth.ever_authenticated:
 			# 曾登录过但续期失败（会话异常）→ 提示重新登录，不匿名上传
 			return { "ok": false, "status": 0, "data": null, "error": "token_refresh_failed" }
 		# 未真正登录却残留失效会话（异常边界），回退匿名上传
-	elif AuthManager.instance != null and AuthManager.instance.ever_authenticated:
+	elif ServiceHub.auth != null and ServiceHub.auth.ever_authenticated:
 		# 曾登录过但会话已断 → 提示重新登录，不匿名上传
 		return { "ok": false, "status": 0, "data": null, "error": "not_logged_in" }
 	# 从未登录或已主动登出：保持匿名上传成绩
 	var body := _extract_payload(midi, snapshot)
-	var url := "%s/api/scores" % NetManager.instance.server_url
-	var result: Dictionary = await NetManager.instance._request("POST", url, body, PackedStringArray(), token)
+	var url := "%s/api/scores" % ServiceHub.net.server_url
+	var result: Dictionary = await ServiceHub.net._request("POST", url, body, PackedStringArray(), token)
 	# 预检通过后谱面仍可能被并发删除；统一按静默跳过处理。
 	if not result.get("ok", false) and int(result.get("status", 0)) == 404:
 		return _chart_not_found_result()
@@ -184,9 +184,9 @@ func _upload_score_inner(midi: MidiData, snapshot: Dictionary) -> Dictionary:
 ## 其他网络/协议错误原样返回，供结算页展示失败并允许重试。
 func _check_server_chart(midi_hash: String) -> Dictionary:
 	var url := "%s/api/charts/%s" % [
-		NetManager.instance.server_url, midi_hash.uri_encode()
+		ServiceHub.net.server_url, midi_hash.uri_encode()
 	]
-	return await NetManager.instance._request("GET", url, null)
+	return await ServiceHub.net._request("GET", url, null)
 
 
 func _chart_not_found_result() -> Dictionary:
@@ -202,25 +202,25 @@ func _chart_not_found_result() -> Dictionary:
 ## 获取排行榜
 func get_leaderboard(midi_hash: String, limit: int = 20, offset: int = 0) -> Dictionary:
 	var url := "%s/api/scores/leaderboard?midi_hash=%s&limit=%d&offset=%d" % [
-		NetManager.instance.server_url, midi_hash.uri_encode(), limit, offset
+		ServiceHub.net.server_url, midi_hash.uri_encode(), limit, offset
 	]
-	return await NetManager.instance._request("GET", url, null)
+	return await ServiceHub.net._request("GET", url, null)
 
 
 ## 获取当前用户在该 MIDI 的最佳成绩（需登录）
 func get_my_best(midi_hash: String) -> Dictionary:
 	var url := "%s/api/scores/mine?midi_hash=%s" % [
-		NetManager.instance.server_url, midi_hash.uri_encode()
+		ServiceHub.net.server_url, midi_hash.uri_encode()
 	]
 	var token := ""
-	if AuthManager.instance and AuthManager.instance.is_logged_in:
-		token = AuthManager.instance.current_user.access_token
-	return await NetManager.instance._request("GET", url, null, PackedStringArray(), token)
+	if ServiceHub.auth and ServiceHub.auth.is_logged_in:
+		token = ServiceHub.auth.current_user.access_token
+	return await ServiceHub.net._request("GET", url, null, PackedStringArray(), token)
 
 
 ## 获取某 MIDI 的聚合统计
 func get_stats(midi_hash: String) -> Dictionary:
 	var url := "%s/api/scores/stats?midi_hash=%s" % [
-		NetManager.instance.server_url, midi_hash.uri_encode()
+		ServiceHub.net.server_url, midi_hash.uri_encode()
 	]
-	return await NetManager.instance._request("GET", url, null)
+	return await ServiceHub.net._request("GET", url, null)

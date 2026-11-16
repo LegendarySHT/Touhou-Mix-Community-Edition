@@ -39,21 +39,26 @@ func _ready() -> void:
 
 ## 延迟初始化：等启动扫描结束后合成立绘
 func _init_chara() -> void:
+	# 管理器未必已在树中（ServiceHub 依赖不齐时服务访问返回 null），未就绪则下帧重试
+	var chara_mgr := ServiceHub.chara
+	if chara_mgr == null:
+		call_deferred("_init_chara")
+		return
 	# 扫描合并完成（charas_index 已有数据）
-	if not CharaMGR.charas_index.is_empty():
+	if not chara_mgr.charas_index.is_empty():
 		_apply_chara()
 		return
-	# 手动单例尚未创建，下帧重试
-	if FileSystemManager.instance == null:
+	var fs_mgr := ServiceHub.fs
+	if fs_mgr == null:
 		call_deferred("_init_chara")
 		return
 	# 扫描进行中：订阅 resources_ready（扫描合并完成后才 emit，故不会错过）
-	if not FileSystemManager.instance.resources_ready.is_connected(_apply_chara):
-		FileSystemManager.instance.resources_ready.connect(_apply_chara, CONNECT_ONE_SHOT)
+	if not fs_mgr.resources_ready.is_connected(_apply_chara):
+		fs_mgr.resources_ready.connect(_apply_chara, CONNECT_ONE_SHOT)
 
 ## 应用当前选中的人物立绘（默认表情 0）
 func _apply_chara() -> void:
-	var key := CharaMGR.get_current_chara_key()
+	var key := ServiceHub.chara.get_current_chara_key()
 	if key.is_empty():
 		return
 	_chara_key = key
@@ -64,7 +69,7 @@ func _apply_chara() -> void:
 func set_chara_emotion(emotion: int) -> void:
 	if _chara_key.is_empty():
 		return
-	var tex := CharaMGR.get_portrait(_chara_key, emotion)
+	var tex := ServiceHub.chara.get_portrait(_chara_key, emotion)
 	if tex == null:
 		return
 	texture_normal = tex
@@ -98,7 +103,7 @@ func _in_drawn_area(point: Vector2) -> bool:
 func _on_pressed() -> void:
 	if _chara_key.is_empty():
 		return
-	var dialog := CharaMGR.get_dialog(_chara_key)
+	var dialog := ServiceHub.chara.get_dialog(_chara_key)
 	if not dialog.text.is_empty():
 		# 先切到对话对应表情，气泡结束后回到默认表情
 		set_chara_emotion(int(dialog.emotion))

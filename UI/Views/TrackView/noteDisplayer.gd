@@ -580,7 +580,7 @@ func _on_flow_area_resized():
 	# 尺寸变化后窗口内容不变：位置靠节点位移补偿、车道靠纵向拉伸保持正确。
 	# 始终标记待重建，让播放中的刷新预算按新尺寸补齐窗口（子 displayer 也在调度范围内）
 	_mark_all_dirty()
-	var mgr = PlaybackDisplay.instance
+	var mgr = ServiceHub.playback
 	var playing: bool = is_master and is_processing() and mgr != null and mgr.is_playing
 	if playing:
 		return
@@ -606,7 +606,7 @@ func _process(delta):
 		return
 
 	var t_start: int = Time.get_ticks_usec()
-	var midi_mgr = PlaybackDisplay.instance
+	var midi_mgr = ServiceHub.playback
 	var t_inst: int = Time.get_ticks_usec()
 	if midi_mgr == null or not midi_mgr.is_playing:
 		# 不主动 set_process(false)：由 TrackView._set_note_displayers_process 统一管理启停
@@ -813,7 +813,7 @@ func reset_playhead_position(target_ms: float) -> void:
 	# 确保 _process 处于启用状态：拖动进度条/重入时恢复计时
 	set_process(true)
 
-	var midi_playback_mgr = PlaybackDisplay.instance
+	var midi_playback_mgr = ServiceHub.playback
 	if midi_playback_mgr == null:
 		return
 

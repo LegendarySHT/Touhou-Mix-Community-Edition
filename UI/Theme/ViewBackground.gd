@@ -163,10 +163,10 @@ func refresh_dim() -> void:
 	var mat := _ensure_dim_material()
 	if mat == null:
 		return
-	var dim_html := ConfigManager.instance.get_string("background_dim_color", "#0000007F")
+	var dim_html := ServiceHub.config.get_string("background_dim_color", "#0000007F")
 	var dim := Color(dim_html) if dim_html.is_valid_html_color() else Color(0, 0, 0, 0.5)
 	mat.set_shader_parameter("dim_color", dim)
-	var flash_html := ConfigManager.instance.get_string("background_image_flash_color", "#FFFFFF00")
+	var flash_html := ServiceHub.config.get_string("background_image_flash_color", "#FFFFFF00")
 	_flash_color = Color(flash_html) if flash_html.is_valid_html_color() else Color(1, 1, 1, 0)
 	mat.set_shader_parameter("flash_color", _flash_color)
 

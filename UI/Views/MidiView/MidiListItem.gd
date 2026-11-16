@@ -107,7 +107,7 @@ func setup_with_midi(parent: MidiList, midi: MidiData, index: int, bg: ButtonGro
 func _resolve_cover_path() -> String:
 	if not midi_data:
 		return ""
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if not fs_mgr:
 		return ""
 	return fs_mgr.get_cover_path_by_midiData(midi_data)
@@ -245,7 +245,7 @@ func _start_midi_compute() -> void:
 	# 需要解析 MIDI 文件 ─ 交给 PlaybackDisplay 统一解析：
 	# ensure_parsed 命中 C# 解析缓存时几乎零开销，未命中才真正解析。
 	# 解析主体在 C#（纯 .NET、无场景树访问），故同步调用即可。
-	var pm := PlaybackDisplay.instance
+	var pm := ServiceHub.playback
 	if pm == null:
 		return
 	var ok: bool = pm.ensure_parsed(midi)
@@ -280,7 +280,7 @@ func _fill_time_cache(midi: MidiData, entry: Dictionary) -> void:
 	# 获取 bpm_timeline：优先使用 MidiData 自持，其次 PlaybackDisplay
 	var timeline: Array = midi.bpm_timeline
 	if timeline.is_empty():
-		var pm := PlaybackDisplay.instance
+		var pm := ServiceHub.playback
 		if pm and pm.current_midi_data == midi:
 			timeline = pm.bpm_timeline
 
@@ -291,14 +291,14 @@ func _fill_time_cache(midi: MidiData, entry: Dictionary) -> void:
 
 ## 在主线程计算 Note / MPP 并写入缓存，完成后刷新显示
 func _compute_and_cache_notes(midi: MidiData) -> void:
-	var ksm := KeySequenceManager.instance
+	var ksm := ServiceHub.keys
 	if ksm == null or not midi.has_notes():
 		return
 
 	# 计算前先确保轨道配置已按简介完成初始化（幂等）：
 	# 若首次进入 MidiView 时仍未初始化，统计口径会退化为"全部轨道"，
 	# 与 TrackView / PlayView 的"按简介推荐轨道"不一致。
-	var pm := PlaybackDisplay.instance
+	var pm := ServiceHub.playback
 	if pm != null and not midi.is_track_config_initialized():
 		pm.ensure_track_config_initialized(midi, midi.parsed_notes)
 

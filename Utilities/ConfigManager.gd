@@ -6,15 +6,15 @@
 ## 因此读写只需要 key，不需要 section：section 退化为「ini 文件里的排版分组」，
 ## 它跟随设置页分类走，重组分类不需要改任何模块代码，也不会因为写错 section 而静默读不到值。
 ##
-##   ConfigManager.instance.load_and_set_current()
-##   var lane_count = ConfigManager.instance.get_int("lane_count", 12)
-##   ConfigManager.instance.set_value_and_notify("lane_count", 16)
+##   ServiceHub.config.load_and_set_current()
+##   var lane_count = ServiceHub.config.get_int("lane_count", 12)
+##   ServiceHub.config.set_value_and_notify("lane_count", 16)
 ##
 ## 覆盖外部配置字典时用第三参（读取）：
-##   ConfigManager.instance.get_int("lane_count", 12, some_config)
+##   ServiceHub.config.get_int("lane_count", 12, some_config)
 ##
 ## 写入一个**不在默认 config.ini 里**的运行时键时，用 section_hint 指定落点：
-##   ConfigManager.instance.set_value("player_midi_linear", 0.8, "System")
+##   ServiceHub.config.set_value("player_midi_linear", 0.8, "System")
 ##
 ## ============ 配置变更通知 ============
 ##   EvtBus.config_changed.connect(_on_config_changed)
@@ -38,7 +38,7 @@ static var _instance: ConfigManager = null
 
 func _init() -> void:
 	if _instance != null:
-		push_error("ConfigManager is a singleton, use ConfigManager.instance instead")
+		push_error("ConfigManager is a singleton, use ServiceHub.config instead")
 		return
 
 # ============ 配置路径 ============

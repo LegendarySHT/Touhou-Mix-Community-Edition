@@ -8,6 +8,9 @@ extends Node
 
 class_name CharaManager
 
+## 全局单例引用（由 ServiceHub 在 core 阶段实例化时设置）
+static var instance: CharaManager
+
 ## ========== 目录路径定义 ==========
 static var CHARAS_DIR: String:
 	get: return PathHelper.get_charas_dir()
@@ -34,6 +37,11 @@ var charas_index: Dictionary = {}
 var _composite_cache: Dictionary = {}
 
 func _ready() -> void:
+	if instance == null:
+		instance = self
+	else:
+		queue_free()
+		return
 	add_to_group("singleton")
 	GLogger.info("CharaManager initialized (deferred scan)", "CharaMGR")
 
@@ -193,8 +201,8 @@ func resolve_chara_key(chara_key: String) -> String:
 ## 读取 [Chara] chara_id 配置；配置无值/被删时回退到第一个内置人物
 func get_current_chara_key() -> String:
 	var conf_key: String = ""
-	if ConfigManager.instance != null:
-		conf_key = ConfigManager.instance.get_string("chara_id", "")
+	if ServiceHub.config != null:
+		conf_key = ServiceHub.config.get_string("chara_id", "")
 	conf_key = conf_key.strip_edges()
 	if not conf_key.is_empty() and has_chara(conf_key):
 		return resolve_chara_key(conf_key)

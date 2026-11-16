@@ -170,7 +170,7 @@ func _load_cover() -> void:
 		%Placeholder.visible = false
 		return
 	# 已下载的谱面直接用本地封面，省一次网络请求（与商店卡片同一口径）
-	var local_path := ResourceManager.instance.get_local_cover_path(str(_item.get("hash", "")))
+	var local_path := ServiceHub.resource.get_local_cover_path(str(_item.get("hash", "")))
 	if not local_path.is_empty():
 		CoverLoader.request_load("chart_detail_%d" % get_instance_id(), local_path,
 			func(_path: String, tex: Texture2D, _ver: int) -> void:
@@ -214,8 +214,8 @@ func _load_rank() -> void:
 
 	%RankTitle.text = "排行榜"
 	var hash_str := str(_item.get("hash", ""))
-	var offline_mode := NetManager.instance != null \
-		and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+	var offline_mode := ServiceHub.net != null \
+		and ServiceHub.net.connect_state == NetManager.ConnectState.OFFLINE_MODE
 	var cache_allowed := OnlineCache.is_enabled() and not hash_str.is_empty() \
 		and (not offline_mode or OnlineCache.show_when_offline())
 	var cache_rendered := false
@@ -228,14 +228,14 @@ func _load_rank() -> void:
 			_render_rank_scores(cached)
 			cache_rendered = true
 
-	if hash_str.is_empty() or NetManager.instance == null or not NetManager.instance.is_online \
-			or ScoreManager.instance == null:
+	if hash_str.is_empty() or ServiceHub.net == null or not ServiceHub.net.is_online \
+			or ServiceHub.score == null:
 		if not cache_rendered:
 			_add_rank_message("暂无排行数据")
 		return
 	if not cache_rendered:
 		_add_rank_message("加载中…")
-	var result: Dictionary = await ScoreManager.instance.get_leaderboard(hash_str, 5, 0)
+	var result: Dictionary = await ServiceHub.score.get_leaderboard(hash_str, 5, 0)
 	if not is_inside_tree() or version != _req_version:
 		return
 	if not result.get("ok", false):
@@ -291,17 +291,17 @@ func _load_reaction() -> void:
 		_update_reaction_controls()
 		return
 	# 列表没给计数时先用本地缓存顶一下（离线也不至于显示「—」）
-	if int(_item.get("likes", -1)) < 0 and CommunityManager.instance != null:
-		var cached := CommunityManager.instance.get_cached_counts(hash_str)
+	if int(_item.get("likes", -1)) < 0 and ServiceHub.community != null:
+		var cached := ServiceHub.community.get_cached_counts(hash_str)
 		if not cached.is_empty():
 			_set_reaction_counts(
 				int(cached.get("like_count", -1)), int(cached.get("dislike_count", -1)))
 			_update_reaction_controls()
-	if not _is_online_ready() or CommunityManager.instance == null:
+	if not _is_online_ready() or ServiceHub.community == null:
 		_reaction_loading = false
 		_update_reaction_controls()
 		return
-	var result: Dictionary = await CommunityManager.instance.get_summary(hash_str)
+	var result: Dictionary = await ServiceHub.community.get_summary(hash_str)
 	if not _is_current_reaction(hash_str, version):
 		return
 	_reaction_loading = false
@@ -332,7 +332,7 @@ func _on_dislike_pressed() -> void:
 func _submit_reaction(target: String) -> void:
 	var hash_str := str(_item.get("hash", ""))
 	if not _can_react or _reaction_busy or hash_str.is_empty() \
-			or not _is_online_ready() or CommunityManager.instance == null:
+			or not _is_online_ready() or ServiceHub.community == null:
 		_set_reaction_visual(_my_reaction)
 		return
 	var previous := _my_reaction
@@ -345,7 +345,7 @@ func _submit_reaction(target: String) -> void:
 	var body: Variant = null
 	if not target.is_empty():
 		body = target
-	var result: Dictionary = await CommunityManager.instance.set_reaction(hash_str, body)
+	var result: Dictionary = await ServiceHub.community.set_reaction(hash_str, body)
 	if not _is_current_reaction(hash_str, version):
 		return
 	_reaction_busy = false
@@ -401,7 +401,7 @@ func _update_reaction_controls() -> void:
 		reason = "正在保存评价…"
 	elif not _is_online_ready():
 		reason = "联网后可参与评价"
-	elif AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	elif ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		reason = "登录后并完成该谱面可参与评价"
 	elif _reaction_loading:
 		reason = "正在读取评价状态…"
@@ -440,9 +440,9 @@ func _is_current_reaction(hash_str: String, version: int) -> bool:
 
 
 func _is_online_ready() -> bool:
-	return NetManager.instance != null \
-		and NetManager.instance.connect_state == NetManager.ConnectState.ONLINE \
-		and NetManager.instance.is_online
+	return ServiceHub.net != null \
+		and ServiceHub.net.connect_state == NetManager.ConnectState.ONLINE \
+		and ServiceHub.net.is_online
 
 
 ## 登录 / 登出、上下线、成绩上传都可能改变 canInteract；写入进行中不打断
@@ -613,7 +613,7 @@ func _resolve_state() -> int:
 	var hash_str := str(_item.get("hash", ""))
 	if hash_str.is_empty():
 		return state
-	var local_state := ResourceManager.instance.get_download_state(hash_str)
+	var local_state := ServiceHub.resource.get_download_state(hash_str)
 	if state == ResourceManager.DownloadState.DOWNLOADING \
 			and local_state != ResourceManager.DownloadState.FAILED:
 		return state

@@ -36,7 +36,7 @@ func _ready():
 	_sync_limit_from_config()
 
 func _sync_mode_from_config() -> void:
-	var is_auto := ConfigManager.instance.get_int("auto_mode") == 1
+	var is_auto := ServiceHub.config.get_int("auto_mode") == 1
 	var target_id := MODE_AUTO_ID if is_auto else MODE_NORMAL_ID
 	var target_index: int = %ModeSelect.get_item_index(target_id)
 
@@ -55,8 +55,8 @@ func _on_mode_selected(index: int) -> void:
 	var is_auto := selected_id == MODE_AUTO_ID
 	var value := 1 if is_auto else 0
 
-	ConfigManager.instance.set_value_and_notify("auto_mode", value)
-	var save_ok := ConfigManager.instance.save_config(ConfigManager.USER_CONFIG_PATH)
+	ServiceHub.config.set_value_and_notify("auto_mode", value)
+	var save_ok := ServiceHub.config.save_config(ConfigManager.USER_CONFIG_PATH)
 	if not save_ok:
 		GLogger.warning("Failed to persist Playback.auto_mode to user config", "OptionUI")
 	else:
@@ -64,7 +64,7 @@ func _on_mode_selected(index: int) -> void:
 
 ## 从配置恢复难度 OptionButton 选中态
 func _sync_difficulty_from_config() -> void:
-	var difficulty_id := ConfigManager.instance.get_int(DIFFICULTY_CFG_KEY, 1)
+	var difficulty_id := ServiceHub.config.get_int(DIFFICULTY_CFG_KEY, 1)
 	var idx: int = %DifficultySelect.get_item_index(difficulty_id)
 	if idx < 0:
 		idx = 1  # 回退 Normal
@@ -85,9 +85,9 @@ func _on_difficulty_selected(index: int) -> void:
 			var mapping = SettingsMapper.mappings.get(setting_id)
 			if mapping == null:
 				continue
-			ConfigManager.instance.set_value_and_notify(mapping.key, preset[setting_id])
-	ConfigManager.instance.set_value_and_notify(DIFFICULTY_CFG_KEY, difficulty_id)
-	var save_ok := ConfigManager.instance.save_config(ConfigManager.USER_CONFIG_PATH)
+			ServiceHub.config.set_value_and_notify(mapping.key, preset[setting_id])
+	ServiceHub.config.set_value_and_notify(DIFFICULTY_CFG_KEY, difficulty_id)
+	var save_ok := ServiceHub.config.save_config(ConfigManager.USER_CONFIG_PATH)
 	if not save_ok:
 		GLogger.warning("Failed to persist difficulty to user config", "OptionUI")
 	else:
@@ -115,7 +115,7 @@ func _on_game_mode_selected(_index: int) -> void:
 
 ## 从配置恢复 Limit OptionButton 选中态
 func _sync_limit_from_config() -> void:
-	var limit_id := ConfigManager.instance.get_int(LIMIT_CFG_KEY, 0)
+	var limit_id := ServiceHub.config.get_int(LIMIT_CFG_KEY, 0)
 	var idx: int = %LimitSelect.get_item_index(limit_id)
 	if idx < 0:
 		idx = 0  # 回退无限制
@@ -128,8 +128,8 @@ func _on_limit_selected(index: int) -> void:
 	if _is_syncing_limit_ui:
 		return
 	var selected_id: int = %LimitSelect.get_item_id(index)
-	ConfigManager.instance.set_value_and_notify(LIMIT_CFG_KEY, selected_id)
-	var save_ok := ConfigManager.instance.save_config(ConfigManager.USER_CONFIG_PATH)
+	ServiceHub.config.set_value_and_notify(LIMIT_CFG_KEY, selected_id)
+	var save_ok := ServiceHub.config.save_config(ConfigManager.USER_CONFIG_PATH)
 	if not save_ok:
 		GLogger.warning("Failed to persist limit mode to user config", "OptionUI")
 	else:

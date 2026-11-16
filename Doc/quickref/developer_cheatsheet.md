@@ -3,50 +3,53 @@
 ## 单例访问
 
 ```gdscript
-DataManager.instance
-EventBus.instance
-UIStateManager.instance
-SortingEngine.instance
-ConfigManager.instance
+# autoload 别名
+DataMGR
+EvtBus
+UiStatMGR
+# 服务统一经 ServiceHub 类型化成员访问
+ServiceHub.sort
+ServiceHub.config
 ```
 
 ## 常用信号
 
 ```gdscript
-EventBus.instance.data_loaded_complete.connect(_on_data_ready)
-EventBus.instance.config_changed.connect(_on_config_changed)
-UIStateManager.instance.state_changed.connect(_on_state_changed)
+EvtBus.data_loaded_complete.connect(_on_data_ready)
+EvtBus.config_changed.connect(_on_config_changed)
+UiStatMGR.state_changed.connect(_on_state_changed)
 ```
 
 ## 常用数据接口
 
 ```gdscript
-DataManager.instance.get_all_albums()
-DataManager.instance.get_songs_by_album(album_id)
-DataManager.instance.get_midis_by_song(song_id)
-SortingEngine.instance.search_midis(midis, keyword)
+DataMGR.get_all_albums()
+DataMGR.get_songs_by_album(album_id)
+DataMGR.get_midis_by_song(song_id)
+ServiceHub.sort.search_midis(midis, keyword)
 ```
 
 ## 配置接口
 
 ```gdscript
-ConfigManager.instance.get_int("Audio", "master_volume", 80)
-ConfigManager.instance.set_value_and_notify("Audio", "master_volume", 70)
+ServiceHub.config.get_int("Audio", "master_volume", 80)
+ServiceHub.config.set_value_and_notify("Audio", "master_volume", 70)
 ```
 
 ## 播放接口
 
 ```gdscript
-MidiPlaybackManager.instance.set_soundfont("GeneralUser-GS.sf2")
-var pos_ms = MidiPlaybackManager.instance.get_position_ms()
+# 播放门面为 autoload 别名 PlaybackDisplay（经 ServiceHub.playback 等价访问）
+PlaybackDisplay.set_current(midi_data)
+PlaybackDisplay.tick_to_ms(tick)
 ```
 
 ## 计分接口
 
 ```gdscript
-ScoreCalculator.instance.record_judgment(judgment, block_type, timing_sec)
-var acc = ScoreCalculator.instance.get_accuracy()
-var snapshot = ScoreCalculator.instance.get_snapshot()
+ServiceHub.scoreCalc.record_judgment(judgment, block_type, timing_sec)
+var acc = ServiceHub.scoreCalc.get_accuracy()
+var snapshot = ServiceHub.scoreCalc.get_snapshot()
 ```
 
 ## 禁止事项

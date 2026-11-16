@@ -52,7 +52,7 @@ func start_cover_load() -> void:
 		return
 
 	# 主线程查 WeakRef 缓存(命中零开销)
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if fs_mgr:
 		var cached_tex := fs_mgr.get_cached_cover_texture(path)
 		if cached_tex:
@@ -109,7 +109,7 @@ func _fallback_to_default_cover(failed_path: String) -> void:
 		# 默认封面也加载失败(极端情况):标记 _cover_loaded=true 避免 trigger_cover_chain 反复重试
 		_cover_loaded = true
 		return
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if fs_mgr:
 		# 先查缓存(可能其他项已加载过默认封面)
 		var cached := fs_mgr.get_cached_cover_texture(DEFAULT_COVER_PATH)

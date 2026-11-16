@@ -47,9 +47,9 @@ func setup_score(rank, score, scoreRank, accuracy, pp: float, max_combo: int, pe
 func setup_avatar(avatar_url: String) -> void:
 	if avatar_url.is_empty():
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return
-	var full_url := "%s%s" % [NetManager.instance.server_url, avatar_url]
+	var full_url := "%s%s" % [ServiceHub.net.server_url, avatar_url]
 	HttpImageLoader.load(full_url, self, func(tex: Texture2D) -> void:
 		if tex and is_instance_valid(%Avatar):
 			%Avatar.texture = tex

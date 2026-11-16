@@ -1,6 +1,10 @@
-## 文字滚动管理器（autoload：TextScrollMGR）
+## 文字滚动管理器（由 ServiceHub 在 core 阶段实例化）
 ## 用统一相位驱动所有溢出文本，页面隐藏后从活跃集移除。
+class_name TextScrollMGR
 extends Node
+
+## 全局单例引用（由 ServiceHub 在 core 阶段实例化时设置）
+static var instance: TextScrollMGR
 
 ## 所有文本共用的单程时长、端点停留与缓动曲线
 @export var travel_duration := 3.0
@@ -12,6 +16,14 @@ var _active_items: Dictionary = {}
 var _suspended_roots: Dictionary = {}
 var _phase_time := 0.0
 var _offset_ratio := 0.0
+
+
+func _ready() -> void:
+	if instance == null:
+		instance = self
+	else:
+		queue_free()
+		return
 
 
 func _process(delta: float) -> void:

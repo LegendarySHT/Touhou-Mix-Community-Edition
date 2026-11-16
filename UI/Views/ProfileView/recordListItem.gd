@@ -78,14 +78,14 @@ func set_withdraw_state(withdraw: bool) -> void:
 ## 老服务端回退裸旧端点 /api/charts/{hash}/cover（见 Core/CoverUrl.gd）。
 ## 内容寻址 URL 同图同 URL，客户端 WebCache 因此不会再把共用封面存成 N 份。
 func _load_remote_cover(chart_hash: String, data: Dictionary) -> void:
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return
 	# 列表项若已拼好绝对 URL（ProfileView._item_for_record）就直接用，
 	# 避免二次构造时丢掉 coverUrl 字段。
 	var raw_url = data.get("cover_url", "")
 	var cover_url := "" if raw_url == null else str(raw_url)
 	if cover_url.is_empty():
-		cover_url = CoverUrl.from_chart(NetManager.instance.server_url, chart_hash, data)
+		cover_url = CoverUrl.from_chart(ServiceHub.net.server_url, chart_hash, data)
 	if cover_url.is_empty():
 		return
 	# 先隐藏默认封面，避免加载失败时显示占位图

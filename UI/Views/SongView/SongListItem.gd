@@ -82,7 +82,7 @@ func _apply_static_cover_offset(retry: int = 0) -> void:
 func _get_cover_texture() -> Texture2D:
 	if item_dict.is_empty():
 		return null
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if not fs_mgr:
 		return null
 	return fs_mgr.load_cover_with_cache(fs_mgr.default_cover_if_missing(ChartDB.GetSongCoverPath(String(item_dict.get("id", "")))))
@@ -92,7 +92,7 @@ func _get_cover_texture() -> Texture2D:
 func _resolve_cover_path() -> String:
 	if item_dict.is_empty():
 		return ""
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if not fs_mgr:
 		return ""
 	var real := fs_mgr.default_cover_if_missing(ChartDB.GetSongCoverPath(String(item_dict.get("id", ""))))

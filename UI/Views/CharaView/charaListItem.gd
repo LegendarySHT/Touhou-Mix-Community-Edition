@@ -15,13 +15,13 @@ var _press_tween: Tween = null
 ## 由 CharaView 构建列表时调用：填充角色图、姓名与解锁方式
 func setup_chara(chara_key: String, data: Dictionary) -> void:
 	_chara_key = chara_key
-	name_label.text = str(data.get("name", chara_key.replace(CharaMGR.BUILTIN_SUFFIX, "")))
+	name_label.text = str(data.get("name", chara_key.replace(ServiceHub.chara.BUILTIN_SUFFIX, "")))
 	# 解锁方式：内置角色为固定文字，用户角色显示解锁条件
 	if data.get("is_builtin", false):
 		info_label.text = "内置角色"
 	else:
 		info_label.text = str(data.get("unlock_condition", str(data.get("author", ""))))
-	var tex := CharaMGR.get_portrait(chara_key, 0)
+	var tex := ServiceHub.chara.get_portrait(chara_key, 0)
 	if tex:
 		texture_normal = tex
 

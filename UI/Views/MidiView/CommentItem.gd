@@ -34,14 +34,14 @@ func set_interaction_enabled(enabled: bool) -> void:
 
 
 func _on_like_pressed() -> void:
-	if not _can_interact or _busy or _comment_id <= 0 or CommunityManager.instance == null:
+	if not _can_interact or _busy or _comment_id <= 0 or ServiceHub.community == null:
 		like_btn.button_pressed = _liked_by_me
 		return
 	var target := not _liked_by_me
 	_busy = true
 	like_btn.button_pressed = target
 	like_btn.disabled = true
-	var result: Dictionary = await CommunityManager.instance.set_comment_like(_comment_id, target)
+	var result: Dictionary = await ServiceHub.community.set_comment_like(_comment_id, target)
 	var data = result.get("data")
 	if result.get("ok", false) and not data is Dictionary:
 		result = {
@@ -94,12 +94,12 @@ func _format_created_at(value: String) -> String:
 
 ## avatarUrl 为服务端相对路径；空值保留场景默认头像。
 func setup_avatar(avatar_url: String) -> void:
-	if avatar_url.is_empty() or NetManager.instance == null or not NetManager.instance.is_online:
+	if avatar_url.is_empty() or ServiceHub.net == null or not ServiceHub.net.is_online:
 		return
 	var img_node := get_node_or_null("HBox/Avator/Img")
 	if img_node == null:
 		return
-	var full_url := "%s%s" % [NetManager.instance.server_url, avatar_url]
+	var full_url := "%s%s" % [ServiceHub.net.server_url, avatar_url]
 	HttpImageLoader.load(full_url, self, func(tex: Texture2D) -> void:
 		if tex and is_instance_valid(img_node):
 			img_node.texture = tex

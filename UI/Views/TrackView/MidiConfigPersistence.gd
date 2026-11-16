@@ -140,8 +140,8 @@ func _global_default_vocal_volume() -> float:
 		var v = setting_view.get_setting_value("default_vocal_volume")
 		if v != null:
 			raw = float(v)
-	elif ConfigManager != null and ConfigManager.instance != null:
-		raw = ConfigManager.instance.get_float("default_vocal_volume")
+	elif ConfigManager != null and ServiceHub.config != null:
+		raw = ServiceHub.config.get_float("default_vocal_volume")
 	var vol := raw
 	if vol > 1.0:
 		vol /= 100.0

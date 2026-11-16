@@ -79,7 +79,7 @@ func start_calibration(current_delay: int = 0) -> void:
 
 	# 确保 SoundFont 已加载到后端合成器（trigger_note_on 依赖 SoundFont）
 	# 设置页打开 DelayAdjust 时未调用 play()，SoundFont 可能尚未懒加载到 synth
-	var mp = PlaybackDisplay.instance
+	var mp = ServiceHub.playback
 	if mp:
 		mp.ensure_soundfont_loaded()
 		# 保存"校准前"的后端音量以便还原：必须读后端真值，midi_player_config 是初值投影
@@ -124,7 +124,7 @@ func stop_calibration() -> void:
 	_stop_all_beat_sounds()
 	# 恢复校准前的全局音量，避免污染后续 PlayView 播放
 	if not is_nan(_saved_volume_db):
-		var mp = PlaybackDisplay.instance
+		var mp = ServiceHub.playback
 		if mp:
 			mp.set_volume_db(_saved_volume_db)
 		_saved_volume_db = NAN
@@ -143,7 +143,7 @@ func _stop_all_beat_sounds() -> void:
 ## 播放节拍音：通过 PlaybackDisplay 实时合成 GM 鼓组
 ## 与 PlayView 演奏模式音符走同一音频路径（trigger_note_on），确保延迟特性一致
 func _play_beat_sound(hard: bool = false) -> void:
-	var mp = PlaybackDisplay.instance
+	var mp = ServiceHub.playback
 	if not mp or not mp.midi_player:
 		return
 	var pitch: int = _BEAT_HARD_PITCH if hard else _BEAT_SOFT_PITCH
@@ -182,13 +182,13 @@ func get_result() -> Dictionary:
 # ===== 蓝牙输出检测提示与开关 =====
 # 刷新顶部蓝牙输出状态提示；窗口每次打开（start_calibration）都会调用
 func _update_bt_status() -> void:
-	var is_bt := AudioBtDetector.is_bluetooth_output()
-	var status := AudioBtDetector.get_status_text()
+	var is_bt := ServiceHub.audioBt.is_bluetooth_output()
+	var status := ServiceHub.audioBt.get_status_text()
 	%BtStatus.text = "当前音频输出：%s" % status
 	if is_bt:
 		%BtStatus.text += "｜正在校准蓝牙延迟预设"
 	# 开关初始状态从配置读取（默认开启）
-	var auto_off := ConfigManager.instance.get_int("bt_auto_disable_performing_mode") == 1
+	var auto_off := ServiceHub.config.get_int("bt_auto_disable_performing_mode") == 1
 	_setting_bt_toggle = true
 	%BtToggle.button_pressed = auto_off
 	_setting_bt_toggle = false
@@ -198,7 +198,7 @@ func _update_bt_status() -> void:
 func _on_bt_auto_off_toggled(pressed: bool) -> void:
 	if _setting_bt_toggle:
 		return
-	ConfigManager.instance.set_value_and_notify("bt_auto_disable_performing_mode", 1 if pressed else 0)
+	ServiceHub.config.set_value_and_notify("bt_auto_disable_performing_mode", 1 if pressed else 0)
 
 # 重拍触发：播放重拍音（用户应在此刻点击）
 # 重拍在 AdjustLine 中心(0) 触发，点击时用 AdjustLine 位置算延迟，与动画完全同步

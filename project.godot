@@ -25,24 +25,19 @@ config/icon="uid://von2js75nk2a"
 
 [autoload]
 
+ServiceHub="*res://Services/ServiceHub.gd"
 DataMGR="*res://Core/DataManager.gd"
 EvtBus="*res://Core/EventBus.gd"
-SortEngine="*res://Core/SortingEngine.gd"
 UiStatMGR="*res://Core/UIStateManager.gd"
 FocusMGR="*res://UI/Components/Focus/FocusRouter.gd"
-TextScrollMGR="*res://Game/TextScrollMGR.gd"
 AniMGR="*res://UI/Animations/AnimationManager.gd"
 GLogger="*res://Utilities/Logger.gd"
 ThemeMGR="*res://UI/Theme/ThemeManager.gd"
-SkinMGR="*res://Core/SkinManager.gd"
-ParticleMGR="*res://Core/ParticleManager.gd"
-CharaMGR="*res://Core/CharaManager.gd"
 ChartDB="*res://CSharp/ChartDb/ChartDb.cs"
 MidiCore="*res://CSharp/MidiCore.cs"
 MeltySynth="*res://CSharp/MeltySynthPlayer.tscn"
 PlaybackDisplay="*res://Game/PlaybackDisplay.gd"
 CoverLoader="*res://UI/Components/CoverLoader.gd"
-AudioBtDetector="*res://Utilities/AudioBtDetector.gd"
 
 [display]
 

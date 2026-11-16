@@ -223,7 +223,7 @@ func _validate_min_block_spacing(value: int) -> int:
 	return 1 if (value < 0 or value >= lane_count) else value
 
 func _load_config_parameters() -> void:
-	var cfg = ConfigManager.instance
+	var cfg = ServiceHub.config
 	lane_count = cfg.get_int("lane_count", 12)
 	instant_block_threshold = cfg.get_float("instant_block_max_time", 0.2)
 	short_block_threshold = cfg.get_float("short_block_max_time", 1.0)
@@ -270,7 +270,7 @@ func _on_config_changed(key: String, value: Variant) -> void:
 		"min_touch_cooldown_time":
 			cooldown_seconds = float(value)
 		"max_touch_move_speed":
-			if ConfigManager.instance.get_int("keyboard_mode", 0) == 0:
+			if ServiceHub.config.get_int("keyboard_mode", 0) == 0:
 				max_touch_move_velocity = float(value)
 		"max_block_coalesce_time":
 			density_cap_per_sec = int(value)
@@ -293,15 +293,15 @@ func _on_config_changed(key: String, value: Variant) -> void:
 				max_touch_move_velocity = 999999.0
 				hand_model_enabled = false
 				var lanes: int = ConfigParser.parse_lane_bindings(
-					ConfigManager.instance.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;")).size()
+					ServiceHub.config.get_string("keyboard_mode_keys", "A,S,D,F,J,K,L,;")).size()
 				if lanes > 0:
 					lane_count = lanes
 			else:
-				max_touch_move_velocity = ConfigManager.instance.get_float("max_touch_move_speed")
+				max_touch_move_velocity = ServiceHub.config.get_float("max_touch_move_speed")
 				hand_model_enabled = true
-				lane_count = ConfigManager.instance.get_int("lane_count", 12)
+				lane_count = ServiceHub.config.get_int("lane_count", 12)
 		"keyboard_mode_keys":
-			if ConfigManager.instance.get_int("keyboard_mode", 0) == 1:
+			if ServiceHub.config.get_int("keyboard_mode", 0) == 1:
 				var lanes: int = ConfigParser.parse_lane_bindings(str(value)).size()
 				if lanes > 0:
 					lane_count = lanes

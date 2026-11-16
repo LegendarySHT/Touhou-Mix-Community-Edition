@@ -1,16 +1,20 @@
-## 蓝牙音频输出检测（autoload，平台分发 + 结果缓存）
+## 蓝牙音频输出检测（由 ServiceHub 在 core 阶段实例化，平台分发 + 结果缓存）
 ## - Windows: 子节点 C# AudioRouteDetector（COM 读取默认输出端点的总线类型），
 ##            **首次检测时才实例化**（CSharp/AudioRouteDetector.tscn），不是 autoload
 ## - Android: AndroidRuntime 插件 + JavaClassWrapper 查询 AudioManager 已连接的输出设备
 ## - 其余平台: 不检测，回退普通延迟预设（不影响现有功能）
 ##
-## 使用方式（与 GLogger/ThemeMGR 等 autoload 单例一致）:
-##   AudioBtDetector.is_bluetooth_output()          # 当前输出是否蓝牙（缓存 5s）
-##   AudioBtDetector.is_bluetooth_output(true)      # 强制重新检测
-##   AudioBtDetector.get_active_delay_key()          # 当前应使用的延迟预设配置 key
-##   AudioBtDetector.get_output_name()               # 当前输出端点名称（Android 未取，返回空串）
-##   AudioBtDetector.get_status_text()               # UI 状态文案（延迟校准窗口顶部）
+## 使用方式（与其他 ServiceHub 单例一致，经静态 instance 访问）:
+##   ServiceHub.audioBt.is_bluetooth_output()      # 当前输出是否蓝牙（缓存 5s）
+##   ServiceHub.audioBt.is_bluetooth_output(true)  # 强制重新检测
+##   ServiceHub.audioBt.get_active_delay_key()      # 当前应使用的延迟预设配置 key
+##   ServiceHub.audioBt.get_output_name()           # 当前输出端点名称（Android 未取，返回空串）
+##   ServiceHub.audioBt.get_status_text()           # UI 状态文案（延迟校准窗口顶部）
+class_name AudioBtDetector
 extends Node
+
+## 全局单例引用（由 ServiceHub 在 core 阶段实例化时设置）
+static var instance: AudioBtDetector
 
 ## 检测结果缓存有效期（秒）；关键时点（焦点回归/开局/开窗）用 force_refresh 绕过
 const CACHE_TTL_SEC: float = 5.0
@@ -29,6 +33,21 @@ var _event_listener_ready: bool = false
 
 ## Windows 用 C# 检测器（懒实例化，仅首次检测时创建）
 var _windows_detector: Node = null
+
+
+func _ready() -> void:
+	if instance == null:
+		instance = self
+	else:
+		queue_free()
+		return
+	add_to_group("singleton")
+	# 输出设备变化（插拔蓝牙/有线）事件订阅。PlaybackDisplay 为 autoload，本节点入树时其
+	# 实例已就位；订阅后事件通路即可触发延迟预设重算，无需依赖消费方轮询。
+	# （无事件能力的平台仍由消费方走 has_output_listener 兜底轮询。）
+	if ServiceHub.playback != null and not output_changed.is_connected(
+			ServiceHub.playback._on_audio_output_changed):
+		output_changed.connect(ServiceHub.playback._on_audio_output_changed)
 
 ## 当前是否使用蓝牙输出音频
 func is_bluetooth_output(force_refresh: bool = false) -> bool:

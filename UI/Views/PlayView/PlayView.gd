@@ -21,9 +21,9 @@ var current_midi: MidiData = null
 ## play_result 仅作为传递给 ScoreView 的展示数据容器
 var play_result: ScoreView.ScoreData = null
 
-@onready var playback_mgr: PlaybackDisplay = PlaybackDisplay.instance
-@onready var key_sequence_mgr: KeySequenceManager = KeySequenceManager.instance
-@onready var score_calc: ScoreCalculator = ScoreCalculator.instance
+@onready var playback_mgr: PlaybackDisplay = ServiceHub.playback
+@onready var key_sequence_mgr: KeySequenceManager = ServiceHub.keys
+@onready var score_calc: ScoreCalculator = ServiceHub.scoreCalc
 
 var midi_start_time: float = 0.0
 
@@ -415,8 +415,8 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 			playback_mgr.clear_manual_control_notes()
 		flow_area.clear_flow_area()
 		# 释放本局判定特效的粒子精灵图缓存
-		if ParticleMGR != null:
-			ParticleMGR.clear_texture_cache()
+		if is_instance_valid(ServiceHub.particle):
+			ServiceHub.particle.clear_texture_cache()
 		# 游戏序列数据由 C# KeySequenceCore 持有（跨视图复用），离开时本地无需持有引用
 		# 结算页(from SCORE_VIEW 重试)与播放页同 MIDI，保留已烘焙的模糊背景以便重试复用；
 		# 仅离开播放到其它视图时才清理，避免重试触发重新烘焙、闪现清晰原图
@@ -437,7 +437,7 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 		GLogger.info("Node: %s , ProcessMode: %s" % [self.name, enable], "PlayView")
 		# 从设置界面切回时，背景配置可能已变更，重新应用 play 背景（含 cover 模式烘焙）
 		if _oldState == UIStateManager.UIState.SETTINGS_VIEW and current_midi != null:
-			bg.set_cover(FileSystemManager.instance.get_cover_by_midiData(current_midi), _midi_key(current_midi))
+			bg.set_cover(ServiceHub.fs.get_cover_by_midiData(current_midi), _midi_key(current_midi))
 
 ## 新增：配置变更回调（只按 key 分派）
 func _on_config_changed(key: String, value: Variant) -> void:
@@ -446,8 +446,8 @@ func _on_config_changed(key: String, value: Variant) -> void:
 		return
 
 	if key in ["note_glow_intensity", "note_glow_size"]:
-		var gi = ConfigManager.instance.get_float("note_glow_intensity", 0.5)
-		var gs = ConfigManager.instance.get_float("note_glow_size", 5.0)
+		var gi = ServiceHub.config.get_float("note_glow_intensity", 0.5)
+		var gs = ServiceHub.config.get_float("note_glow_size", 5.0)
 		flow_area.set_glow_params(gi, gs)
 		return
 	
@@ -499,15 +499,15 @@ func _on_config_changed(key: String, value: Variant) -> void:
 				GLogger.info("Performing mode OFF: cleared manual control notes", "PlayView")
 
 func _load_debug_display_setting() -> void:
-	%Hud.set_debug_enabled(ConfigManager.instance.get_int("display_debug_info", 0) == 1)
+	%Hud.set_debug_enabled(ServiceHub.config.get_int("display_debug_info", 0) == 1)
 
 
 func _load_note_skin_setting() -> void:
 	# 如果 FileSystemManager 还未完成资源扫描，等待扫描完成
-	if FileSystemManager.instance and not FileSystemManager.instance.resources_scanned:
+	if ServiceHub.fs and not ServiceHub.fs.resources_scanned:
 		GLogger.info("Waiting for FileSystemManager to scan resources...", "PlayView")
-		if not FileSystemManager.instance.resources_ready.is_connected(_on_skin_resources_ready):
-			FileSystemManager.instance.resources_ready.connect(_on_skin_resources_ready)
+		if not ServiceHub.fs.resources_ready.is_connected(_on_skin_resources_ready):
+			ServiceHub.fs.resources_ready.connect(_on_skin_resources_ready)
 		return
 	
 	_do_load_note_skin()
@@ -517,7 +517,7 @@ func _on_skin_resources_ready() -> void:
 
 func _do_load_note_skin() -> void:
 	# 从配置加载皮肤设置
-	var skin_name = ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
+	var skin_name = ServiceHub.config.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 
 	# 应用皮肤
 	flow_area.load_note_skin(skin_name)
@@ -527,8 +527,8 @@ func _do_load_note_skin() -> void:
 ## 仅在 custom_color 主开关 + 该类型 enable_color + random_color 均开启时生成
 ## 必须在 flow_area.init_flow_area() 之前调用，使新音符按新颜色生成
 func _regenerate_random_note_colors() -> void:
-	var skin_name = ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
-	var skin_config = SkinMGR.get_skin_config(skin_name)
+	var skin_name = ServiceHub.config.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
+	var skin_config = ServiceHub.skin.get_skin_config(skin_name)
 	if skin_config.is_empty():
 		return
 	var custom_color_on := false
@@ -555,11 +555,11 @@ func _regenerate_random_note_colors() -> void:
 ## 根据全局设置（非键盘模式 + 皮肤 custom_color 关闭时生效）生成随机调色板并推送到 FlowArea
 ## 必须在 flow_area.init_flow_area() 之前调用，使新音符按新颜色生成
 func _regenerate_global_random_colors() -> void:
-	var random_on := ConfigManager.instance.get_int("randomize_block_color", 0) == 1
+	var random_on := ServiceHub.config.get_int("randomize_block_color", 0) == 1
 	if not random_on:
 		flow_area.set_random_colors({}, true)
 		return
-	var unified := ConfigManager.instance.get_int("sync_color_across_block_type", 0) == 1
+	var unified := ServiceHub.config.get_int("sync_color_across_block_type", 0) == 1
 	var palette := NoteColorPalette.generate(unified)
 	flow_area.set_random_colors(palette, true)
 	GLogger.info("Generated global random note colors: %s" % str(palette.keys()), "PlayView")
@@ -746,7 +746,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	_interrupted_pause = false
 
 	# 读取“播放准备动画”设置（0=关闭, 1=开启）
-	var play_ready_animation: bool = ConfigManager.instance.get_int("play_ready_animation") == 1
+	var play_ready_animation: bool = ServiceHub.config.get_int("play_ready_animation") == 1
 	GLogger.info("Play ready animation: %s" % ("ON" if play_ready_animation else "OFF"), "PlayView")
 	# 歌曲信息面板开始显示的时刻（遮罩期起点，用于动态计算剩余等待时长）
 	var panel_start_ms := Time.get_ticks_msec()
@@ -780,7 +780,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	playback_mgr.claim_session(self)
 
 	# 新增：从配置读取演奏模式
-	var performing_mode = ConfigManager.instance.get_int("performing_mode")
+	var performing_mode = ServiceHub.config.get_int("performing_mode")
 	play_mode = (performing_mode == 1)
 	GLogger.info("Performing mode: %s" % ("ON" if play_mode else "OFF"), "PlayView")
 
@@ -808,7 +808,7 @@ func _prepare_game(midi:MidiData = current_midi) -> void:
 	if setting_view and setting_view.has_method("get_setting_value"):
 		sync_threshold = setting_view.get_setting_value("audio_sync_threshold")
 	if sync_threshold == null:
-		sync_threshold = ConfigManager.instance.get_int("audio_sync_threshold")
+		sync_threshold = ServiceHub.config.get_int("audio_sync_threshold")
 	playback_mgr.set_sync_threshold(float(sync_threshold))
 	GLogger.info("Audio sync threshold set to %.0f ms" % float(sync_threshold), "PlayView")
 
@@ -1043,7 +1043,7 @@ func _finish_playback_setup() -> void:
 
 ## 从ConfigManager加载键盘和轨道相关的参数
 func _load_lane_parameters() -> void:
-	var config_mgr = ConfigManager.instance
+	var config_mgr = ServiceHub.config
 	
 	# 加载轨道数量（默认12）
 	lane_count = config_mgr.get_int("lane_count", 12)
@@ -1135,7 +1135,7 @@ func _on_lane_config_changed(key: String, value: Variant) -> void:
 				apply_lane_bindings(new_bindings)
 				# 键位变化时同步重算 display_names（按新轨道数对齐）
 				key_display_names = ConfigParser.parse_keyboard_display_names(
-					ConfigManager.instance.get_string("keyboard_mode_display_names", ""),
+					ServiceHub.config.get_string("keyboard_mode_display_names", ""),
 					lane_tokens.size()
 				)
 				# 仅在键盘模式时需要重初始化
@@ -1228,13 +1228,13 @@ func _reinit_lane_display() -> void:
 
 ## 从配置加载演奏模式设置
 func _load_play_mode_setting() -> void:
-	var performing_mode = ConfigManager.instance.get_int("performing_mode")
+	var performing_mode = ServiceHub.config.get_int("performing_mode")
 	play_mode = (performing_mode == 1)
 	GLogger.info("PlayView play mode: %s" % ("ON" if play_mode else "OFF"), "PlayView")
 	# 蓝牙输出时自动关闭演奏模式（高延迟下演奏手感不佳）；
 	# 仅当局会话生效（不覆写全局 performing_mode 配置），玩家可在游戏中手动重开
-	if play_mode and AudioBtDetector.is_bluetooth_output() \
-			and ConfigManager.instance.get_int("bt_auto_disable_performing_mode") == 1:
+	if play_mode and ServiceHub.audioBt.is_bluetooth_output() \
+			and ServiceHub.config.get_int("bt_auto_disable_performing_mode") == 1:
 		play_mode = false
 		GLogger.info("Performing mode auto-disabled: bluetooth audio output detected", "PlayView")
 
@@ -1308,20 +1308,20 @@ func _upload_score_async(midi: MidiData, snapshot: Dictionary) -> void:
 		GLogger.info("Score upload skipped: auto mode enabled (midi=%s)" % midi.file_hash, "PlayView")
 		return
 	# 本地成绩：无论在线与否都记录（中途退出 W 由 save_local_score 内部过滤）
-	if ScoreManager.instance:
-		ScoreManager.instance.save_local_score(midi, snapshot)
+	if ServiceHub.score:
+		ServiceHub.score.save_local_score(midi, snapshot)
 	# 手动上传模式：不自动上传（结算页改由玩家手动触发；中途退出不做自动补传）
-	if ConfigManager.instance != null and ConfigManager.instance.get_int("auto_upload_score", 1) != 1:
+	if ServiceHub.config != null and ServiceHub.config.get_int("auto_upload_score", 1) != 1:
 		GLogger.info("Score upload skipped: manual mode enabled (midi=%s)" % midi.file_hash, "PlayView")
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
-		GLogger.warning("Score upload skipped: offline (NetManager=%s is_online=%s)" % [str(NetManager.instance), str(NetManager.instance.is_online) if NetManager.instance else "null"], "PlayView")
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
+		GLogger.warning("Score upload skipped: offline (NetManager=%s is_online=%s)" % [str(ServiceHub.net), str(ServiceHub.net.is_online) if ServiceHub.net else "null"], "PlayView")
 		return
-	if ScoreManager.instance == null:
+	if ServiceHub.score == null:
 		GLogger.warning("Score upload skipped: ScoreManager not ready", "PlayView")
 		return
 	GLogger.info("Score upload starting: midi=%s pp=%s" % [midi.file_hash, str(snapshot.get("pp", 0))], "PlayView")
-	var result = await ScoreManager.instance.upload_score(midi, snapshot)
+	var result = await ServiceHub.score.upload_score(midi, snapshot)
 	if result.get("ok", false):
 		GLogger.info("Score uploaded: midi=%s pp=%s" % [midi.file_hash, str(snapshot.get("pp", 0))], "PlayView")
 		# 通知个人信息页刷新统计
@@ -1360,9 +1360,9 @@ func _on_quit_pressed() -> void:
 func _upload_score_on_quit() -> void:
 	if current_midi == null or current_midi.file_hash.is_empty():
 		return
-	if NetManager.instance == null or not NetManager.instance.is_online:
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
 		return
-	if ScoreManager.instance == null:
+	if ServiceHub.score == null:
 		return
 	if score_calc == null:
 		return
@@ -1385,7 +1385,7 @@ func _init_display(show_ready_animation: bool = true):
 	%Hud.init_display()
 
 	# 设置歌曲信息（封面只加载一次，同时传给信息面板和背景）
-	var cover_texture = FileSystemManager.instance.get_cover_by_midiData(current_midi)
+	var cover_texture = ServiceHub.fs.get_cover_by_midiData(current_midi)
 	if cover_texture:
 		%Cover.texture = cover_texture
 	# 背景自己按 play 段配置取用（默认 cover + 模糊），没封面时自动退回默认背景
@@ -1403,7 +1403,7 @@ func _init_display(show_ready_animation: bool = true):
 	%MidiAuthor.set_scroll_text(current_midi.artist_name)
 
 	# 显示当前选中的难度预设
-	var difficulty_id := ConfigManager.instance.get_int(DIFFICULTY_CFG_KEY, 1)
+	var difficulty_id := ServiceHub.config.get_int(DIFFICULTY_CFG_KEY, 1)
 	if difficulty_id >= 0 and difficulty_id < DIFFICULTY_NAMES.size():
 		%Difficulty.text = DIFFICULTY_NAMES[difficulty_id]
 

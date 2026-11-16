@@ -56,7 +56,7 @@ func on_vocal_import_btn_pressed() -> void:
 	var file_dialog := _ensure_file_dialog()
 
 	# 获取当前曲包文件夹路径
-	var filesystem_mgr = FileSystemManager.instance
+	var filesystem_mgr = ServiceHub.fs
 	var chart_id = current_midi_data.file_hash if not current_midi_data.file_hash.is_empty() else current_midi_data.id
 	var chart_folder = filesystem_mgr.get_chart_folder_path(chart_id)
 
@@ -113,7 +113,7 @@ func on_vocal_file_selected(file_path: String) -> void:
 		return
 
 	# 获取目标曲包文件夹
-	var filesystem_mgr = FileSystemManager.instance
+	var filesystem_mgr = ServiceHub.fs
 	var chart_id = current_midi_data.file_hash if not current_midi_data.file_hash.is_empty() else current_midi_data.id
 	var chart_folder = filesystem_mgr.get_chart_folder_path(chart_id)
 
@@ -224,7 +224,7 @@ static func resolve_vocal_path(midi_data: MidiData) -> String:
 		midi_data.vocal_file_path = ""
 
 	# 从 FileSystemManager 的反向索引查找对应谱面（O(1)，统一匹配 id / file_hash / hash）
-	var filesystem_mgr = FileSystemManager.instance
+	var filesystem_mgr = ServiceHub.fs
 	var chart_id = midi_data.chart_key if not midi_data.chart_key.is_empty() \
 		else (midi_data.file_hash if not midi_data.file_hash.is_empty() else midi_data.id)
 

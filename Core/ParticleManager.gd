@@ -13,6 +13,9 @@ extends Node
 
 class_name ParticleManager
 
+## 全局单例引用（由 ServiceHub 在 core 阶段实例化时设置）
+static var instance: ParticleManager
+
 ## ========== 目录路径定义（通过 PathHelper 动态获取） ==========
 static var PARTICLES_DIR: String:
 	get: return PathHelper.get_particles_dir()
@@ -50,6 +53,11 @@ var _emitter_texture_cache: Dictionary = {}
 var _layer_template_cache: Dictionary = {}
 
 func _ready() -> void:
+	if instance == null:
+		instance = self
+	else:
+		queue_free()
+		return
 	add_to_group("singleton")
 	GLogger.info("ParticleManager initialized (deferred scan)", "ParticleMGR")
 
@@ -73,7 +81,7 @@ func remove_particle_pack(pack_key: String) -> bool:
 	var path := str(data.get("path", ""))
 	var deleted := true
 	if not path.is_empty() and DirAccess.dir_exists_absolute(path):
-		deleted = FileSystemManager.instance.delete_directory_recursive(path)
+		deleted = ServiceHub.fs.delete_directory_recursive(path)
 	particles_index.erase(pack_key)
 	_base_texture_cache.erase(pack_key)
 	_emitter_texture_cache.erase(pack_key)

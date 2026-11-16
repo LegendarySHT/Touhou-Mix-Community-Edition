@@ -48,11 +48,11 @@ func load_all_midis_async() -> void:
 	if not is_loading:
 		return
 
-	if FileSystemManager.instance == null:
+	if ServiceHub.fs == null:
 		push_error("FileSystemManager not initialized")
 		return
 
-	while not FileSystemManager.instance.is_initialized:
+	while not ServiceHub.fs.is_initialized:
 		await get_tree().process_frame
 	_emit_data_loaded()
 
@@ -140,8 +140,8 @@ func _ensure_midi(chart_key: String) -> MidiData:
 func get_sorted_albums() -> Array:
 	if ChartDB == null or not ChartDB.IsOpen():
 		return []
-	var method_str := ConfigManager.instance.get_string("album_sort_method", "creation_time")
-	var dir_str := ConfigManager.instance.get_string("album_sort_direction", "asc")
+	var method_str := ServiceHub.config.get_string("album_sort_method", "creation_time")
+	var dir_str := ServiceHub.config.get_string("album_sort_direction", "asc")
 	var direction := 0 if dir_str == "asc" else 1
 	var albums: Array = ChartDB.GetSortedAlbumItems(method_str, direction)
 	GLogger.info("专辑投影返回 %d 个（C# 排序 %s %s）" % [albums.size(), method_str, dir_str], "DataMGR")
@@ -197,7 +197,7 @@ func get_midis_by_status(status: String) -> Array[MidiData]:
 	return result
 
 ## 全库搜索（DB 驱动，只水合命中项；DelView 扁平搜索等"整个库"场景用）
-## 与 SortEngine.search_midis（当前集内过滤，保持顺序）互补
+## 与 ServiceHub.sort.search_midis（当前集内过滤，保持顺序）互补
 func search_all_midis(query: String) -> Array[MidiData]:
 	var result: Array[MidiData] = []
 	if ChartDB == null or not ChartDB.IsOpen() or query.is_empty():

@@ -189,7 +189,7 @@ func _on_state_changed(old_state: int, new_state: int) -> void:
 			# 此刻不刷新，交给随后到达的 score_uploaded / score_upload_failed 统一刷一次，
 			# 否则「回页刷新 + 上传完成刷新」会连刷两次（列表被 clear_items 清空、
 			# 滚动位置弹回顶部，并多打一轮排行榜/统计/评论请求）。
-			if ScoreManager.instance != null and ScoreManager.instance.is_upload_in_flight(midi.file_hash):
+			if ServiceHub.score != null and ServiceHub.score.is_upload_in_flight(midi.file_hash):
 				GLogger.info("Refresh deferred: score upload in flight (midi=%s)" % midi.file_hash, "MidiView")
 			else:
 				%ScoreList.load_scores(midi)
@@ -399,9 +399,9 @@ func _refresh_redirect_buttons(midi: MidiData) -> void:
 
 ## 「显示上传按钮」开关（高级选项，默认关闭）
 func _is_upload_button_enabled() -> bool:
-	if ConfigManager.instance == null:
+	if ServiceHub.config == null:
 		return false
-	return ConfigManager.instance.get_int("show_upload_button", 0) == 1
+	return ServiceHub.config.get_int("show_upload_button", 0) == 1
 
 ## 配置变更：简介展开期间即时响应「显示上传按钮」
 func _on_config_changed(key: String, _value: Variant) -> void:
@@ -419,8 +419,8 @@ func _on_click_checkin_web_btn() -> void:
 	if midi == null or not midi.is_store_downloaded():
 		return
 	var url := ""
-	if NetManager.instance != null:
-		url = NetManager.instance.get_chart_web_url(midi.file_hash if not midi.file_hash.is_empty() else midi.id)
+	if ServiceHub.net != null:
+		url = ServiceHub.net.get_chart_web_url(midi.file_hash if not midi.file_hash.is_empty() else midi.id)
 	if url.is_empty():
 		# 详情页地址接口尚未提供：保留占位，不做跳转
 		EvtBus.notify("详情页链接尚未提供")
@@ -433,10 +433,10 @@ func _on_click_upload_song_btn() -> void:
 	var midi: MidiData = %MidiList.get_selection()
 	if midi == null or not midi.is_local_import():
 		return
-	if NetManager.instance == null:
+	if ServiceHub.net == null:
 		EvtBus.notify("网络管理器未就绪")
 		return
-	var result: Dictionary = NetManager.instance.upload_local_chart(midi)
+	var result: Dictionary = ServiceHub.net.upload_local_chart(midi)
 	if bool(result.get("ok", false)):
 		EvtBus.notify("上传请求已提交")
 		return
@@ -469,8 +469,8 @@ func _on_del_btn_pressed():
 				window.show_message("该谱面没有设置人声音频")
 				return
 			# 人声可能正被播放器持有（Windows 上打开中的文件删不掉，err 1），先释放再删
-			FileSystemManager.instance.release_vocal_lock(chart_id)
-			if not FileSystemManager.instance.delete_file(vocal_path):
+			ServiceHub.fs.release_vocal_lock(chart_id)
+			if not ServiceHub.fs.delete_file(vocal_path):
 				window.show_message("删除人声文件失败")
 				return
 			# 更新内存
@@ -499,7 +499,7 @@ func _on_del_btn_pressed():
 			GLogger.info("已重置谱面设定: %s" % midi_to_del.name, "MidiView")
 
 		"删除曲包": # 删除曲包：删除整个文件夹，并从内存中移除
-			if not FileSystemManager.instance.delete_chart(chart_id):
+			if not ServiceHub.fs.delete_chart(chart_id):
 				window.show_message("删除曲包文件夹失败")
 				return
 			# 删除前先记录 song_id 和 album_id，用于判断是否被级联删除

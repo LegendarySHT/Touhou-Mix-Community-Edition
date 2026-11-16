@@ -93,10 +93,10 @@ func get_selection() -> MidiData:
 func cleanup_midi_cache(midi: MidiData) -> void:
 	if midi == null:
 		return
-	var ksm := KeySequenceManager.instance
+	var ksm := ServiceHub.keys
 	if ksm != null:
 		ksm.clear_sequences()
-	var pm := PlaybackDisplay.instance
+	var pm := ServiceHub.playback
 	if pm != null and pm.current_midi_data == midi and pm.has_method("unload_midi"):
 		pm.unload_midi()
 	midi.clear_parsed_notes()

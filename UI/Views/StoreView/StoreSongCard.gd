@@ -165,7 +165,7 @@ func _load_cover() -> void:
 		%Placeholder.visible = false
 		return
 	# 已下载的谱面直接用本地封面：省一次网络请求，也和曲库 / 播放页看到的是同一张
-	var local_path := ResourceManager.instance.get_local_cover_path(str(item.get("hash", "")))
+	var local_path := ServiceHub.resource.get_local_cover_path(str(item.get("hash", "")))
 	if not local_path.is_empty():
 		_release_pending_remote("")
 		CoverLoader.request_load("store_card_%d" % get_instance_id(), local_path,
@@ -262,7 +262,7 @@ func _on_download_pressed() -> void:
 	var state := int(item.get("state", ResourceManager.DownloadState.NOT_DOWNLOADED))
 	var hash_str := str(item.get("hash", ""))
 	if not hash_str.is_empty() and state != ResourceManager.DownloadState.DOWNLOADING:
-		state = ResourceManager.instance.get_download_state(hash_str)
+		state = ServiceHub.resource.get_download_state(hash_str)
 	if bool(item.get("needs_vocal", false)):
 		state = ResourceManager.DownloadState.NOT_DOWNLOADED
 	match state:

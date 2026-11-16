@@ -38,13 +38,13 @@ static var _write_counter: int = 0
 
 ## 主开关：默认开启。每次实时读取配置，不做静态缓存，保证设置页关闭后立即失效。
 static func is_enabled() -> bool:
-	return ConfigManager.instance.get_int("cache_online_content", 1) == 1
+	return ServiceHub.config.get_int("cache_online_content", 1) == 1
 
 
 ## 二级开关：线上模式关闭时是否仍显示缓存。默认 0（保持原有离线表现）。
 ## 开启只显示本地缓存，绝不发起联网请求。
 static func show_when_offline() -> bool:
-	return is_enabled() and ConfigManager.instance.get_int("cache_show_when_offline", 0) == 1
+	return is_enabled() and ServiceHub.config.get_int("cache_show_when_offline", 0) == 1
 
 
 # ============ 读 / 写 ============
@@ -171,9 +171,9 @@ static func _root() -> String:
 
 ## 账号相关内容按 username 分键；未登录返回空串，使读写都被拒绝。
 static func _user_key() -> String:
-	if AuthManager.instance == null or not AuthManager.instance.is_logged_in:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
 		return ""
-	var username := str(AuthManager.instance.current_user.get("username", ""))
+	var username := str(ServiceHub.auth.current_user.get("username", ""))
 	if username.is_empty():
 		return ""
 	return username.md5_text().substr(0, 12)
@@ -183,10 +183,10 @@ static func _user_key() -> String:
 ## 跨服务器复用会指向错误的图片）。
 static func _server_key() -> String:
 	var url := ""
-	if NetManager.instance != null:
-		url = str(NetManager.instance.server_url)
+	if ServiceHub.net != null:
+		url = str(ServiceHub.net.server_url)
 	if url.is_empty():
-		url = ConfigManager.instance.get_string("server_address", "")
+		url = ServiceHub.config.get_string("server_address", "")
 	return url.strip_edges().md5_text().substr(0, 12)
 
 

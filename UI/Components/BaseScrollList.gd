@@ -297,7 +297,7 @@ func _on_state_changed(_oldState: UIStateManager.UIState, state: UIStateManager.
 	# 后台被 MemoryGC 清过缓存：回本视图时把封面状态一并复位并重载。
 	# 只靠上面那一条 _schedule_cover_reload 不够——它走的是视窗对比，
 	# 而节点的 _cover_loaded 仍是 true，会被 start_cover_load 直接挡掉。
-	if state == work_state and MemoryGC.instance != null and MemoryGC.instance.is_trimmed():
+	if state == work_state and ServiceHub.memory != null and ServiceHub.memory.is_trimmed():
 		invalidate_cover_state()
 
 	# 状态未变化时提前返回，避免重复遍历 list_items 和无谓的 set_process 调用

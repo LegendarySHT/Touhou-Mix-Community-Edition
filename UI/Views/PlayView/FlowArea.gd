@@ -209,7 +209,7 @@ func _alloc_long_id() -> int:
 ## 全量预建：开局前由 PlayView 调用，一次性把 C# KeySequenceCore 全部序列的静态数据
 ## （时间/时长/类型/轨道）快照进 _st_*，并预分配运行态数组。此后游戏内零对象、零新建。
 func build_seq_data() -> void:
-	var ksm = KeySequenceManager.instance
+	var ksm = ServiceHub.keys
 	var cnt := ksm.seq_count()
 	_count = cnt
 	_st_type.resize(cnt)
@@ -357,19 +357,19 @@ func init_flow_area():
 	if EvtBus and not EvtBus.config_changed.is_connected(_on_config_changed):
 		EvtBus.config_changed.connect(_on_config_changed)
 
-	auto_mode = ConfigManager.instance.get_int("auto_mode") == 1
-	limit_mode = ConfigManager.instance.get_int("limit_mode", LIMIT_NONE)
+	auto_mode = ServiceHub.config.get_int("auto_mode") == 1
+	limit_mode = ServiceHub.config.get_int("limit_mode", LIMIT_NONE)
 	GLogger.info("FlowArea limit mode = %d" % limit_mode, "FlowArea")
 	
 	# 从配置读取判定有效区（时间窗）
-	var judge_window_idx = ConfigManager.instance.get_int("judge_window_ms", 0)
+	var judge_window_idx = ServiceHub.config.get_int("judge_window_ms", 0)
 	judge_window_ms = _JUDGE_WINDOW_OPTIONS[clampi(judge_window_idx, 0, _JUDGE_WINDOW_OPTIONS.size() - 1)]
-	check_slide_when_finger_up = ConfigManager.instance.get_int("check_instant_blocks_when_finger_up", 0) == 1
-	only_perfect_slides = ConfigManager.instance.get_int("only_perfect_instant_blocks_before_judge", 0) == 1
+	check_slide_when_finger_up = ServiceHub.config.get_int("check_instant_blocks_when_finger_up", 0) == 1
+	only_perfect_slides = ServiceHub.config.get_int("only_perfect_instant_blocks_before_judge", 0) == 1
 
 	# 从配置读取比例系数
-	var block_size_ratio = ConfigManager.instance.get_float("block_size", 6.5)
-	var block_judge_ratio = ConfigManager.instance.get_float("block_judging_width", 1.0)
+	var block_size_ratio = ServiceHub.config.get_float("block_size", 6.5)
+	var block_judge_ratio = ServiceHub.config.get_float("block_judging_width", 1.0)
 	# 从配置读取音符绘制顺序（长条置底 / 长条置顶）
 	_apply_note_draw_order()
 	
@@ -421,24 +421,24 @@ func _apply_judge_line_position() -> void:
 	_recompute_fall_constants()
 
 func _apply_judge_line_thickness() -> void:
-	var thickness : int = max(1, ConfigManager.instance.get_int("judge_line_thickness", 2))
+	var thickness : int = max(1, ServiceHub.config.get_int("judge_line_thickness", 2))
 	%JudgeLine.get_theme_stylebox("separator").thickness = thickness
 
 func _apply_note_fall_config_from_settings() -> void:
 	# 不写内联回退：config.ini 是默认值的权威来源，且 ConfigManager.merge_with_defaults
 	# 保证默认层里有的键在读取时一定存在（默认值写两处正是此前漂移的成因）
-	var note_fall_time = ConfigManager.instance.get_float("note_fall_time")
+	var note_fall_time = ServiceHub.config.get_float("note_fall_time")
 	note_generation_lead_time = max(1.0, note_fall_time * 1000.0)
 	# 把本页实际使用的"生成提前量"推给播放器：开局预卷时长由它推出（+1s 余量），
 	# 保证"音符生成窗口"与"预卷"恒等对齐。此前预卷由 PlayView 按同一配置独立算一遍，
 	# 两条规则不等价（本处有 1s 下限、那里恒加 1s），note_fall_time > 1.0 时会分叉。
 	# 幂等；C# 侧只存一个标量，重复推送无副作用。
-	var _mgr = PlaybackDisplay.instance
+	var _mgr = ServiceHub.playback
 	if _mgr != null:
 		_mgr.set_note_generation_lead_ms(note_generation_lead_time)
 
-	var note_fall_mode = ConfigManager.instance.get_int("note_fall_mode")
-	var note_fall_speed_after_judge_multiplier = ConfigManager.instance.get_float("note_fall_speed_after_judge_multiplier", -1.0)
+	var note_fall_mode = ServiceHub.config.get_int("note_fall_mode")
+	var note_fall_speed_after_judge_multiplier = ServiceHub.config.get_float("note_fall_speed_after_judge_multiplier", -1.0)
 	if note_fall_speed_after_judge_multiplier <= 0.0:
 		# 旧版这里回退读 [Appearance] grace_time（一个从未存在于默认配置的废弃键），
 		# 实际永远拿到 1.0。直接写常量，去掉这条隐形的第二默认值。
@@ -458,10 +458,10 @@ func _apply_note_fall_config_from_settings() -> void:
 			trans_after_line = EasingMapper.string_to_trans(accelerate_config["after_func"])
 			ease_after_line = EasingMapper.string_to_ease(accelerate_config["after_phase"])
 		2:
-			var before_func = ConfigManager.instance.get_string("note_fall_easing_before_func", "LINEAR")
-			var before_phase = ConfigManager.instance.get_string("note_fall_easing_before_phase", "IN")
-			var after_func = ConfigManager.instance.get_string("note_fall_easing_after_func", "LINEAR")
-			var after_phase = ConfigManager.instance.get_string("note_fall_easing_after_phase", "IN")
+			var before_func = ServiceHub.config.get_string("note_fall_easing_before_func", "LINEAR")
+			var before_phase = ServiceHub.config.get_string("note_fall_easing_before_phase", "IN")
+			var after_func = ServiceHub.config.get_string("note_fall_easing_after_func", "LINEAR")
+			var after_phase = ServiceHub.config.get_string("note_fall_easing_after_phase", "IN")
 
 			trans_before_line = EasingMapper.string_to_trans(before_func)
 			ease_before_line = EasingMapper.string_to_ease(before_phase)
@@ -521,8 +521,8 @@ func _on_config_changed(key: String, value: Variant) -> void:
 
 ## 重新计算音符尺寸（根据比例系数）
 func _recalculate_note_dimensions() -> void:
-	var block_size_ratio = ConfigManager.instance.get_float("block_size", 6.5)
-	var block_judge_ratio = ConfigManager.instance.get_float("block_judging_width", 1.0)
+	var block_size_ratio = ServiceHub.config.get_float("block_size", 6.5)
+	var block_judge_ratio = ServiceHub.config.get_float("block_judging_width", 1.0)
 	var safe_width: float = max(1.0, get_viewport().get_visible_rect().size.x - 2.0 * float(parent_node.lane_padding))
 	
 	note_visual_width = max(10.0, safe_width / block_size_ratio)
@@ -533,7 +533,7 @@ func _recalculate_note_dimensions() -> void:
 
 ## 应用音符绘制顺序设置（长条置底 / 长条置顶）到批量绘制器
 func _apply_note_draw_order() -> void:
-	var long_on_top = ConfigManager.instance.get_int("note_draw_order", 0) == 1
+	var long_on_top = ServiceHub.config.get_int("note_draw_order", 0) == 1
 	_note_drawer.set_draw_type_order(long_on_top)
 	GLogger.info("Note draw order applied: long_on_top=%s" % str(long_on_top), "FlowArea")
 
@@ -560,18 +560,18 @@ func set_note_texture(texture_array: Array):
 func load_note_skin(skin_name: String = SkinManager.DEFAULT_SKIN_PRESET) -> void:
 	# 获取皮肤贴图字典
 	var skin_textures = {}
-	if SkinMGR:
-		skin_textures = SkinMGR.get_skin_textures(skin_name)
+	if is_instance_valid(ServiceHub.skin):
+		skin_textures = ServiceHub.skin.get_skin_textures(skin_name)
 		# 加载皮肤完整配置（新结构）
-		_skin_config = SkinMGR.get_skin_config(skin_name)
+		_skin_config = ServiceHub.skin.get_skin_config(skin_name)
 		# 长条三项显示模式（连接/延伸/缩放基准）经统一入口一次取回，默认值收敛在 SkinManager
-		var long_settings: Dictionary = SkinMGR.get_long_settings(skin_name)
+		var long_settings: Dictionary = ServiceHub.skin.get_long_settings(skin_name)
 		_long_connect_mode = long_settings.get("connect_mode", SkinManager.LONG_CONNECT_MODE_EDGE)
 		_long_connect_center = _long_connect_mode == SkinManager.LONG_CONNECT_MODE_CENTER
 		_long_f_mode = long_settings.get("f_mode", SkinManager.LONG_F_MODE_REPEAT)
 		_long_stretch_mode = long_settings.get("stretch_mode", SkinManager.LONG_STRETCH_MODE_LENGTH)
 		# 读取光效总开关
-		_is_glow_enabled = SkinMGR.is_glow_enabled(skin_name)
+		_is_glow_enabled = ServiceHub.skin.is_glow_enabled(skin_name)
 
 	# 构建纹理数组，按顺序: short(点块Block), short_core, instant(滑块Slide), instant_core, long_b, long_b_core, long_f, long_f_core, long_t, long_t_core
 	var texture_array = [
@@ -629,7 +629,7 @@ func refresh_note_colors() -> void:
 
 # 根据皮肤配置设置 long-f 中部贴图的应用方式
 # repeat → 水平拉伸+垂直重复（drawer 分条绘制）；stretch → 固定比例映射（映射方式见 long_stretch_mode）
-# 模式值由 load_note_skin 经 SkinMGR.get_long_settings 读入并缓存，此处只负责同步到批量绘制器
+# 模式值由 load_note_skin 经 ServiceHub.skin.get_long_settings 读入并缓存，此处只负责同步到批量绘制器
 func _apply_long_f_mode() -> void:
 	# 同步到批量绘制器（皮肤热切换时实时更新）
 	_note_drawer.set_long_body_mode(_long_f_mode)
@@ -990,7 +990,7 @@ var _auto_hold_idx: int = 0
 ## 与 _update_block_note_fall 触发本函数的判定时钟一致（auto 模式无需音频钟精确同步）
 func _auto_click(note_index: int):
 	if parent_node.play_mode:
-		_manual_off_scheduler.trigger_from_sequence(KeySequenceManager.instance, note_index)
+		_manual_off_scheduler.trigger_from_sequence(ServiceHub.keys, note_index)
 	if _st_type[note_index] == FlowNote.NoteType.Long:
 		_judge_note(note_index, false, _synced_current_time)
 		_hold_long_note(_auto_hold_idx + 666, note_index)
@@ -1036,13 +1036,13 @@ func prewarm_spark_packs_async() -> void:
 		var preset: String = spark_presets.get(judge, "")
 		var emitter: String = spark_emitters.get(judge, "")
 		if not preset.is_empty():
-			packs.append([preset, ParticleMGR.ROLE_BASE])
+			packs.append([preset, ServiceHub.particle.ROLE_BASE])
 		if not emitter.is_empty():
-			packs.append([emitter, ParticleMGR.ROLE_EMITTER])
+			packs.append([emitter, ServiceHub.particle.ROLE_EMITTER])
 	for i in packs.size():
 		if not is_inside_tree():
 			return
-		ParticleMGR.get_layer_template(packs[i][0], packs[i][1])
+		ServiceHub.particle.get_layer_template(packs[i][0], packs[i][1])
 		if i < packs.size() - 1:
 			await get_tree().process_frame
 
@@ -1324,12 +1324,12 @@ func _handle_press(touch_id: int, pos: Vector2, input_time_ms: float = -1.0) -> 
 		if abs(_st_start[note_index] - judge_time_ms) > float(judge_windows["perfect"]):
 			return
 		if parent_node.play_mode:
-			_manual_off_scheduler.trigger_from_sequence(KeySequenceManager.instance, note_index)
+			_manual_off_scheduler.trigger_from_sequence(ServiceHub.keys, note_index)
 		_judge_note(note_index, true, judge_time_ms, -1, "Perfect")
 		return
 
 	if parent_node.play_mode:
-		_manual_off_scheduler.trigger_from_sequence(KeySequenceManager.instance, note_index)
+		_manual_off_scheduler.trigger_from_sequence(ServiceHub.keys, note_index)
 	if _st_type[note_index] == FlowNote.NoteType.Slide:
 		# 点击滑块按点块(Block)计分（固定倍率并重置滑块衰减链）
 		_judge_note(note_index, true, judge_time_ms, FlowNote.NoteType.Block)
@@ -1432,7 +1432,7 @@ func _judge_slide_as_slide(note_index: int, judge_time_ms: float) -> void:
 	if _rt_flags[note_index] & (F_JUDGED | F_REMOVED | F_HELD):
 		return
 	if parent_node.play_mode:
-		_manual_off_scheduler.trigger_from_sequence(KeySequenceManager.instance, note_index)
+		_manual_off_scheduler.trigger_from_sequence(ServiceHub.keys, note_index)
 	_judge_note(note_index, false, judge_time_ms)
 
 ## 滑键是否可被滑动判定：Slide 类型 + 未判/未移除/未按住 + 手指在判定列内（半宽 = note_judge_width/2）
@@ -1513,7 +1513,7 @@ func _check_slide_stat(note_index: int) -> bool:
 	for keycode in pressed_keys:
 		if pressed_keys[keycode] == _st_lane[note_index]:
 			if parent_node.play_mode:
-				_manual_off_scheduler.trigger_from_sequence(KeySequenceManager.instance, note_index)
+				_manual_off_scheduler.trigger_from_sequence(ServiceHub.keys, note_index)
 			if only_perfect_slides:
 				_judge_note(note_index, false, _st_start[note_index], -1, "Perfect")
 			else:
@@ -1571,7 +1571,7 @@ func judge_note_at_lane(lane_l: int, lane_r: int, input_time_ms: float = -1.0) -
 
 	if best_note >= 0:
 		if parent_node.play_mode:
-			_manual_off_scheduler.trigger_from_sequence(KeySequenceManager.instance, best_note)
+			_manual_off_scheduler.trigger_from_sequence(ServiceHub.keys, best_note)
 		# 完美滑块模式：点击滑块不按点块判——仅处于完美窗口内以滑块(Perfect)计分，否则跳过本次点击
 		if only_perfect_slides and _st_type[best_note] == FlowNote.NoteType.Slide:
 			var eff_time := input_time_ms if input_time_ms >= 0.0 else _get_realtime_position_ms()
@@ -1605,13 +1605,13 @@ var _vib_stop := false
 const _VIB_QUEUE_MAX := 2
 
 func _trigger_touch_vibration() -> void:
-	if ConfigManager.instance.get_int("vibrate_on_touch") != 1:
+	if ServiceHub.config.get_int("vibrate_on_touch") != 1:
 		return
 	var now := Time.get_ticks_msec()
 	if now - _last_vibrate_ms < _VIBRATE_COALESCE_MS:
 		return
 	_last_vibrate_ms = now
-	var duration_ms: int = max(1, ConfigManager.instance.get_int("vibration_duration"))
+	var duration_ms: int = max(1, ServiceHub.config.get_int("vibration_duration"))
 
 	_get_android_bridge()
 	if _android_bridge == null:
@@ -1693,14 +1693,14 @@ func _generate_particle(type: String, pos: Vector2) -> void:
 func _reload_spark_config() -> void:
 	for judge in _JUDGE_TYPES:
 		var jl_str := judge.to_lower()
-		spark_presets[judge] = ParticleMGR.get_particle_pack_by_name(
-			ConfigManager.instance.get_string(jl_str + "_spark_preset", ""))
-		spark_emitters[judge] = ParticleMGR.get_particle_pack_by_name(
-			ConfigManager.instance.get_string(jl_str + "_spark_emitter", ""))
+		spark_presets[judge] = ServiceHub.particle.get_particle_pack_by_name(
+			ServiceHub.config.get_string(jl_str + "_spark_preset", ""))
+		spark_emitters[judge] = ServiceHub.particle.get_particle_pack_by_name(
+			ServiceHub.config.get_string(jl_str + "_spark_emitter", ""))
 		# 配置存百分比，预换算为倍率/不透明度（0-1），spawn 热路径直接取用免除法
-		spark_scalings[judge] = ConfigManager.instance.get_float(jl_str + "_spark_scaling", 100) / 100.0
-		spark_alphas[judge] = ConfigManager.instance.get_float(jl_str + "_spark_alpha", 100) / 100.0
-		spark_emitter_scales[judge] = ConfigManager.instance.get_float(jl_str + "_spark_emitter_scaling", 150) / 100.0
+		spark_scalings[judge] = ServiceHub.config.get_float(jl_str + "_spark_scaling", 100) / 100.0
+		spark_alphas[judge] = ServiceHub.config.get_float(jl_str + "_spark_alpha", 100) / 100.0
+		spark_emitter_scales[judge] = ServiceHub.config.get_float(jl_str + "_spark_emitter_scaling", 150) / 100.0
 
 ## 核心判定入口（平行数组版）：note_index 为 seq 索引
 func _judge_note(note_index: int, trigger_vibration: bool = false, input_time_ms: float = -1.0,

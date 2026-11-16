@@ -319,7 +319,7 @@ func _apply_setting_runtime(id: String, data: Dictionary, converted: Variant) ->
 		return
 	if SettingsMapper.mappings.has(id):
 		var m: Dictionary = SettingsMapper.mappings[id]
-		ConfigManager.instance.set_value_and_notify(m["key"], converted)
+		ServiceHub.config.set_value_and_notify(m["key"], converted)
 
 ## theme_preset 即时应用到 ThemeManager（不持久化到 INI，持久化由 ThemeMGR 自身处理）
 func _apply_theme_preset(v: Variant) -> void:
@@ -413,7 +413,7 @@ func _popup_note_skin_adjust() -> void:
 ## 使弹出窗口（如皮肤预览）能立即读到本次会话内尚未保存的修改。
 ## 不更新 _initial_config，退出时的 diff/写盘逻辑不受影响。
 func _flush_pending_to_runtime() -> void:
-	var cm := ConfigManager.instance
+	var cm := ServiceHub.config
 	for setting_id in _pending_config:
 		if not SettingsMapper.mappings.has(setting_id):
 			continue
@@ -428,7 +428,7 @@ func _flush_pending_to_runtime() -> void:
 ##   type  = 转换类型；apply=true 时额外 set_value_and_notify（按 key 落盘，不需要 section）
 ## 返回值未包含的 entry 自动跳过；此助手消除了各弹窗里逐字段赋值 + 专属 _apply_*_to_runtime 的样板
 func _commit_popup_result(result: Dictionary, result_map: Array) -> void:
-	var cm := ConfigManager.instance
+	var cm := ServiceHub.config
 	for entry in result_map:
 		var from := String(entry.get("from", ""))
 		var key := String(entry.get("key", ""))
@@ -501,11 +501,11 @@ func _popup_falling_adjust() -> void:
 # DelayAdjust 内部用 PlaybackDisplay 实时合成 GM 鼓组节拍音，与 PlayView 演奏模式同音频路径
 func _popup_delay_adjust() -> void:
 	# 强制刷新检测后再选预设，保证校准目标与状态提示一致
-	AudioBtDetector.is_bluetooth_output(true)
-	var id := AudioBtDetector.get_active_delay_key()
+	ServiceHub.audioBt.is_bluetooth_output(true)
+	var id := ServiceHub.audioBt.get_active_delay_key()
 	var default_value := 200 if id == "audio_playback_delay_bt" else 0
 	var current := int(_pending_config.get(id,
-		ConfigManager.instance.get_int(id, default_value)))
+		ServiceHub.config.get_int(id, default_value)))
 	var result := await PopupWindow.instance.show_delay_adjust(current)
 	_pending_config[id] = int(result.get("delay", current))
 	_pending_config["bt_auto_disable_performing_mode"] = int(result.get("bt_auto_off_performing", 1))
@@ -633,9 +633,9 @@ func _refresh_cache_clear_button() -> void:
 
 # 重置内置资源：调用 FileSystemManager 重新复制默认资源
 func _reload_builtin_resources() -> void:
-	if FileSystemManager.instance:
+	if ServiceHub.fs:
 		GLogger.info("Reloading built-in resources...", "SettingList")
-		await FileSystemManager.instance.reload_default_resources()
+		await ServiceHub.fs.reload_default_resources()
 		GLogger.info("Built-in resources reloaded", "SettingList")
 	else:
 		push_warning("[SettingList] FileSystemManager not available")
@@ -644,7 +644,7 @@ func _reload_builtin_resources() -> void:
 # 流程：弹窗输入/浏览目标路径 → Android 权限检查 → 路径校验 → 非空警告 → 迁移 → 提示重启
 # 浏览采用协程贯穿：弹窗关闭 → FileDialog 打开 → 选择后自动重开弹窗填入，不依赖弹窗记忆
 func _popup_storage_location_adjust() -> void:
-	if StorageManager.instance == null:
+	if ServiceHub.storage == null:
 		push_warning("[SettingList] StorageManager not available")
 		return
 
@@ -656,11 +656,11 @@ func _popup_storage_location_adjust() -> void:
 			# Android：浏览公共存储目录前按需引导授权（SAF 选择后写入该路径同样需要权限；
 			# 应用私有目录/默认路径无需权限，已授权则直接跳过）
 			if PathHelper.is_android() \
-					and not StorageManager.instance.is_android_storage_permission_granted():
+					and not ServiceHub.storage.is_android_storage_permission_granted():
 				var go := await PopupWindow.instance.show_message(
 					"浏览公共存储目录需要外部存储权限。\n点击“确定”前往系统设置开启，返回后请再次点击浏览。", true)
 				if go:
-					StorageManager.instance.open_android_permission_settings()
+					ServiceHub.storage.open_android_permission_settings()
 				return
 			var picked := await _pick_storage_dir(String(result.get("path", "")))
 			if picked.is_empty():
@@ -687,11 +687,11 @@ func _popup_storage_location_adjust() -> void:
 
 	# Android：共享存储公共目录需要"所有文件访问"权限，未授权先引导
 	if StorageManager.needs_android_permission(new_path) \
-			and not StorageManager.instance.is_android_storage_permission_granted():
+			and not ServiceHub.storage.is_android_storage_permission_granted():
 		var go := await PopupWindow.instance.show_message(
 			"目标目录位于共享存储中，需要“所有文件访问”权限。\n点击“确定”前往系统设置开启，返回后请再次点击本设置项。", true)
 		if go:
-			StorageManager.instance.open_android_permission_settings()
+			ServiceHub.storage.open_android_permission_settings()
 		return
 
 	# 路径校验
@@ -721,11 +721,11 @@ func _popup_storage_location_adjust() -> void:
 
 	# 迁移（弹窗已关闭，进度条遮罩可复用）
 	# 路径上一步刚校验过，这里跳过重复校验
-	var fs := FileSystemManager.instance
+	var fs := ServiceHub.fs
 	var ui := {}
 	if fs and fs.has_method("show_progress_ui"):
 		ui = fs.show_progress_ui("正在迁移资源，请勿关闭游戏", 1)
-	var mig: Dictionary = await StorageManager.instance.migrate(
+	var mig: Dictionary = await ServiceHub.storage.migrate(
 		PathHelper.get_storage_root(), new_path, ui, true, overwrite_target)
 	if not bool(mig.get("ok", false)):
 		if fs and fs.has_method("hide_progress_ui"):
@@ -759,7 +759,7 @@ func _popup_storage_location_adjust() -> void:
 		if inherited_config:
 			GLogger.info("Storage migrated with inherited target config, restart required", "SettingList")
 	# 自动重启（桌面：拉起新进程后退出）；不支持（Android）或失败时强制重启提示
-	if not StorageManager.instance.request_restart():
+	if not ServiceHub.storage.request_restart():
 		await _force_restart_prompt()
 
 ## 强制重启提示：迁移必须重启才能生效。自动重启不可用（Android / 桌面失败）时，
@@ -940,7 +940,7 @@ func _get_soundfont_path(soundfont_name: String) -> String:
 ##   sync_applied_config_snapshot() 同步快照；写盘失败则保留 diff 供下次重试。
 func apply_pending_config_updates(sync_applied_snapshot: bool = true) -> int:
 	var emitted_count = 0
-	var cm = ConfigManager.instance
+	var cm = ServiceHub.config
 
 	for setting_id in _pending_config:
 		if not SettingsMapper.mappings.has(setting_id):
@@ -1098,7 +1098,7 @@ func _on_difficulty_config_changed(key: String, _value: Variant) -> void:
 ## apply_values_from_config=true: 仅切换锁定态（load_settings 后调用，值已就位）
 ## apply_values_from_config=false: 同时从 ConfigManager 重读 5 项值刷新显示（难度变更后调用）
 func _apply_difficulty_lock_state(apply_values_from_config: bool) -> void:
-	var difficulty_id: int = ConfigManager.instance.get_int(DIFFICULTY_CFG_KEY, 1)
+	var difficulty_id: int = ServiceHub.config.get_int(DIFFICULTY_CFG_KEY, 1)
 	var locked: bool = difficulty_id != DIFFICULTY_CUSTOM_ID
 	for setting_id in DIFFICULTY_LOCKED_IDS:
 		if not setting_items.has(setting_id):
@@ -1109,7 +1109,7 @@ func _apply_difficulty_lock_state(apply_values_from_config: bool) -> void:
 		if not apply_values_from_config:
 			var mapping = SettingsMapper.mappings.get(setting_id)
 			if mapping:
-				var v: Variant = ConfigManager.instance.get_value(mapping.key, "")
+				var v: Variant = ServiceHub.config.get_value(mapping.key, "")
 				item.set_value(v)
 				_pending_config[setting_id] = v
 				_initial_config[setting_id] = v

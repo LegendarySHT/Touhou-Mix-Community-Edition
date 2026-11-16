@@ -153,7 +153,7 @@ func _btn_focus_entered(btn: Button):
 ## 从文件加载配置
 func _load_config_from_file() -> void:
 	# 使用 ConfigManager 单例
-	var config_manager = ConfigManager.instance
+	var config_manager = ServiceHub.config
 
 	# 优先从用户配置文件加载，如果不存在则使用默认配置
 	var config_path = CONFIG_PATH if FileAccess.file_exists(CONFIG_PATH) else DEFAULT_CONFIG_PATH
@@ -184,7 +184,7 @@ func _load_config_from_file() -> void:
 ##   这一步让运行时在退场动画开始前即更新，回去的界面读到的是新值，消除"卡得比较旧"。
 ## 异步：INI 序列化 + 磁盘写入较重，推到下一帧执行（call_deferred），避免阻塞退场动画首帧导致卡顿。
 func save_config_to_file() -> bool:
-	var config_manager = ConfigManager.instance
+	var config_manager = ServiceHub.config
 
 	# 1. 构造待写盘配置：基于磁盘已有内容做 diff，仅写变更项（内存计算，load_config 多数为缓存命中）
 	#    value_type 统一字符串化；颜色转 hex（ConfigManager._serialize_ini 对 Color 只会写成 Color(...) 而非 hex，
@@ -256,7 +256,7 @@ func save_config_to_file() -> bool:
 ## 退场帧之后执行：把构造好的配置序列化并写盘。
 ## 写盘成功后才同步"已应用"快照；失败则保留 diff，下次退出会重试保存并重新通知。
 func _persist_config_to_disk(base_config: Dictionary) -> void:
-	var config_manager = ConfigManager.instance
+	var config_manager = ServiceHub.config
 	var success = config_manager.save_config(CONFIG_PATH, base_config)
 	if success:
 		GLogger.info("Saved config to: %s" % CONFIG_PATH, "SettingView")
@@ -344,7 +344,7 @@ func _exit_about(p_on_done: Callable = Callable()) -> void:
 	if tween and tween.is_valid():
 		tween.finished.connect(func() -> void:
 			%SettingList.visible = true
-			TextScrollMGR.resume_page(%SettingList)
+			ServiceHub.textScroll.resume_page(%SettingList)
 			if p_on_done.is_valid():
 				p_on_done.call()
 		)
@@ -373,7 +373,7 @@ func _get_config():
 func _refresh_about_version() -> void:
 	var ver_label := %AboutPage.get_node_or_null("Project/Info/Version")
 	if ver_label is Label:
-		ver_label.text = VersionManager.instance.get_version_label()
+		ver_label.text = ServiceHub.version.get_version_label()
 
 ## 刷新关于页全部动态内容：版本号、关于项目正文、更新历史、链接与更新按钮。
 ## _ready 时调用一次；外部需要时也可再次调用强制刷新。
@@ -491,7 +491,7 @@ func _on_link_clicked(meta: Variant) -> void:
 
 ## 生成版本历史的 BBCode
 func _history_bbcode() -> String:
-	var entries: Array = VersionManager.instance.get_history(true)
+	var entries: Array = ServiceHub.version.get_history(true)
 	if entries.is_empty():
 		return "[i]暂无版本历史[/i]"
 	var blocks := PackedStringArray()
@@ -565,7 +565,7 @@ func _on_auto_update_toggled(on: bool) -> void:
 func check_for_update(status_label: Label = null) -> void:
 	if status_label:
 		status_label.text = "正在检查更新…"
-	VersionManager.instance.update_check_finished.connect(func(result: Dictionary) -> void:
+	ServiceHub.version.update_check_finished.connect(func(result: Dictionary) -> void:
 		if status_label == null:
 			return
 		if not result.get("ok", false):
@@ -580,7 +580,7 @@ func check_for_update(status_label: Label = null) -> void:
 		else:
 			status_label.text = "已是最新版本（v%s）" % str(result.get("current", ""))
 	, CONNECT_ONE_SHOT)
-	VersionManager.instance.check_for_updates()
+	ServiceHub.version.check_for_updates()
 
 ## 获取特定设置的值
 ## 此方法由其他模块（如TrackView、PlayView）调用，用于查询当前设置值
@@ -597,7 +597,7 @@ func get_setting_value(setting_id: String) -> Variant:
 
 	# 回退：从配置文件读取
 	var config_path = CONFIG_PATH if FileAccess.file_exists(CONFIG_PATH) else DEFAULT_CONFIG_PATH
-	var ini_config = ConfigManager.instance.load_config(config_path)
+	var ini_config = ServiceHub.config.load_config(config_path)
 	if not ini_config.is_empty():
 		var settings_dict = SettingsMapper.ini_to_settings(ini_config)
 		if settings_dict.has(setting_id):
@@ -617,12 +617,12 @@ func switch_page(direction: int = 0):
 	if direction == -1:
 		op = false
 		%ResourceView.visible = true
-		TextScrollMGR.resume_page(%ResourceView)
+		ServiceHub.textScroll.resume_page(%ResourceView)
 		# 提前触发构建：页面在左滑入时就已经有内容，不会滑到一半才开始加载卡片
 		%ResourceView.on_entered()
 	else:
 		%SettingView.visible = true
-		TextScrollMGR.resume_page(%SettingView)
+		ServiceHub.textScroll.resume_page(%SettingView)
 
 	var wid = %SettingView.size.x + 600
 	AniMGR.animate_position(%SettingView, Vector2(wid * 1 if not op else 0, 0), 0.5, "SV_PAGE_SW_1")
@@ -631,19 +631,19 @@ func switch_page(direction: int = 0):
 	%SettingView.visible = op
 	%ResourceView.visible = not op
 	if op:
-		TextScrollMGR.suspend_page(%ResourceView)
+		ServiceHub.textScroll.suspend_page(%ResourceView)
 		%ResourceView.on_exited_to_setting_list()
 	else:
-		TextScrollMGR.suspend_page(%SettingView)
+		ServiceHub.textScroll.suspend_page(%SettingView)
 
 func has_pending_changes() -> bool:
 	return %SettingList and %SettingList.has_pending_changes()
 
 func switch_page_instant() -> void:
 	%SettingView.visible = true
-	TextScrollMGR.resume_page(%SettingView)
+	ServiceHub.textScroll.resume_page(%SettingView)
 	%ResourceView.visible = false
-	TextScrollMGR.suspend_page(%ResourceView)
+	ServiceHub.textScroll.suspend_page(%ResourceView)
 	%ResourceView.on_exited_to_setting_list()
 
 ## 返回处理：ResourceView 子页面可见时先切回设置主页（Esc / Android 返回键调用）

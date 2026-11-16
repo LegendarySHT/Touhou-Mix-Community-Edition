@@ -44,17 +44,17 @@ func _build_chara_list() -> void:
 	for child in %CharaListRow.get_children():
 		child.queue_free()
 
-	var keys := CharaMGR.get_chara_list()
+	var keys := ServiceHub.chara.get_chara_list()
 	if keys.is_empty():
 		# 扫描可能尚未合并完成，等待扫描结束后重建
-		if FileSystemManager.instance and not FileSystemManager.instance.resources_ready.is_connected(_build_chara_list):
-			FileSystemManager.instance.resources_ready.connect(_build_chara_list, CONNECT_ONE_SHOT)
+		if ServiceHub.fs and not ServiceHub.fs.resources_ready.is_connected(_build_chara_list):
+			ServiceHub.fs.resources_ready.connect(_build_chara_list, CONNECT_ONE_SHOT)
 		return
 
 	for key in keys:
 		var item = CHARA_ITEM_SCENE.instantiate()
 		%CharaListRow.add_child(item)
-		item.setup_chara(key, CharaMGR.get_chara_data(key))
+		item.setup_chara(key, ServiceHub.chara.get_chara_data(key))
 		item.chara_activated.connect(_open_chara_detail)
 
 ############################ 专属入场/退场（由 AnimationManager 调用） ############################
@@ -95,16 +95,16 @@ func _on_chara_select() -> void:
 ## 弹出 CharaDetail（并行入场动画）
 func _open_chara_detail(chara_key: String) -> void:
 	_detail_key = chara_key
-	var data := CharaMGR.get_chara_data(chara_key)
-	%CharaImg.texture = CharaMGR.get_portrait(chara_key, 0)
+	var data := ServiceHub.chara.get_chara_data(chara_key)
+	%CharaImg.texture = ServiceHub.chara.get_portrait(chara_key, 0)
 	%CharaName.text = str(data.get("name", chara_key))
 	%CharaAuthor.text = "立绘 %s" % str(data.get("author", ""))
 	%CharaDescription.text = str(data.get("description", ""))
 	# 加载角色背景（未配置时保留原默认图）
-	%CharaBGImg.texture = CharaMGR.get_background(chara_key)
+	%CharaBGImg.texture = ServiceHub.chara.get_background(chara_key)
 
 	# 已选中的角色将 SelectBtn 置灰
-	var is_current := chara_key == CharaMGR.get_current_chara_key()
+	var is_current := chara_key == ServiceHub.chara.get_current_chara_key()
 	%SelectBtn.disabled = is_current
 	%SelectBtn.text = "已选中" if is_current else "选择"
 
@@ -158,9 +158,9 @@ func _hide_detail() -> void:
 
 ## 选中角色：写入配置持久化并把 SelectBtn 置灰
 func _select_chara(chara_key: String) -> void:
-	if ConfigManager.instance:
-		ConfigManager.instance.set_value_and_notify("chara_id", chara_key)
-		ConfigManager.instance.save_config(ConfigManager.instance.USER_CONFIG_PATH)
+	if ServiceHub.config:
+		ServiceHub.config.set_value_and_notify("chara_id", chara_key)
+		ServiceHub.config.save_config(ServiceHub.config.USER_CONFIG_PATH)
 	%SelectBtn.disabled = true
 	%SelectBtn.text = "已选中"
 	GLogger.info("Chara selected: %s" % chara_key, "CharaView")

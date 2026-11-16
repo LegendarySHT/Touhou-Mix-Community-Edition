@@ -84,10 +84,10 @@ func _update_color_controls_state() -> void:
 ## 由 PopupWindow.show_note_skin_adjust 调用：刷新选项 + 应用当前皮肤到预览 + 加载工作副本
 func init_adjust() -> void:
 	_refresh_skin_options()
-	_current_skin_name = ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
+	_current_skin_name = ServiceHub.config.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	_apply_skin_to_preview(_current_skin_name)
 	# 加载当前皮肤的配置到工作副本
-	_working_config = SkinMGR.get_skin_config(_current_skin_name).duplicate(true)
+	_working_config = ServiceHub.skin.get_skin_config(_current_skin_name).duplicate(true)
 	if _working_config.is_empty():
 		# 皮肤未找到，用默认配置兜底
 		_working_config = _build_default_working_config()
@@ -110,12 +110,12 @@ func save_config() -> void:
 		return
 	# 读一次 UI 确保工作副本是最新值（防止有信号未触发的边界情况）
 	_read_ui_to_config()
-	SkinMGR.save_skin_config(_current_skin_name, _working_config)
+	ServiceHub.skin.save_skin_config(_current_skin_name, _working_config)
 	# 通过 config_changed 触发 PlayView 的 flow_area.load_note_skin() 重载
 	# set_value_and_notify 在值未变化时不发通知——只改了光效/颜色等皮肤配置而没换皮肤时，
 	# block_skin_preset 不变，不会触发重载，导致切换光效要换一次皮肤才生效。
 	# 这里用 set_value 写值 + 强制 emit 一次，保证皮肤配置任何改动关闭弹窗后立即应用到游戏端
-	ConfigManager.instance.set_value("block_skin_preset", _current_skin_name)
+	ServiceHub.config.set_value("block_skin_preset", _current_skin_name)
 	if EvtBus:
 		EvtBus.config_changed.emit("block_skin_preset", _current_skin_name)
 
@@ -125,7 +125,7 @@ func _build_default_working_config() -> Dictionary:
 		"general": {"enable_glow": false, "custom_color": false},
 		"short": {"enable_color": false, "color": Color.WHITE, "random_color": false},
 		"instant": {"enable_color": false, "color": Color.WHITE, "random_color": false},
-		"long": {"enable_color": false, "color": Color.WHITE, "random_color": false, "long_connect_mode": SkinMGR.LONG_CONNECT_MODE_EDGE, "long_f_mode": SkinMGR.LONG_F_MODE_REPEAT, "long_stretch_mode": SkinMGR.LONG_STRETCH_MODE_LENGTH}
+		"long": {"enable_color": false, "color": Color.WHITE, "random_color": false, "long_connect_mode": ServiceHub.skin.LONG_CONNECT_MODE_EDGE, "long_f_mode": ServiceHub.skin.LONG_F_MODE_REPEAT, "long_stretch_mode": ServiceHub.skin.LONG_STRETCH_MODE_LENGTH}
 	}
 
 ## 将 _working_config 同步到所有 UI 控件（不触发信号）
@@ -252,9 +252,9 @@ func _apply_preview_from_config() -> void:
 	# 2. 光效：enable_glow=true 时挂 shader 并设颜色；false 时清除 material
 	# 强度/范围取自全局外观设置，与运行时光效同源（PlayView 读同两项，NoteBatchDrawer 同样钳制）
 	var glow_intensity: float = clampf(
-		ConfigManager.instance.get_float("note_glow_intensity", 0.5), 0.0, 2.0)
+		ServiceHub.config.get_float("note_glow_intensity", 0.5), 0.0, 2.0)
 	var glow_size: float = clampf(
-		ConfigManager.instance.get_float("note_glow_size", 5.0), 1.0, 30.0)
+		ServiceHub.config.get_float("note_glow_size", 5.0), 1.0, 30.0)
 	_apply_preview_glow(%NoteBlockGlow, %NoteBlock, block_color, enable_glow, glow_intensity, glow_size)
 	_apply_preview_glow(%NoteSlideGlow, %NoteSlide, slide_color, enable_glow, glow_intensity, glow_size)
 	# 只给 head/tail 挂光效：与运行时 GlowLayer 一致（长条 body 不画光效）
@@ -280,7 +280,7 @@ func _resolve_preview_color(key: String, enable_cb: CheckBox, picker: ColorPicke
 ## 故用与 NoteColorPalette 同风格的确定性代表值：饱和度/亮度取该区间中值、色相两两 >= 30°；
 ## sync_color_across_block_type=1 时三类型同色（与运行时一致）。
 func _preview_global_random_colors() -> Dictionary:
-	var unified := ConfigManager.instance.get_int("sync_color_across_block_type", 0) == 1
+	var unified := ServiceHub.config.get_int("sync_color_across_block_type", 0) == 1
 	var saturation := 0.9
 	var value := 0.95
 	if unified:
@@ -423,7 +423,7 @@ func _create_transparent_texture(width: int = 64, height: int = 64) -> Texture2D
 #   long: NoteDrawer.set_long_textures（与实战同一个绘制器）
 func _apply_skin_to_preview(skin_name: String) -> void:
 	var skin_textures: Dictionary = {}
-	skin_textures = SkinMGR.get_skin_textures(skin_name)
+	skin_textures = ServiceHub.skin.get_skin_textures(skin_name)
 
 	var _transparent := _create_transparent_texture()
 	# 纹理数组顺序与 FlowArea.load_note_skin 一致
@@ -454,10 +454,10 @@ func _apply_skin_to_preview(skin_name: String) -> void:
 
 # 填充皮肤选项列表，选中当前配置的皮肤
 func _refresh_skin_options() -> void:
-	var skin_list: Array = SkinMGR.get_available_skins()
+	var skin_list: Array = ServiceHub.skin.get_available_skins()
 	if skin_list.is_empty():
 		skin_list = [SkinManager.DEFAULT_SKIN_PRESET]
-	var current := ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
+	var current := ServiceHub.config.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
 	%NoteSkinOption.clear()
 	for skin in skin_list:
 		%NoteSkinOption.add_item(skin)
@@ -484,13 +484,13 @@ func _on_skin_option_selected(_index: int) -> void:
 	_apply_skin_to_preview(skin_name)
 	# 切换工作副本到新皮肤（丢弃旧皮肤的未保存修改）
 	_current_skin_name = skin_name
-	_working_config = SkinMGR.get_skin_config(skin_name).duplicate(true)
+	_working_config = ServiceHub.skin.get_skin_config(skin_name).duplicate(true)
 	if _working_config.is_empty():
 		_working_config = _build_default_working_config()
 	_sync_ui_from_config()
 	# 通过 ConfigManager 即时触发 config_changed → PlayView 的 flow_area.load_note_skin()
 	# （相当于把设置保存时进行的皮肤应用提前到这里）
-	ConfigManager.instance.set_value_and_notify("block_skin_preset", skin_name)
+	ServiceHub.config.set_value_and_notify("block_skin_preset", skin_name)
 	# 重置到下方位置（瞬间）
 	%NotePreviewRow.offset_transform_position = Vector2(0, 80)
 	# 第二段：从下方上移 + 淡入（并行）

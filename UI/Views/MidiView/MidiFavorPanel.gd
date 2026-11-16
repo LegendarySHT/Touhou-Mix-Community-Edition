@@ -39,7 +39,7 @@ func show_with_midi(midi: MidiData) -> void:
 
 ## 刷新收藏夹列表
 func _refresh(_arg1 = null, _arg2 = null, _arg3 = null) -> void:
-	if not current_midi or not FavoriteManager.instance:
+	if not current_midi or not ServiceHub.favorite:
 		return
 	# 记录当前持有焦点的收藏夹项，重建后恢复焦点（避免点击切换后焦点丢失）
 	var focused_fav_id := ""
@@ -52,7 +52,7 @@ func _refresh(_arg1 = null, _arg2 = null, _arg3 = null) -> void:
 	for child in favor_list_container.get_children():
 		child.queue_free()
 	# 重新填充
-	for fav in FavoriteManager.instance.favorites:
+	for fav in ServiceHub.favorite.favorites:
 		var item = FAVOR_ITEM_SCENE.instantiate()
 		favor_list_container.add_child(item)
 		item.setup(fav, FavorListItem.Mode.MANAGE, current_midi)
@@ -74,10 +74,10 @@ func _find_favor_item(node: Node) -> FavorListItem:
 
 ## 切换当前 MIDI 在收藏夹中的状态
 func _on_favor_midi_toggled(fav_id: String) -> void:
-	if FavoriteManager.instance.is_midi_in_favorite(fav_id, current_midi):
-		FavoriteManager.instance.remove_midi_from_favorite(fav_id, current_midi)
+	if ServiceHub.favorite.is_midi_in_favorite(fav_id, current_midi):
+		ServiceHub.favorite.remove_midi_from_favorite(fav_id, current_midi)
 	else:
-		FavoriteManager.instance.add_midi_to_favorite(fav_id, current_midi)
+		ServiceHub.favorite.add_midi_to_favorite(fav_id, current_midi)
 	# _refresh 会被 favorite_midi_changed 信号触发
 
 
@@ -120,7 +120,7 @@ func _confirm_create() -> void:
 	favor_list.custom_minimum_size.y = FAVOR_LIST_DEFAULT_HEIGHT
 	add_btn.icon.region = Rect2(160, 80, 80, 80)
 	if not fav_name.is_empty():
-		FavoriteManager.instance.create_favorite(fav_name)
+		ServiceHub.favorite.create_favorite(fav_name)
 
 
 func cancel_create() -> void:

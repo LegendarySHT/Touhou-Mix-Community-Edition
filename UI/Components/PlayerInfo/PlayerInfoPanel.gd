@@ -53,7 +53,7 @@ func _ready() -> void:
 		EvtBus.auth_changed.connect(_on_auth_changed)
 	UiStatMGR.state_changed.connect(_on_ui_state_changed)
 	# 启动时若已登录（AuthManager 可能已恢复会话），直接进入已登录状态
-	if AuthManager.instance != null and AuthManager.instance.is_logged_in:
+	if ServiceHub.auth != null and ServiceHub.auth.is_logged_in:
 		_animate_to_state(State.LOGGED_IN)
 	else:
 		_animate_to_state(State.LOGGED_OUT)

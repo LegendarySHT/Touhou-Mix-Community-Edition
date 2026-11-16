@@ -8,7 +8,7 @@
 ##   Bottom    歌曲页分页条（进场/退场由本脚本的 _play_enter/_play_exit 驱动）
 ##
 ## 数据：
-##   歌曲来自服务端 ResourceManager.instance.get_chart_list（搜索 / 排序 / 分页）
+##   歌曲来自服务端 ServiceHub.resource.get_chart_list（搜索 / 排序 / 分页）
 ##   皮肤 / 特效 / 音源暂取本地资源索引作为预览数据（远端接口未就绪）
 ##   下载管理按本会话经商店发起的下载任务构建（不读本地已下载谱面，重启即清空）
 ##
@@ -150,8 +150,8 @@ func _on_view_ready() -> void:
 	_load_songs()
 
 	UiStatMGR.state_changed.connect(_on_state_changed)
-	if FileSystemManager.instance:
-		FileSystemManager.instance.resources_ready.connect(_on_resources_ready)
+	if ServiceHub.fs:
+		ServiceHub.fs.resources_ready.connect(_on_resources_ready)
 	EvtBus.charts_cache_validated.connect(_on_charts_cache_validated)
 
 	# 标签下划线位置依赖容器布局，等首帧量出按钮位置后再摆放
@@ -215,8 +215,8 @@ func _connect_ui() -> void:
 
 func _init_vocal_toggle() -> void:
 	var enabled := true
-	if ConfigManager.instance != null:
-		enabled = ConfigManager.instance.get_int("download_vocal", 1) == 1
+	if ServiceHub.config != null:
+		enabled = ServiceHub.config.get_int("download_vocal", 1) == 1
 	%VocalBtn.set_pressed_no_signal(enabled)
 	_update_vocal_visual()
 
@@ -233,8 +233,8 @@ func _setup_focus_tabs() -> void:
 
 
 func _on_vocal_toggled(pressed: bool) -> void:
-	if ConfigManager.instance != null:
-		ConfigManager.instance.set_value_and_notify("download_vocal", 1 if pressed else 0)
+	if ServiceHub.config != null:
+		ServiceHub.config.set_value_and_notify("download_vocal", 1 if pressed else 0)
 	_update_vocal_visual()
 	# 关闭后「只补人声」的排队任务已经没有意义，先出队再重算卡片状态
 	_drop_pending_vocal_tasks()
@@ -282,8 +282,8 @@ func _select_tab(tab: int, instant: bool) -> void:
 		_tab_buttons[i].set_pressed_no_signal(i == tab)
 	_show_page(tab)
 	if not instant:
-		TextScrollMGR.suspend_page(_page_node(old_tab))
-	TextScrollMGR.resume_page(_page_node(tab))
+		ServiceHub.textScroll.suspend_page(_page_node(old_tab))
+	ServiceHub.textScroll.resume_page(_page_node(tab))
 
 	%SearchEdit.placeholder_text = TAB_PLACEHOLDERS[tab]
 	%Bottom.visible = tab == Tab.SONGS
@@ -457,8 +457,8 @@ func _load_songs() -> void:
 
 	# ① SWR 的 stale 部分：先渲染上次缓存的列表，不等网络。
 	# 线上模式关闭且二级开关为 0（默认）时不展示，保持原有的空状态提示。
-	var offline_mode := NetManager.instance != null \
-		and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+	var offline_mode := ServiceHub.net != null \
+		and ServiceHub.net.connect_state == NetManager.ConnectState.OFFLINE_MODE
 	var cache_allowed := OnlineCache.is_enabled() \
 		and (not offline_mode or OnlineCache.show_when_offline())
 	var cache_rendered := false
@@ -470,11 +470,11 @@ func _load_songs() -> void:
 			_apply_song_payload(snapshot)
 			cache_rendered = true
 
-	if NetManager.instance == null:
+	if ServiceHub.net == null:
 		if not cache_rendered:
 			_show_songs_message("商店服务不可用")
 		return
-	if not NetManager.instance.is_online:
+	if not ServiceHub.net.is_online:
 		if not cache_rendered:
 			_show_songs_message("在线模式未开启" if offline_mode else "无法连接到服务器")
 		return
@@ -488,7 +488,7 @@ func _load_songs() -> void:
 	# 在线结果回来后静默替换即可，否则底栏会闪一下「加载中…」并短暂锁住翻页
 	_songs_loading = not cache_rendered
 	_update_pager()
-	var result: Dictionary = await ResourceManager.instance.get_chart_list(
+	var result: Dictionary = await ServiceHub.resource.get_chart_list(
 		_song_page, PAGE_SIZE, _search_text,
 		SORT_FIELDS[_sort_index], _sort_order
 	)
@@ -590,11 +590,11 @@ func _refresh_bound_song_cards() -> void:
 func _make_song_item(chart: Dictionary) -> Dictionary:
 	var hash_str := str(chart.get("hash", ""))
 	var server := ""
-	if NetManager.instance != null:
-		server = NetManager.instance.server_url
+	if ServiceHub.net != null:
+		server = ServiceHub.net.server_url
 	var state := int(ResourceManager.DownloadState.NOT_DOWNLOADED)
 	if not hash_str.is_empty():
-		state = ResourceManager.instance.get_download_state(hash_str)
+		state = ServiceHub.resource.get_download_state(hash_str)
 	return {
 		"kind": "song",
 		"hash": hash_str,
@@ -839,11 +839,11 @@ func _build_category_items(tab: int) -> Array:
 	var items: Array = []
 	match tab:
 		Tab.SKINS:
-			if SkinMGR != null:
-				var keys := SkinMGR.skins_index.keys()
+			if is_instance_valid(ServiceHub.skin):
+				var keys := ServiceHub.skin.skins_index.keys()
 				keys.sort()
 				for key in keys:
-					var meta = SkinMGR.skins_index[key]
+					var meta = ServiceHub.skin.skins_index[key]
 					var builtin := false
 					var skin_path := ""
 					if meta is SkinMetadata:
@@ -873,14 +873,14 @@ func _build_category_items(tab: int) -> Array:
 						"state": CategoryCardLib.STATE_INSTALLED,
 					})
 		Tab.EFFECTS:
-			if ParticleMGR != null:
-				var keys := ParticleMGR.get_particle_list()
+			if is_instance_valid(ServiceHub.particle):
+				var keys := ServiceHub.particle.get_particle_list()
 				for key in keys:
-					var data: Dictionary = ParticleMGR.get_particle_data(key)
+					var data: Dictionary = ServiceHub.particle.get_particle_data(key)
 					var builtin := bool(data.get("is_builtin", false))
-					var textures: Array = ParticleMGR.get_base_textures(key)
+					var textures: Array = ServiceHub.particle.get_base_textures(key)
 					if textures.is_empty():
-						textures = ParticleMGR.get_emitter_textures(key)
+						textures = ServiceHub.particle.get_emitter_textures(key)
 					var preview: Texture2D = null
 					if not textures.is_empty() and textures[0] is Texture2D:
 						preview = textures[0]
@@ -917,8 +917,8 @@ func _build_category_items(tab: int) -> Array:
 						"state": CategoryCardLib.STATE_INSTALLED,
 					})
 		Tab.SOUNDFONTS:
-			if FileSystemManager.instance != null:
-				var index: Dictionary = FileSystemManager.instance.soundfonts_index
+			if ServiceHub.fs != null:
+				var index: Dictionary = ServiceHub.fs.soundfonts_index
 				var keys := index.keys()
 				keys.sort()
 				for key in keys:
@@ -1039,8 +1039,8 @@ func _on_resources_ready() -> void:
 	if _current_tab >= Tab.SKINS and _current_tab <= Tab.SOUNDFONTS:
 		_rebuild_category(_current_tab)
 	# 重扫可能带进/带走人声文件，「只缺人声」的判定缓存要跟着作废
-	if ResourceManager.instance != null:
-		ResourceManager.instance.invalidate_local_vocal_cache()
+	if ServiceHub.resource != null:
+		ServiceHub.resource.invalidate_local_vocal_cache()
 		_sync_bound_cards()
 
 
@@ -1084,7 +1084,7 @@ func _request_download(item: Dictionary) -> void:
 	if hash_str.is_empty() or _is_queued(hash_str):
 		return
 	var vocal_only := false
-	if ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+	if ServiceHub.resource.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 		if not _needs_vocal(hash_str, item):
 			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
@@ -1109,7 +1109,7 @@ func _run_manual_queue() -> void:
 		var item: Dictionary = _manual_queue.pop_front()
 		var hash_str := str(item.get("hash", ""))
 		if not _is_vocal_only(hash_str) \
-				and ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+				and ServiceHub.resource.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
 			continue
@@ -1154,7 +1154,7 @@ func _display_state(item: Dictionary) -> int:
 	if _is_queued(hash_str):
 		item["needs_vocal"] = false
 		return ResourceManager.DownloadState.DOWNLOADING
-	var state := ResourceManager.instance.get_download_state(hash_str)
+	var state := ServiceHub.resource.get_download_state(hash_str)
 	if state == ResourceManager.DownloadState.DOWNLOADED and _needs_vocal(hash_str, item):
 		item["needs_vocal"] = true
 		return ResourceManager.DownloadState.NOT_DOWNLOADED
@@ -1166,16 +1166,16 @@ func _display_state(item: Dictionary) -> int:
 func _needs_vocal(hash_str: String, item: Dictionary) -> bool:
 	if not _vocal_enabled() or not bool(item.get("has_vocal", false)):
 		return false
-	if ResourceManager.instance.get_download_state(hash_str) != ResourceManager.DownloadState.DOWNLOADED:
+	if ServiceHub.resource.get_download_state(hash_str) != ResourceManager.DownloadState.DOWNLOADED:
 		return false
-	return not ResourceManager.instance.has_local_vocal(hash_str)
+	return not ServiceHub.resource.has_local_vocal(hash_str)
 
 
 ## 「下载人声」开关（与 ResourceManager 读同一配置项，ConfigManager 不可用按开启处理）
 func _vocal_enabled() -> bool:
-	if ConfigManager.instance == null:
+	if ServiceHub.config == null:
 		return true
-	return ConfigManager.instance.get_int("download_vocal", 1) == 1
+	return ServiceHub.config.get_int("download_vocal", 1) == 1
 
 
 func _start_download(item: Dictionary, from_batch: bool = false) -> void:
@@ -1188,7 +1188,7 @@ func _start_download(item: Dictionary, from_batch: bool = false) -> void:
 	if not _download_entries.has(hash_str):
 		_ensure_download_entry(item, DownloadRowLib.STATE_QUEUED, -1, -1.0)
 	var vocal_only := _is_vocal_only(hash_str)
-	if vocal_only and ResourceManager.instance.get_download_state(hash_str) \
+	if vocal_only and ServiceHub.resource.get_download_state(hash_str) \
 			!= ResourceManager.DownloadState.DOWNLOADED:
 		# 排队期间谱面被本地删掉了：退回整包下载，只补人声会找不到目标目录
 		_download_entries[hash_str]["vocal_only"] = false
@@ -1201,7 +1201,7 @@ func _start_download(item: Dictionary, from_batch: bool = false) -> void:
 			_refresh_card_state(hash_str)
 			return
 	else:
-		var state := ResourceManager.instance.get_download_state(hash_str)
+		var state := ServiceHub.resource.get_download_state(hash_str)
 		if state == ResourceManager.DownloadState.DOWNLOADED:
 			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
@@ -1220,9 +1220,9 @@ func _start_download(item: Dictionary, from_batch: bool = false) -> void:
 
 	var result: Dictionary
 	if vocal_only:
-		result = await ResourceManager.instance.download_vocal(hash_str)
+		result = await ServiceHub.resource.download_vocal(hash_str)
 	else:
-		result = await ResourceManager.instance.download_chart(hash_str,
+		result = await ServiceHub.resource.download_chart(hash_str,
 			Callable(self, "_on_download_progress").bind(hash_str), _get_download_hint(item))
 
 	_active_hashes.erase(hash_str)
@@ -1409,7 +1409,7 @@ func _collect_pending_songs() -> Array:
 		var hash_str := str(item.get("hash", ""))
 		if hash_str.is_empty() or _is_queued(hash_str):
 			continue
-		var state := ResourceManager.instance.get_download_state(hash_str)
+		var state := ServiceHub.resource.get_download_state(hash_str)
 		if state == ResourceManager.DownloadState.DOWNLOADING:
 			continue
 		if state == ResourceManager.DownloadState.DOWNLOADED:
@@ -1433,7 +1433,7 @@ func _run_batch() -> void:
 		_batch_current = hash_str
 		_update_task_badges()
 		if not _is_vocal_only(hash_str) \
-				and ResourceManager.instance.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
+				and ServiceHub.resource.get_download_state(hash_str) == ResourceManager.DownloadState.DOWNLOADED:
 			_set_entry_state(hash_str, ResourceManager.DownloadState.DOWNLOADED,
 				ResourceManager.DownloadStage.RESCAN, 1.0)
 			continue
@@ -1800,12 +1800,12 @@ func _on_state_changed(old_state: UIStateManager.UIState,
 		if _current_tab == Tab.DOWNLOADS:
 			_refresh_downloads_page(false)
 		_update_tab_underline(true)
-		TextScrollMGR.resume_page(self)
+		ServiceHub.textScroll.resume_page(self)
 	elif old_state == UIStateManager.UIState.STORE_VIEW \
 			and new_state != UIStateManager.UIState.STORE_VIEW:
 		if PopupWindow.instance != null:
 			PopupWindow.instance.close_chart_detail()
-		TextScrollMGR.suspend_page(self)
+		ServiceHub.textScroll.suspend_page(self)
 
 
 func _unhandled_input(event: InputEvent) -> void:

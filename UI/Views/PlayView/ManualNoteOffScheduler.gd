@@ -24,7 +24,7 @@ func trigger_from_sequence(ksm: KeySequenceManager, seq_index: int) -> void:
 	if ksm == null or seq_index < 0 or seq_index >= ksm.seq_count():
 		return
 
-	var midi_player = PlaybackDisplay.instance.midi_player
+	var midi_player = ServiceHub.playback.midi_player
 	if not midi_player:
 		return
 
@@ -76,7 +76,7 @@ func process(time_ms: float, force: bool = false) -> void:
 	# 绝大多数帧没有 NoteOff 到期，直接跳过整轮扫描（最小到期时刻缓存）
 	if not force and _pending_manual_offs_min_end > time_ms:
 		return
-	var midi_player = PlaybackDisplay.instance.midi_player
+	var midi_player = ServiceHub.playback.midi_player
 	var remaining: Array = []
 	var new_min := INF
 	for entry in _pending_manual_offs:
@@ -97,7 +97,7 @@ func process(time_ms: float, force: bool = false) -> void:
 func trigger_off_now(seq_index: int) -> void:
 	if _pending_manual_offs.is_empty():
 		return
-	var midi_player = PlaybackDisplay.instance.midi_player
+	var midi_player = ServiceHub.playback.midi_player
 	var remaining: Array = []
 	var new_min := INF
 	for entry in _pending_manual_offs:

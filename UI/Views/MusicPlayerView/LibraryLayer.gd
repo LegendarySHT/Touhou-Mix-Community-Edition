@@ -50,7 +50,7 @@ func _ready() -> void:
 	apply_theme()
 	EvtBus.sort_finished.connect(_on_library_items_ready)
 	if not visible:
-		TextScrollMGR.suspend_page(self)
+		ServiceHub.textScroll.suspend_page(self)
 
 func apply_theme() -> void:
 	if ThemeMGR == null:
@@ -101,7 +101,7 @@ func open() -> void:
 		_reconcile.call_deferred(true, true)
 
 	visible = true
-	TextScrollMGR.resume_page(self)
+	ServiceHub.textScroll.resume_page(self)
 	offset_transform_enabled = true
 	offset_transform_position_ratio = Vector2(0, 1.0)
 	offset_transform_position = Vector2.ZERO
@@ -123,7 +123,7 @@ func _animate_closed() -> void:
 	if _open:
 		return
 	visible = false
-	TextScrollMGR.suspend_page(self)
+	ServiceHub.textScroll.suspend_page(self)
 
 
 ## 池卡首次创建：只连信号（位置/尺寸/offset_transform 由 VirtualList 统一接管）
@@ -187,14 +187,14 @@ func _request_sort() -> void:
 		return
 	_last_sort_sig = sig
 	if q.is_empty():
-		SortEngine.set_sort_mode(_lib_status, _lib_field, _lib_direction)
+		ServiceHub.sort.set_sort_mode(_lib_status, _lib_field, _lib_direction)
 	else:
-		SortEngine.set_sort_mode_with_query(q)
+		ServiceHub.sort.set_sort_mode_with_query(q)
 
 ## 排序结果就绪：撑滚动范围 + 跳回顶部按视觉顺序全量重绑
 ## （照 SortedMidiView 的 refecth 分支——增量对齐会残留旧数据）
 func _on_library_items_ready() -> void:
-	_lib_items = SortEngine.get_items()
+	_lib_items = ServiceHub.sort.get_items()
 	%LibraryEmpty.visible = _lib_items.is_empty()
 	if _vlist == null:
 		return
@@ -232,7 +232,7 @@ func _on_card_play_next(item: Dictionary) -> void:
 	var k := _key_of(item)
 	if k.is_empty():
 		return
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null:
 		return
 	# 同上：insert_next 只需要 key，不必为取 key 先水合整份谱面 JSON
@@ -242,7 +242,7 @@ func _on_card_add(item: Dictionary) -> void:
 	var k := _key_of(item)
 	if k.is_empty():
 		return
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null:
 		return
 	# 投影的 key 就是规范键（ChartDb.ListItemDict 的 key = _id），而 append 只需要 key
@@ -257,7 +257,7 @@ func _on_card_favorite(item: Dictionary) -> void:
 	favorite_requested.emit([k])
 
 func _on_batch_add_pressed() -> void:
-	var mgr := PlaybackDisplay.instance
+	var mgr := ServiceHub.playback
 	if mgr == null:
 		return
 	# 投影里就带 key（= 规范键 _id），append 只需要 key：零 DB 查询、零水合。

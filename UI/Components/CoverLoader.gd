@@ -126,7 +126,7 @@ func request_load(item_id: String, path: String, callback: Callable) -> void:
 ## 主线程同步加载 res:// 封面（已导入的压缩纹理）
 ## 先查共享 WeakRef 缓存，命中零开销；未命中 load() 一次并回写缓存
 func _load_res_texture(path: String) -> Texture2D:
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if fs_mgr:
 		var cached := fs_mgr.get_cached_cover_texture(path)
 		if cached:
@@ -243,7 +243,7 @@ func _deliver_callback(item_id: String, version: int, path: String, tex: Texture
 ## 获取该路径全局共享的一份纹理（主线程）
 ## 缓存已存在 → 直接复用（消除同路径重复 GPU 上传）；否则创建并写入 WeakRef 缓存
 func _shared_texture(path: String, image: Image) -> Texture2D:
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if fs_mgr:
 		var cached := fs_mgr.get_cached_cover_texture(path)
 		if cached:

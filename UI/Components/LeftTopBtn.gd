@@ -34,9 +34,9 @@ func _on_online_state_changed(state: int, latency_ms: int) -> void:
 func _update_lag_display(state: int = -1, latency_ms: int = -1) -> void:
 	if state == -1:
 		# 初始化时从 NetManager 读取当前状态
-		if NetManager.instance != null:
-			state = NetManager.instance.connect_state
-			latency_ms = NetManager.instance.get_latency_ms()
+		if ServiceHub.net != null:
+			state = ServiceHub.net.connect_state
+			latency_ms = ServiceHub.net.get_latency_ms()
 		else:
 			state = NetManager.ConnectState.OFFLINE_MODE
 

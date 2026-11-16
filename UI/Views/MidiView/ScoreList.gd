@@ -110,8 +110,8 @@ func _refresh_after_upload(midi_hash: String) -> void:
 	if _current_midi == null:
 		return
 	if not UploadRefreshGate.should_refresh(_current_midi.file_hash, midi_hash,
-			UiStatMGR.current_state, NetManager.instance != null \
-			and NetManager.instance.connect_state == NetManager.ConnectState.ONLINE):
+			UiStatMGR.current_state, ServiceHub.net != null \
+			and ServiceHub.net.connect_state == NetManager.ConnectState.ONLINE):
 		return
 	load_scores(_current_midi)
 
@@ -132,8 +132,8 @@ func load_scores(midi: MidiData) -> void:
 	_set_stats_message(_STATS_LOADING)
 
 	var midi_hash := midi.file_hash if midi != null else ""
-	var offline_mode := NetManager.instance != null \
-		and NetManager.instance.connect_state == NetManager.ConnectState.OFFLINE_MODE
+	var offline_mode := ServiceHub.net != null \
+		and ServiceHub.net.connect_state == NetManager.ConnectState.OFFLINE_MODE
 	# 线上模式关闭且二级开关为 0（默认）时不展示缓存，保持原有的本地最佳成绩表现
 	var cache_allowed := OnlineCache.is_enabled() and not midi_hash.is_empty() \
 		and (not offline_mode or OnlineCache.show_when_offline())
@@ -156,7 +156,7 @@ func load_scores(midi: MidiData) -> void:
 				_cache_rendered = true
 
 	# ② 原有在线分支；有缓存时只保留统计行，绝不 _show_message（它会 clear_items）
-	if NetManager.instance == null:
+	if ServiceHub.net == null:
 		_fail_stats(_STATS_UNAVAILABLE)
 		if not _cache_rendered:
 			_show_message("在线服务未就绪")
@@ -171,19 +171,19 @@ func load_scores(midi: MidiData) -> void:
 		return
 
 	# 在线模式开启但尚未建立连接：按连接阶段显示具体状态，不伪装成未开启。
-	if NetManager.instance.connect_state == NetManager.ConnectState.CONNECTING:
+	if ServiceHub.net.connect_state == NetManager.ConnectState.CONNECTING:
 		_waiting_online = true
 		_fail_stats(_STATS_CONNECTING)
 		if not _cache_rendered:
 			_show_message("正在连接在线服务...")
 		return
-	if NetManager.instance.connect_state == NetManager.ConnectState.FAILED:
+	if ServiceHub.net.connect_state == NetManager.ConnectState.FAILED:
 		_waiting_online = true
 		_fail_stats(_STATS_UNAVAILABLE)
 		if not _cache_rendered:
 			_show_message("无法连接到在线服务器，请检查网络设置")
 		return
-	if not NetManager.instance.is_online:
+	if not ServiceHub.net.is_online:
 		_waiting_online = true
 		_fail_stats(_STATS_UNAVAILABLE)
 		if not _cache_rendered:
@@ -196,7 +196,7 @@ func load_scores(midi: MidiData) -> void:
 			_show_message("无法获取 MIDI 信息")
 		return
 
-	if ScoreManager.instance == null:
+	if ServiceHub.score == null:
 		_fail_stats(_STATS_UNAVAILABLE)
 		if not _cache_rendered:
 			_show_message("成绩服务未就绪")
@@ -206,7 +206,7 @@ func load_scores(midi: MidiData) -> void:
 	if not _cache_rendered:
 		_show_message("加载中...")
 
-	var result = await ScoreManager.instance.get_leaderboard(midi.file_hash, LOAD_LIMIT, 0)
+	var result = await ServiceHub.score.get_leaderboard(midi.file_hash, LOAD_LIMIT, 0)
 	if request_version != _request_version:
 		return  # 已有更新的请求，丢弃过期响应
 	_loading = false
@@ -244,10 +244,10 @@ func load_scores(midi: MidiData) -> void:
 ## 字段口径：totalPlays = 全服非 W（中途退出）游玩次数，avgScore/avgPp/avgAccuracy 为均值；
 ## avgAccuracy 是 0~1 的比率，与 ScoreListItem / PlayerInfoContent 一致，×100 后显示百分比。
 func _load_stats(midi_hash: String, request_version: int) -> void:
-	if ScoreManager.instance == null:
+	if ServiceHub.score == null:
 		_set_stats_message(_STATS_UNAVAILABLE)
 		return
-	var result: Dictionary = await ScoreManager.instance.get_stats(midi_hash)
+	var result: Dictionary = await ServiceHub.score.get_stats(midi_hash)
 	if request_version != _request_version:
 		return  # 切谱面了，丢弃过期统计
 	if not result.get("ok", false):
@@ -336,10 +336,10 @@ func _show_local_best(midi: MidiData) -> void:
 	if midi == null or midi.file_hash.is_empty():
 		_show_message("无法获取 MIDI 信息")
 		return
-	if ScoreManager.instance == null:
+	if ServiceHub.score == null:
 		_show_message("成绩服务未就绪")
 		return
-	var local := ScoreManager.instance.get_local_best(midi.file_hash)
+	var local := ServiceHub.score.get_local_best(midi.file_hash)
 	if local.is_empty():
 		_show_message("暂无本地成绩")
 		return

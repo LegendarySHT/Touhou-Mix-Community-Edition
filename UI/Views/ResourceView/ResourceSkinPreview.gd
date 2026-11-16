@@ -27,8 +27,8 @@ func setup(item: Dictionary) -> void:
 	_skin_key = skin_key
 	_initialized = true
 	_color = _resolve_color()
-	_request_texture(SkinMGR.get_skin_texture_path(skin_key, "short"), true)
-	_request_texture(SkinMGR.get_skin_texture_path(skin_key, "short_core"), false)
+	_request_texture(ServiceHub.skin.get_skin_texture_path(skin_key, "short"), true)
+	_request_texture(ServiceHub.skin.get_skin_texture_path(skin_key, "short_core"), false)
 	queue_redraw()
 
 
@@ -79,7 +79,7 @@ func _assign_texture(tex: Texture2D, is_base: bool) -> void:
 
 
 func _resolve_color() -> Color:
-	var config := SkinMGR.get_skin_config(_skin_key)
+	var config := ServiceHub.skin.get_skin_config(_skin_key)
 	if config.is_empty():
 		return Color.WHITE
 	var globals := _preview_global_colors()
@@ -88,7 +88,7 @@ func _resolve_color() -> Color:
 
 ## 全局随机色无法预知本局实际值；用确定性的代表色，避免预览每次刷新闪烁。
 func _preview_global_colors() -> Dictionary:
-	var cfg := ConfigManager.instance
+	var cfg := ServiceHub.config
 	if cfg == null or cfg.get_int("randomize_block_color", 0) != 1:
 		return {}
 	var unified := cfg.get_int("sync_color_across_block_type", 0) == 1

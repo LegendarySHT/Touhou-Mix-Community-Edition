@@ -124,7 +124,7 @@ func _exit_tree() -> void:
 		ThemeMGR.unregister_theme_applier(self)
 	if _resized_callable.is_valid() and resized.is_connected(_resized_callable):
 		resized.disconnect(_resized_callable)
-	TextScrollMGR.unregister(self)
+	ServiceHub.textScroll.unregister(self)
 
 
 ## 尺寸变化时重算滚动
@@ -151,14 +151,14 @@ func _measure_and_scroll() -> void:
 	# 文字未溢出（含两端填充）：不滚动，避免刚好能塞下却顶着左边
 	if _text_width + 2 * end_padding <= size.x:
 		_overflow = false
-		TextScrollMGR.unregister(self)
+		ServiceHub.textScroll.unregister(self)
 		queue_redraw()
 		return
 
 	_overflow = true
 	# 起点和终点各留 end_padding，避免文字贴边
 	var max_offset := _text_width - size.x + 2 * end_padding
-	TextScrollMGR.register(self, max_offset)
+	ServiceHub.textScroll.register(self, max_offset)
 
 
 ## 应用统一时钟计算出的偏移；视口外仅更新状态，不触发绘制

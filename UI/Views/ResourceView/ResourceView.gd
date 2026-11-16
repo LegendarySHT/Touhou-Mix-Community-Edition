@@ -113,8 +113,8 @@ func _ready() -> void:
 	_select_tab(Tab.SONGS, true)
 	_update_pending_ui()
 	UiStatMGR.state_changed.connect(_on_ui_state_changed)
-	if FileSystemManager.instance:
-		FileSystemManager.instance.resources_ready.connect(_on_resources_ready)
+	if ServiceHub.fs:
+		ServiceHub.fs.resources_ready.connect(_on_resources_ready)
 	if ThemeMGR:
 		ThemeMGR.register_theme_applier(self)
 		apply_theme()
@@ -188,7 +188,7 @@ func _connect_ui() -> void:
 
 func on_entered() -> void:
 	_entered = true
-	TextScrollMGR.resume_page(self)
+	ServiceHub.textScroll.resume_page(self)
 	var need_load := _current_tab == Tab.SONGS \
 		and (not _song_loaded or _song_applied_query != _search_text.strip_edges())
 	if _current_tab != Tab.SONGS:
@@ -227,7 +227,7 @@ func on_exited_to_setting_list() -> void:
 	_search_text = ""
 	%SearchEdit.text = ""
 	_set_pending_expanded(false, true)
-	TextScrollMGR.suspend_page(self)
+	ServiceHub.textScroll.suspend_page(self)
 
 
 func _on_ui_state_changed(old_state: int, new_state: int) -> void:
@@ -306,8 +306,8 @@ func _select_tab(tab: int, instant: bool) -> void:
 		_tab_buttons[i].set_pressed_no_signal(i == tab)
 	_page_tabs.current_tab = clampi(tab, 0, TAB_COUNT - 1)
 	if not instant:
-		TextScrollMGR.suspend_page(_page_node(old_tab))
-	TextScrollMGR.resume_page(_page_node(tab))
+		ServiceHub.textScroll.suspend_page(_page_node(old_tab))
+	ServiceHub.textScroll.resume_page(_page_node(tab))
 	%SearchEdit.placeholder_text = SEARCH_PLACEHOLDERS[tab]
 	# 待操作抽屉现在挂在歌曲页里，切页由容器负责显隐，不再手动开关
 	_sync_empty()
@@ -570,7 +570,7 @@ func _make_song_item(p: Dictionary) -> Dictionary:
 
 func _refresh_vocal_folders() -> void:
 	_vocal_folders.clear()
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if fs_mgr == null:
 		return
 	for entry in fs_mgr.audio_files_index:
@@ -763,7 +763,7 @@ func _delete_vocals(keys: Array) -> Dictionary:
 	var deleted := 0
 	var missing := 0
 	var failed := 0
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	for key in keys:
 		var files := _find_vocal_files(str(key))
 		if files.is_empty():
@@ -782,7 +782,7 @@ func _delete_vocals(keys: Array) -> Dictionary:
 
 func _find_vocal_files(chart_key: String) -> Array[String]:
 	var result: Array[String] = []
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if fs_mgr == null:
 		return result
 	var folder := fs_mgr.get_chart_folder_path(chart_key)
@@ -804,7 +804,7 @@ func _on_delete_song_pressed() -> void:
 	if not await _confirm("确定删除所选 %d 首歌？\n会连同 MIDI、人声和谱面配置一起删除，且不可撤销。" % keys.size()):
 		return
 	_set_busy(true)
-	var removed: Array = await FileSystemManager.instance.delete_charts_batch(keys)
+	var removed: Array = await ServiceHub.fs.delete_charts_batch(keys)
 	for id in removed:
 		DataMGR.remove_midi(id)
 	_set_busy(false)
@@ -856,7 +856,7 @@ func _reset_midi_config(midi: MidiData) -> void:
 func _on_favorite_pressed() -> void:
 	if _busy or _pending.is_empty():
 		return
-	var fav_mgr := FavoriteManager.instance
+	var fav_mgr := ServiceHub.favorite
 	if fav_mgr == null or fav_mgr.favorites.is_empty():
 		await _info("还没有收藏夹，请先在侧栏收藏夹里新建一个。")
 		return
@@ -922,11 +922,11 @@ func _build_resource_items(tab: int) -> void:
 	var items: Array = []
 	match tab:
 		Tab.SKINS:
-			if SkinMGR != null:
-				var keys := SkinMGR.skins_index.keys()
+			if is_instance_valid(ServiceHub.skin):
+				var keys := ServiceHub.skin.skins_index.keys()
 				keys.sort()
 				for key in keys:
-					var meta = SkinMGR.skins_index[key]
+					var meta = ServiceHub.skin.skins_index[key]
 					var builtin := false
 					var skin_path := ""
 					if meta is SkinMetadata:
@@ -946,9 +946,9 @@ func _build_resource_items(tab: int) -> void:
 						"path": skin_path,
 					})
 		Tab.EFFECTS:
-			if ParticleMGR != null:
-				for key in ParticleMGR.get_particle_list():
-					var data: Dictionary = ParticleMGR.get_particle_data(key)
+			if is_instance_valid(ServiceHub.particle):
+				for key in ServiceHub.particle.get_particle_list():
+					var data: Dictionary = ServiceHub.particle.get_particle_data(key)
 					var builtin := bool(data.get("is_builtin", false))
 					var frame := int(data.get("frame", 0))
 					var fps := float(data.get("fps", 0.0))
@@ -964,8 +964,8 @@ func _build_resource_items(tab: int) -> void:
 						"path": str(data.get("path", "")),
 					})
 		Tab.SOUNDFONTS:
-			if FileSystemManager.instance != null:
-				var index: Dictionary = FileSystemManager.instance.soundfonts_index
+			if ServiceHub.fs != null:
+				var index: Dictionary = ServiceHub.fs.soundfonts_index
 				var keys := index.keys()
 				keys.sort()
 				for key in keys:
@@ -982,8 +982,8 @@ func _build_resource_items(tab: int) -> void:
 						"path": str(data.get("path", "")),
 					})
 		Tab.BACKGROUNDS:
-			if FileSystemManager.instance != null:
-				var index: Dictionary = FileSystemManager.instance.get_backgrounds_index()
+			if ServiceHub.fs != null:
+				var index: Dictionary = ServiceHub.fs.get_backgrounds_index()
 				var keys := index.keys()
 				keys.sort()
 				for key in keys:
@@ -1054,13 +1054,13 @@ func _confirm_delete_resource(item: Dictionary) -> void:
 	var ok := false
 	match str(item.get("kind", "")):
 		"skin":
-			ok = SkinMGR.remove_skin(str(item.get("key", "")))
+			ok = ServiceHub.skin.remove_skin(str(item.get("key", "")))
 		"effect":
-			ok = ParticleMGR.remove_particle_pack(str(item.get("key", "")))
+			ok = ServiceHub.particle.remove_particle_pack(str(item.get("key", "")))
 		"soundfont":
-			ok = FileSystemManager.instance.delete_soundfont(str(item.get("path", "")))
+			ok = ServiceHub.fs.delete_soundfont(str(item.get("path", "")))
 		"background":
-			ok = FileSystemManager.instance.delete_background(str(item.get("path", "")))
+			ok = ServiceHub.fs.delete_background(str(item.get("path", "")))
 			if ok:
 				ThemeMGR.invalidate_background_cache(str(item.get("key", "")))
 	_set_busy(false)
@@ -1105,9 +1105,9 @@ func _count_image_files(skin_path: String) -> int:
 
 
 func _particle_preview_texture(pack_key: String, data: Dictionary) -> Texture2D:
-	var textures: Array = ParticleMGR.get_base_textures(pack_key)
+	var textures: Array = ServiceHub.particle.get_base_textures(pack_key)
 	if textures.is_empty():
-		textures = ParticleMGR.get_emitter_textures(pack_key)
+		textures = ServiceHub.particle.get_emitter_textures(pack_key)
 	if textures.is_empty() or not textures[0] is Texture2D:
 		return null
 	var preview: Texture2D = textures[0]

@@ -32,13 +32,13 @@ func init_adjust() -> void:
 	# item_selected / text_changed → _on_setting_changed 反复重启预览循环。
 	_is_initialized = false
 	# 从配置读取初始值
-	var fall_mode := ConfigManager.instance.get_int("note_fall_mode")
-	var fall_time := ConfigManager.instance.get_float("note_fall_time")
-	var fall_speed_mult := ConfigManager.instance.get_float("note_fall_speed_after_judge_multiplier")
-	var before_func := ConfigManager.instance.get_string("note_fall_easing_before_func", "LINEAR")
-	var before_phase := ConfigManager.instance.get_string("note_fall_easing_before_phase", "IN")
-	var after_func := ConfigManager.instance.get_string("note_fall_easing_after_func", "LINEAR")
-	var after_phase := ConfigManager.instance.get_string("note_fall_easing_after_phase", "IN")
+	var fall_mode := ServiceHub.config.get_int("note_fall_mode")
+	var fall_time := ServiceHub.config.get_float("note_fall_time")
+	var fall_speed_mult := ServiceHub.config.get_float("note_fall_speed_after_judge_multiplier")
+	var before_func := ServiceHub.config.get_string("note_fall_easing_before_func", "LINEAR")
+	var before_phase := ServiceHub.config.get_string("note_fall_easing_before_phase", "IN")
+	var after_func := ServiceHub.config.get_string("note_fall_easing_after_func", "LINEAR")
+	var after_phase := ServiceHub.config.get_string("note_fall_easing_after_phase", "IN")
 
 	# 同步到 UI
 	%FallModeOption.select(clampi(fall_mode, 0, 2))
@@ -71,7 +71,7 @@ func stop_preview() -> void:
 ## FlowArea._on_config_changed 收到信号后调用 _apply_note_fall_config_from_settings 读取全部字段
 func save_config() -> void:
 	var result := get_result()
-	var cm := ConfigManager.instance
+	var cm := ServiceHub.config
 	# 无条件写入，确保 _current_config 与 UI 一致
 	cm.set_value("note_fall_mode", int(result["note_fall_mode"]))
 	cm.set_value("note_fall_time", float(result["note_fall_time"]))
@@ -107,8 +107,8 @@ func _select_phase(btn: OptionButton, phase_name: String) -> void:
 
 ## 应用当前选中的音符皮肤到预览 block（使用 short 类型的贴图）
 func _apply_current_skin_to_preview() -> void:
-	var skin_name := ConfigManager.instance.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
-	var skin_textures := SkinMGR.get_skin_textures(skin_name)
+	var skin_name := ServiceHub.config.get_string("block_skin_preset", SkinManager.DEFAULT_SKIN_PRESET)
+	var skin_textures := ServiceHub.skin.get_skin_textures(skin_name)
 	var transparent := _create_transparent_texture()
 	%FallingBlock.texture = skin_textures.get("short", transparent)
 	%FallingBlock.get_node("Core").texture = skin_textures.get("short_core", transparent)

@@ -136,7 +136,7 @@ func _load_cover(fav: FavoriteListData) -> void:
 	# 封面路径走磁盘索引反查（与 FavoriteManager._validate_favorites 一致）：
 	# 不依赖 DataMGR/ChartDB 水合出 MidiData，谱面未加载 / DB 不可用时仍能取到封面；
 	# 未命中时 _cover_path_from_chart 内部已回退默认封面，避免直接置 null 导致空白。
-	var fs := FileSystemManager.instance
+	var fs := ServiceHub.fs
 	var key: String = fav.midi_ids.back()
 	cover.texture = fs.load_cover_with_cache(fs.get_cover_path_by_ids(key, key))
 
@@ -146,7 +146,7 @@ func _apply_mode() -> void:
 	# 切换 Wrap 可见性即可控制图标整体显隐（含黑色背景），ActionIcon 默认可见
 	action_icon_wrap.visible = show_action
 	if show_action:
-		var in_fav := FavoriteManager.instance.is_midi_in_favorite(favorite_id, current_midi)
+		var in_fav := ServiceHub.favorite.is_midi_in_favorite(favorite_id, current_midi)
 		action_icon.texture.region = (Rect2(240, 80, 80, 80) if in_fav else Rect2(160, 80, 80, 80))
 
 
@@ -196,8 +196,8 @@ func _confirm_rename() -> void:
 		# （收藏选择页漏过一次，表现为「能进编辑框但改不动」）
 		_name_full_text = new_name
 		name_label.set_scroll_text(new_name)
-		if FavoriteManager.instance != null:
-			FavoriteManager.instance.rename_favorite(favorite_id, new_name)
+		if ServiceHub.favorite != null:
+			ServiceHub.favorite.rename_favorite(favorite_id, new_name)
 		favor_item_renamed.emit(favorite_id, new_name)
 	else:
 		# 恢复显示并重启滚动（标签实际文本存于 TextScrollHelper，引擎 text 恒为空，取绑定时的值）
@@ -209,7 +209,7 @@ func _confirm_rename() -> void:
 
 ## 删除是破坏性操作，走确认弹窗；确认与落盘同样由组件负责，理由同 _confirm_rename
 func _on_delete_pressed() -> void:
-	var mgr := FavoriteManager.instance
+	var mgr := ServiceHub.favorite
 	var popup := PopupWindow.instance
 	if popup != null:
 		var fav := mgr.get_favorite(favorite_id) if mgr != null else null

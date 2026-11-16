@@ -6,7 +6,7 @@
 ##   "org.godotengine.plugin.v2.<PluginName>" 前缀的 meta-data，
 ##   反射实例化 value 指向的 GodotPlugin 子类并以 <PluginName> 注册为 Engine singleton
 ## - 注入后 GDScript 侧 Engine.get_singleton("AndroidRuntime") 即可用
-##   （AudioBtDetector._detect_android 依赖它获取 Activity/Context 做蓝牙检测）
+##   （ServiceHub.audioBt._detect_android 依赖它获取 Activity/Context 做蓝牙检测）
 ##
 ## 仅作用于 Android 平台且使用 gradle 构建的导出（manifest 定制只对 gradle 构建生效）。
 @tool

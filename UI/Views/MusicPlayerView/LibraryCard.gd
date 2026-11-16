@@ -71,7 +71,7 @@ func _apply_item() -> void:
 
 ## 封面：投影已带 file_hash / coverHash，直接走 FileSystemManager 的按 id 取图
 func _cover_path_of(midi_item: Dictionary) -> String:
-	var fs_mgr := FileSystemManager.instance
+	var fs_mgr := ServiceHub.fs
 	if fs_mgr == null:
 		return ""
 	return fs_mgr.get_cover_path_by_ids(String(midi_item.get("file_hash", "")),
