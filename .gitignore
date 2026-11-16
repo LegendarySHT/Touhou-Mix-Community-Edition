@@ -18,3 +18,5 @@ addons/godot_mcp/
 .gdmcp/
 Resources/temp/
 /temp/
+/dist/
+__pycache__/
