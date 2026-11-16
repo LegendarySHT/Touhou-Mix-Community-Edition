@@ -393,8 +393,8 @@ def run(args: argparse.Namespace) -> int:
     if args.min_supported_build is not None:
         entry["min_supported_build"] = args.min_supported_build
 
-    artifact = export_windows(godot, version)
     try:
+        artifact = export_windows(godot, version)
         if not args.keep_version_files:
             restore_version_files()
 
