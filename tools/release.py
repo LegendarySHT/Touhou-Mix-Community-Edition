@@ -225,7 +225,8 @@ def current_history_entry(version: str) -> dict:
     return entries[0] if entries and isinstance(entries[0], dict) else {}
 
 
-def build_notes(version: str, notes_file: str | None) -> tuple[str, list[str]]:
+def build_notes(version: str, channel: str, notes_file: str | None) -> tuple[str, list[str]]:
+    """生成 Release 说明。version_history.json 的 title 仅用于 UI 占位，不参与发布说明。"""
     if notes_file:
         text = Path(notes_file).read_text(encoding="utf-8").strip()
         if not text:
@@ -233,12 +234,11 @@ def build_notes(version: str, notes_file: str | None) -> tuple[str, list[str]]:
         return text, []
 
     entry = current_history_entry(version)
-    title = str(entry.get("title", "")).strip()
     changes = [str(item).strip() for item in entry.get("changes", []) if str(item).strip()]
-    if not title and not changes:
-        raise ReleaseError("version_history.json 中没有更新说明，请用 --notes-file 指定")
+    if not changes:
+        raise ReleaseError("当前版本没有 changes 且未指定 --notes-file，无法生成发布说明")
 
-    lines = [f"## {title}" if title else f"## v{version}", ""]
+    lines = [f"## v{version}（{channel}）", ""]
     lines += [f"- {item}" for item in changes]
     return "\n".join(lines).strip() + "\n", changes
 
@@ -387,7 +387,7 @@ def run(args: argparse.Namespace) -> int:
                 f"版本号写入结果与预期不一致: {version}/{build} != {expected_version}/{expected_build}"
             )
 
-        notes_text, changes = build_notes(version, args.notes_file)
+        notes_text, changes = build_notes(version, args.channel, args.notes_file)
         notes_path = DIST_DIR / f"release-notes-{version}.md"
         notes_path.parent.mkdir(parents=True, exist_ok=True)
         notes_path.write_text(notes_text, encoding="utf-8")
