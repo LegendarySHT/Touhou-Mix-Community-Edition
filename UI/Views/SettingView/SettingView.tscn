@@ -164,7 +164,7 @@ alignment = 1
 [node name="Name" type="Label" parent="SettingView/AboutPage/Project/Info" unique_id=504147345]
 layout_mode = 2
 theme_override_font_sizes/font_size = 45
-text = "TouHou Mix Cumunity Edition"
+text = "Touhou Mix Community Edition"
 
 [node name="Version" type="Label" parent="SettingView/AboutPage/Project/Info" unique_id=740686161]
 layout_mode = 2

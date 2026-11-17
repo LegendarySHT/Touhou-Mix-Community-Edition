@@ -391,7 +391,7 @@ func refresh_about_page() -> void:
 ## 构建关于项目的 BBCode（含可点击链接）
 func _about_project_bbcode() -> String:
 	var lines := PackedStringArray()
-	lines.append("TouHou Mix Cummunity Edition 是由 TouHou Mix 的爱好者共同开发的 THMIX 社区版")
+	lines.append("Touhou Mix Community Edition 是由 Touhou Mix 的爱好者共同开发的 THMIX 社区版")
 	lines.append("如有问题或者改进建议可在 Github 或在 THMIX QQ群 (β群: 1020610194 γ群: 140497416) 中提出")
 	lines.append("目前项目缺少IOS端的测试及擅长UI设计的成员，如果你对此项目感兴趣，欢迎加入我们~")
 	lines.append("")
