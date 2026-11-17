@@ -104,17 +104,6 @@ static func get_setting_groups() -> Array:
 					{"text_en": "On", "text_zh": "开启"}
 				]
 			},
-			{
-				"id": "auto_check_update",
-				"name_en": "Check for Updates at Startup",
-				"name_zh": "启动时自动检查更新",
-				"description": "启动完成后查询一次新版本清单；关闭后可在关于页手动检查",
-				"type": "TYPE_OPTION",
-				"options": [
-					{"text_en": "Off", "text_zh": "关闭"},
-					{"text_en": "On", "text_zh": "开启"}
-				]
-			},
 		{
 			"id": "cache_online_content",
 			"name_en": "Online Content Cache",

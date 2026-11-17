@@ -995,6 +995,15 @@ func set_setting_value(setting_id: String, value: Variant) -> bool:
 		return true
 	return false
 
+## 写入一个当前没有 UI 项的设置值，只进待保存队列。
+## 供「设置项已从列表移出、但仍用同一份 config.ini」的入口使用（如关于页的
+## auto_check_update）：退出设置页时与其它改动一起走 diff 落盘，不另开写盘路径。
+func mark_pending_value(setting_id: String, value: Variant) -> void:
+	if not SettingsMapper.mappings.has(setting_id):
+		push_warning("[SettingList] 未登记的设置项，忽略写入: %s" % setting_id)
+		return
+	_pending_config[setting_id] = value
+
 ## 获取指定选项型设置的显示文本
 func get_option_text(setting_id: String, index: int) -> String:
 	if not setting_items.has(setting_id):

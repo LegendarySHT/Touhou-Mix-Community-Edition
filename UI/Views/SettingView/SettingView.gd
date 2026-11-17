@@ -575,9 +575,14 @@ func _on_manual_update_pressed() -> void:
 	_set_update_buttons_busy(true)
 	ServiceHub.version.check_for_updates()
 
-## 「启动时自动检查」开关：持久化到 config.ini，关闭后下次启动不再联网检查
+## 「启动时自动检查」开关：关闭后下次启动不再联网检查。
+## 该设置项已从常规设置页移出、由本页独占，没有 SettingItem 帮忙改 _pending_config，
+## 因此这里手动写入待保存队列：退出设置页时随其它改动一起 diff 落盘。
+## 只调 set_value_and_notify 只会改运行时内存，重启后会丢失。
 func _on_auto_update_toggled(on: bool) -> void:
-	ServiceHub.config.set_value_and_notify("auto_check_update", 1 if on else 0)
+	var value := 1 if on else 0
+	ServiceHub.config.set_value_and_notify("auto_check_update", value)
+	%SettingList.mark_pending_value("auto_check_update", value)
 	if on:
 		_on_manual_update_pressed()
 

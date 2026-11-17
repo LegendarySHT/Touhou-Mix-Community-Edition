@@ -17,6 +17,7 @@ static var mappings: Dictionary = {
 	"album_sort_method": {"key": "album_sort_method", "value_type": "string"},
 	"album_sort_direction": {"key": "album_sort_direction", "value_type": "string"},
 	"online_mode": {"key": "online_mode", "value_type": "int"},
+	# 仅在关于页提供开关（常规设置里的重复入口已移除），映射保留供退出设置页时落盘
 	"auto_check_update": {"key": "auto_check_update", "value_type": "int"},
 	"cache_online_content": {"key": "cache_online_content", "value_type": "int"},
 	"cache_show_when_offline": {"key": "cache_show_when_offline", "value_type": "int"},
