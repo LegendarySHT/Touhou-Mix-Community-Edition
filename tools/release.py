@@ -226,17 +226,24 @@ def current_history_entry(version: str) -> dict:
 
 
 def build_notes(version: str, channel: str, notes_file: str | None) -> tuple[str, list[str]]:
-    """生成 Release 说明。version_history.json 的 title 仅用于 UI 占位，不参与发布说明。"""
+    """生成 Release 说明。version_history.json 的 entries 已不再维护，通常需显式传 --notes-file。"""
     if notes_file:
         text = Path(notes_file).read_text(encoding="utf-8").strip()
         if not text:
             raise ReleaseError(f"更新说明文件为空: {notes_file}")
-        return text, []
+        # 顺手抽出 "- " 列表项，写进本地留档清单的 changes（线上 changes 由后端从 Release body 派生）
+        changes = [
+            line.strip()[2:].strip() for line in text.splitlines() if line.strip().startswith("- ")
+        ]
+        return text, [item for item in changes if item]
 
     entry = current_history_entry(version)
     changes = [str(item).strip() for item in entry.get("changes", []) if str(item).strip()]
     if not changes:
-        raise ReleaseError("当前版本没有 changes 且未指定 --notes-file，无法生成发布说明")
+        raise ReleaseError(
+            "当前版本没有 changes（version_history.json 的 entries 已不再保存历史），"
+            "请用 --notes-file 指定发布说明"
+        )
 
     lines = [f"## v{version}（{channel}）", ""]
     lines += [f"- {item}" for item in changes]
@@ -416,8 +423,9 @@ def run(args: argparse.Namespace) -> int:
     print(f"  版本: {version}")
     print(f"  Release: {tag}（{args.channel}）")
     print(f"  资产: {download_url}")
-    print(f"  清单: {manifest_path}")
-    print("  部署: 把清单放到后端 数据根目录/updates/ 后即可被客户端读取")
+    print(f"  清单: {manifest_path}（本地留档，用于 build 单调性校验）")
+    print("  线上: 后端会自动从 GitHub 同步，无需上传清单；通常 10 分钟内跟进")
+    print("        可在稍后用 --verify-url 复核线上 build")
     return 0
 
 
@@ -426,7 +434,7 @@ def main() -> int:
     parser.add_argument("--channel", default="beta", help="更新渠道（默认 beta）")
     parser.add_argument("--godot", help="Godot 可执行文件路径（默认读 GODOT_BIN）")
     parser.add_argument("--manifest-out", help="清单输出目录或 .json 完整路径")
-    parser.add_argument("--notes-file", help="更新说明 Markdown；默认取 version_history.json 的 title/changes")
+    parser.add_argument("--notes-file", help="更新说明 Markdown（version_history.json 已不再保存历史，通常必须提供）")
     parser.add_argument("--min-supported-build", type=int, help="写入清单的最低支持 build（可选）")
     parser.add_argument("--verify-url", help="发布后请求线上清单并校验 build（如 https://thmixce.org/api/update/beta）")
     parser.add_argument("--keep-version-files", action="store_true", help="保留版本号文件改动（默认还原）")

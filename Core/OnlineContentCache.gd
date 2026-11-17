@@ -28,7 +28,10 @@ const HOUSEKEEPING_INTERVAL := 32
 const DIR_CHARTS := "charts"
 const DIR_STORE := "store"
 const DIR_USERS := "users"
-const NAMESPACES := [DIR_CHARTS, DIR_STORE, DIR_USERS]
+## 与具体服务器无关的元信息快照（版本清单等）。这类内容由调用方用 scope 参数
+## 指定隔离键，不受 server_address 影响（更新清单是官方固定地址，不跟随自建服务器漂移）。
+const DIR_META := "meta"
+const NAMESPACES := [DIR_CHARTS, DIR_STORE, DIR_USERS, DIR_META]
 
 static var _housekeeping_done: bool = false
 static var _write_counter: int = 0
@@ -49,9 +52,11 @@ static func show_when_offline() -> bool:
 
 # ============ 读 / 写 ============
 
-## 读取快照。未开启、无记录、已损坏、schema 或 server/user 不匹配一律返回空字典。
+## 读取快照。未开启、无记录、已损坏、schema 或 scope/user 不匹配一律返回空字典。
+## scope 为空时按 server_address 隔离（默认行为）；传入非空字符串则改用该隔离键，
+## 供与服务器无关的元信息（如版本清单）跨服务器复用。
 ## 命中时返回 {"payload": Variant, "fetched_at": int}；payload 本身可以是空字典/空数组。
-static func read(ns: String, key: String, account_scoped: bool = false) -> Dictionary:
+static func read(ns: String, key: String, account_scoped: bool = false, scope: String = "") -> Dictionary:
 	if not is_enabled() or key.is_empty():
 		return {}
 	var expected_user := _user_key() if account_scoped else ""
@@ -72,7 +77,7 @@ static func read(ns: String, key: String, account_scoped: bool = false) -> Dicti
 	var rec: Dictionary = parsed
 	if int(rec.get("v", 0)) != SCHEMA_VERSION:
 		return {}
-	if str(rec.get("server", "")) != _server_key():
+	if str(rec.get("server", "")) != _scope_key(scope):
 		return {}
 	if str(rec.get("user", "")) != expected_user:
 		return {}
@@ -85,7 +90,7 @@ static func read(ns: String, key: String, account_scoped: bool = false) -> Dicti
 
 
 ## 写入快照。只应由「在线请求成功且结构合法且代次校验通过」的路径调用。
-static func write(ns: String, key: String, payload: Variant, account_scoped: bool = false) -> void:
+static func write(ns: String, key: String, payload: Variant, account_scoped: bool = false, scope: String = "") -> void:
 	if not is_enabled() or key.is_empty():
 		return
 	var user := _user_key() if account_scoped else ""
@@ -96,7 +101,7 @@ static func write(ns: String, key: String, payload: Variant, account_scoped: boo
 		return
 	var rec := {
 		"v": SCHEMA_VERSION,
-		"server": _server_key(),
+		"server": _scope_key(scope),
 		"user": user,
 		"fetched_at": int(Time.get_unix_time_from_system()),
 		"payload": payload,
@@ -119,7 +124,7 @@ static func payload_of(entry: Dictionary, fallback: Variant = null) -> Variant:
 
 
 ## 主动失效单条快照（例如服务端 404：谱面已不存在，不能继续展示旧计数）。
-static func invalidate(ns: String, key: String, account_scoped: bool = false) -> void:
+static func invalidate(ns: String, key: String, account_scoped: bool = false, scope: String = "") -> void:
 	if key.is_empty():
 		return
 	var user := _user_key() if account_scoped else ""
@@ -179,7 +184,7 @@ static func _user_key() -> String:
 	return username.md5_text().substr(0, 12)
 
 
-## 所有记录都带 server，改服务器地址后旧缓存自动失效（avatarUrl 是相对路径，
+## 所有记录都带隔离键，改服务器地址后旧缓存自动失效（avatarUrl 是相对路径，
 ## 跨服务器复用会指向错误的图片）。
 static func _server_key() -> String:
 	var url := ""
@@ -188,6 +193,11 @@ static func _server_key() -> String:
 	if url.is_empty():
 		url = ServiceHub.config.get_string("server_address", "")
 	return url.strip_edges().md5_text().substr(0, 12)
+
+
+## 记录里的隔离键：显式 scope 优先，否则退回服务器地址哈希。
+static func _scope_key(scope: String) -> String:
+	return scope.strip_edges() if not scope.strip_edges().is_empty() else _server_key()
 
 
 static func _file_path(ns: String, key: String, user: String) -> String:

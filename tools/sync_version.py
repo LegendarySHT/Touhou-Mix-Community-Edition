@@ -2,8 +2,9 @@
 """版本号单一来源同步脚本。
 
 唯一事实来源是 Resources/Config/version_history.json：
-  - current      → 展示用版本号（如 1.0.0.645）
-  - entries[0].build（或与 current 同名条目的 build）→ 构建号 / Android versionCode
+  - current      → 展示用版本号（如 1.0.0.645），末段即构建号
+  - entries      → 已不再维护（版本历史改由服务端从 GitHub Releases 派生）；
+                   为空时构建号直接取 current 的第 4 段，若仍有条目则优先取条目里的 build
 
 本脚本把版本号写入（或校验）以下派生位置，避免手工改漏：
   - project.godot                 application/config/version
@@ -74,7 +75,14 @@ def read_history() -> tuple[str, int]:
     if build is None and entries and isinstance(entries[0], dict):
         build = entries[0].get("build")
     if build is None:
-        raise SyncError(f"版本 {version} 缺少 build 字段，无法生成 Android versionCode")
+        # 历史条目已不再维护（entries 为空），构建号就是版本号第 4 段
+        parts = version.split(".")
+        if len(parts) == 4 and parts[3].isdigit():
+            build = int(parts[3])
+    if build is None:
+        raise SyncError(
+            f"版本 {version} 取不到构建号：entries 为空时版本号必须是 4 段（如 1.0.0.645）"
+        )
     try:
         build_int = int(build)
     except (TypeError, ValueError) as exc:
@@ -125,18 +133,13 @@ def rewrite_history_build(version: str, count: int) -> str:
 
     data["current"] = new_version
     entries = data.get("entries") or []
-    updated = False
     for entry in entries:
         if isinstance(entry, dict) and str(entry.get("version", "")).strip() == version:
             entry["version"] = new_version
             entry["build"] = count
-            updated = True
-    if not updated and entries and isinstance(entries[0], dict):
-        entries[0]["version"] = new_version
-        entries[0]["build"] = count
-        updated = True
-    if not updated:
-        raise SyncError("version_history.json 里没有可回写 build 的条目")
+    # entries 为空是当前默认状态（版本历史改由服务端从 GitHub Releases 派生），
+    # 构建号只体现在 current 的末段，无需回写条目。
+    data["entries"] = entries
 
     HISTORY_PATH.write_text(
         json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

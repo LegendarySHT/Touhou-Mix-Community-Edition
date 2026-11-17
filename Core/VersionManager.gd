@@ -3,12 +3,13 @@
 ## 不是 autoload：只有「关于」页读版本号与更新历史，没必要占启动时的实例化与 JSON 解析。
 ## 首次访问 .instance 时由 ServiceHub 创建并挂到懒服务挂载点（见 Services/ServiceHub.gd）。
 ##
-## 单一事实来源：游戏当前版本 + 更新历史都来自 Resources/Config/version_history.json。
-## 其它地方（关于页版本号、导出配置里的版本号）一律从这里或这个 JSON 派生，
-## 改版本只改这一个 JSON 文件即可（见 tools/sync_version.py 与 git pre-commit 钩子）。
-##
-## 设计为「可联网扩展」：
-##   - 更新历史 entries 是自由结构字典，本地历史保持离线可用。
+## 当前版本号的事实来源是 Resources/Config/version_history.json 的 current（导出配置里的版本号、
+## Android versionName/versionCode、Windows 文件版本都从这里派生，见 tools/sync_version.py）。
+## 该文件只保留 current，不再内嵌历史条目——版本历史只有远端一个来源：
+##   - 远端：后端从 GitHub Releases 派生出的清单里的 history[]，发一次 Release 自动多一条。
+##   - 缓存：最近一次成功拉取的 history[] 写入 OnlineContentCache（meta 命名空间），
+##     冷启动/断网时先展示这份快照，由下一次联网结果覆盖（stale-while-revalidate）。
+##   - 两者都没有时，关于页明确显示「未能获取版本信息」，不再用内置的假条目兜底。
 ##   - 远程更新清单由后端只读接口提供（schema=1，按 platforms.windows / platforms.android 区分平台），
 ##     二进制安装包放在 GitHub Releases，客户端只向本服务要几 KB 的清单，避免占用服务器上行带宽。
 
@@ -33,9 +34,12 @@ static var _instance: VersionManager = null
 # ============ 常量 ============
 const HISTORY_PATH := "res://Resources/Config/version_history.json"
 
-## 解析不到历史文件时的兜底版本（避免关于页 / 导出全空）
-const FALLBACK_VERSION := "1.0.0.0"
-const FALLBACK_BUILD := 1
+## 版本历史的本地快照：走 OnlineContentCache 的 meta 命名空间。
+## 隔离键用清单地址（而不是 server_address）——更新信任源不随自建服务器漂移，
+## 因此换服务器后仍能看到上次同步的版本历史；换渠道（beta/stable）则各存各的。
+const HISTORY_CACHE_NAMESPACE := OnlineContentCache.DIR_META
+const HISTORY_CACHE_KEY := "version_history"
+const HISTORY_CACHE_SCOPE_PREFIX := "update_manifest_"
 
 # ============ 内部状态 ============
 var _data: Dictionary = {}
@@ -50,6 +54,16 @@ var _manifest_url: String = ""
 var _check_state: String = "idle"
 ## 最近一次检查结果（供关于页重新进入时回显，不参与版本比较）
 var _last_result: Dictionary = {}
+
+## 版本历史条目（后端从 GitHub Releases 派生，或来自本地缓存快照）。
+## 为空表示「本次既没联网拿到、也没有缓存」，关于页据此显示未获取提示。
+var _remote_history: Array = []
+## 历史来源："network" 本次会话联网拿到 / "cache" 读自本地快照 / "" 都没有
+var _history_source: String = ""
+## 历史对应的快照时间（unix 秒，0 = 未知）
+var _history_cached_at: int = 0
+## 是否已经尝试过读缓存（只读一次，失败也不反复读盘）
+var _cache_loaded: bool = false
 
 # ============ 信号 ============
 ## 发现新版本时发射（info 含 latest / current / has_update 等）
@@ -71,65 +85,160 @@ func ensure_loaded() -> void:
 		_data = {}
 	_loaded = true
 	if _data.is_empty():
-		GLogger.warning("版本历史文件缺失或解析失败: %s（将使用兜底版本）" % HISTORY_PATH, "VerMGR")
+		GLogger.warning("版本文件缺失或解析失败: %s（关于页将显示版本信息未获取）" % HISTORY_PATH, "VerMGR")
 
 # ============ 当前版本（展示用） ============
-## 纯版本号，如 "1.0.0.645"（不含 v 前缀）
+## 纯版本号，如 "1.0.0.645"（不含 v 前缀）。读不到或格式非法时返回空串，
+## 由 UI 显示「版本信息未获取」——不再编一个 0.0.0 / 645 这样的假版本号。
 func get_version_string() -> String:
 	ensure_loaded()
-	return _data.get("current", FALLBACK_VERSION)
+	var current := str(_data.get("current", "")).strip_edges()
+	return current if _is_valid_version(current) else ""
 
-## 关于页展示用的带 v 前缀版本号，如 "v1.0.0.645"
+## 关于页展示用的带 v 前缀版本号，如 "v1.0.0.645"；未知版本返回空串
 func get_version_label() -> String:
-	return "v" + get_version_string()
+	var version := get_version_string()
+	return "" if version.is_empty() else "v" + version
 
 ## Android version/name 用（与 get_version_string 相同，语义字段名便于阅读）
 func get_version_name() -> String:
 	return get_version_string()
 
-## 构建号（Android version/code / Windows file_version 末段）。优先取 current 对应 entry 的 build，
-## 否则取 entries[0].build，再否则兜底 1。
+## 构建号（Android version/code / Windows file_version 末段）。
+## 优先取本地版本号第 4 段（build = git 提交数，由 sync_version.py 写入，最可信）；
+## 版本号不足 4 段时才回退到历史条目里的 build（远端数据只作补充来源）。
 func get_build_number() -> int:
 	ensure_loaded()
-	var cur := get_version_string()
-	var entry := get_entry(cur)
+	var parts := get_version_string().split(".")
+	if parts.size() >= 4 and str(parts[3]).is_valid_int():
+		return int(parts[3])
+	var entry := get_current_entry()
 	if not entry.is_empty() and entry.has("build"):
 		return int(entry["build"])
-	var entries: Array = _data.get("entries", [])
-	if not entries.is_empty() and entries[0].has("build"):
-		return int(entries[0]["build"])
-	return FALLBACK_BUILD
+	return 0
+
+## 版本号合法性：2~4 段纯数字（"1.0.0.645" / "1.0"）
+static func _is_valid_version(version: String) -> bool:
+	if version.is_empty():
+		return false
+	var parts := version.split(".")
+	if parts.size() < 2 or parts.size() > 4:
+		return false
+	for part in parts:
+		if not str(part).is_valid_int():
+			return false
+	return true
 
 # ============ 历史 ============
-## 返回更新历史（默认最新在前）。每条是一个字典，结构见 version_history.json。
-## 结构可自由扩展：除内置字段外多出的字段（download_url / mandatory / size_mb …）原样保留。
+## 返回更新历史（默认最新在前）。来源只两种：本次联网拿到的，或上次成功拉取的本地快照；
+## 两者都没有时返回空数组，由关于页显示「未能获取版本信息」。
+## 条目结构：version/build/date/channel/title/changes/download_url（后端已对齐）。
 func get_history(newest_first: bool = true) -> Array:
-	ensure_loaded()
-	var entries: Array = _data.get("entries", [])
-	if not (entries is Array):
-		return []
+	_ensure_history_cache()
+	var entries: Array = _remote_history.duplicate(true)
 	if newest_first:
-		return entries.duplicate()
-	var reversed: Array = entries.duplicate()
-	reversed.reverse()
-	return reversed
+		return entries
+	entries.reverse()
+	return entries
+
+## 本次会话是否已经联网拿到过历史（决定进入关于页要不要静默补拉一次；
+## 只有缓存也算「未刷新」，仍然要拉）。
+func has_fresh_history() -> bool:
+	_ensure_history_cache()
+	return _history_source == "network"
+
+## 是否有一份可展示的历史（联网或缓存都算）
+func has_remote_history() -> bool:
+	_ensure_history_cache()
+	return not _remote_history.is_empty()
+
+## 历史是否来自本地缓存快照（关于页据此标注数据时效）
+func history_is_cached() -> bool:
+	_ensure_history_cache()
+	return _history_source == "cache"
+
+## 历史快照对应的 unix 时间（0 = 未知）
+func get_history_cached_at() -> int:
+	_ensure_history_cache()
+	return _history_cached_at
+
+## 记下远端清单里的历史，并写入本地快照。结构不对就整段忽略。
+func _capture_remote_history(remote: Dictionary) -> void:
+	var entries := _sanitize_history(remote.get("history", []))
+	if entries.is_empty():
+		return
+	_remote_history = entries
+	_history_source = "network"
+	_history_cached_at = int(Time.get_unix_time_from_system())
+	# 已有更新的数据，不必再读旧快照（也避免之后被旧缓存覆盖）
+	_cache_loaded = true
+	_write_history_cache(entries, _history_cached_at)
+
+## 过滤掉结构不对的历史条目（必须有非空 version）
+func _sanitize_history(raw: Variant) -> Array:
+	if not (raw is Array):
+		return []
+	var entries: Array = []
+	for item in raw:
+		if item is Dictionary and not str(item.get("version", "")).strip_edges().is_empty():
+			entries.append(item)
+	return entries
+
+# ============ 历史缓存（OnlineContentCache / meta） ============
+
+## 缓存隔离键：清单地址哈希。换渠道不会串，换服务器照旧能读。
+func _history_cache_scope() -> String:
+	return HISTORY_CACHE_SCOPE_PREFIX + get_update_manifest_url().md5_text().substr(0, 12)
+
+## 首次访问时尝试读本地快照；依赖未就绪则不置位，下次再试。
+func _ensure_history_cache() -> void:
+	if _cache_loaded:
+		return
+	if ServiceHub.config == null:
+		return
+	_cache_loaded = true
+	var entry := OnlineContentCache.read(
+		HISTORY_CACHE_NAMESPACE, HISTORY_CACHE_KEY, false, _history_cache_scope())
+	if entry.is_empty():
+		return
+	var payload: Variant = OnlineContentCache.payload_of(entry, null)
+	if not (payload is Dictionary):
+		return
+	var payload_dict: Dictionary = payload
+	var entries := _sanitize_history(payload_dict.get("history", []))
+	if entries.is_empty():
+		return
+	_remote_history = entries
+	_history_source = "cache"
+	_history_cached_at = int(payload_dict.get("fetched_at", entry.get("fetched_at", 0)))
+
+func _write_history_cache(entries: Array, cached_at: int) -> void:
+	OnlineContentCache.write(
+		HISTORY_CACHE_NAMESPACE,
+		HISTORY_CACHE_KEY,
+		{
+			"fetched_at": cached_at,
+			"manifest_url": get_update_manifest_url(),
+			"history": entries,
+		},
+		false,
+		_history_cache_scope())
 
 ## 按版本号取某条历史；找不到返回空字典
 func get_entry(version: String) -> Dictionary:
-	ensure_loaded()
-	for e in _data.get("entries", []):
+	for e in get_history(true):
 		if e is Dictionary and str(e.get("version", "")) == str(version):
 			return e
 	return {}
 
-## 当前安装版本对应的历史条目
+## 当前安装版本对应的历史条目（当前版本号未知时返回空字典）
 func get_current_entry() -> Dictionary:
-	return get_entry(get_version_string())
+	var version := get_version_string()
+	return {} if version.is_empty() else get_entry(version)
 
-## 历史里最新的一条（通常等于当前版本）
+## 历史里最新的一条
 func get_latest_entry() -> Dictionary:
-	ensure_loaded()
-	var entries: Array = _data.get("entries", [])
+	var entries: Array = get_history(true)
 	if entries.is_empty():
 		return {}
 	return entries[0] if entries[0] is Dictionary else {}
@@ -266,6 +375,9 @@ func _evaluate_response(resp: Array) -> Dictionary:
 func _evaluate_manifest(remote: Dictionary, base: Dictionary) -> Dictionary:
 	if int(remote.get("schema", 0)) <= 0:
 		return _manifest_error(base, "manifest_missing_schema")
+
+	# 历史列表与当前平台无关：先收下历史，即使后面的平台校验失败也不白跑一趟
+	_capture_remote_history(remote)
 
 	var platforms: Variant = remote.get("platforms", null)
 	if not (platforms is Dictionary):

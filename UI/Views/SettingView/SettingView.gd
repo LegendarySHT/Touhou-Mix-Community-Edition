@@ -313,6 +313,11 @@ func _enter_about() -> void:
 	_show_about(true)   # setting_list 隐藏、about_page 显示
 	AniMGR.animate_fade_slide_in(%AboutPage, Vector2(1500, 0), AniMGR.DURATION_NORMAL, "about_enter")
 	_stagger_about_children()
+	# 版本历史只有远端一个来源（本地快照由 VersionManager 自动接管）。
+	# 本次会话还没联网拿到过时（例如关了「启动时自动检查」）静默补拉一次：
+	# 不显示「正在检查」，结果由 update_check_finished 统一渲染。
+	if not ServiceHub.version.has_fresh_history() and not ServiceHub.version.is_checking():
+		ServiceHub.version.check_for_updates()
 
 ## 关于页子元素错峰入场（仅位移，不改 alpha）
 func _stagger_about_children() -> void:
@@ -369,11 +374,13 @@ func _get_config():
 	var config = %SettingList.get_all_settings_as_json()
 	return config
 
-## 关于页版本号动态绑定（避免硬编码，版本以 VersionManager / version_history.json 为准）
+## 关于页版本号动态绑定（版本以 VersionManager 读到的 current 为准）。
+## 读不到时明确写「版本信息未获取」，不再显示形如 v1.0.0.645 的占位版本号误导玩家。
 func _refresh_about_version() -> void:
 	var ver_label := %AboutPage.get_node_or_null("Project/Info/Version")
 	if ver_label is Label:
-		ver_label.text = ServiceHub.version.get_version_label()
+		var label := ServiceHub.version.get_version_label()
+		(ver_label as Label).text = label if not label.is_empty() else "版本信息未获取"
 
 ## 刷新关于页全部动态内容：版本号、关于项目正文、更新历史、链接与更新按钮。
 ## _ready 时调用一次；外部需要时也可再次调用强制刷新。
@@ -505,16 +512,35 @@ func _on_link_clicked(meta: Variant) -> void:
 	if err != OK:
 		GLogger.warning("打开链接失败(%d): %s" % [err, url], "SettingView")
 
-## 生成版本历史的 BBCode
+## 生成版本历史的 BBCode。
+## 没有数据时明确说明未获取（而不是退回到内置的旧版本条目），并区分「网络没通」与
+## 「服务端清单里还没有 history」两种成因，避免玩家以为是自己的网络问题。
 func _history_bbcode() -> String:
 	var entries: Array = ServiceHub.version.get_history(true)
 	if entries.is_empty():
-		return "[i]暂无版本历史[/i]"
+		if ServiceHub.version.get_last_result().get("ok", false):
+			return "[b]暂无版本记录[/b]\n\n[color=#8b93a1]更新检查已成功，但服务端清单暂未提供发布记录；发版后会自动出现。[/color]"
+		return "[b]未能获取版本信息[/b]\n\n[color=#8b93a1]版本记录需要联网获取。请检查网络后点击上方「手动检查更新」重试。[/color]"
 	var blocks := PackedStringArray()
 	for entry in entries:
 		if entry is Dictionary:
 			blocks.append(_history_entry_bbcode(entry))
+	if ServiceHub.version.history_is_cached():
+		blocks.append("[color=#8b93a1][i]以上为本地缓存（最近同步：%s），联网后会自动刷新。[/i][/color]" % _format_history_cached_at())
 	return "\n\n".join(blocks)
+
+## 缓存快照时间转本地时间文本（unix 秒 → "YYYY-MM-DD HH:MM"）
+func _format_history_cached_at() -> String:
+	var ts := ServiceHub.version.get_history_cached_at()
+	if ts <= 0:
+		return "时间未知"
+	# get_datetime_dict_from_unix_time 返回 UTC，需按系统时区偏移换算成本地时间
+	var bias := int(Time.get_time_zone_from_system().get("bias", 0))
+	var dt := Time.get_datetime_dict_from_unix_time(ts + bias * 60)
+	return "%04d-%02d-%02d %02d:%02d" % [
+		int(dt.get("year", 0)), int(dt.get("month", 0)), int(dt.get("day", 0)),
+		int(dt.get("hour", 0)), int(dt.get("minute", 0)),
+	]
 
 ## 单条版本记录：标题 版本号 / 更新内容 / 发布频道 时间 / 下载链接
 func _history_entry_bbcode(entry: Dictionary) -> String:
@@ -590,6 +616,9 @@ func _on_auto_update_toggled(on: bool) -> void:
 func _on_update_check_finished(result: Dictionary) -> void:
 	_set_update_buttons_busy(false)
 	_render_update_result(result)
+	# 检查成功时远端历史可能刚到手（首次进入关于页 / 之前只有缓存或空），需要重渲染
+	if result.get("ok", false) and %VersionHistoryText:
+		%VersionHistoryText.text = _history_bbcode()
 
 ## 把检查结果映射到状态文案与「前往下载」按钮
 func _render_update_result(result: Dictionary) -> void:
@@ -612,7 +641,11 @@ func _render_update_result(result: Dictionary) -> void:
 		if str(result.get("reason", "")) == "platform_not_listed":
 			_set_update_status("当前平台暂无可用更新")
 		else:
-			_set_update_status("已是最新版本（v%s）" % str(result.get("current", "")))
+			var current := str(result.get("current", ""))
+			if current.is_empty():
+				_set_update_status("已是最新版本")
+			else:
+				_set_update_status("已是最新版本（v%s）" % current)
 		_set_download_visible(false)
 		return
 

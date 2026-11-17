@@ -169,7 +169,7 @@ text = "TouHou Mix Cumunity Edition"
 [node name="Version" type="Label" parent="SettingView/AboutPage/Project/Info" unique_id=740686161]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
-text = "v1.0.0.645"
+text = "版本信息未获取"
 horizontal_alignment = 2
 
 [node name="Line" type="PanelContainer" parent="SettingView/AboutPage" unique_id=1810988007]
