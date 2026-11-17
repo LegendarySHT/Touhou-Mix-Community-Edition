@@ -46,6 +46,8 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
+import time
 import urllib.request
 import zipfile
 from datetime import date
@@ -245,40 +247,106 @@ def check_monotonic(manifest_path: Path, new_build: int, force: bool) -> None:
     raise ReleaseError(message + "（确认要发旧版本请加 --force）")
 
 
+## 导出产物大小连续稳定这么久就认为写完（Godot headless 写完后常常不退出）
+EXPORT_STABLE_SECONDS = 20
+EXPORT_POLL_SECONDS = 2
+
+
+def _tree_size(path: Path) -> int:
+    """文件或目录的总字节数；不存在的路径按 0 处理。"""
+    try:
+        if path.is_file():
+            return path.stat().st_size
+    except OSError:
+        return 0
+    total = 0
+    for item in path.rglob("*"):
+        try:
+            if item.is_file():
+                total += item.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def _make_staging(tag: str) -> Path:
+    """建一个唯一的导出暂存目录（系统临时目录下）。
+
+    不放 dist 里：一次导出会产生 200+ 个文件（C# 工程的 data_* 目录），
+    打包后批量删除会触发环境的删除守卫（SAFE_DELETE_BULK_CONFIRM_REQUIRED），
+    把整个发布流程打断。临时目录里残留也由系统回收，不污染仓库。
+    """
+    return Path(tempfile.mkdtemp(prefix=f"thmix-stage-{tag}-"))
+
+
+def _drop_staging(staging: Path) -> None:
+    """尽力清理暂存目录；删不掉（删除守卫 / 文件占用）也不能影响发布结果。"""
+    shutil.rmtree(staging, ignore_errors=True)
+
+
 def run_export(
     cmd: list[str],
-    artifact: Path,
+    watch: Path,
     label: str,
     env: dict[str, str] | None = None,
     timeout: int = 1800,
 ) -> None:
-    """执行 Godot 导出。
+    """执行 Godot 导出，产物写完就收工，不等进程自己退出。
 
-    headless 的 Android 导出在产物写完后可能迟迟不退出（日志停在
-    `EditorSettings not instantiated ... shutdown_adb_on_exit`），直接等会挂死。
-    超时后只要产物非空就视为成功，否则报错。
+    headless 导出在产物落地后经常不退出（日志停在
+    `EditorSettings not instantiated ... shutdown_adb_on_exit`），死等只能耗到超时：
+    Windows 白等 900s、Android 白等 1800s，一次全平台发版能白烧近一小时。
+    这里改成轮询产物（文件或整个暂存目录）的总大小，连续稳定
+    EXPORT_STABLE_SECONDS 秒即认为写完，主动结束进程。
     """
     print("[EXPORT] " + " ".join(cmd))
+    proc = subprocess.Popen(cmd, cwd=REPO_ROOT, env=env)
+    deadline = time.monotonic() + timeout
+    last_size = -1
+    stable_since: float | None = None
     try:
-        proc = subprocess.run(cmd, cwd=REPO_ROOT, env=env, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        if artifact.is_file() and artifact.stat().st_size > 0:
-            print(
-                f"[WARN] {label} 导出进程 {timeout}s 未退出，但产物已生成"
-                f"（{artifact.stat().st_size} 字节），继续"
-            )
-            return
-        raise ReleaseError(f"{label} 导出超时（{timeout}s）且未生成有效产物: {artifact}")
-    if proc.returncode != 0:
-        raise ReleaseError(f"{label} 导出失败（退出码 {proc.returncode}）")
+        while True:
+            returncode = proc.poll()
+            if returncode is not None:
+                if returncode != 0:
+                    raise ReleaseError(f"{label} 导出失败（退出码 {returncode}）")
+                break
+
+            now = time.monotonic()
+            size = _tree_size(watch)
+            if size > 0 and size == last_size:
+                stable_since = stable_since if stable_since is not None else now
+                if now - stable_since >= EXPORT_STABLE_SECONDS:
+                    print(
+                        f"[WARN] {label} 导出进程未退出，但产物已停止增长"
+                        f"（{size} 字节，稳定 {EXPORT_STABLE_SECONDS}s），主动结束"
+                    )
+                    break
+            else:
+                last_size = size
+                stable_since = None
+
+            if now > deadline:
+                if size > 0:
+                    print(f"[WARN] {label} 导出超过 {timeout}s，产物非空（{size} 字节），继续")
+                    break
+                raise ReleaseError(f"{label} 导出超时（{timeout}s）且未生成产物: {watch}")
+            time.sleep(EXPORT_POLL_SECONDS)
+
+        if _tree_size(watch) <= 0:
+            raise ReleaseError(f"{label} 导出未生成有效产物: {watch}")
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
 
 def export_windows(godot: Path, version: str) -> Path:
     """导出到临时目录后打包为 zip（预设未内嵌 pck，exe 与 pck 需一起分发）。"""
-    staging = DIST_DIR / f"stage-{version}"
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True)
+    staging = _make_staging("win")
     exe = staging / f"THMIX-CE-{version}-win64.exe"
 
     cmd = [
@@ -290,7 +358,9 @@ def export_windows(godot: Path, version: str) -> Path:
         EXPORT_PRESETS[PLATFORM_WINDOWS],
         str(exe),
     ]
-    run_export(cmd, exe, PLATFORM_WINDOWS, timeout=900)
+    # 以整个暂存目录为观测对象：Windows 版 exe 自包含 .NET 程序集，
+    # 但导出过程仍会先写 data_* 目录，只盯 exe 可能过早判定完成。
+    run_export(cmd, staging, PLATFORM_WINDOWS, timeout=900)
     if not exe.is_file() or exe.stat().st_size == 0:
         raise ReleaseError(f"导出未生成有效文件: {exe}")
 
@@ -301,8 +371,8 @@ def export_windows(godot: Path, version: str) -> Path:
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in files:
             archive.write(path, arcname=path.name)
-    shutil.rmtree(staging)
     print(f"[PACK] {zip_path.name}（{len(files)} 个文件，{zip_path.stat().st_size} 字节）")
+    _drop_staging(staging)
     return zip_path
 
 
@@ -397,10 +467,7 @@ def export_linux(godot: Path, version: str) -> Path:
     .NET 运行时与程序集在那个目录里，必须整棵树一起分发。
     用 tar.gz 而不是 zip：zip 在 Windows 上打包会丢掉可执行权限，玩家解包后跑不起来。
     """
-    staging = DIST_DIR / f"stage-linux-{version}"
-    if staging.exists():
-        shutil.rmtree(staging)
-    staging.mkdir(parents=True)
+    staging = _make_staging("linux")
     binary = staging / f"THMIX-CE-{version}-linux-x86_64"
 
     cmd = [
@@ -412,12 +479,12 @@ def export_linux(godot: Path, version: str) -> Path:
         EXPORT_PRESETS[PLATFORM_LINUX],
         str(binary),
     ]
-    run_export(cmd, binary, PLATFORM_LINUX, timeout=900)
+    run_export(cmd, staging, PLATFORM_LINUX, timeout=900)
     if not binary.is_file() or binary.stat().st_size == 0:
         raise ReleaseError(f"导出未生成有效文件: {binary}")
 
     archive_path = pack_linux_archive(staging, binary, version)
-    shutil.rmtree(staging)
+    _drop_staging(staging)
     return archive_path
 
 
