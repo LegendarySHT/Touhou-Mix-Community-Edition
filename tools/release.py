@@ -1,24 +1,38 @@
 #!/usr/bin/env python3
-"""Windows 手动发布脚本（beta 渠道）。
+"""多平台手动发布脚本（默认同时出 Windows、Android 与 Linux，beta 渠道）。
 
 发布链路：
   1. 检查工作区干净、gh 已登录、Godot 可执行文件存在
   2. sync_version.py --write --git-build：build = 当前分支提交数
   3. 与已有清单比较 build，禁止倒退
-  4. Godot --export-release 导出 Windows exe 到 dist/
+  4. Godot --export-release 依次导出选中平台到 dist/
+     - windows → THMIX-CE-<ver>-win64.zip（exe + pck 打包）
+     - android → THMIX-CE-<ver>-arm64.apk（Gradle 构建，需 release 签名）
+     - linux   → THMIX-CE-<ver>-linux-x86_64.tar.gz（二进制 + pck，保留可执行权限）
   5. 还原版本号文件（版本号是构建期产物，不进提交）
-  6. gh release create（beta 自动加 --prerelease）并取回资产下载地址
-  7. 计算 SHA-256 / 大小，生成 beta.json 写到 --manifest-out
+  6. gh release create 一次性上传全部资产（beta 自动加 --prerelease）
+  7. 计算 SHA-256 / 大小，生成本地留档清单（platforms 含各平台条目）
   8. 回读校验清单
 
 用法：
   python tools/release.py --dry-run
-  python tools/release.py --manifest-out "D:/Touhou Mix Dev/ThmixData/updates"
-  python tools/release.py --notes-file notes.md --min-supported-build 700
+  python tools/release.py --notes-file notes.md
+  python tools/release.py --platforms windows          # 只发 PC
+  python tools/release.py --platforms windows,android --notes-file notes.md
+  python tools/release.py --platforms linux            # 只发 Linux
+
+Android 签名（仅当发布 android 时需要）：
+  THMIX_ANDROID_KEYSTORE           .jks 路径
+  THMIX_ANDROID_KEYSTORE_USER      别名（默认 thmix-ce）
+  THMIX_ANDROID_KEYSTORE_PASSWORD  密码（只从环境变量读，避免落在命令历史里）
+  这三个值会转成 Godot 原生识别的 GODOT_ANDROID_KEYSTORE_RELEASE_* 传给子进程。
 
 注意：
-  - 导出需要已安装 Windows 导出模板；C# 工程首次导出会自动编译，耗时较长
+  - 导出需要已安装对应平台的导出模板；C# 工程首次导出会自动编译，耗时较长
+  - Android 用 Gradle 构建（预设 use_gradle_build=true），首次或改动依赖后可能数分钟
+  - Linux 包固定发 tar.gz：zip 在 Windows 上打包会丢可执行权限，解包后跑不起来
   - --manifest-out 是目录时写入 <目录>/<channel>.json；也可以是完整文件路径
+  - 线上清单由后端从 GitHub Release 派生，本地这份仅用于 build 单调性校验与留档
 """
 
 from __future__ import annotations
@@ -31,6 +45,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import urllib.request
 import zipfile
 from datetime import date
@@ -42,7 +57,27 @@ import sync_version as sv  # noqa: E402
 
 REPO_ROOT = sv.REPO_ROOT
 DIST_DIR = REPO_ROOT / "dist"
-EXPORT_PRESET = "Windows Desktop"
+
+## 平台键（与客户端 VersionManager.get_platform_key() 及后端清单 platforms.<key> 一致）
+PLATFORM_WINDOWS = "windows"
+PLATFORM_ANDROID = "android"
+PLATFORM_LINUX = "linux"
+EXPORT_PRESETS = {
+    PLATFORM_WINDOWS: "Windows Desktop",
+    PLATFORM_ANDROID: "Android",
+    PLATFORM_LINUX: "Linux",
+}
+## 产物文件名后缀（dry-run 与文档用同一份映射，避免各写一遍走偏）
+ARTIFACT_SUFFIX = {
+    PLATFORM_WINDOWS: "win64.zip",
+    PLATFORM_ANDROID: "arm64.apk",
+    PLATFORM_LINUX: "linux-x86_64.tar.gz",
+}
+DEFAULT_PLATFORMS = f"{PLATFORM_WINDOWS},{PLATFORM_ANDROID},{PLATFORM_LINUX}"
+## Godot 4.2+ 用环境变量注入 release 签名，无需改编辑器设置或项目预设
+ANDROID_ENV_PATH = "GODOT_ANDROID_KEYSTORE_RELEASE_PATH"
+ANDROID_ENV_USER = "GODOT_ANDROID_KEYSTORE_RELEASE_USER"
+ANDROID_ENV_PASSWORD = "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD"
 DEFAULT_GODOT = Path(
     r"D:\Software\Godot_v4.7.2-stable_mono_win64\Godot_v4.7.2-stable_mono_win64_console.exe"
 )
@@ -127,14 +162,45 @@ def godot_version_tag(godot: Path) -> str:
     return tag
 
 
-def windows_template(godot: Path) -> tuple[Path, str]:
-    """按当前引擎版本查找 Windows 导出模板，返回（模板目录，期望的版本标签）。"""
+def template_dir(godot: Path) -> tuple[Path, str]:
+    """按当前引擎版本定位导出模板目录，返回（目录，版本标签）。"""
     tag = godot_version_tag(godot)
     appdata = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    expected = appdata / "Godot" / "export_templates" / tag
-    if (expected / "windows_release_x86_64.exe").is_file():
-        return expected, tag
-    return expected, tag
+    return appdata / "Godot" / "export_templates" / tag, tag
+
+
+def missing_template(platform: str, directory: Path) -> str | None:
+    """模板齐全返回 None，否则返回缺失说明。"""
+    if platform == PLATFORM_WINDOWS:
+        if (directory / "windows_release_x86_64.exe").is_file():
+            return None
+        return f"缺少 windows_release_x86_64.exe（目录 {directory}）"
+    if platform == PLATFORM_ANDROID:
+        # Gradle 构建（预设 use_gradle_build=true）需要 android_source.zip；
+        # 非 Gradle 的预设模板导出用 android_release.apk，两者有其一即可。
+        if (directory / "android_source.zip").is_file() or (directory / "android_release.apk").is_file():
+            return None
+        return f"缺少 android_source.zip / android_release.apk（目录 {directory}）"
+    if platform == PLATFORM_LINUX:
+        if (directory / "linux_release.x86_64").is_file():
+            return None
+        return f"缺少 linux_release.x86_64（目录 {directory}）"
+    return f"未知平台 {platform}"
+
+
+def parse_platforms(raw: str) -> list[str]:
+    items = [item.strip().lower() for item in raw.split(",") if item.strip()]
+    if not items:
+        raise ReleaseError("--platforms 为空")
+    unknown = [item for item in items if item not in EXPORT_PRESETS]
+    if unknown:
+        raise ReleaseError(f"未知平台: {', '.join(unknown)}（可选 {', '.join(EXPORT_PRESETS)}）")
+    # 去重但保持顺序
+    seen: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.append(item)
+    return seen
 
 
 def version_prefix() -> str:
@@ -159,7 +225,15 @@ def check_monotonic(manifest_path: Path, new_build: int, force: bool) -> None:
         return
     try:
         old = json.loads(manifest_path.read_text(encoding="utf-8"))
-        old_build = int(old["platforms"]["windows"]["build"])
+        platforms = old.get("platforms") or {}
+        builds = [
+            int(entry["build"])
+            for entry in platforms.values()
+            if isinstance(entry, dict) and "build" in entry
+        ]
+        if not builds:
+            raise ValueError("platforms 里没有任何 build")
+        old_build = max(builds)
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         raise ReleaseError(f"已有清单无法解析（{manifest_path}）: {exc}") from exc
     if new_build > old_build:
@@ -169,6 +243,34 @@ def check_monotonic(manifest_path: Path, new_build: int, force: bool) -> None:
         print(f"[WARN] {message}（--force 已忽略）")
         return
     raise ReleaseError(message + "（确认要发旧版本请加 --force）")
+
+
+def run_export(
+    cmd: list[str],
+    artifact: Path,
+    label: str,
+    env: dict[str, str] | None = None,
+    timeout: int = 1800,
+) -> None:
+    """执行 Godot 导出。
+
+    headless 的 Android 导出在产物写完后可能迟迟不退出（日志停在
+    `EditorSettings not instantiated ... shutdown_adb_on_exit`），直接等会挂死。
+    超时后只要产物非空就视为成功，否则报错。
+    """
+    print("[EXPORT] " + " ".join(cmd))
+    try:
+        proc = subprocess.run(cmd, cwd=REPO_ROOT, env=env, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if artifact.is_file() and artifact.stat().st_size > 0:
+            print(
+                f"[WARN] {label} 导出进程 {timeout}s 未退出，但产物已生成"
+                f"（{artifact.stat().st_size} 字节），继续"
+            )
+            return
+        raise ReleaseError(f"{label} 导出超时（{timeout}s）且未生成有效产物: {artifact}")
+    if proc.returncode != 0:
+        raise ReleaseError(f"{label} 导出失败（退出码 {proc.returncode}）")
 
 
 def export_windows(godot: Path, version: str) -> Path:
@@ -185,13 +287,10 @@ def export_windows(godot: Path, version: str) -> Path:
         "--path",
         str(REPO_ROOT),
         "--export-release",
-        EXPORT_PRESET,
+        EXPORT_PRESETS[PLATFORM_WINDOWS],
         str(exe),
     ]
-    print("[EXPORT] " + " ".join(cmd))
-    proc = subprocess.run(cmd, cwd=REPO_ROOT)
-    if proc.returncode != 0:
-        raise ReleaseError(f"Godot 导出失败（退出码 {proc.returncode}）")
+    run_export(cmd, exe, PLATFORM_WINDOWS, timeout=900)
     if not exe.is_file() or exe.stat().st_size == 0:
         raise ReleaseError(f"导出未生成有效文件: {exe}")
 
@@ -205,6 +304,121 @@ def export_windows(godot: Path, version: str) -> Path:
     shutil.rmtree(staging)
     print(f"[PACK] {zip_path.name}（{len(files)} 个文件，{zip_path.stat().st_size} 字节）")
     return zip_path
+
+
+def android_signing_config(keystore_arg: str | None, user_arg: str | None) -> dict[str, str]:
+    """读取 release 签名配置。密码只认环境变量，避免出现在命令历史 / 进程列表里。"""
+    raw_path = keystore_arg or os.environ.get("THMIX_ANDROID_KEYSTORE", "")
+    path = Path(raw_path.strip()) if raw_path.strip() else None
+    if path is None or not path.is_file():
+        raise ReleaseError(
+            "Android 发布需要 release keystore：请设 THMIX_ANDROID_KEYSTORE（.jks 路径）或用 --android-keystore 指定。"
+            f" 当前值: {raw_path or '<空>'}"
+        )
+    user = (user_arg or os.environ.get("THMIX_ANDROID_KEYSTORE_USER") or "thmix-ce").strip()
+    if not user:
+        raise ReleaseError("Android 签名别名为空：请设 THMIX_ANDROID_KEYSTORE_USER 或用 --android-keystore-user")
+    password = os.environ.get("THMIX_ANDROID_KEYSTORE_PASSWORD", "")
+    if not password:
+        raise ReleaseError(
+            "Android 签名密码缺失：请设环境变量 THMIX_ANDROID_KEYSTORE_PASSWORD"
+            "（不提供命令行参数，避免密码写进 shell 历史）"
+        )
+    return {"path": str(path), "user": user, "password": password}
+
+
+def export_android(godot: Path, version: str, signing: dict[str, str]) -> Path:
+    """导出 APK。预设使用 Gradle 构建，签名通过环境变量注入给 Godot。"""
+    apk = DIST_DIR / f"THMIX-CE-{version}-arm64.apk"
+    if apk.is_file():
+        apk.unlink()
+    DIST_DIR.mkdir(parents=True, exist_ok=True)
+
+    env = os.environ.copy()
+    env[ANDROID_ENV_PATH] = signing["path"]
+    env[ANDROID_ENV_USER] = signing["user"]
+    env[ANDROID_ENV_PASSWORD] = signing["password"]
+
+    cmd = [
+        str(godot),
+        "--headless",
+        "--path",
+        str(REPO_ROOT),
+        "--export-release",
+        EXPORT_PRESETS[PLATFORM_ANDROID],
+        str(apk),
+    ]
+    print("[EXPORT] Android 使用 Gradle 构建，首次或依赖变动后可能需要 10 分钟以上")
+    run_export(cmd, apk, PLATFORM_ANDROID, env=env, timeout=1800)
+    if not apk.is_file() or apk.stat().st_size == 0:
+        raise ReleaseError(f"Android 导出未生成有效文件: {apk}")
+    print(f"[PACK] {apk.name}（{apk.stat().st_size} 字节）")
+    return apk
+
+
+def pack_linux_archive(staging: Path, binary: Path, version: str) -> Path:
+    """把 staging 目录整棵树打成 tar.gz，返回归档路径。
+
+    与 Windows 不同，Linux 导出不会把 .NET 程序集内嵌进可执行文件，
+    dotnet publish 的产物（data_<项目名>_linuxbsd_x86_64/）必须一起分发。
+    """
+    archive_path = DIST_DIR / f"THMIX-CE-{version}-{ARTIFACT_SUFFIX[PLATFORM_LINUX]}"
+    if archive_path.is_file():
+        archive_path.unlink()
+    entries = sorted(staging.rglob("*"))
+    file_count = 0
+    with tarfile.open(archive_path, "w:gz", compresslevel=6) as archive:
+        for path in entries:
+            arcname = path.relative_to(staging).as_posix()
+            info = archive.gettarinfo(str(path), arcname=arcname)
+            # 归一化属主，别把本机 uid/gid 和用户名带进包
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            if path.is_dir():
+                info.mode = 0o755
+                archive.addfile(info)
+                continue
+            # Windows 上导出的文件没有 x 位，必须显式指定：
+            # 主程序与 coreclr 的 createdump 需要可执行，其余按普通文件处理。
+            info.mode = 0o755 if path == binary or path.name == "createdump" else 0o644
+            file_count += 1
+            with path.open("rb") as handle:
+                archive.addfile(info, handle)
+    print(
+        f"[PACK] {archive_path.name}（{file_count} 个文件，{archive_path.stat().st_size} 字节）"
+    )
+    return archive_path
+
+
+def export_linux(godot: Path, version: str) -> Path:
+    """导出 Linux x86_64 桌面版并打包为 tar.gz。
+
+    产物是「二进制 + pck + data_<项目名>_linuxbsd_x86_64/ 目录」，
+    .NET 运行时与程序集在那个目录里，必须整棵树一起分发。
+    用 tar.gz 而不是 zip：zip 在 Windows 上打包会丢掉可执行权限，玩家解包后跑不起来。
+    """
+    staging = DIST_DIR / f"stage-linux-{version}"
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    binary = staging / f"THMIX-CE-{version}-linux-x86_64"
+
+    cmd = [
+        str(godot),
+        "--headless",
+        "--path",
+        str(REPO_ROOT),
+        "--export-release",
+        EXPORT_PRESETS[PLATFORM_LINUX],
+        str(binary),
+    ]
+    run_export(cmd, binary, PLATFORM_LINUX, timeout=900)
+    if not binary.is_file() or binary.stat().st_size == 0:
+        raise ReleaseError(f"导出未生成有效文件: {binary}")
+
+    archive_path = pack_linux_archive(staging, binary, version)
+    shutil.rmtree(staging)
+    return archive_path
 
 
 def restore_version_files() -> None:
@@ -262,14 +476,17 @@ def ensure_tag_absent(tag: str) -> None:
 
 
 def create_github_release(
-    tag: str, artifact: Path, notes_path: Path, channel: str, slug: str
-) -> str:
+    tag: str, artifacts: list[Path], notes_path: Path, channel: str, slug: str
+) -> dict[str, str]:
+    """上传全部资产，返回 {资产文件名: 下载地址}。"""
+    if not artifacts:
+        raise ReleaseError("没有可上传的产物")
     cmd = [
         "gh",
         "release",
         "create",
         tag,
-        str(artifact),
+        *[str(artifact) for artifact in artifacts],
         "--title",
         tag,
         "--notes-file",
@@ -286,10 +503,15 @@ def create_github_release(
         ["gh", "api", f"repos/{slug}/releases/tags/{tag}"], cwd=REPO_ROOT, text=True
     )
     assets = json.loads(payload).get("assets") or []
-    for asset in assets:
-        if asset.get("name") == artifact.name:
-            return str(asset["browser_download_url"])
-    raise ReleaseError(f"Release 中找不到资产 {artifact.name}")
+    urls = {
+        str(asset.get("name")): str(asset.get("browser_download_url"))
+        for asset in assets
+        if asset.get("name") and asset.get("browser_download_url")
+    }
+    missing = [artifact.name for artifact in artifacts if artifact.name not in urls]
+    if missing:
+        raise ReleaseError(f"Release 中找不到资产: {', '.join(missing)}")
+    return urls
 
 
 def sha256_of(path: Path) -> str:
@@ -305,22 +527,26 @@ def build_manifest(
     build: int,
     channel: str,
     entry: dict,
-    artifact: Path,
-    download_url: str,
+    artifacts: dict[str, Path],
+    download_urls: dict[str, str],
 ) -> dict:
-    payload = {
-        "version": version,
-        "build": build,
-        "published_at": date.today().isoformat(),
-        "changes": entry.get("changes", []),
-        "url": download_url,
-        "sha256": sha256_of(artifact),
-        "size": artifact.stat().st_size,
-        "mirrors": [],
-    }
-    if entry.get("min_supported_build"):
-        payload["min_supported_build"] = int(entry["min_supported_build"])
-    return {"schema": 1, "channel": channel, "platforms": {"windows": payload}}
+    """生成与服务端同构的留档清单：platforms 下每个平台一条。"""
+    platforms: dict[str, dict] = {}
+    for platform, artifact in artifacts.items():
+        payload = {
+            "version": version,
+            "build": build,
+            "published_at": date.today().isoformat(),
+            "changes": entry.get("changes", []),
+            "url": download_urls[artifact.name],
+            "sha256": sha256_of(artifact),
+            "size": artifact.stat().st_size,
+            "mirrors": [],
+        }
+        if entry.get("min_supported_build"):
+            payload["min_supported_build"] = int(entry["min_supported_build"])
+        platforms[platform] = payload
+    return {"schema": 1, "channel": channel, "platforms": platforms}
 
 
 def write_manifest(path: Path, manifest: dict) -> None:
@@ -328,26 +554,54 @@ def write_manifest(path: Path, manifest: dict) -> None:
     path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     # 回读校验，避免写出服务端会拒绝的结构
     reloaded = json.loads(path.read_text(encoding="utf-8"))
-    platform = reloaded["platforms"]["windows"]
     if reloaded.get("schema") != 1 or reloaded.get("channel") != manifest["channel"]:
         raise ReleaseError("清单回读校验失败：schema/channel 不符")
-    if not platform.get("version") or int(platform.get("build", 0)) <= 0:
-        raise ReleaseError("清单回读校验失败：version/build 无效")
-    print(f"[MANIFEST] {path}（build={platform['build']}）")
+    platforms = reloaded.get("platforms") or {}
+    if not platforms:
+        raise ReleaseError("清单回读校验失败：platforms 为空")
+    for name, platform in platforms.items():
+        if not platform.get("version") or int(platform.get("build", 0)) <= 0:
+            raise ReleaseError(f"清单回读校验失败：platforms.{name} 的 version/build 无效")
+    summary = "、".join(f"{name}={platform['build']}" for name, platform in platforms.items())
+    print(f"[MANIFEST] {path}（{summary}）")
 
 
-def verify_remote_manifest(url: str, expected_build: int) -> None:
+def verify_remote_manifest(url: str, expected_build: int, platforms: list[str]) -> None:
     with urllib.request.urlopen(url, timeout=10) as response:
         remote = json.loads(response.read().decode("utf-8"))
-    remote_build = int(remote["platforms"]["windows"]["build"])
-    if remote_build != expected_build:
-        raise ReleaseError(f"线上清单 build={remote_build}，期望 {expected_build}")
-    print(f"[VERIFY] {url} → build={remote_build}")
+    remote_platforms = remote.get("platforms") or {}
+    for name in platforms:
+        entry = remote_platforms.get(name)
+        if not isinstance(entry, dict):
+            raise ReleaseError(f"线上清单缺少 platforms.{name}（可能后端尚未派生该平台）")
+        remote_build = int(entry.get("build", 0))
+        if remote_build != expected_build:
+            raise ReleaseError(f"线上清单 platforms.{name}.build={remote_build}，期望 {expected_build}")
+    print(f"[VERIFY] {url} → " + "、".join(f"{name}={expected_build}" for name in platforms))
+
+
+def load_signing_env() -> None:
+    """读取 tools/signing.env（本机凭据，已 gitignore），不覆盖已存在的环境变量。"""
+    path = SCRIPT_DIR / "signing.env"
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 def run(args: argparse.Namespace) -> int:
     if not CHANNEL_PATTERN.match(args.channel):
         raise ReleaseError(f"非法渠道名: {args.channel!r}")
+
+    load_signing_env()
+    platforms = parse_platforms(args.platforms)
 
     ensure_clean_worktree(args.dry_run)
     ensure_gh_ready(args.dry_run)
@@ -355,24 +609,43 @@ def run(args: argparse.Namespace) -> int:
     slug = repo_slug()
     manifest_path = resolve_manifest_path(args.channel, args.manifest_out)
 
-    template, engine_tag = windows_template(godot)
-    template_ok = (template / "windows_release_x86_64.exe").is_file()
-    if not template_ok:
+    directory, engine_tag = template_dir(godot)
+    for platform in platforms:
+        issue = missing_template(platform, directory)
+        if not issue:
+            continue
         message = (
-            f"未找到 {engine_tag} 的 Windows 导出模板（缺失 {template}）。"
+            f"未找到 {engine_tag} 的 {platform} 导出模板：{issue}。"
             "请在编辑器「项目 → 导出 → 管理导出模板」安装与当前 Godot 完全一致的 mono 模板"
         )
         if not args.dry_run:
             raise ReleaseError(message)
         print(f"[WARN] {message}")
 
+    # 签名只在发布 Android 时校验，避免只发 PC 时被 keystore 阻塞
+    signing: dict[str, str] | None = None
+    if PLATFORM_ANDROID in platforms:
+        try:
+            signing = android_signing_config(args.android_keystore, args.android_keystore_user)
+        except ReleaseError as exc:
+            if not args.dry_run:
+                raise
+            print(f"[WARN] {exc}")
+
     if args.dry_run:
         version = f"{version_prefix()}.{sv.git_commit_count()}"
         print(f"[DRY-RUN] 仓库: {slug}")
         print(f"[DRY-RUN] Godot: {godot}")
-        print(f"[DRY-RUN] 模板: {template if template_ok else '未安装'}")
+        print(f"[DRY-RUN] 模板: {directory}")
+        print(f"[DRY-RUN] 平台: {', '.join(platforms)}")
         print(f"[DRY-RUN] 预发布版本: {version}（提交数，未写入文件）")
-        print(f"[DRY-RUN] 产物: {DIST_DIR / f'THMIX-CE-{version}-win64.zip'}")
+        for platform in platforms:
+            artifact = DIST_DIR / f"THMIX-CE-{version}-{ARTIFACT_SUFFIX[platform]}"
+            print(f"[DRY-RUN] 产物({platform}): {artifact}")
+        if PLATFORM_ANDROID in platforms:
+            print(
+                f"[DRY-RUN] 签名: {'已就绪 ' + signing['user'] if signing else '未配置（正式发布会报错）'}"
+            )
         print(f"[DRY-RUN] 清单: {manifest_path}")
         print("[DRY-RUN] 未执行导出与上传")
         return 0
@@ -405,24 +678,35 @@ def run(args: argparse.Namespace) -> int:
         if args.min_supported_build is not None:
             entry["min_supported_build"] = args.min_supported_build
 
-        artifact = export_windows(godot, version)
+        # 所有平台都导出完才还原版本号文件：中途还原会让后一个平台读到旧版本号
+        artifacts: dict[str, Path] = {}
+        if PLATFORM_WINDOWS in platforms:
+            artifacts[PLATFORM_WINDOWS] = export_windows(godot, version)
+        if PLATFORM_ANDROID in platforms:
+            if signing is None:
+                raise ReleaseError("Android 签名配置缺失，无法导出")
+            artifacts[PLATFORM_ANDROID] = export_android(godot, version, signing)
+        if PLATFORM_LINUX in platforms:
+            artifacts[PLATFORM_LINUX] = export_linux(godot, version)
+
         if not args.keep_version_files:
             restore_version_files()
 
-        download_url = create_github_release(tag, artifact, notes_path, args.channel, slug)
-        manifest = build_manifest(version, build, args.channel, entry, artifact, download_url)
+        download_urls = create_github_release(tag, list(artifacts.values()), notes_path, args.channel, slug)
+        manifest = build_manifest(version, build, args.channel, entry, artifacts, download_urls)
         write_manifest(manifest_path, manifest)
     finally:
         if not args.keep_version_files and git("status", "--porcelain", "--", *VERSION_FILES):
             restore_version_files()
 
     if args.verify_url:
-        verify_remote_manifest(args.verify_url, build)
+        verify_remote_manifest(args.verify_url, build, platforms)
 
     print("\n[OK] 发布完成")
     print(f"  版本: {version}")
     print(f"  Release: {tag}（{args.channel}）")
-    print(f"  资产: {download_url}")
+    for platform, artifact in artifacts.items():
+        print(f"  资产({platform}): {download_urls[artifact.name]}")
     print(f"  清单: {manifest_path}（本地留档，用于 build 单调性校验）")
     print("  线上: 后端会自动从 GitHub 同步，无需上传清单；通常 10 分钟内跟进")
     print("        可在稍后用 --verify-url 复核线上 build")
@@ -430,8 +714,13 @@ def run(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="导出 Windows 构建并发布到 GitHub Release + 生成更新清单")
+    parser = argparse.ArgumentParser(description="导出多平台构建并发布到 GitHub Release + 生成本地留档清单")
     parser.add_argument("--channel", default="beta", help="更新渠道（默认 beta）")
+    parser.add_argument(
+        "--platforms",
+        default=DEFAULT_PLATFORMS,
+        help=f"要发布的平台，逗号分隔（默认 {DEFAULT_PLATFORMS}）",
+    )
     parser.add_argument("--godot", help="Godot 可执行文件路径（默认读 GODOT_BIN）")
     parser.add_argument("--manifest-out", help="清单输出目录或 .json 完整路径")
     parser.add_argument("--notes-file", help="更新说明 Markdown（version_history.json 已不再保存历史，通常必须提供）")
@@ -440,6 +729,14 @@ def main() -> int:
     parser.add_argument("--keep-version-files", action="store_true", help="保留版本号文件改动（默认还原）")
     parser.add_argument("--force", action="store_true", help="允许 build 不递增")
     parser.add_argument("--dry-run", action="store_true", help="只打印计划，不导出、不上传")
+    parser.add_argument(
+        "--android-keystore",
+        help="release keystore 路径（默认读环境变量 THMIX_ANDROID_KEYSTORE）",
+    )
+    parser.add_argument(
+        "--android-keystore-user",
+        help="签名别名（默认读 THMIX_ANDROID_KEYSTORE_USER，再默认 thmix-ce）",
+    )
     args = parser.parse_args()
 
     try:

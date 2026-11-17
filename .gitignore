@@ -20,3 +20,5 @@ Resources/temp/
 /temp/
 /dist/
 __pycache__/
+# 发布签名凭据（本机私密，绝不提交）
+tools/signing.env
