@@ -132,6 +132,27 @@ def ensure_gh_ready(dry_run: bool) -> None:
     raise ReleaseError(message)
 
 
+def ensure_pushed(dry_run: bool) -> None:
+    """发版前确认本地提交已推送。
+
+    `gh release create` 的 tag 打在**远端**分支头上，不是本地 HEAD：
+    本地有未推送提交时，tag 会指向旧提交，和这次实际构建的内容错位
+    （2026-11-17 首发 v1.0.0.763 就踩到：tag 落在上一提交上）。
+    """
+    try:
+        ahead = int(git("rev-list", "--count", "@{u}..HEAD").strip() or "0")
+    except (ReleaseError, ValueError):
+        print("[WARN] 无法判断是否有未推送提交（当前分支缺少上游），跳过检查")
+        return
+    if ahead <= 0:
+        return
+    message = f"有 {ahead} 个提交未推送：先 git push，否则 Release tag 会落在旧提交上"
+    if dry_run:
+        print(f"[WARN] {message}")
+        return
+    raise ReleaseError(message)
+
+
 def repo_slug() -> str:
     url = git("remote", "get-url", "origin")
     match = re.search(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$", url)
@@ -671,6 +692,7 @@ def run(args: argparse.Namespace) -> int:
     platforms = parse_platforms(args.platforms)
 
     ensure_clean_worktree(args.dry_run)
+    ensure_pushed(args.dry_run)
     ensure_gh_ready(args.dry_run)
     godot = resolve_godot(args.godot)
     slug = repo_slug()
