@@ -171,6 +171,13 @@ func _load_config_from_file() -> void:
 	if config_path == CONFIG_PATH:
 		ini_config = config_manager.check_and_migrate(ini_config, config_path)
 
+	# 用默认配置补齐用户文件里缺失的键。新增设置项不会触发版本迁移，旧 settings.ini
+	# 里没有这些键，直接映射会让对应控件拿到空值；config.ini 是默认值唯一来源，
+	# 这里按 key 合并（用户文件优先），保证新项显示默认值、已保存的值不被覆盖。
+	var default_config = config_manager.load_config(DEFAULT_CONFIG_PATH)
+	if not default_config.is_empty():
+		ini_config = config_manager.merge_with_defaults(ini_config, default_config)
+
 	# 转换 INI 格式为 SettingList 格式
 	var settings_dict = SettingsMapper.ini_to_settings(ini_config)
 
