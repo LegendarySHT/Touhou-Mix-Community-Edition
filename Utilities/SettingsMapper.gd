@@ -100,6 +100,8 @@ static var mappings: Dictionary = {
 	"long_block_color": {"key": "long_block_color", "value_type": "color"},
 	"note_glow_intensity": {"key": "note_glow_intensity", "value_type": "float"},
 	"note_glow_size": {"key": "note_glow_size", "value_type": "float"},
+	"connect_parallel_notes": {"key": "connect_parallel_notes", "value_type": "int"},
+	"connect_line_thickness": {"key": "connect_line_thickness", "value_type": "float"},
 	"perfect_spark_preset": {"key": "perfect_spark_preset", "value_type": "string"},
 	"perfect_spark_emitter": {"key": "perfect_spark_emitter", "value_type": "string"},
 	"perfect_spark_scaling": {"key": "perfect_spark_scaling", "value_type": "int"},
@@ -216,6 +218,8 @@ static func validate_value(setting_id: String, value: Variant) -> bool:
 		"long_block_length_scaling":
 			# 取值范围 [10, 100]（小于等于 100%）：100 = 不缩放（允许），下限 10 防退化
 			return float(value) >= 10.0 and float(value) <= 100.0
+		"connect_line_thickness":
+			return float(value) >= 1.0 and float(value) <= 32.0
 	
 	# 默认通过验证
 	return true

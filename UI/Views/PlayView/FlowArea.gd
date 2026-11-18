@@ -138,6 +138,14 @@ var _draw_order: Dictionary = {
 var _active_note_count: int = 0  # 活跃音符计数
 var _notes_by_lane: Dictionary = {}  # 按轨道分组索引：{lane: Array[int]}，加速音符判定查找
 
+# ===== 并排音符连接线 =====
+# 出现时间相同的音符两两相连（按轨道从左到右连成一条折线）。边在 build_seq_data 时
+# 一次性预建，运行期只按端点存活状态决定画不画，避免每帧重新聚类。
+# 存储为扁平的 seq 索引对：[a0, b0, a1, b1, ...]
+const _CONNECT_TIME_TOLERANCE_MS: float = 12.0  # 同刻判定容差，覆盖生成器的 10ms 和弦批
+var _connect_edges: PackedInt32Array = PackedInt32Array()
+var _connect_lines_enabled: bool = false
+
 
 # Block/Slide/Long 音符批量绘制器（PlayView.tscn 场景节点，Node2D _draw 替代 N 个 Control 节点）
 @onready var _note_drawer: NoteBatchDrawer = %NoteBatchDrawer
@@ -268,6 +276,44 @@ func build_seq_data() -> void:
 			_rt_held_by[i] = -1
 			_rt_long_id[i] = -1
 	note_idx = 0
+	_build_connect_edges()
+
+## 预建并排音符连接边：按出现时间聚类（序列按 start 升序，线性扫描即可），
+## 同刻的音符按轨道从左到右排序后相邻两两连一条边。长条按其头部时刻参与同刻判定。
+func _build_connect_edges() -> void:
+	_connect_edges = PackedInt32Array()
+	if not _connect_lines_enabled or _count < 2:
+		return
+	# 索引按 start 升序排序（C# 输出本身有序，这里再排保证稳）
+	var indices: Array[int] = []
+	indices.resize(_count)
+	for i in _count:
+		indices[i] = i
+	indices.sort_custom(func(a: int, b: int) -> bool:
+		var sa := _st_start[a]
+		var sb := _st_start[b]
+		if is_equal_approx(sa, sb):
+			return _st_lane[a] < _st_lane[b]
+		return sa < sb
+	)
+	var group: Array[int] = []  # 当前同刻组（已按轨道升序）
+	var group_time: float = 0.0
+
+	# 把当前同刻组按相邻配对写入边表
+	for idx in indices:
+		var start := _st_start[idx]
+		if not group.is_empty() and start - group_time > _CONNECT_TIME_TOLERANCE_MS:
+			for j in group.size() - 1:
+				_connect_edges.append(group[j])
+				_connect_edges.append(group[j + 1])
+			group.clear()
+		if group.is_empty():
+			group_time = start
+		group.append(idx)
+	# 收尾最后一组
+	for j in group.size() - 1:
+		_connect_edges.append(group[j])
+		_connect_edges.append(group[j + 1])
 
 ## C# BlockType → FlowNote.NoteType（三种枚举已统一同名同值，仅做防御性映射）
 func _seq_type_to_int(t: int) -> int:
@@ -345,7 +391,7 @@ func init_flow_area():
 	_note_drawer.set_notes_source(_note_buckets)
 	# 绘制顺序数组（按引用共享）：drawer 逆序遍历它决定覆盖层序
 	_note_drawer.set_draw_order_source(_draw_order)
-	# 注入本对象引用（drawer/GlowLayer 分桶现在存 int 索引，需经本对象读平行数组）
+	# 注入本对象引用（drawer/GlowLayer 分桶存 int 索引，连接线边表也在本对象，均经此读取）
 	_note_drawer.flow_area = self
 	# NoteJudger 平行数组版同样需要宿主读取 _rt_cx/_rt_cy/_rt_flags
 	note_judger.flow_area = self
@@ -400,6 +446,10 @@ func init_flow_area():
 	# 应用解析后的颜色（由 load_note_skin + PlayView 随机颜色生成共同决定）
 	# 新音符颜色在 _spawn_note 时经 _get_note_color → _resolved_colors 应用，此处只刷新已存在音符
 	refresh_note_colors()
+
+	# 并排音符连接线：开关与粗细下发到绘制器（线画在音符下方）
+	_connect_lines_enabled = ServiceHub.config.get_int("connect_parallel_notes", 0) == 1
+	_note_drawer.set_connect_line_thickness(maxf(1.0, ServiceHub.config.get_float("connect_line_thickness", 4.0)))
 
 	set_note_width(note_visual_width)
 
@@ -503,6 +553,12 @@ func _on_config_changed(key: String, value: Variant) -> void:
 			only_perfect_slides = int(value) == 1
 		"judge_line_thickness":
 			_apply_judge_line_thickness()
+		"connect_parallel_notes":
+			_connect_lines_enabled = int(value) == 1
+			_build_connect_edges()
+			_note_drawer.request_redraw()
+		"connect_line_thickness":
+			_note_drawer.set_connect_line_thickness(maxf(1.0, float(value)))
 		"note_draw_order":
 			# 长条绘制层级（置底 / 置顶）热更新
 			_apply_note_draw_order()
@@ -661,6 +717,7 @@ func clear_flow_area():
 	_axis_pressed.clear()
 	note_idx = 0
 	_needs_bucket_sweep = false
+	_connect_edges = PackedInt32Array()  # 清掉上一局的连接线边表
 	_reset_seq_arrays()
 	_reset_limit_fail_state()
 	# 清掉上一局可能残留的轨道强制闪烁（失败演出被中途打断时）

@@ -91,6 +91,15 @@ var _draw_type_order: Array = _DRAW_TYPE_ORDER_LONG_BOTTOM
 # 平行数组宿主（FlowArea 注入）：_draw 读 flow_area._rt_* 取运行态，无需音符对象
 var flow_area: Object = null
 
+# 并排音符连接线粗细（边表由 _draw 直接从 flow_area._connect_edges 读取，避免 PackedArray 拷贝失效）
+var _connect_line_thickness: float = 4.0
+
+## 设置连接线粗细并重绘。
+func set_connect_line_thickness(thickness: float) -> void:
+	if not is_equal_approx(thickness, _connect_line_thickness):
+		_connect_line_thickness = thickness
+		queue_redraw()
+
 # 透明纹理回退（贴图缺失时）
 var _transparent_tex: Texture2D = null
 
@@ -330,6 +339,9 @@ func _draw() -> void:
 	var rt_color: PackedColorArray = fa._rt_color
 	var REMOVED: int = fa.F_REMOVED
 
+	# 并排音符连接线先画：位于音符本体之下，避免压住音符
+	_draw_connect_lines(fa, flags, rt_cy, rt_color, REMOVED, top_limit, bottom_limit)
+
 	for type_key in _draw_type_order:
 		var order: Array = _draw_order[type_key]
 		var is_long: bool = type_key == FlowNote.NoteType.Long
@@ -353,6 +365,40 @@ func _draw() -> void:
 				continue
 			_draw_note_layers(base_tex, core_tex,
 				Rect2(rt_x[note_index], cy - half_h, _note_width, half_h * 2.0), color)
+
+## 绘制并排音符连接线：同刻音符按轨道相邻两两连一条线，颜色在两端音符色间渐变。
+## 只画两端都仍存活的边；用多段 draw_line 近似渐变（Godot 的 draw_line 不支持逐顶点颜色）。
+## 线画在 _draw 最前面，位于所有音符之下。
+func _draw_connect_lines(fa: Object, flags: PackedByteArray, rt_cy: PackedFloat32Array,
+		rt_color: PackedColorArray, removed: int, top_limit: float, bottom_limit: float) -> void:
+	if not fa._connect_lines_enabled:
+		return
+	var edges: PackedInt32Array = fa._connect_edges
+	if edges.is_empty():
+		return
+	var rt_cx: PackedFloat32Array = fa._rt_cx
+	# 分段数随粗细增长但设上限，避免粗线时每条边产生过多 draw_line 调用
+	var segments: int = clampi(int(_connect_line_thickness), 1, 16)
+	for i in range(0, edges.size(), 2):
+		var a: int = edges[i]
+		var b: int = edges[i + 1]
+		if (flags[a] & removed) != 0 or (flags[b] & removed) != 0:
+			continue
+		var ay: float = rt_cy[a]
+		var by: float = rt_cy[b]
+		# 两端都在视口外（含裁剪余量）才跳过；一端在外仍要画，才能接住屏幕内那端
+		if (ay < top_limit and by < top_limit) or (ay > bottom_limit and by > bottom_limit):
+			continue
+		var a_pos := Vector2(rt_cx[a], ay)
+		var b_pos := Vector2(rt_cx[b], by)
+		var a_col: Color = rt_color[a]
+		var b_col: Color = rt_color[b]
+		var prev := a_pos
+		for s in range(1, segments + 1):
+			var t := float(s) / float(segments)
+			var curr := a_pos.lerp(b_pos, t)
+			draw_line(prev, curr, a_col.lerp(b_col, t), _connect_line_thickness, true)
+			prev = curr
 
 ## 绘制 Long body（长条连接部分）：
 ## repeat → 按贴图原始高度分条重复；stretch → 固定比例映射 + 按身体区间裁剪（不随身体压缩/拉伸）。

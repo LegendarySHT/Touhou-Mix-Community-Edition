@@ -124,7 +124,7 @@ static func payload_of(entry: Dictionary, fallback: Variant = null) -> Variant:
 
 
 ## 主动失效单条快照（例如服务端 404：谱面已不存在，不能继续展示旧计数）。
-static func invalidate(ns: String, key: String, account_scoped: bool = false, scope: String = "") -> void:
+static func invalidate(ns: String, key: String, account_scoped: bool = false) -> void:
 	if key.is_empty():
 		return
 	var user := _user_key() if account_scoped else ""

@@ -593,6 +593,26 @@ static func get_setting_groups() -> Array:
 				]
 			},
 			{
+				"id": "connect_parallel_notes",
+				"name_en": "Connect Parallel Notes",
+				"name_zh": "连接并排音符",
+				"description": "连接同时出现的并排音符",
+				"type": "TYPE_OPTION",
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
+			{
+				"id": "connect_line_thickness",
+				"name_en": "Connect Line Thickness",
+				"name_zh": "连接线粗细",
+				"description": "并排音符连接线的粗细，仅在开启「连接并排下落音符」时生效",
+				"type": "TYPE_LINE_EDIT",
+				"range": [1.0, 32.0, 1.0],
+				"unit": "px"
+			},
+			{
 				"id": "custom_block_skin_texture_filter_mode",
 				"advanced": true,
 				"name_en": "Custom Block Skin Texture Filter Mode",

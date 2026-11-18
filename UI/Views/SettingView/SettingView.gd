@@ -705,9 +705,9 @@ func _set_update_buttons_busy(busy: bool) -> void:
 	if %ManualUpdateBtn:
 		%ManualUpdateBtn.disabled = busy
 
-func _set_download_visible(is_visible: bool) -> void:
+func _set_download_visible(_is_visible: bool) -> void:
 	if %DownloadUpdateBtn:
-		%DownloadUpdateBtn.visible = is_visible
+		%DownloadUpdateBtn.visible = _is_visible
 
 ## 常规设置里的同名开关改动时，保持关于页开关同步（set_pressed_no_signal 不会反向触发）
 func _on_update_config_changed(key: String, _value: Variant) -> void:
