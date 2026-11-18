@@ -6,9 +6,9 @@
   2. sync_version.py --write --git-build：build = 当前分支提交数
   3. 与已有清单比较 build，禁止倒退
   4. Godot --export-release 依次导出选中平台到 dist/
-     - windows → THMIX-CE-<ver>-win64.zip（exe + pck 打包）
+     - windows → THMIX-CE-<ver>-win64.zip（exe + pck + .NET 程序集目录，三样缺一不可）
      - android → THMIX-CE-<ver>-arm64.apk（Gradle 构建，需 release 签名）
-     - linux   → THMIX-CE-<ver>-linux-x86_64.tar.gz（二进制 + pck，保留可执行权限）
+     - linux   → THMIX-CE-<ver>-linux-x86_64.tar.gz（二进制 + pck + 程序集目录，保留可执行权限）
   5. 还原版本号文件（版本号是构建期产物，不进提交）
   6. gh release create 一次性上传全部资产（beta 自动加 --prerelease）
   7. 计算 SHA-256 / 大小，生成本地留档清单（platforms 含各平台条目）
@@ -76,6 +76,11 @@ ARTIFACT_SUFFIX = {
     PLATFORM_LINUX: "linux-x86_64.tar.gz",
 }
 DEFAULT_PLATFORMS = f"{PLATFORM_WINDOWS},{PLATFORM_ANDROID},{PLATFORM_LINUX}"
+## miniaudio 原生库子目录（不进 pck，导出后作为真实文件随包分发）
+NATIVE_LIB_DIRS = {
+    PLATFORM_WINDOWS: "windows",
+    PLATFORM_LINUX: "linux",
+}
 ## Godot 4.2+ 用环境变量注入 release 签名，无需改编辑器设置或项目预设
 ANDROID_ENV_PATH = "GODOT_ANDROID_KEYSTORE_RELEASE_PATH"
 ANDROID_ENV_USER = "GODOT_ANDROID_KEYSTORE_RELEASE_USER"
@@ -305,6 +310,21 @@ def _drop_staging(staging: Path) -> None:
     shutil.rmtree(staging, ignore_errors=True)
 
 
+def _require_data_dir(staging: Path, platform: str) -> Path:
+    """确认导出真的产出了 .NET 程序集目录（data_<项目名>_<平台>_<架构>/）。
+
+    桌面端（Windows / Linux）的 C# 程序集不在可执行文件里，全靠这个目录；
+    少了它玩家一打开就是「.NET: Assemblies not found」。名字由项目名和平台决定，
+    这里只校验存在性——导出模板改名时脚本必须当场失败，不能打出一个坏包。
+    """
+    for path in staging.iterdir():
+        if path.is_dir() and path.name.startswith("data_"):
+            return path
+    raise ReleaseError(
+        f"{platform} 导出缺少 .NET 程序集目录（data_<项目名>_...）：{staging}"
+    )
+
+
 def run_export(
     cmd: list[str],
     watch: Path,
@@ -365,8 +385,64 @@ def run_export(
                 proc.kill()
 
 
+def copy_native_libs(staging: Path, platform: str) -> None:
+    """把 miniaudio 原生库放到导出目录里（作为真实文件，不进 pck）。
+
+    MiniaudioNative 用 `ProjectSettings.GlobalizePath("res://addons/miniaudio/libs")`
+    + `File.Exists` 找库，导出后 res:// 落在可执行文件同级目录，所以库必须是磁盘上的
+    真实文件。打进 pck 不行（pck 不是文件系统路径），必须原样带到包外。
+    漏了不会崩，只是 MIDI 全程静音——很难在功能验收里发现，所以由脚本兜住。
+    """
+    subdir = NATIVE_LIB_DIRS.get(platform)
+    if subdir is None:
+        return
+    source = REPO_ROOT / "addons" / "miniaudio" / "libs" / subdir
+    if not source.is_dir():
+        raise ReleaseError(f"缺少 {platform} 原生库目录: {source}")
+    target = staging / "addons" / "miniaudio" / "libs" / subdir
+    target.mkdir(parents=True, exist_ok=True)
+    copied = [path for path in sorted(source.iterdir()) if path.is_file()]
+    for path in copied:
+        shutil.copy2(path, target / path.name)
+    print(f"[NATIVE] {platform} 原生库 {len(copied)} 个文件 → {target.relative_to(staging).as_posix()}/")
+
+
+def pack_windows_archive(staging: Path, exe: Path, version: str) -> Path:
+    """把 staging 整棵树打成 zip，返回 zip 路径。
+
+    关键：Windows 的 .NET 程序集**不在** exe 里。导出会额外生成
+    `data_<项目名>_windows_x86_64/`（coreclr、hostfxr、GodotSharp 与项目 dll），
+    运行时按项目名找这个固定目录，缺了就直接「.NET assemblies not found」。
+    早期实现只打 staging 顶层的文件，把这 105MB 目录整个丢了。
+    """
+    zip_path = DIST_DIR / f"THMIX-CE-{version}-{ARTIFACT_SUFFIX[PLATFORM_WINDOWS]}"
+    if zip_path.is_file():
+        zip_path.unlink()
+    entries = sorted(staging.rglob("*"))
+    file_count = 0
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        for path in entries:
+            arcname = path.relative_to(staging).as_posix()
+            if path.is_dir():
+                # 空目录（data_*/dicts）也要留条目，否则解包后结构对不上
+                info = zipfile.ZipInfo(arcname + "/")
+                info.external_attr = (0o40755 << 16) | 0x10
+                archive.writestr(info, b"")
+                continue
+            archive.write(path, arcname=arcname)
+            file_count += 1
+    print(
+        f"[PACK] {zip_path.name}（{file_count} 个文件，{zip_path.stat().st_size} 字节）"
+    )
+    return zip_path
+
+
 def export_windows(godot: Path, version: str) -> Path:
-    """导出到临时目录后打包为 zip（预设未内嵌 pck，exe 与 pck 需一起分发）。"""
+    """导出 Windows 桌面版并打包为 zip。
+
+    预设未内嵌 pck，包里必须同时有三样：exe、pck、.NET 程序集目录，
+    少任何一样都起不来。
+    """
     staging = _make_staging("win")
     exe = staging / f"THMIX-CE-{version}-win64.exe"
 
@@ -379,20 +455,15 @@ def export_windows(godot: Path, version: str) -> Path:
         EXPORT_PRESETS[PLATFORM_WINDOWS],
         str(exe),
     ]
-    # 以整个暂存目录为观测对象：Windows 版 exe 自包含 .NET 程序集，
-    # 但导出过程仍会先写 data_* 目录，只盯 exe 可能过早判定完成。
+    # 以整个暂存目录为观测对象：产物是 exe + pck + data_* 三部分，
+    # 只盯 exe 会在 data_* 还没写完时误判完成。
     run_export(cmd, staging, PLATFORM_WINDOWS, timeout=900)
     if not exe.is_file() or exe.stat().st_size == 0:
         raise ReleaseError(f"导出未生成有效文件: {exe}")
+    _require_data_dir(staging, PLATFORM_WINDOWS)
 
-    zip_path = DIST_DIR / f"THMIX-CE-{version}-win64.zip"
-    if zip_path.is_file():
-        zip_path.unlink()
-    files = sorted(path for path in staging.iterdir() if path.is_file())
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-        for path in files:
-            archive.write(path, arcname=path.name)
-    print(f"[PACK] {zip_path.name}（{len(files)} 个文件，{zip_path.stat().st_size} 字节）")
+    copy_native_libs(staging, PLATFORM_WINDOWS)
+    zip_path = pack_windows_archive(staging, exe, version)
     _drop_staging(staging)
     return zip_path
 
@@ -470,8 +541,12 @@ def pack_linux_archive(staging: Path, binary: Path, version: str) -> Path:
                 archive.addfile(info)
                 continue
             # Windows 上导出的文件没有 x 位，必须显式指定：
-            # 主程序与 coreclr 的 createdump 需要可执行，其余按普通文件处理。
-            info.mode = 0o755 if path == binary or path.name == "createdump" else 0o644
+            # 主程序、coreclr 的 createdump 以及随包分发的 .so 需要可执行，其余按普通文件处理。
+            info.mode = (
+                0o755
+                if path == binary or path.name == "createdump" or path.suffix == ".so"
+                else 0o644
+            )
             file_count += 1
             with path.open("rb") as handle:
                 archive.addfile(info, handle)
@@ -503,7 +578,9 @@ def export_linux(godot: Path, version: str) -> Path:
     run_export(cmd, staging, PLATFORM_LINUX, timeout=900)
     if not binary.is_file() or binary.stat().st_size == 0:
         raise ReleaseError(f"导出未生成有效文件: {binary}")
+    _require_data_dir(staging, PLATFORM_LINUX)
 
+    copy_native_libs(staging, PLATFORM_LINUX)
     archive_path = pack_linux_archive(staging, binary, version)
     _drop_staging(staging)
     return archive_path
