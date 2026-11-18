@@ -643,9 +643,15 @@ def ensure_tag_absent(tag: str) -> None:
 def create_github_release(
     tag: str, artifacts: list[Path], notes_path: Path, channel: str, slug: str
 ) -> dict[str, str]:
-    """上传全部资产，返回 {资产文件名: 下载地址}。"""
+    """上传全部资产，返回 {资产文件名: 下载地址}。
+
+    `--target` 必须显式钉成本次构建的提交：不给的话 gh 取**远端分支头**打 tag，
+    而构建到上传之间有几十分钟，期间只要有人往 main 推一次提交，tag 就会指向
+    一个包里根本没有的提交（v1.0.0.763 与 v1.0.0.765 都踩过）。
+    """
     if not artifacts:
         raise ReleaseError("没有可上传的产物")
+    build_commit = git("rev-parse", "HEAD").strip()
     cmd = [
         "gh",
         "release",
@@ -654,6 +660,8 @@ def create_github_release(
         *[str(artifact) for artifact in artifacts],
         "--title",
         tag,
+        "--target",
+        build_commit,
         "--notes-file",
         str(notes_path),
     ]
