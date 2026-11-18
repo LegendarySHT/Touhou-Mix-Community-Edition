@@ -75,6 +75,10 @@ func _ready() -> void:
 	if EvtBus and not EvtBus.config_changed.is_connected(_on_difficulty_config_changed):
 		EvtBus.config_changed.connect(_on_difficulty_config_changed)
 
+	# 「网络连接」项的展示跟随 NetManager 的连接状态（含自动重试 / 延迟测量 / 手动重试）
+	if EvtBus and not EvtBus.online_state_changed.is_connected(_on_net_state_changed):
+		EvtBus.online_state_changed.connect(_on_net_state_changed)
+
 	# 即时型设置应用器：与设置数据里的 "applier" 字段对应（"何时/如何生效"随数据声明，而非硬编 if id==）
 	APPLIERS = {
 		"theme_preset": func(_id: String, v: Variant) -> void: _apply_theme_preset(v),
@@ -125,6 +129,9 @@ func load_settings(setting: Dictionary = {}):
 
 	# 清除缓存按钮的文案带实时占用大小，每次重建设置列表时刷新
 	_refresh_cache_clear_button()
+
+	# 连接状态项同理：文案/按钮态取决于 NetManager 当前状态，重建设置列表时同步一次
+	_refresh_connection_item()
 
 var separators = []
 @onready var separator_scene = load(item_separator)
@@ -629,6 +636,85 @@ func _refresh_cache_clear_button() -> void:
 	var size_text := OnlineCache.format_size(OnlineCache.total_size_bytes())
 	btn.text = "清除（%s）" % size_text
 	btn.tooltip_text = "删除本地保存的在线内容缓存，下次进入各页面将重新联网获取"
+
+
+# ===== 网络连接状态 / 手动重试 =====
+# 常规设置里的「网络连接」项：左侧说明文字显示当前连接状况或上次失败原因，
+# 右侧按钮在失败时点击立即重试（不必干等 30 秒定期重试），正常时用于重新检测。
+
+## 连接状态变化回调：自动重试、延迟测量、手动重试都会走到这里
+func _on_net_state_changed(_state: int, _latency_ms: int) -> void:
+	_refresh_connection_item()
+
+## 按钮点击入口（TYPE_BUTTON 的 on_click，由 SettingListItem 用 Callable 直连本方法）
+func _retry_connection() -> void:
+	var net := ServiceHub.net
+	if net == null:
+		return
+	# 线上模式关闭时不会发出任何请求，点按钮没有意义（该状态下按钮本身也是禁用的，这里兜底）
+	if not NetManager.is_online_mode():
+		_refresh_connection_item()
+		return
+	GLogger.info("Manual reconnect requested from settings", "SettingList")
+	net.retry_now()
+
+## 把 NetManager 的当前状态写进「网络连接」项的说明文字与按钮：
+##   已连接 → 延迟 + 服务器地址，按钮变「重新检测」
+##   失败   → 失败原因（Android 玩家拿不到应用私有目录的日志，这句是唯一能截图的证据）+「立即重试」
+##   连接中 → 按钮禁用并显示「连接中…」，避免连点叠加请求
+##   离线   → 说明线上模式已关闭，按钮禁用
+func _refresh_connection_item() -> void:
+	var item: SettingItem = setting_items.get("retry_connection")
+	if item == null or not is_instance_valid(item):
+		return
+
+	var net := ServiceHub.net
+	var state: int = net.connect_state if net != null else NetManager.ConnectState.OFFLINE_MODE
+	var latency: int = net.get_latency_ms() if net != null else -1
+	var host: String = net.server_url if net != null else ""
+
+	var status_text := ""
+	var button_text := "立即重试"
+	var button_enabled := true
+	var tooltip := ""
+
+	match state:
+		NetManager.ConnectState.OFFLINE_MODE:
+			status_text = "线上模式已关闭，当前不会连接服务器。"
+			button_text = "未启用"
+			button_enabled = false
+		NetManager.ConnectState.CONNECTING:
+			status_text = "正在连接服务器…\n服务器：%s" % host
+			button_text = "连接中…"
+			button_enabled = false
+		NetManager.ConnectState.ONLINE:
+			var head := "已连接"
+			if latency >= 0:
+				head = "已连接　延迟 %d ms" % latency
+			status_text = "%s\n服务器：%s" % [head, host]
+			button_text = "重新检测"
+			tooltip = "服务器：%s" % host
+		NetManager.ConnectState.FAILED:
+			var reason := "未知原因"
+			if net != null and not net.get_last_fail_reason().is_empty():
+				reason = net.get_last_fail_reason()
+			status_text = "连接失败：%s\n服务器：%s　可点击右侧按钮立即重试" % [reason, host]
+			# 原始诊断码（result / http / url）只放 tooltip：玩家看原因，排查看这里
+			if net != null:
+				tooltip = "%s\n%s" % [reason, net.get_last_fail_detail()]
+			else:
+				tooltip = reason
+		_:
+			status_text = "连接状态未知"
+
+	var desc := item.get_node_or_null("Desc") as Label
+	if desc != null:
+		desc.text = status_text
+	var btn := item.value_node as Button
+	if btn != null:
+		btn.text = button_text
+		btn.disabled = not button_enabled
+		btn.tooltip_text = tooltip
 
 
 # 重置内置资源：调用 FileSystemManager 重新复制默认资源

@@ -63,6 +63,16 @@ func _notification(what: int) -> void:
 			and not _pending_message.is_empty():
 		_apply_message()
 
+## 连接失败提示：带上 NetManager 记录的具体原因（解析失败/超时/握手失败…）。
+## Android 玩家拿不到应用私有目录里的日志，截图这一句就是最直接可回传的证据。
+func _connect_fail_message() -> String:
+	var reason := ""
+	if ServiceHub.net != null:
+		reason = ServiceHub.net.get_last_fail_reason().strip_edges()
+	if reason.is_empty():
+		return "无法连接到在线服务器，请检查网络设置"
+	return "无法连接到在线服务器：%s" % reason
+
 ## 连接状态变化：区分在线模式关闭、连接中、连接失败，并在连接成功后补刷。
 ## 不依赖 ScoreList 是否当前显示：排行榜页可能是 TabContainer 的非当前页，
 ## 但仍应在进入 MidiView 后及时拿到已经建立的连接结果。
@@ -90,7 +100,7 @@ func _on_online_state_changed(state: int, _latency_ms: int) -> void:
 			if _cache_rendered:
 				return
 			_set_stats_message(_STATS_UNAVAILABLE)
-			_show_message("无法连接到在线服务器，请检查网络设置")
+			_show_message(_connect_fail_message())
 		NetManager.ConnectState.ONLINE:
 			if _waiting_online:
 				load_scores(_current_midi)
@@ -181,7 +191,7 @@ func load_scores(midi: MidiData) -> void:
 		_waiting_online = true
 		_fail_stats(_STATS_UNAVAILABLE)
 		if not _cache_rendered:
-			_show_message("无法连接到在线服务器，请检查网络设置")
+			_show_message(_connect_fail_message())
 		return
 	if not ServiceHub.net.is_online:
 		_waiting_online = true

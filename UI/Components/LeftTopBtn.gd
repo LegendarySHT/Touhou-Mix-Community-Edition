@@ -44,10 +44,24 @@ func _update_lag_display(state: int = -1, latency_ms: int = -1) -> void:
 	match state:
 		NetManager.ConnectState.CONNECTING:
 			%NetConnLag.text = "正在\n连接"
+			tooltip_text = ""
 		NetManager.ConnectState.ONLINE:
 			%NetConnLag.text = "%d\nms" % latency_ms
+			tooltip_text = ""
 		NetManager.ConnectState.FAILED:
 			%NetConnLag.text = "连接\n失败"
+			# 桌面端悬停可看完整诊断码；Android 无悬停，靠排行榜页的失败文案
+			tooltip_text = _fail_tooltip()
+
+## 失败诊断信息（供悬停提示）：原因 + result/http/目标地址
+func _fail_tooltip() -> String:
+	if ServiceHub.net == null:
+		return ""
+	var reason: String = ServiceHub.net.get_last_fail_reason()
+	var detail: String = ServiceHub.net.get_last_fail_detail()
+	if reason.is_empty():
+		return detail
+	return "%s\n%s" % [reason, detail]
 
 func _on_state_change(_old_state, new_state: UIStateManager.UIState):
 	if new_state in [UiStatMGR.UIState.SETTINGS_VIEW]:

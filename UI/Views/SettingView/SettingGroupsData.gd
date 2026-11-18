@@ -104,17 +104,25 @@ static func get_setting_groups() -> Array:
 					{"text_en": "On", "text_zh": "开启"}
 				]
 			},
-		{
-			"id": "cache_online_content",
-			"name_en": "Online Content Cache",
-			"name_zh": "在线内容缓存",
-			"description": "开启后先显示上次缓存的排行榜、评论、统计、商店列表与个人资料，再联网请求实时数据并刷新；关闭则完全沿用原有的在线加载逻辑",
-			"type": "TYPE_OPTION",
-			"options": [
-				{"text_en": "Off", "text_zh": "关闭"},
-				{"text_en": "On", "text_zh": "开启"}
-			]
-		},
+			{
+				"id": "retry_connection",
+				"name_en": "Network Connection",
+				"name_zh": "网络连接",
+				"description": "显示当前连接状态或上次失败的原因；连接失败时点击右侧按钮立即重试",
+				"type": "TYPE_BUTTON",
+				"on_click": "_retry_connection"
+			},
+			{
+				"id": "cache_online_content",
+				"name_en": "Online Content Cache",
+				"name_zh": "在线内容缓存",
+				"description": "开启后先显示上次缓存的排行榜、评论、统计、商店列表与个人资料，再联网请求实时数据并刷新；关闭则完全沿用原有的在线加载逻辑",
+				"type": "TYPE_OPTION",
+				"options": [
+					{"text_en": "Off", "text_zh": "关闭"},
+					{"text_en": "On", "text_zh": "开启"}
+				]
+			},
 		{
 			"id": "cache_show_when_offline",
 			"name_en": "Show Cache When Offline",

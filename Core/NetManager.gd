@@ -21,8 +21,12 @@ enum ConnectState {
 ## 服务器地址（从 ConfigManager [General] server_address 读取）
 var server_url: String = ""
 
-## 配置地址无效时的回退地址（开发默认，与 config.ini 默认一致）
-const FALLBACK_SERVER_URL: String = "http://localhost:5000"
+## 配置地址缺失/清空时的回退地址：必须是线上正式地址。
+## 早期这里写的是 http://localhost:5000，配合 Configuration 的「用户配置无条件覆盖默认值」，
+## 玩家只要把设置页的「服务器地址」清空保存，游戏就会永久连 localhost，服务端连日志都没有；
+## 而浏览器打开官网一切正常，报障看起来就像「只有游戏连不上」。联调请显式填 localhost:5000，
+## _normalize_server_url 会为它补 http 前缀，不受本回退影响。
+const FALLBACK_SERVER_URL: String = "https://thmixce.org"
 
 ## 当前是否在线（服务端可达）
 var is_online: bool = false
@@ -36,6 +40,20 @@ var _latency_ms: int = -1
 ## 读取最近一次连接延迟（毫秒；-1 = 未知/未连接，外部只读统一走此方法，TMX-019）
 func get_latency_ms() -> int:
 	return _latency_ms
+
+## 最近一次连接失败的简短原因（中文，供 UI 直接展示）与原始诊断码。
+## 诊断用：Android 玩家拿不到应用私有目录下的日志，界面上这句原因往往是
+## 唯一能回传的证据；必须能区分「解析失败 / 连不上 / 证书 / 超时 / 被拒」。
+var _last_fail_reason: String = ""
+var _last_fail_detail: String = ""
+
+## 读取最近一次失败原因（空串 = 当前无失败记录或已连接成功）
+func get_last_fail_reason() -> String:
+	return _last_fail_reason
+
+## 读取最近一次失败的原始诊断码（result 枚举 + HTTP 状态 + 目标地址）
+func get_last_fail_detail() -> String:
+	return _last_fail_detail
 
 ## online_mode 开关
 var _online_mode_enabled: bool = false
@@ -82,7 +100,7 @@ func _ready() -> void:
 
 ## 从配置加载服务器地址
 func _load_server_url() -> void:
-	var addr = ServiceHub.config.get_string("server_address", "thmix.org")
+	var addr = ServiceHub.config.get_string("server_address", FALLBACK_SERVER_URL)
 	server_url = _normalize_server_url(addr)
 	GLogger.info("Server URL loaded: %s" % server_url, "NetMGR")
 
@@ -333,17 +351,61 @@ func _do_connect_attempt() -> bool:
 		return is_online
 	_connecting = true
 	var start := Time.get_ticks_msec()
-	var result = await check_health()
+	var result: Dictionary = await check_health()
 	var elapsed := Time.get_ticks_msec() - start
 	_connecting = false
 	if result.get("ok", false):
 		_latency_ms = elapsed
 		is_online = true
+		_last_fail_reason = ""
+		_last_fail_detail = ""
+		GLogger.info("Connection ok (latency=%dms, url=%s)" % [elapsed, server_url], "NetMGR")
 	else:
 		_latency_ms = -1
 		is_online = false
-	GLogger.info("Connection attempt: %s (latency=%dms)" % ["ok" if is_online else "fail", _latency_ms], "NetMGR")
+		_last_fail_reason = _describe_failure(result)
+		_last_fail_detail = "result=%d http=%d err=%s url=%s/api/health" % [
+			int(result.get("result_code", -1)),
+			int(result.get("status", 0)),
+			str(result.get("error", "")),
+			server_url,
+		]
+		# 玩家报障只能拿到这一行：失败原因必须落到日志，否则无法区分
+		# DNS 污染 / 进程被拦 / 证书 / IPv6 超时 / 边缘质询 这几种完全不同的根因
+		GLogger.warning("Connection failed: %s | %s" % [_last_fail_reason, _last_fail_detail], "NetMGR")
 	return is_online
+
+## 把 _request 的失败结果翻译成玩家能看懂、且足以判断根因的短句
+func _describe_failure(result: Dictionary) -> String:
+	var code := int(result.get("result_code", -1))
+	var status := int(result.get("status", 0))
+	var err := str(result.get("error", ""))
+	match code:
+		HTTPRequest.RESULT_CANT_RESOLVE:
+			return "域名解析失败"
+		HTTPRequest.RESULT_CANT_CONNECT:
+			return "无法建立连接"
+		HTTPRequest.RESULT_TLS_HANDSHAKE_ERROR:
+			return "安全连接握手失败"
+		HTTPRequest.RESULT_TIMEOUT:
+			return "连接超时"
+		HTTPRequest.RESULT_NO_RESPONSE:
+			return "服务器无响应"
+		HTTPRequest.RESULT_CONNECTION_ERROR:
+			return "连接被中断"
+		HTTPRequest.RESULT_REQUEST_FAILED:
+			return "请求发送失败"
+	if err == "invalid_json_response":
+		return "服务器响应异常（HTTP %d）" % status
+	if status == 403:
+		return "服务器拒绝访问（403）"
+	if status == 429:
+		return "请求过于频繁（429）"
+	if status >= 500:
+		return "服务器错误（%d）" % status
+	if status == 0:
+		return "未知网络错误"
+	return "服务器返回异常（HTTP %d）" % status
 
 
 ## 统一设置连接状态并发射信号
@@ -420,7 +482,8 @@ func _request(method: String, url: String, body: Variant, headers: PackedStringA
 	if err != OK:
 		EvtBus.online_request_finished.emit(url, false)
 		http.queue_free()
-		return { "ok": false, "status": 0, "data": null, "error": "request_failed: %d" % err }
+		# result_code 用 -1 表示「没能发起请求」，与 HTTPRequest.Result 的取值区间区分开
+		return { "ok": false, "status": 0, "data": null, "result_code": -1, "error": "request_failed: %d" % err }
 
 	var resp = await http.request_completed
 	var result_code = resp[0]
@@ -445,6 +508,7 @@ func _request(method: String, url: String, body: Variant, headers: PackedStringA
 		"ok": ok,
 		"status": response_code,
 		"data": data,
+		"result_code": result_code,
 		"error": "" if ok else ("invalid_json_response" if json_parse_failed else "HTTP %d (result=%d)" % [response_code, result_code])
 	}
 
@@ -456,6 +520,30 @@ func _method_to_http_client(method: String) -> int:
 		"PATCH": return HTTPClient.METHOD_PATCH
 		"DELETE": return HTTPClient.METHOD_DELETE
 		_: return HTTPClient.METHOD_GET
+
+## 手动重试（设置页「网络连接」项的按钮）
+## 与自动重试的区别：自动流程是「3 次快速尝试 → 30 秒定期重试」，玩家点按钮要的是立刻有反馈，
+## 因此这里先切到 CONNECTING（界面马上变「连接中…」），马上发一次探测，再按结果落到
+## ONLINE（转延迟测量）或 FAILED（转定期重试）——后续状态与自动流程保持一致，不会互相打架。
+## 返回值：当前是否在线。在线模式关闭 / 已有探测在途时直接返回，不叠加请求。
+func retry_now() -> bool:
+	if not _online_mode_enabled or _connecting:
+		return is_online
+	if is_activity_suspended():
+		GLogger.info("Manual retry ignored: network probing suspended", "NetMGR")
+		return is_online
+	_stop_all_timers()
+	_set_connect_state(ConnectState.CONNECTING)
+	var ok := await _do_connect_attempt()
+	if not _online_mode_enabled:
+		return is_online
+	if ok:
+		_set_connect_state(ConnectState.ONLINE)
+		_start_latency_timer()
+	else:
+		_set_connect_state(ConnectState.FAILED)
+		_start_periodic_retry()
+	return ok
 
 ## 手动测试连接
 ## 更新 is_online 状态并发射信号
