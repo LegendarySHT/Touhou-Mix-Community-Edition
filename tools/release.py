@@ -20,6 +20,14 @@
   python tools/release.py --platforms windows          # 只发 PC
   python tools/release.py --platforms windows,android --notes-file notes.md
   python tools/release.py --platforms linux            # 只发 Linux
+  python tools/release.py --export-only --platforms windows
+                                                       # 只导出打包到 dist/，不建 Release（CI 影子构建）
+
+跨平台：
+  - Godot 可执行文件用 --godot 或 GODOT_BIN 指定
+  - 导出模板目录按平台定位（Windows APPDATA / macOS Application Support /
+    Linux XDG 数据目录）。不提供环境变量覆盖：引擎只认这几个标准位置，
+    覆盖只会让本脚本的自检通过、导出时在引擎里失败。
 
 Android 签名（仅当发布 android 时需要）：
   THMIX_ANDROID_KEYSTORE           .jks 路径
@@ -190,11 +198,63 @@ def godot_version_tag(godot: Path) -> str:
     return tag
 
 
+## 场景/资源里的外部文件引用；path 必须逐级大小写精确匹配
+EXT_RESOURCE_PATTERN = re.compile(r'\[ext_resource[^\]]*path="res://([^"]+)"')
+SCAN_SKIP_DIRS = {".godot", "temp", "dist", "android", ".git"}
+
+
+def _exists_exact_rel(relative: str) -> bool:
+    """按大小写精确判断仓库内路径是否存在。
+
+    不能用 Path.is_file()：Windows 不区分大小写，本机校验会放过
+    `UI/Foo.gd` 指向 `UI/foo.gd` 这种引用，而 Linux 导出直接 File not found。
+    """
+    current = REPO_ROOT
+    for part in Path(relative).parts:
+        try:
+            if part not in os.listdir(current):
+                return False
+        except OSError:
+            return False
+        current = current / part
+    return current.is_file()
+
+
+def find_dangling_refs() -> list[tuple[str, str]]:
+    """列出 tscn/tres 中指向不存在文件的 ext_resource。
+
+    必须自己查：Godot 导出时只打几行 ERROR 就继续把 pck 写完，导出照样算成功，
+    坏引用会静静进包；而本机的 .godot 导入缓存会把这个错误彻底盖住。
+    """
+    problems: list[tuple[str, str]] = []
+    for pattern in ("**/*.tscn", "**/*.tres"):
+        for scene in REPO_ROOT.glob(pattern):
+            relative = scene.relative_to(REPO_ROOT)
+            if relative.parts[0] in SCAN_SKIP_DIRS:
+                continue
+            text = scene.read_text(encoding="utf-8", errors="replace")
+            for match in EXT_RESOURCE_PATTERN.finditer(text):
+                target = match.group(1)
+                if not _exists_exact_rel(target):
+                    problems.append((str(relative), target))
+    return problems
+
+
 def template_dir(godot: Path) -> tuple[Path, str]:
-    """按当前引擎版本定位导出模板目录，返回（目录，版本标签）。"""
+    """按当前引擎版本定位导出模板目录，返回（目录，版本标签）。
+
+    只认 Godot 自己会读的标准位置：Windows 在 APPDATA、macOS 在 ~/Library/Application Support、
+    Linux 在 XDG 数据目录。这里不做环境变量覆盖——引擎不读任何自定义变量，模板放别处时
+    本函数照样通过自检，导出却报 "No export template found at the expected path"。
+    """
     tag = godot_version_tag(godot)
-    appdata = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    return appdata / "Godot" / "export_templates" / tag, tag
+    if sys.platform.startswith("win"):
+        root = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "Godot"
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support" / "Godot"
+    else:
+        root = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "godot"
+    return root / "export_templates" / tag, tag
 
 
 def missing_template(platform: str, directory: Path) -> str | None:
@@ -775,10 +835,19 @@ def run(args: argparse.Namespace) -> int:
 
     load_signing_env()
     platforms = parse_platforms(args.platforms)
+    export_only = bool(getattr(args, "export_only", False))
 
-    ensure_clean_worktree(args.dry_run)
-    ensure_pushed(args.dry_run)
-    ensure_gh_ready(args.dry_run)
+    dangling = find_dangling_refs()
+    if dangling:
+        detail = "\n".join(f"  {src} → res://{dst}" for src, dst in dangling)
+        raise ReleaseError(
+            f"有 {len(dangling)} 处 ext_resource 指向不存在的文件，导出会把坏引用打进包：\n{detail}"
+        )
+
+    if not export_only:
+        ensure_clean_worktree(args.dry_run)
+        ensure_pushed(args.dry_run)
+        ensure_gh_ready(args.dry_run)
     godot = resolve_godot(args.godot)
     slug = repo_slug()
     manifest_path = resolve_manifest_path(args.channel, args.manifest_out)
@@ -808,6 +877,7 @@ def run(args: argparse.Namespace) -> int:
 
     if args.dry_run:
         version = f"{version_prefix()}.{sv.git_commit_count()}"
+        print(f"[DRY-RUN] 模式: {'仅导出（不发布）' if export_only else '导出并发布'}")
         print(f"[DRY-RUN] 仓库: {slug}")
         print(f"[DRY-RUN] Godot: {godot}")
         print(f"[DRY-RUN] 模板: {directory}")
@@ -827,9 +897,16 @@ def run(args: argparse.Namespace) -> int:
     # 先做只读校验，避免校验失败时留下未还原的版本号文件
     expected_build = sv.git_commit_count()
     expected_version = f"{version_prefix()}.{expected_build}"
-    check_monotonic(manifest_path, expected_build, args.force)
     tag = f"v{expected_version}"
-    ensure_tag_absent(tag)
+    if export_only:
+        print(f"[EXPORT-ONLY] 版本 {expected_version}：不校验 build 单调性、不创建 Release")
+    else:
+        check_monotonic(manifest_path, expected_build, args.force)
+        ensure_tag_absent(tag)
+
+    # 三种打包器都直接往 dist/ 写文件。本机 dist/ 早就存在，干净 checkout 里没有，
+    # 于是只有 CI 会在 tarfile/zipfile 打开时炸 FileNotFoundError。统一在这里建一次。
+    DIST_DIR.mkdir(parents=True, exist_ok=True)
 
     if sv.run(write=True, git_build=True) != 0:
         raise ReleaseError("sync_version.py 执行失败")
@@ -841,16 +918,19 @@ def run(args: argparse.Namespace) -> int:
                 f"版本号写入结果与预期不一致: {version}/{build} != {expected_version}/{expected_build}"
             )
 
-        notes_text, changes = build_notes(version, args.channel, args.notes_file)
-        notes_path = DIST_DIR / f"release-notes-{version}.md"
-        notes_path.parent.mkdir(parents=True, exist_ok=True)
-        notes_path.write_text(notes_text, encoding="utf-8")
+        notes_path: Path | None = None
+        entry: dict | None = None
+        if not export_only:
+            notes_text, changes = build_notes(version, args.channel, args.notes_file)
+            notes_path = DIST_DIR / f"release-notes-{version}.md"
+            notes_path.parent.mkdir(parents=True, exist_ok=True)
+            notes_path.write_text(notes_text, encoding="utf-8")
 
-        # 版本号文件还原前先取条目快照（此时条目仍是新版本号）
-        entry = dict(current_history_entry(version))
-        entry["changes"] = changes or entry.get("changes", [])
-        if args.min_supported_build is not None:
-            entry["min_supported_build"] = args.min_supported_build
+            # 版本号文件还原前先取条目快照（此时条目仍是新版本号）
+            entry = dict(current_history_entry(version))
+            entry["changes"] = changes or entry.get("changes", [])
+            if args.min_supported_build is not None:
+                entry["min_supported_build"] = args.min_supported_build
 
         # 所有平台都导出完才还原版本号文件：中途还原会让后一个平台读到旧版本号
         artifacts: dict[str, Path] = {}
@@ -866,6 +946,14 @@ def run(args: argparse.Namespace) -> int:
         if not args.keep_version_files:
             restore_version_files()
 
+        if export_only:
+            print("\n[OK] 导出完成（未发布）")
+            print(f"  版本: {version}（build {build}）")
+            for platform, artifact in artifacts.items():
+                print(f"  产物({platform}): {artifact}  {artifact.stat().st_size} 字节")
+            return 0
+
+        assert notes_path is not None and entry is not None
         download_urls = create_github_release(tag, list(artifacts.values()), notes_path, args.channel, slug)
         manifest = build_manifest(version, build, args.channel, entry, artifacts, download_urls)
         write_manifest(manifest_path, manifest)
@@ -903,6 +991,11 @@ def main() -> int:
     parser.add_argument("--keep-version-files", action="store_true", help="保留版本号文件改动（默认还原）")
     parser.add_argument("--force", action="store_true", help="允许 build 不递增")
     parser.add_argument("--dry-run", action="store_true", help="只打印计划，不导出、不上传")
+    parser.add_argument(
+        "--export-only",
+        action="store_true",
+        help="只导出并打包到 dist/，不创建 Release、不写清单（CI 影子构建用）",
+    )
     parser.add_argument(
         "--android-keystore",
         help="release keystore 路径（默认读环境变量 THMIX_ANDROID_KEYSTORE）",

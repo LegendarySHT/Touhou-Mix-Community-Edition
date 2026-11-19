@@ -1,0 +1,113 @@
+name: Setup Godot mono
+description: >-
+  下载并缓存 Godot mono 编辑器与对应版本的导出模板。
+  Windows / Linux 共用一套 bash 实现；解压统一走 python（Git Bash 没有 unzip）。
+
+inputs:
+  version:
+    description: Godot 版本号（不含 -stable 后缀，如 4.7.2）
+    required: true
+  platform:
+    description: windows 或 linux
+    required: true
+
+outputs:
+  godot:
+    description: Godot 可执行文件路径（runner 原生格式）
+    value: ${{ steps.install.outputs.godot }}
+
+runs:
+  using: composite
+  steps:
+    - name: 缓存引擎与模板
+      uses: actions/cache@v4
+      with:
+        # 模板缓存的就是 Godot 真正读取的那个目录，不走自定义中转，避免「缓存命中但引擎找不到」
+        path: |
+          ~/.godot-ci/engine
+          ${{ runner.os == 'Windows' && '~/AppData/Roaming/Godot/export_templates' || '~/.local/share/godot/export_templates' }}
+        # v2：缓存布局从 ~/.godot-ci/templates 改为引擎标准目录，旧键不可复用
+        key: godot-${{ inputs.version }}-${{ inputs.platform }}-${{ runner.os }}-v2
+
+    - name: 安装引擎与导出模板
+      id: install
+      shell: bash
+      env:
+        GODOT_VERSION: ${{ inputs.version }}
+        GODOT_PLATFORM: ${{ inputs.platform }}
+      run: |
+        set -euo pipefail
+        root="$HOME/.godot-ci"
+        tag="${GODOT_VERSION}.stable.mono"
+        base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+        py="$(command -v python3 || command -v python)"
+        mkdir -p "$root/engine"
+
+        case "$GODOT_PLATFORM" in
+          windows) zip_name="Godot_v${GODOT_VERSION}-stable_mono_win64.zip" ;;
+          linux)   zip_name="Godot_v${GODOT_VERSION}-stable_mono_linux_x86_64.zip" ;;
+          *) echo "::error::未知平台 $GODOT_PLATFORM"; exit 1 ;;
+        esac
+
+        # Godot 只读自己的编辑器数据目录，并不认 GODOT_EXPORT_TEMPLATES（那是 release.py 的内部约定），
+        # 模板放在别处会在导出时报 "No export template found at the expected path"。
+        if [ "$GODOT_PLATFORM" = "windows" ]; then
+          templates_dir="$APPDATA/Godot/export_templates/$tag"
+        else
+          templates_dir="${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$tag"
+        fi
+
+        find_engine() {
+          if [ "$GODOT_PLATFORM" = "windows" ]; then
+            # 只用 console 版：GUI 子系统的 exe 在 CI 里 stdout 不接管道，
+            # 导出失败时只剩一个退出码，看不到引擎的任何日志
+            find "$root/engine" -type f -name '*console.exe' -print -quit
+          else
+            find "$root/engine" -type f -name 'Godot_v*' ! -name '*.zip' ! -name '*.pck' -print -quit
+          fi
+        }
+
+        engine="$(find_engine || true)"
+        if [ -z "$engine" ]; then
+          echo "下载 $zip_name"
+          curl -fL --retry 3 --retry-delay 2 -o "$root/$zip_name" "$base/$zip_name"
+          "$py" -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \
+            "$root/$zip_name" "$root/engine"
+          rm -f "$root/$zip_name"
+          engine="$(find_engine)"
+        fi
+        if [ -z "$engine" ]; then
+          echo "::error::解压后找不到 Godot 可执行文件"
+          exit 1
+        fi
+        chmod +x "$engine" 2>/dev/null || true
+
+        # 模板是 .tpz（实为 zip），解压后是 templates/ 目录，装到引擎的 export_templates/<tag>/
+        if [ ! -f "$templates_dir/android_source.zip" ]; then
+          tpz="Godot_v${GODOT_VERSION}-stable_mono_export_templates.tpz"
+          echo "下载 $tpz"
+          curl -fL --retry 3 --retry-delay 2 -o "$root/$tpz" "$base/$tpz"
+          rm -rf "$root/tpl-tmp"
+          mkdir -p "$root/tpl-tmp"
+          "$py" -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' \
+            "$root/$tpz" "$root/tpl-tmp"
+          mkdir -p "$templates_dir"
+          cp -R "$root/tpl-tmp/templates/." "$templates_dir/"
+          rm -rf "$root/tpl-tmp" "$root/$tpz"
+        fi
+        if [ ! -f "$templates_dir/android_source.zip" ]; then
+          echo "::error::模板安装后仍缺 android_source.zip（目录 $templates_dir）"
+          exit 1
+        fi
+
+        # Windows 上 Git Bash 的 /c/... 路径 Python 认不出，转成原生格式再输出
+        if command -v cygpath >/dev/null 2>&1; then
+          godot_path="$(cygpath -w "$engine")"
+          templates_path="$(cygpath -w "$templates_dir")"
+        else
+          godot_path="$engine"
+          templates_path="$templates_dir"
+        fi
+        echo "godot=$godot_path" >> "$GITHUB_OUTPUT"
+        echo "引擎: $godot_path"
+        echo "模板: $templates_path"
