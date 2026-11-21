@@ -198,7 +198,8 @@ func _setup_focus_tabs() -> void:
 		_sync_navi_selection(%PageContent.current_tab)
 	FocusMGR.register_tab_bar(bar)
 
-func _connect_scan_ready() -> void:	if ServiceHub.fs and not ServiceHub.fs.resources_ready.is_connected(_load_chara_display):
+func _connect_scan_ready() -> void:
+	if ServiceHub.fs and not ServiceHub.fs.resources_ready.is_connected(_load_chara_display):
 		ServiceHub.fs.resources_ready.connect(_load_chara_display)
 
 ## 角色切换（[Chara] chara_id）时刷新展示
