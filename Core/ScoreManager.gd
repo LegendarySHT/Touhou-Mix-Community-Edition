@@ -15,6 +15,9 @@ static func get_device_id_file() -> String:
 	return PathHelper.ensure_pinned_file("device_id.txt")
 const CHART_NOT_FOUND_ERROR: String = "chart_not_found"
 
+## 草稿谱面：按需求「草稿游玩成绩不上传」，与「服务端未收录」区分开供 UI 分别提示
+const DRAFT_CHART_ERROR: String = "draft_chart"
+
 ## 当前设备标识（首次启动时生成，持久化存储）
 var _device_id: String = ""
 
@@ -154,6 +157,13 @@ func upload_score(midi: MidiData, snapshot: Dictionary) -> Dictionary:
 ## 返回 { ok, status, data, error, skipped? }
 ## 去重逻辑由服务端处理：同设备/同用户 + 同 MIDI 只保留最高分
 func _upload_score_inner(midi: MidiData, snapshot: Dictionary) -> Dictionary:
+	# 草稿谱面的成绩不上传（2026-11-21 需求 R8）。
+	# 这里的判断**在**服务端预检之前：不依赖一次网络往返，也不受"将来某个优化让草稿
+	# 也能查详情"的影响。草稿不在 Charts 表里，下面的 404 分支本来也能挡住它，
+	# 但那属于「碰巧成立」——写成显式闸门后这条规则才不会被后来的改动悄悄破坏。
+	if ServiceHub.drafts != null and ServiceHub.drafts.is_local_draft(midi.file_hash):
+		return _draft_chart_result()
+
 	# 服务端谱面表是在线成绩的权威来源。本地存在但服务端不存在时静默跳过，
 	# 不进入鉴权和成绩 POST；服务端仍会在 POST 内重复校验以覆盖并发删除。
 	var chart_result: Dictionary = await _check_server_chart(midi.file_hash)
@@ -199,6 +209,19 @@ func _chart_not_found_result() -> Dictionary:
 		"status": 404,
 		"data": null,
 		"error": CHART_NOT_FOUND_ERROR,
+		"skipped": true,
+	}
+
+
+## 草稿谱面：成绩**按设计**不上传（见 _upload_score_inner 里的显式闸门）。
+## 与 _chart_not_found_result 的区别只在 error 码——结算页据此显示中性的
+## 「草稿谱面的成绩不上传」而不是「服务端未收录该谱面」（后者对草稿是误导）。
+func _draft_chart_result() -> Dictionary:
+	return {
+		"ok": false,
+		"status": 0,
+		"data": null,
+		"error": DRAFT_CHART_ERROR,
 		"skipped": true,
 	}
 

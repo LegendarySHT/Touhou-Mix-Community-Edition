@@ -42,6 +42,9 @@ var showing_info: bool = false
 ## 每次刷新自增；异步探测返回时代次不匹配即丢弃结果，避免迟到的旧结果覆盖新状态。
 var _redirect_gen: int = 0
 
+## 草稿上传进行中（防重复点击：HTTPRequest 无进度信号，只能靠按钮禁用 + 这个标志）
+var _draft_uploading: bool = false
+
 func _on_view_ready() -> void:
 	# 供跨场景读取的谱面列表
 	GlobalNodes.midi_list = %MidiList
@@ -55,6 +58,12 @@ func _on_view_ready() -> void:
 	# 联网状态翻转时重探：离线期间两条按钮都是隐藏的（判据未知不猜），
 	# 恢复在线后不重探的话要手动切一次歌才出现
 	EvtBus.online_status_changed.connect(_on_online_status_changed)
+	# 登录态翻转：需求要求未登录时**不显示**「上传为草稿」，
+	# 不订阅的话登录/登出后要切一次歌按钮才刷新
+	EvtBus.auth_changed.connect(_on_auth_changed)
+	# 草稿变化（上传/删除/发布）：发布后该 hash 已在服务端存在，
+	# 按钮应从「上传为草稿」切回「在网页查看」，故重探一次
+	EvtBus.chart_drafts_changed.connect(_on_chart_drafts_changed)
 	# 监听 UI 状态变化，进入 MIDI_VIEW 时若 FavorPanel 可见则刷新
 	UiStatMGR.state_changed.connect(_on_state_changed)
 
@@ -423,7 +432,8 @@ func _apply_redirect_state(state: int) -> void:
 		NetManager.ChartRemoteState.EXISTS:
 			_apply_redirect_buttons(true, false)
 		NetManager.ChartRemoteState.MISSING:
-			_apply_redirect_buttons(false, _is_upload_button_enabled())
+			# 服务端没有该谱面才可能上传草稿；未登录时连按钮都不显示（需求 R2）
+			_apply_redirect_buttons(false, _is_upload_button_enabled() and _is_logged_in())
 		_:
 			_apply_redirect_buttons(false, false)
 
@@ -440,9 +450,30 @@ func _is_upload_button_enabled() -> bool:
 		return false
 	return ServiceHub.config.get_int("show_upload_button", 0) == 1
 
+## 是否已登录账号：需求要求未登录时不显示「上传为草稿」
+func _is_logged_in() -> bool:
+	return ServiceHub.auth != null and ServiceHub.auth.is_logged_in
+
 ## 配置变更：简介展开期间即时响应「显示上传按钮」
 func _on_config_changed(key: String, _value: Variant) -> void:
 	if key == "show_upload_button" and showing_info:
+		_refresh_redirect_buttons(%MidiList.get_selection())
+
+## 登录态变化：简介展开期间重算按钮显隐（登录后立即出现「上传为草稿」）
+func _on_auth_changed(_user_data: Variant) -> void:
+	_refresh_redirect_buttons_for_current()
+
+## 草稿变化：作废存在性缓存后重探。
+## 必须作废缓存——240s 的 TTL 内草稿被发布成正式谱面后，
+## 缓存里还是 MISSING，玩家会看到一个点了会 409 的「上传为草稿」。
+func _on_chart_drafts_changed() -> void:
+	if ServiceHub.net != null:
+		ServiceHub.net.invalidate_chart_remote_state("")
+	_refresh_redirect_buttons_for_current()
+
+## 简介展开期间按当前选中项重算按钮组（未展开时什么都不做）
+func _refresh_redirect_buttons_for_current() -> void:
+	if showing_info:
 		_refresh_redirect_buttons(%MidiList.get_selection())
 
 ## 联网状态翻转：简介展开期间重探当前谱面
@@ -473,7 +504,11 @@ func _on_click_checkin_web_btn() -> void:
 	if not MidiDescriptionParser.open_url(url):
 		EvtBus.notify("无法打开详情页")
 
-## 上传歌曲：仅「服务端不存在」的谱面可见；MIDI 与人声文件由 NetManager 的上传入口收集
+## 上传为草稿：仅「服务端不存在」且已登录的谱面可见。
+## MIDI / 人声 / 封面由 NetManager.upload_chart_draft 收集后打成 multipart 上传。
+## 上传的是**草稿**，不等于正式发布（GET /api/charts/{hash} 仍 404），
+## 因此**不**调用 invalidate_chart_remote_state —— 按钮保持「上传为草稿」，
+## 重复点击 = 覆盖更新同一份草稿（服务端按 (userId, hash) 幂等）。
 func _on_click_upload_song_btn() -> void:
 	var midi: MidiData = %MidiList.get_selection()
 	if midi == null:
@@ -481,15 +516,65 @@ func _on_click_upload_song_btn() -> void:
 	if ServiceHub.net == null:
 		EvtBus.notify("网络管理器未就绪")
 		return
-	var result: Dictionary = ServiceHub.net.upload_local_chart(midi)
-	if bool(result.get("ok", false)):
-		EvtBus.notify("上传请求已提交")
+	if not _is_logged_in():
+		EvtBus.notify("请先登录账号再上传草稿")
 		return
-	var error := str(result.get("error", ""))
-	if error == "not_implemented":
-		EvtBus.notify("上传功能尚未开放")
-	else:
-		EvtBus.notify("上传失败：%s" % error)
+	if _draft_uploading:
+		return
+
+	var btn: Button = %UploadSongBtn
+	var original_text := btn.text
+	_draft_uploading = true
+	btn.disabled = true
+	btn.text = "上传中…"
+
+	var result: Dictionary = await ServiceHub.net.upload_chart_draft(midi)
+
+	_draft_uploading = false
+	if not is_instance_valid(self) or not is_instance_valid(btn):
+		return
+	btn.disabled = false
+	btn.text = original_text
+
+	if bool(result.get("ok", false)):
+		EvtBus.notify("已上传为草稿，可在个人资料页查看，或到网页补充信息并发布")
+		# DraftManager 并入内存列表（避免 ProfileView 立刻整份重拉）；
+		# 它随后发 chart_drafts_changed，本视图据此重探按钮状态
+		if ServiceHub.drafts != null:
+			ServiceHub.drafts.note_uploaded(midi.file_hash, result.get("data"))
+		else:
+			EvtBus.chart_draft_uploaded.emit(midi.file_hash)
+		return
+
+	match str(result.get("code", "")):
+		"chart_exists":
+			EvtBus.notify("该谱面已在社区中，无需上传草稿")
+		"draft_limit":
+			EvtBus.notify("草稿已达 10 份上限，请先到个人资料页移除")
+		"draft_conflict":
+			EvtBus.notify("草稿正在被另一个请求写入，请稍后重试")
+		_:
+			EvtBus.notify("上传失败：%s" % _draft_upload_error_text(result))
+
+## 上传失败文案：把 NetManager 的错误码翻成玩家看得懂的话
+func _draft_upload_error_text(result: Dictionary) -> String:
+	match str(result.get("error", "")):
+		"not_logged_in":
+			return "请先登录账号"
+		"token_expired":
+			return "登录已过期，请重新登录"
+		"midi_missing":
+			return "找不到本地 MIDI 文件"
+		"midi_unreadable":
+			return "MIDI 文件读取失败"
+		"midi_too_large":
+			return "MIDI 文件超过 50 MB"
+		"vocal_too_large":
+			return "人声音频超过 20 MB，请先移除人声再上传"
+		"server_unavailable":
+			return "服务器地址无效"
+		_:
+			return str(result.get("error", "未知错误"))
 
 func _on_del_btn_pressed():
 	var window = PopupWindow.instance

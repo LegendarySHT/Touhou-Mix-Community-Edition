@@ -124,11 +124,13 @@ const _CACHE_NS := "users"
 var _grades: Dictionary = {}
 var _judgments: Dictionary = {}
 
-## 待上传曲目：后端还没有草稿接口，先用本地占位数据把列表形态撑起来
-var _drafts: Array = [
-	{"title": "U.N. Owen Was Her?", "uploaded_at": "2026-11-06 21:14"},
-	{"title": "Bad Apple!!", "uploaded_at": "2026-11-05 19:02"},
-]
+## 草稿箱：真实数据来自 ServiceHub.drafts（服务端 /api/drafts），
+## 这里只保留渲染用的副本与加载状态；_draft_busy 防止同一行被连点
+var _drafts: Array = []
+var _drafts_loading: bool = false
+var _drafts_loaded: bool = false
+## 正在操作的草稿 hash（下载/删除期间禁用该行按钮）
+var _draft_busy_hash: String = ""
 
 func _on_view_ready() -> void:
 	%ProfileBtn.pressed.connect(_on_navi_profile_pressed)
@@ -155,6 +157,8 @@ func _on_view_ready() -> void:
 	%NewPasswordEdit.secret = true
 	_reset_avatar_adjust()
 	_render_drafts()
+	# 草稿列表：进入本页就按登录态拉一次（关闭页面/切换 tab 不重复打接口）
+	_load_drafts()
 	_setup_focus_tabs()
 	# 头像卡（Border 整块卡片框）点击进入 Chara_View：卡片框接收点击，头像图透传
 	%CharaCardBorder.gui_input.connect(_on_card_border_gui_input)
@@ -168,6 +172,13 @@ func _on_view_ready() -> void:
 		EvtBus.online_status_changed.connect(_on_rank_online_changed)
 	if not EvtBus.auth_changed.is_connected(_on_rank_auth_changed):
 		EvtBus.auth_changed.connect(_on_rank_auth_changed)
+	# 草稿列表：登录态/联网翻转、以及游戏内上传草稿后都要重拉
+	if not EvtBus.auth_changed.is_connected(_on_drafts_auth_changed):
+		EvtBus.auth_changed.connect(_on_drafts_auth_changed)
+	if not EvtBus.online_status_changed.is_connected(_on_drafts_online_changed):
+		EvtBus.online_status_changed.connect(_on_drafts_online_changed)
+	if not EvtBus.chart_draft_uploaded.is_connected(_on_chart_draft_uploaded):
+		EvtBus.chart_draft_uploaded.connect(_on_chart_draft_uploaded)
 	_init_rank_year_labels()
 	# FileSystemManager 由 Main._ready 创建（晚于本节点 _ready），故延迟一帧再连扫描完成信号，
 	# 保证启动扫描完成后能按最终选中的角色加载一次
@@ -484,6 +495,25 @@ func _on_rank_score_uploaded(_midi_hash: String) -> void:
 func _on_rank_auth_changed(_user_data: Variant) -> void:
 	_ranks_cache_key = ""
 
+## 登录态变化：草稿列表整体作废并重拉。
+## 登出时必须清空，否则会残留上一个账号的草稿清单（DraftManager 已清空内存，
+## 这里只是同步 UI）。
+func _on_drafts_auth_changed(_user_data: Variant) -> void:
+	_drafts = []
+	_drafts_loaded = false
+	_render_drafts()
+	if ServiceHub.auth != null and ServiceHub.auth.is_logged_in:
+		_load_drafts(true)
+
+## 恢复到在线后补拉一次草稿（离线时列表停在缓存/空态）
+func _on_drafts_online_changed(online: bool, _message: String) -> void:
+	if online and not _drafts_loaded:
+		_load_drafts(true)
+
+## 游戏内刚上传了草稿：重拉列表，玩家切到个人页就能看到
+func _on_chart_draft_uploaded(_midi_hash: String) -> void:
+	_load_drafts(true)
+
 func _on_rank_online_changed(online: bool, _message: String) -> void:
 	_ranks_cache_key = ""
 	if not online and not _ranks_from_cache:
@@ -731,21 +761,64 @@ func _dict_field(data: Dictionary, key: String) -> Dictionary:
 	var raw: Variant = data.get(key, {})
 	return raw if raw is Dictionary else {}
 
-# ========== 编辑页：待上传曲目 ==========
+# ========== 编辑页：草稿箱 ==========
 
-## 草稿箱列表：一行「歌名 + 上传时间 + 删除」
+## 拉取当前账号的草稿列表并重渲染。登录态/联网状态都满足才发请求。
+## 失败时保留上一次的渲染结果（不把列表刷成"暂无草稿"，那会让玩家以为草稿丢了）。
+func _load_drafts(force: bool = false) -> void:
+	if _drafts_loading:
+		return
+	if ServiceHub.drafts == null:
+		return
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
+		_drafts = []
+		_drafts_loaded = false
+		_render_drafts()
+		return
+	if not force and _drafts_loaded:
+		_drafts = ServiceHub.drafts.get_drafts()
+		_render_drafts()
+		return
+	_drafts_loading = true
+	var result: Dictionary = await ServiceHub.drafts.refresh(force)
+	_drafts_loading = false
+	if not is_instance_valid(self):
+		return
+	if result.get("ok", false):
+		_drafts = ServiceHub.drafts.get_drafts()
+		_drafts_loaded = true
+	else:
+		GLogger.warning("草稿列表加载失败: %s" % str(result.get("error", "")), "ProfileView")
+	_render_drafts()
+
+## 草稿箱列表：一行「歌名 + 更新时间 + 操作」
+## 操作按「该 MIDI 是否已在本地」分两态（需求 R6/R7）：
+##   本地已有 → 「删除」= 撤销服务端草稿（**不动本地文件**），点行跳 MidiView
+##   本地没有 → 「下载」= 把草稿下载到曲库，点行同样走下载
 func _render_drafts() -> void:
 	%DraftCount.text = "%d 首" % _drafts.size()
+	# 文案随登录态/是否有草稿变化（需求 R5：有草稿时提示可到网页修改并上传）
+	%Hint.text = _draft_hint_text()
 	var list: VBoxContainer = %DraftList
 	_clear_children(list)
 	if _drafts.is_empty():
-		list.add_child(_make_hint("暂无待上传的曲目"))
+		list.add_child(_make_hint("暂无已上传的草稿"))
 		return
 	for i in _drafts.size():
 		var draft: Dictionary = _drafts[i]
 		list.add_child(_make_draft_row(draft, i))
 
-## 单条草稿卡片：本地曲目没有成绩数据，只放标题与上传时间
+## 草稿箱底部提示（需求 R5 的新文案）
+func _draft_hint_text() -> String:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
+		return "登录后可在游戏内把本地谱面上传为草稿"
+	if _drafts.is_empty():
+		return "在谱面简介页点「上传为草稿」即可把本地谱面暂存到服务端"
+	return "草稿已上传，可到网页修改并上传"
+
+## 单条草稿卡片：标题 + 更新时间 + 一个两态操作按钮。
+## 行本身可点击（本地已有 → 跳 MidiView；本地没有 → 下载），
+## 用独立的透明 Button 承载点击是为了键盘/手柄可达（FocusMGR 要求可聚焦控件）。
 func _make_draft_row(draft: Dictionary, index: int) -> PanelContainer:
 	var row := PanelContainer.new()
 	row.theme_type_variation = &"PanelRecordRow"
@@ -761,36 +834,187 @@ func _make_draft_row(draft: Dictionary, index: int) -> PanelContainer:
 	box.add_theme_constant_override("separation", 12)
 	margin.add_child(box)
 
+	var hash_str := str(draft.get("hash", ""))
+	var on_disk := _draft_is_on_disk(hash_str)
+
 	var text := VBoxContainer.new()
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text.add_theme_constant_override("separation", 2)
-	var title := _make_text(str(draft.get("title", "未命名曲目")), 20,
-		ThemeMGR.get_color("text_primary"), 0.0)
-	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	title.clip_text = true
-	text.add_child(title)
-	text.add_child(_make_text(str(draft.get("uploaded_at", "")), 14,
+	# 标题本身就是可点击按钮（行点击跳转）：比额外叠一层透明按钮更省事，
+	# 也不会和「文字占满剩余宽度」的布局打架；自带焦点，键盘/手柄可达。
+	var title_btn := Button.new()
+	title_btn.theme_type_variation = &"ButtonFlat"
+	title_btn.flat = true
+	title_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	title_btn.text = _draft_title(draft)
+	title_btn.add_theme_font_size_override("font_size", 20)
+	title_btn.add_theme_color_override("font_color", ThemeMGR.get_color("text_primary"))
+	title_btn.add_theme_color_override("font_hover_color", ThemeMGR.get_color("primary"))
+	title_btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	title_btn.clip_text = true
+	title_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	title_btn.tooltip_text = "打开该谱面" if on_disk else "下载该草稿到本地"
+	title_btn.pressed.connect(_on_draft_open_pressed.bind(index))
+	text.add_child(title_btn)
+	text.add_child(_make_text(_draft_subtitle(draft, on_disk), 14,
 		ThemeMGR.get_color("text_dim"), 0.0))
 	box.add_child(text)
 
-	var del := Button.new()
-	del.text = "删除"
-	del.theme_type_variation = &"ButtonFlat"
-	del.custom_minimum_size = Vector2(76, 40)
-	del.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	del.add_theme_font_size_override("font_size", 18)
-	del.add_theme_color_override("font_color", ThemeMGR.get_color("text_secondary"))
-	del.add_theme_color_override("font_hover_color", ThemeMGR.get_color("danger"))
-	del.pressed.connect(_on_draft_delete_pressed.bind(index))
-	box.add_child(del)
+	var action := Button.new()
+	action.custom_minimum_size = Vector2(76, 40)
+	action.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	action.add_theme_font_size_override("font_size", 18)
+	action.theme_type_variation = &"ButtonFlat"
+	action.text = "删除" if on_disk else "下载"
+	if on_disk:
+		# 撤销服务端草稿：本地文件不动，要删曲包去 MidiView
+		action.add_theme_color_override("font_color", ThemeMGR.get_color("text_secondary"))
+		action.add_theme_color_override("font_hover_color", ThemeMGR.get_color("danger"))
+		action.tooltip_text = "撤销已上传的草稿（不会删除本地谱面）"
+	else:
+		action.add_theme_color_override("font_color", ThemeMGR.get_color("primary"))
+		action.add_theme_color_override("font_hover_color", ThemeMGR.get_color("primary_light"))
+		action.tooltip_text = "把这份草稿下载到本地曲库"
+	if not _draft_busy_hash.is_empty() and _draft_busy_hash == hash_str:
+		action.disabled = true
+		action.text = "处理中…"
+	action.pressed.connect(_on_draft_action_pressed.bind(index))
+	box.add_child(action)
 	return row
 
-## 删除草稿：后端没有草稿接口，这里只从本地列表里移除
-func _on_draft_delete_pressed(index: int) -> void:
+## 草稿标题：优先 title，回退 hash 前缀（脏数据兜底）
+func _draft_title(draft: Dictionary) -> String:
+	var title := str(draft.get("title", "")).strip_edges()
+	if not title.is_empty():
+		return title
+	var h := str(draft.get("hash", ""))
+	return "未命名曲目" if h.is_empty() else "未命名曲目 (%s)" % h.substr(0, 8)
+
+## 副标题：更新时间 + 本地状态 + 人声/封面标记
+func _draft_subtitle(draft: Dictionary, on_disk: bool) -> String:
+	var parts: Array[String] = []
+	var updated := str(draft.get("updatedAt", draft.get("uploadedAt", "")))
+	if not updated.is_empty():
+		parts.append("更新于 %s" % _format_datetime_short(updated))
+	parts.append("已在本地" if on_disk else "未下载")
+	if bool(draft.get("hasVocal", false)):
+		parts.append("含人声")
+	if bool(draft.get("hasCover", false)):
+		parts.append("含封面")
+	return " · ".join(parts)
+
+## ISO 时间戳 → "YYYY-MM-DD HH:MM"（服务端下发 UTC，按本地时区显示）
+func _format_datetime_short(raw: String) -> String:
+	var s := raw.strip_edges()
+	if s.is_empty():
+		return ""
+	# 服务端 DateTime 序列化为 ISO 8601，可能带 Z 或分数秒；先截到秒再解析
+	var normalized := s.replace("Z", "").replace("T", " ")
+	var dot := normalized.find(".")
+	if dot > 0:
+		normalized = normalized.substr(0, dot)
+	if normalized.length() > 16:
+		normalized = normalized.substr(0, 16)
+	return normalized
+
+## 该草稿的 MIDI 是否已在本地（唯一判据：磁盘扫描索引，不看服务端字段）
+func _draft_is_on_disk(hash_str: String) -> bool:
+	if hash_str.is_empty() or ServiceHub.fs == null:
+		return false
+	return ServiceHub.fs.chart_exists_on_disk(hash_str)
+
+## 行点击：本地已有 → 跳 MidiView（需求 R7）；本地没有 → 下载（需求 R6）
+func _on_draft_open_pressed(index: int) -> void:
 	if index < 0 or index >= _drafts.size():
 		return
-	_drafts.remove_at(index)
+	var draft: Dictionary = _drafts[index]
+	var hash_str := str(draft.get("hash", ""))
+	if hash_str.is_empty():
+		return
+	if _draft_is_on_disk(hash_str):
+		_open_draft_in_midi_view(hash_str)
+	else:
+		_on_draft_action_pressed(index)
+
+## 操作按钮：本地已有 → 撤销草稿；本地没有 → 下载
+func _on_draft_action_pressed(index: int) -> void:
+	if index < 0 or index >= _drafts.size() or not _draft_busy_hash.is_empty():
+		return
+	var draft: Dictionary = _drafts[index]
+	var hash_str := str(draft.get("hash", ""))
+	if hash_str.is_empty():
+		return
+	if _draft_is_on_disk(hash_str):
+		_undo_draft(hash_str)
+	else:
+		_download_draft(hash_str)
+
+## 撤销服务端草稿（删除语义确定为此：**不动本地文件**）
+func _undo_draft(hash_str: String) -> void:
+	var window = PopupWindow.instance
+	if window != null:
+		# 注意：await 的结果不要写成 `var x: bool = await f()`——本引擎的解析器
+		# 在「带类型标注 + await」组合下会报 "Assignment is not allowed inside an expression"。
+		var confirmed = await window.show_message(
+			"撤销后该草稿会从服务端移除，本地谱面文件不受影响。要撤销吗？", true)
+		if not confirmed:
+			return
+	_draft_busy_hash = hash_str
 	_render_drafts()
+	var result: Dictionary = await ServiceHub.drafts.delete_draft(hash_str)
+	_draft_busy_hash = ""
+	if not is_instance_valid(self):
+		return
+	if result.get("ok", false):
+		await _load_drafts(true)
+		EvtBus.notify("已撤销草稿")
+	else:
+		EvtBus.notify("撤销失败：%s" % str(result.get("error", "")))
+		_render_drafts()
+
+## 下载自己的草稿到本地曲库
+func _download_draft(hash_str: String) -> void:
+	_draft_busy_hash = hash_str
+	_render_drafts()
+	var result: Dictionary = await ServiceHub.drafts.download_draft(hash_str)
+	_draft_busy_hash = ""
+	if not is_instance_valid(self):
+		return
+	if result.get("ok", false):
+		EvtBus.notify("草稿已下载到本地曲库")
+	else:
+		EvtBus.notify("下载失败：%s" % _draft_download_error_text(result))
+	await _load_drafts(true)
+
+## 下载失败文案
+func _draft_download_error_text(result: Dictionary) -> String:
+	var err := str(result.get("error", ""))
+	if err.begins_with("metadata_fetch_failed"):
+		return "无法获取草稿信息（请检查登录状态）"
+	if err.begins_with("midi_download_failed"):
+		return "草稿 MIDI 下载失败"
+	if err == "not_logged_in":
+		return "请先登录账号"
+	if err == "offline":
+		return "当前离线"
+	return err
+
+## 跳转到该草稿对应的 MidiView（需求 R7）。
+## 复用 ChartDetailPage._open_midi_view 的策略：有专辑/歌曲归属走标准导航，
+## 让 MidiView 带出同歌曲的其它谱面并把返回链落在歌曲/专辑层级；否则直达。
+func _open_draft_in_midi_view(hash_str: String) -> void:
+	var midi: MidiData = DataMGR.get_midi_by_id(hash_str)
+	if midi == null:
+		EvtBus.notify("本地曲库中找不到该谱面")
+		return
+	if not midi.album_id.is_empty() and not midi.song_id.is_empty():
+		UiStatMGR.navigate_to_album_song(midi.album_id, midi.song_id, midi.id)
+		if UiStatMGR.current_state != UIStateManager.UIState.MIDI_VIEW:
+			UiStatMGR.change_state(UIStateManager.UIState.MIDI_VIEW)
+			EvtBus.emit_midi_selected(midi.id, midi)
+	else:
+		UiStatMGR.change_state(UIStateManager.UIState.MIDI_VIEW)
+		EvtBus.emit_midi_selected(midi.id, midi)
 
 ## 头像上屏：Profile 页大图 + Edit 页预览。
 ## 头像由 PlayerInfoContent 统一加载（MiniInfo/Summary 也要用），这里只负责显示。

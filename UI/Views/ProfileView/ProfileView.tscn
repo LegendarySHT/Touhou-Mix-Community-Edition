@@ -1808,7 +1808,7 @@ theme_override_constants/separation = 10
 layout_mode = 2
 theme_type_variation = &"LabelMuted"
 theme_override_font_sizes/font_size = 14
-text = "草稿只保存在本机，尚未上传到社区"
+text = "草稿已上传，可到网页修改并上传"
 autowrap_mode = 2
 
 [node name="Navi" type="PanelContainer" parent="." unique_id=2000610427]

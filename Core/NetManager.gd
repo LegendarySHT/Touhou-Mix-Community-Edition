@@ -64,6 +64,18 @@ const REQUEST_TIMEOUT: float = 10.0
 ## 按普通接口的超时容易在慢网络上白等一次失败
 const UPLOAD_REQUEST_TIMEOUT: float = 60.0
 
+## 谱面草稿上传超时（秒）：要传 MIDI（≤50MB）+ 人声（≤20MB）+ 封面（≤5MB），
+## 走 CF 边缘 + 家庭宽带上行时 60s 必然掐断（实测 6.6MB 回源 24~36s）。
+## 300s 与 ResourceManager 的下载重试上限同量级，仍然是一次请求（HTTPRequest 无分片上传）。
+const DRAFT_UPLOAD_TIMEOUT: float = 300.0
+
+## 草稿上传的本地文件体积上限（字节），必须与后端 ChartService 的常量一致，
+## 否则会出现「本地上传跑了 3 分钟，服务端 400 拒绝」。
+## 对应 ChartService.MaxMidiBytes / MaxVocalBytes / MaxCoverBytes。
+const DRAFT_MAX_MIDI_BYTES: int = 50 * 1024 * 1024
+const DRAFT_MAX_VOCAL_BYTES: int = 20 * 1024 * 1024
+const DRAFT_MAX_COVER_BYTES: int = 5 * 1024 * 1024
+
 ## 启动时快速尝试次数
 const QUICK_RETRY_TIMES: int = 3
 ## 快速尝试间隔（秒）
@@ -244,39 +256,218 @@ func get_chart_web_url(chart_hash: String) -> String:
 		return ""
 	return "%s/charts/%s" % [base, hash_str.uri_encode()]
 
-## 上传本地谱面（song.mid + 人声音频，人声存在才一并上传）
-## 客户端侧仍未实现（2026-11-21）：后端 POST /api/charts 早已可用，缺口在本文件——
-## _request() 硬写 Content-Type: application/json，全仓没有 multipart 构造能力。
-## 补实现时需另开一条 multipart 路径，字段名按后端 ChartsController.Upload 对齐：
-##   midiFile(必填) / title(必填) / description / midiAuthor / midiAuthorUrl /
-##   authorName / songName / albumName / coverFile / vocalFile / tags[]
-## 重复 hash 返回 409（"相同哈希的谱面已存在"）→ 提示「已存在」而不是失败。
-## 返回 {"ok": bool, "error": String}
-func upload_local_chart(midi: MidiData) -> Dictionary:
+## 上传本地谱面为**草稿**（song.mid + 人声 + 封面，后两者存在才一并上传）
+## 对应服务端 POST /api/drafts（ChartDraftsController.Create），字段名严格对齐：
+##   midiFile(必填) / title / description / midiAuthor / midiAuthorUrl /
+##   authorName / songName / albumName / coverFile / vocalFile
+## 同一账号重复上传同一 MIDI = 覆盖更新草稿，不占新额度。
+## 返回 {"ok": bool, "error": String, "code": String, "status": int, "data": Variant}
+##   code 取服务端 409 的 error 字段：chart_exists / draft_limit / draft_conflict
+func upload_chart_draft(midi: MidiData) -> Dictionary:
 	if midi == null:
-		return {"ok": false, "error": "midi_null"}
+		return {"ok": false, "error": "midi_null", "code": "", "status": 0, "data": null}
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
+		return {"ok": false, "error": "not_logged_in", "code": "", "status": 0, "data": null}
+	if server_url.is_empty():
+		return {"ok": false, "error": "server_unavailable", "code": "", "status": 0, "data": null}
+	if not await ServiceHub.auth.ensure_valid_token():
+		return {"ok": false, "error": "token_expired", "code": "", "status": 0, "data": null}
 
 	var chart_key := midi.chart_key if not midi.chart_key.is_empty() \
 		else (midi.file_hash if not midi.file_hash.is_empty() else midi.id)
 	var fs_mgr := ServiceHub.fs
 
+	# ---- MIDI 文件（必填）----
 	var midi_path := midi.midi_file_path
 	if midi_path.is_empty() and fs_mgr != null:
 		var folder := fs_mgr.get_chart_folder_path(chart_key)
 		if not folder.is_empty():
 			midi_path = folder.path_join("song.mid")
 	if midi_path.is_empty() or not FileAccess.file_exists(midi_path):
-		return {"ok": false, "error": "midi_missing"}
+		GLogger.warning("草稿上传失败：找不到 MIDI 文件 midi=%s" % midi_path, "NetMGR")
+		return {"ok": false, "error": "midi_missing", "code": "", "status": 0, "data": null}
+	var midi_bytes := FileAccess.get_file_as_bytes(midi_path)
+	if midi_bytes.is_empty():
+		return {"ok": false, "error": "midi_unreadable", "code": "", "status": 0, "data": null}
+	if midi_bytes.size() > DRAFT_MAX_MIDI_BYTES:
+		return {"ok": false, "error": "midi_too_large", "code": "", "status": 0, "data": null}
 
+	# ---- 人声（可选）----
 	var vocal_path := midi.vocal_file_path
 	if vocal_path.is_empty() and fs_mgr != null:
 		vocal_path = fs_mgr.get_vocal_path(chart_key)
-	if not vocal_path.is_empty() and not FileAccess.file_exists(vocal_path):
-		vocal_path = ""
+	var vocal_bytes := PackedByteArray()
+	if not vocal_path.is_empty() and FileAccess.file_exists(vocal_path):
+		vocal_bytes = FileAccess.get_file_as_bytes(vocal_path)
+		if vocal_bytes.size() > DRAFT_MAX_VOCAL_BYTES:
+			# 超限不静默丢弃：玩家会以为人声传上去了，网页上却听不到
+			return {"ok": false, "error": "vocal_too_large", "code": "", "status": 0, "data": null}
 
-	GLogger.info("谱面上传请求（客户端 multipart 尚未实现）：midi=%s vocal=%s" % [
-		midi_path, vocal_path if not vocal_path.is_empty() else "(无)"], "NetMGR")
-	return {"ok": false, "error": "not_implemented"}
+	# ---- 封面（可选）----
+	# 本地无封面时 FileSystemManager 会回退到内置默认封面（DEFAULT_COVER_PATH），
+	# 把那张图传上去会变成所有人的封面 —— 必须判等跳过。
+	var cover_bytes := PackedByteArray()
+	var cover_ext := ""
+	if fs_mgr != null:
+		var cover_path := fs_mgr.get_cover_path_by_midiData(midi)
+		if not cover_path.is_empty() and cover_path != FileSystemManager.DEFAULT_COVER_PATH \
+				and FileAccess.file_exists(cover_path):
+			cover_bytes = FileAccess.get_file_as_bytes(cover_path)
+			cover_ext = cover_path.get_extension().to_lower()
+			if cover_bytes.size() > DRAFT_MAX_COVER_BYTES:
+				cover_bytes = PackedByteArray()
+				cover_ext = ""
+
+	# ---- 组装 multipart ----
+	var parts: Array = []
+	parts.append({"name": "midiFile", "filename": "song.mid",
+		"content_type": "audio/midi", "data": midi_bytes})
+	parts.append({"name": "title", "value": _draft_title_of(midi, midi_path)})
+	parts.append({"name": "description", "value": midi.description})
+	parts.append({"name": "midiAuthor", "value": midi.artist_name})
+	# MidiData 没有 MIDI 作者链接字段（本地 info.json 的 artistUrl 由服务端下发后落盘，
+	# 但 MidiData.from_json 未映射），只能到网页上补 —— 需求允许「可到网页修改」。
+	parts.append({"name": "midiAuthorUrl", "value": ""})
+	parts.append({"name": "authorName", "value": midi.author_name})
+	parts.append({"name": "songName", "value": midi.song_name})
+	parts.append({"name": "albumName", "value": midi.album_name})
+	if not vocal_bytes.is_empty():
+		var vocal_format := vocal_path.get_extension().to_lower()
+		if vocal_format.is_empty():
+			vocal_format = "ogg"
+		parts.append({"name": "vocalFile", "filename": "vocal.%s" % vocal_format,
+			"content_type": _audio_content_type(vocal_format), "data": vocal_bytes})
+	if not cover_bytes.is_empty():
+		var cover_type := "image/png" if cover_ext == "png" else "image/jpeg"
+		var cover_name := "cover.%s" % ("png" if cover_ext == "png" else "jpg")
+		parts.append({"name": "coverFile", "filename": cover_name,
+			"content_type": cover_type, "data": cover_bytes})
+
+	var url := "%s/api/drafts" % server_url
+	var result := await _request_multipart(url, parts, ServiceHub.auth.current_user.access_token,
+		DRAFT_UPLOAD_TIMEOUT)
+
+	if bool(result.get("ok", false)):
+		GLogger.info("草稿上传成功：midi=%s vocal=%s cover=%s" % [
+			midi_path,
+			"有(%d B)" % vocal_bytes.size() if not vocal_bytes.is_empty() else "无",
+			"有(%d B)" % cover_bytes.size() if not cover_bytes.is_empty() else "无"], "NetMGR")
+		return {"ok": true, "error": "", "code": "", "status": int(result.get("status", 0)),
+			"data": result.get("data")}
+
+	# 失败：把服务端的 error 码透出给调用方做分支提示（409 的 chart_exists / draft_limit）
+	var code := ""
+	var data: Variant = result.get("data")
+	if data is Dictionary:
+		code = str(data.get("error", ""))
+	GLogger.warning("草稿上传失败：status=%d code=%s error=%s" % [
+		int(result.get("status", 0)), code, str(result.get("error", ""))], "NetMGR")
+	return {"ok": false, "error": str(result.get("error", "")), "code": code,
+		"status": int(result.get("status", 0)), "data": data}
+
+
+## 草稿标题：优先谱面名，回退到 MIDI 文件名（与服务端「title 为空时取文件名」同口径）
+func _draft_title_of(midi: MidiData, midi_path: String) -> String:
+	var title := midi.name.strip_edges()
+	if not title.is_empty():
+		return title
+	return midi_path.get_file().get_basename()
+
+
+## 人声音频扩展名 → MIME（与后端 ChartVocal.ContentTypes 一致）
+func _audio_content_type(ext: String) -> String:
+	match ext.to_lower():
+		"ogg": return "audio/ogg"
+		"wav": return "audio/wav"
+		"mp3": return "audio/mpeg"
+		"flac": return "audio/flac"
+		_: return "application/octet-stream"
+
+
+## multipart/form-data 请求。
+## 为什么不能复用 _request()：它硬写 Content-Type: application/json，且 body 走
+## String —— 二进制 MIDI 会被当作 UTF-8 文本处理而损坏。这里必须用
+## HTTPRequest.request_raw()（body 是 PackedByteArray，原样发送）。
+## parts: Array[Dictionary]，每项两种形态：
+##   {"name": String, "value": String}                                     纯文本段
+##   {"name": String, "filename": String, "content_type": String,
+##    "data": PackedByteArray}                                              文件段
+## 文本值原样按 UTF-8 进 body（中文标题不需要任何编码）；文件名只出现在 header 里，
+## 统一用 ASCII 安全名，避免非 ASCII 文件名触发服务端 multipart 解析边界问题。
+## 返回与 _request 同构：{ ok, status, data, result_code, error }
+func _request_multipart(url: String, parts: Array, auth_token: String = "",
+		timeout: float = 0.0) -> Dictionary:
+	var boundary := "----ThmixDraft%d%d" % [Time.get_ticks_usec(), randi()]
+	var body := PackedByteArray()
+	for part in parts:
+		if not (part is Dictionary):
+			continue
+		var item: Dictionary = part
+		var name := str(item.get("name", ""))
+		if name.is_empty():
+			continue
+		var head := "--%s\r\nContent-Disposition: form-data; name=\"%s\"" % [boundary, name]
+		if item.has("filename"):
+			head += "; filename=\"%s\"" % str(item.get("filename", "file.bin"))
+			head += "\r\nContent-Type: %s" % str(item.get("content_type", "application/octet-stream"))
+		head += "\r\n\r\n"
+		body.append_array(head.to_utf8_buffer())
+		if item.has("data"):
+			var raw: Variant = item.get("data")
+			if raw is PackedByteArray:
+				body.append_array(raw)
+		else:
+			body.append_array(str(item.get("value", "")).to_utf8_buffer())
+		body.append_array("\r\n".to_utf8_buffer())
+	body.append_array(("--%s--\r\n" % boundary).to_utf8_buffer())
+
+	var headers := PackedStringArray()
+	headers.append("Content-Type: multipart/form-data; boundary=%s" % boundary)
+	headers.append("Accept: application/json")
+	if not auth_token.is_empty():
+		headers.append("Authorization: Bearer %s" % auth_token)
+
+	var http := HTTPRequest.new()
+	add_child(http)
+	http.timeout = timeout if timeout > 0.0 else UPLOAD_REQUEST_TIMEOUT
+
+	EvtBus.online_request_started.emit(url)
+	# 第 3 个参数是 method，第 4 个是 PackedByteArray body（request() 的 body 是 String）
+	var err := http.request_raw(url, headers, _method_to_http_client("POST"), body)
+	if err != OK:
+		EvtBus.online_request_finished.emit(url, false)
+		http.queue_free()
+		return {"ok": false, "status": 0, "data": null, "result_code": -1,
+			"error": "request_failed: %d" % err}
+
+	var resp = await http.request_completed
+	var result_code = resp[0]
+	var response_code = resp[1]
+	var response_body: PackedByteArray = resp[3]
+	http.queue_free()
+
+	var data: Variant = null
+	var json_parse_failed := false
+	var raw_text := ""
+	if response_body.size() > 0:
+		raw_text = response_body.get_string_from_utf8()
+		data = JSON.parse_string(raw_text)
+		if data == null and not raw_text.strip_edges().is_empty():
+			json_parse_failed = true
+			GLogger.warning("Draft response is not valid JSON (status=%d, first 200 chars): %s" % [
+				response_code, raw_text.substr(0, 200)], "NetMGR")
+
+	var ok: bool = result_code == HTTPRequest.RESULT_SUCCESS \
+		and response_code >= 200 and response_code < 300 and not json_parse_failed
+	EvtBus.online_request_finished.emit(url, ok)
+	return {
+		"ok": ok,
+		"status": response_code,
+		"data": data,
+		"result_code": result_code,
+		"error": "" if ok else ("invalid_json_response" if json_parse_failed
+			else "HTTP %d (result=%d)" % [response_code, result_code])
+	}
 
 ## 配置变更：server_address 修改后立即生效（无需重启）
 func _on_config_changed(key: String, _value: Variant) -> void:

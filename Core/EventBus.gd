@@ -75,6 +75,12 @@ signal score_uploaded(midi_hash: String)
 ## 与 score_uploaded 成对：回页时若成绩仍在上传会推迟排行榜刷新（见 MidiView._on_state_changed），
 ## 必须有一个"结束"信号兜底，否则上传失败会让排行榜停留在回页前的旧数据上。
 signal score_upload_failed(midi_hash: String)
+## 谱面已上传为**草稿**（携带 midi_hash）：ProfileView 据此重拉草稿列表。
+## 与 score_uploaded 区分开——草稿不等于正式发布，谱面库与排行榜都不该动。
+signal chart_draft_uploaded(midi_hash: String)
+## 草稿列表发生变化（新增 / 删除 / 发布）：MidiView 据此重算「上传为草稿」按钮
+## （发布后该 hash 已在服务端存在，按钮应换成「在网页查看」）。
+signal chart_drafts_changed
 
 ## ========== 通知事件 ==========
 ## 顶部横幅通知请求（由 Main/NotiBanner 订阅）：外部模块不用知道节点路径

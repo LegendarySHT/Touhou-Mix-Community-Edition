@@ -451,11 +451,17 @@ func _do_upload_score() -> void:
 		# 上传成功后再弹出玩家等级面板
 		_show_level_panel_on_upload_success()
 	elif result.get("skipped", false):
-		GLogger.info("Score upload skipped: chart not found on server (midi=%s)" % midi.file_hash, "ScoreView")
+		GLogger.info("Score upload skipped: %s (midi=%s)" % [
+			str(result.get("error", "")), midi.file_hash], "ScoreView")
 		EvtBus.score_upload_failed.emit(midi.file_hash)
-		# 谱面不在服务端收录范围，属于正常不收录，但仍给出提示避免手动上传时无声反馈
-		%UploadState.text = "成绩上传失败：服务端未收录该谱面"
-		%RetryBtn.visible = false
+		if str(result.get("error", "")) == "draft_chart":
+			# 草稿谱面的成绩按设计不上传：这是正常行为，不是失败，不给重试按钮
+			%UploadState.text = "草稿谱面的成绩不上传，正式发布后才会记录"
+			%RetryBtn.visible = false
+		else:
+			# 谱面不在服务端收录范围，属于正常不收录，但仍给出提示避免手动上传时无声反馈
+			%UploadState.text = "成绩上传失败：服务端未收录该谱面"
+			%RetryBtn.visible = false
 	else:
 		EvtBus.score_upload_failed.emit(midi.file_hash)
 		var err := str(result.get("error", "上传异常"))

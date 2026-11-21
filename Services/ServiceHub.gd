@@ -95,6 +95,8 @@ var score: ScoreManager:
 	get: return service("ScoreManager") as ScoreManager
 var community: CommunityManager:
 	get: return service("CommunityManager") as CommunityManager
+var drafts: DraftManager:
+	get: return service("DraftManager") as DraftManager
 var memory: MemoryGC:
 	get: return service("MemoryGC") as MemoryGC
 var version: VersionManager:

@@ -331,6 +331,110 @@ func _download_chart_sequential(chart_hash: String, safe_hash: String,
 
 	return await _finalize_download(chart_hash, chart_data, chart_dir, created_files, on_progress)
 
+## 下载**自己上传的草稿**到本地曲库（需求 R6：「未下载到本地的草稿」按钮从删除改为下载）。
+## 与商店下载的区别只有数据源与鉴权：
+##   - 元数据 GET /api/drafts/{hash}（需 Bearer，草稿是私有资源）
+##   - MIDI GET /api/drafts/{hash}/midi（需 Bearer，no-store）
+##   - 人声 GET /api/drafts/{hash}/vocal（需 Bearer）：草稿人声始终下载——它是玩家自己传的，
+##     不受「商店人声下载开关」约束（关掉商店人声语不影响自己想拿回自己的草稿）
+##   - 封面走公开共享池 /media/covers/...（内容寻址，无需鉴权）
+## 收尾复用 _finalize_download：草稿 DTO 的键名刻意与 ChartResponse 对齐，
+## _build_local_json 因此不需要第二份映射。
+## ⚠ 落盘时**不**把 DRAFT 写进 info.json：谱面状态机只有四个值
+## （ChartStatus），塞第五个会波及 ChartDB / DataMGR / 各 View。
+## 草稿谱面的成绩不上传由 ScoreManager 的草稿闸门保证（见 has_draft_hash）。
+## 返回 {"ok": bool, "error": String}
+func download_draft(chart_hash: String, on_progress: Callable = Callable()) -> Dictionary:
+	if ServiceHub.auth == null or not ServiceHub.auth.is_logged_in:
+		return {"ok": false, "error": "not_logged_in"}
+	if ServiceHub.net == null or not ServiceHub.net.is_online:
+		return {"ok": false, "error": "offline"}
+	var safe_hash := _sanitize_hash(chart_hash)
+	if safe_hash.is_empty():
+		return {"ok": false, "error": "invalid_hash"}
+	if not await ServiceHub.auth.ensure_valid_token():
+		return {"ok": false, "error": "token_expired"}
+
+	var token: String = ServiceHub.auth.current_user.access_token
+	var auth_headers := PackedStringArray(["Authorization: Bearer %s" % token])
+	var base_url := ServiceHub.net.server_url
+
+	_download_states[chart_hash] = DownloadState.DOWNLOADING
+
+	# 1. 元数据（草稿接口，带鉴权）
+	_report_progress(on_progress, DownloadStage.METADATA, -1.0)
+	var meta_url := "%s/api/drafts/%s" % [base_url, safe_hash]
+	var meta_result: Dictionary = await ServiceHub.net._request(
+		"GET", meta_url, null, auth_headers)
+	if not meta_result.get("ok", false):
+		_download_states[chart_hash] = DownloadState.FAILED
+		return {"ok": false, "error": "metadata_fetch_failed: %s" % str(meta_result.get("error", ""))}
+	var draft_data_raw: Variant = meta_result.get("data")
+	if not draft_data_raw is Dictionary:
+		_download_states[chart_hash] = DownloadState.FAILED
+		return {"ok": false, "error": "metadata_invalid"}
+	var draft_data: Dictionary = draft_data_raw
+
+	# 2. 建目录（目录名与商店下载同规则，识别靠 info.json 的 hash）
+	var folder_name := _folder_name_for(safe_hash, draft_data)
+	var chart_dir := FileSystemManager.CHARTS_DIR.path_join(folder_name)
+	var mkdir_err := DirAccess.make_dir_recursive_absolute(chart_dir)
+	if mkdir_err != OK:
+		_download_states[chart_hash] = DownloadState.FAILED
+		return {"ok": false, "error": "mkdir_failed"}
+
+	var created_files: Array[String] = []
+	var midi_path := chart_dir.path_join("song.mid")
+	var cover_path := chart_dir.path_join("cover.jpg")
+
+	# 3. MIDI（草稿端点，带鉴权）
+	var midi_url := "%s/api/drafts/%s/midi" % [base_url, safe_hash]
+	var midi_result: Dictionary = await _download_file(midi_url, midi_path,
+		int(draft_data.get("fileSize", 0)), 3, Callable(), on_progress, DownloadStage.MIDI,
+		auth_headers)
+	if not midi_result.get("ok", false):
+		return _fail_download(chart_hash, chart_dir, created_files,
+			"midi_download_failed: %s" % str(midi_result.get("error", "")))
+	created_files.append(midi_path)
+
+	# 4. 封面（公开共享池，无需鉴权）：失败不阻塞（本地可玩，只是没图）
+	if bool(draft_data.get("hasCover", false)):
+		# ⚠ 第二个参数是**封面内容哈希**（coverHash），不是谱面 hash——
+		# 它是 from_chart 里 coverUrl 缺失时兜底拼 /api/charts/{coverHash}/cover 用的。
+		# 草稿 DTO 恒带 coverUrl（共享池内容寻址），所以实际走的是第一条分支。
+		var cover_url := CoverUrl.from_chart(base_url, str(draft_data.get("coverHash", "")), draft_data)
+		if not cover_url.is_empty():
+			var cover_result: Dictionary = await _download_file(cover_url, cover_path, 0, 2,
+				Callable(), on_progress, DownloadStage.COVER)
+			if cover_result.get("ok", false):
+				created_files.append(cover_path)
+			else:
+				GLogger.warning("草稿封面下载失败 %s: %s" % [
+					safe_hash, str(cover_result.get("error", ""))], "ResMGR")
+
+	# 5. 人声（草稿端点，带鉴权）：失败不阻塞（与商店同策略）
+	var vocal_format := str(draft_data.get("vocalFormat", ""))
+	if bool(draft_data.get("hasVocal", false)) and not vocal_format.is_empty():
+		var vocal_path := chart_dir.path_join("vocal.%s" % vocal_format)
+		var vocal_url := "%s/api/drafts/%s/vocal" % [base_url, safe_hash]
+		var vocal_result: Dictionary = await _download_file(vocal_url, vocal_path,
+			int(draft_data.get("vocalSize", 0)), 3, Callable(), on_progress,
+			DownloadStage.VOCAL, auth_headers)
+		if vocal_result.get("ok", false):
+			created_files.append(vocal_path)
+		else:
+			GLogger.warning("草稿人声下载失败 %s: %s" % [
+				safe_hash, str(vocal_result.get("error", ""))], "ResMGR")
+
+	# 6. 写 info.json + 刷新索引（与商店下载同一条收尾链路）
+	return await _finalize_download(chart_hash, draft_data, chart_dir, created_files, on_progress)
+
+## 草稿 MIDI 地址（客户端「下载」草稿用的端点，与 create 时同构）
+func get_draft_midi_url(chart_hash: String) -> String:
+	if ServiceHub.net == null or ServiceHub.net.server_url.is_empty():
+		return ""
+	return "%s/api/drafts/%s/midi" % [ServiceHub.net.server_url, chart_hash.uri_encode()]
+
 ## 下载收尾（并行/串行路径共用）：写 info.json + 刷新本地曲库索引
 func _finalize_download(chart_hash: String, chart_data: Dictionary, chart_dir: String,
 		created_files: Array, on_progress: Callable) -> Dictionary:
@@ -463,14 +567,17 @@ func _try_cover_from_cache(cover_url: String, cover_path: String) -> bool:
 ## stage: 进度上报时标注的下载阶段（DownloadStage）
 func _download_file(url: String, save_path: String, expected_size: int = 0,
 		max_attempts: int = 3, on_done: Callable = Callable(),
-		on_progress: Callable = Callable(), stage: int = DownloadStage.MIDI) -> Dictionary:
-	var result := await _download_file_impl(url, save_path, expected_size, max_attempts, on_progress, stage)
+		on_progress: Callable = Callable(), stage: int = DownloadStage.MIDI,
+		headers_extra: PackedStringArray = PackedStringArray()) -> Dictionary:
+	var result := await _download_file_impl(url, save_path, expected_size, max_attempts,
+		on_progress, stage, headers_extra)
 	if on_done.is_valid():
 		on_done.call(result)
 	return result
 
 func _download_file_impl(url: String, save_path: String, expected_size: int, max_attempts: int,
-		on_progress: Callable = Callable(), stage: int = DownloadStage.MIDI) -> Dictionary:
+		on_progress: Callable = Callable(), stage: int = DownloadStage.MIDI,
+		headers_extra: PackedStringArray = PackedStringArray()) -> Dictionary:
 	var part_path := save_path + ".part"
 	var tmp_path := save_path + ".part.tmp"
 	var attempt := 0
@@ -491,6 +598,10 @@ func _download_file_impl(url: String, save_path: String, expected_size: int, max
 		var headers := PackedStringArray()
 		if resumed_from > 0:
 			headers.append("Range: bytes=%d-" % resumed_from)
+		# 鉴权头（草稿下载用）：必须在 Range 之后追加，两者可共存
+		if not headers_extra.is_empty():
+			for h in headers_extra:
+				headers.append(h)
 		
 		if FileAccess.file_exists(tmp_path):
 			DirAccess.remove_absolute(tmp_path)

@@ -246,6 +246,7 @@ func _initialize_core_systems() -> void:
 		["AuthManager", "res://Core/AuthManager.gd"],
 		["ScoreManager", "res://Core/ScoreManager.gd"],
 		["CommunityManager", "res://Core/CommunityManager.gd"],
+		["DraftManager", "res://Core/DraftManager.gd"],
 		["MemoryGC", "res://Core/MemoryGC.gd"],
 	]
 	for spec in post_list:

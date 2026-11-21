@@ -626,7 +626,7 @@ layout_mode = 2
 size_flags_horizontal = 6
 theme = ExtResource("16_qg2wq")
 theme_override_font_sizes/font_size = 36
-text = "上传歌曲"
+text = "上传为草稿"
 
 [node name="MainBtn" type="HBoxContainer" parent="LeftArea" unique_id=1543610834]
 layout_mode = 2
