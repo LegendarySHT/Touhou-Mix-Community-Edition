@@ -158,7 +158,7 @@ static func get_setting_groups() -> Array:
 				"id": "show_upload_button",
 				"name_en": "Show Upload Button",
 				"name_zh": "显示上传按钮",
-				"description": "开启后，本地导入的歌曲会在简介下方显示上传按钮，用于上传 MIDI 与人声音频",
+				"description": "开启后，服务器上没有的歌曲会在简介下方显示上传按钮，用于上传 MIDI 与人声音频",
 				"type": "TYPE_OPTION",
 				"advanced": true,
 				"options": [

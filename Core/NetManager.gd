@@ -142,6 +142,94 @@ func _is_valid_host(host: String) -> bool:
 		return true
 	return "." in h
 
+## 谱面在服务端的存在性（本地 hash 与服务端 Charts 表比对结果）
+## UNKNOWN：尚未探测 / 离线 / 请求出错——调用方不得据此猜测，按「两边都不显示」处理
+enum ChartRemoteState {
+	UNKNOWN,
+	EXISTS,
+	MISSING,
+}
+
+## 存在性探测结果缓存 {hash: {"state": int, "at": int}}（毫秒时间戳）
+## 简介展开时会随选中项反复询问同一批 hash，每次真发请求既慢又浪费配额。
+var _chart_remote_cache: Dictionary = {}
+## 在途探测集合 {hash: true}：同一 hash 并发询问时后来者等待首个结果，不叠请求
+var _chart_remote_inflight: Dictionary = {}
+
+## 存在性缓存有效期（毫秒）：谱面可能在此后被上传/删除，过期后重新探测
+const CHART_REMOTE_CACHE_TTL_MS: int = 300000
+## 等待在途探测的上限（秒）：超过按 UNKNOWN 返回，不无限挂住 UI
+const CHART_REMOTE_WAIT_TIMEOUT: float = 15.0
+
+## 查询某 MIDI hash 是否存在于服务端（权威判据，供「在网页查看 / 上传歌曲」按钮分流）
+## 返回 ChartRemoteState；离线、未联网、请求失败一律 UNKNOWN，绝不猜测。
+## 说明：服务端 Charts.Hash 是上传 MIDI 文件的 MD5，与客户端 info.json 的 hash 同源，
+## 因此可用本地 file_hash 直接比对，不依赖任何本地元数据（status/album/uploader）推断。
+func probe_chart_remote_state(chart_hash: String) -> int:
+	var h := chart_hash.strip_edges().to_lower()
+	if h.is_empty() or server_url.is_empty():
+		return ChartRemoteState.UNKNOWN
+	# 未联网时不做判断：调用方据此隐藏按钮，避免把离线状态误判成「服务端没有」
+	if not _online_mode_enabled or not is_online:
+		return ChartRemoteState.UNKNOWN
+
+	var now := Time.get_ticks_msec()
+	if _chart_remote_cache.has(h):
+		var entry: Dictionary = _chart_remote_cache[h]
+		if now - int(entry.get("at", 0)) < CHART_REMOTE_CACHE_TTL_MS:
+			return int(entry.get("state", ChartRemoteState.UNKNOWN))
+		_chart_remote_cache.erase(h)
+
+	# 已有探测在途：等它出结果，避免同一 hash 连发多次请求
+	if _chart_remote_inflight.has(h):
+		var start := Time.get_ticks_msec()
+		while _chart_remote_inflight.has(h) \
+				and Time.get_ticks_msec() - start < int(CHART_REMOTE_WAIT_TIMEOUT * 1000.0):
+			await get_tree().process_frame
+		if _chart_remote_cache.has(h):
+			return int((_chart_remote_cache[h] as Dictionary).get("state", ChartRemoteState.UNKNOWN))
+		return ChartRemoteState.UNKNOWN
+
+	_chart_remote_inflight[h] = true
+	var url := "%s/api/charts/%s" % [server_url, h.uri_encode()]
+	var result: Dictionary = await _request("GET", url, null)
+	_chart_remote_inflight.erase(h)
+
+	var state := ChartRemoteState.UNKNOWN
+	if bool(result.get("ok", false)):
+		state = ChartRemoteState.EXISTS
+	elif int(result.get("status", 0)) == 404:
+		# 404 是服务端明确的「没有这张谱面」；其余（超时/5xx/解析失败）无法判断
+		state = ChartRemoteState.MISSING
+	if state != ChartRemoteState.UNKNOWN:
+		_chart_remote_cache[h] = {"state": state, "at": Time.get_ticks_msec()}
+	return state
+
+## 同步读取已缓存的存在性结果（未命中/已过期/离线 → UNKNOWN）。
+## 供 UI 在发起异步探测前先按已知结果即时渲染，避免按钮「先隐藏再出现」的闪烁。
+func get_cached_chart_remote_state(chart_hash: String) -> int:
+	var h := chart_hash.strip_edges().to_lower()
+	if h.is_empty():
+		return ChartRemoteState.UNKNOWN
+	if not _online_mode_enabled or not is_online:
+		return ChartRemoteState.UNKNOWN
+	if not _chart_remote_cache.has(h):
+		return ChartRemoteState.UNKNOWN
+	var entry: Dictionary = _chart_remote_cache[h]
+	if Time.get_ticks_msec() - int(entry.get("at", 0)) >= CHART_REMOTE_CACHE_TTL_MS:
+		_chart_remote_cache.erase(h)
+		return ChartRemoteState.UNKNOWN
+	return int(entry.get("state", ChartRemoteState.UNKNOWN))
+
+## 作废某个 hash 的存在性缓存（上传成功后调用：刚传上去的谱面马上就该显示「在网页查看」）
+func invalidate_chart_remote_state(chart_hash: String) -> void:
+	var h := chart_hash.strip_edges().to_lower()
+	if h.is_empty():
+		# 空参数 = 全部作废（服务器地址切换等场景）
+		_chart_remote_cache.clear()
+		return
+	_chart_remote_cache.erase(h)
+
 ## 谱面 Web 详情页地址（服务端路由：/charts/{hash}）
 ## 服务端未提供“按 hash 查询详情页地址”的独立接口，这里按站点约定拼接。
 ## 返回空串表示暂无可用链接：调用方保留按钮，但点击时提示尚未开放。
@@ -156,9 +244,13 @@ func get_chart_web_url(chart_hash: String) -> String:
 		return ""
 	return "%s/charts/%s" % [base, hash_str.uri_encode()]
 
-## 上传本地导入谱面（song.mid + 人声音频，人声存在才一并上传）
-## 后端上传接口尚未实现：本函数已完成文件定位与存在性校验，接口就绪后在此发起 multipart 上传即可。
-## 预期接口：POST /api/charts（multipart：song.mid + vocal.<ext> + 元数据），以后端最终定义为准。
+## 上传本地谱面（song.mid + 人声音频，人声存在才一并上传）
+## 客户端侧仍未实现（2026-11-21）：后端 POST /api/charts 早已可用，缺口在本文件——
+## _request() 硬写 Content-Type: application/json，全仓没有 multipart 构造能力。
+## 补实现时需另开一条 multipart 路径，字段名按后端 ChartsController.Upload 对齐：
+##   midiFile(必填) / title(必填) / description / midiAuthor / midiAuthorUrl /
+##   authorName / songName / albumName / coverFile / vocalFile / tags[]
+## 重复 hash 返回 409（"相同哈希的谱面已存在"）→ 提示「已存在」而不是失败。
 ## 返回 {"ok": bool, "error": String}
 func upload_local_chart(midi: MidiData) -> Dictionary:
 	if midi == null:
@@ -182,7 +274,7 @@ func upload_local_chart(midi: MidiData) -> Dictionary:
 	if not vocal_path.is_empty() and not FileAccess.file_exists(vocal_path):
 		vocal_path = ""
 
-	GLogger.info("谱面上传请求（接口待实现）：midi=%s vocal=%s" % [
+	GLogger.info("谱面上传请求（客户端 multipart 尚未实现）：midi=%s vocal=%s" % [
 		midi_path, vocal_path if not vocal_path.is_empty() else "(无)"], "NetMGR")
 	return {"ok": false, "error": "not_implemented"}
 
@@ -190,6 +282,8 @@ func upload_local_chart(midi: MidiData) -> Dictionary:
 func _on_config_changed(key: String, _value: Variant) -> void:
 	if key == "server_address":
 		_load_server_url()
+		# 换了服务器，旧地址上的存在性结论全部作废（否则同名 hash 在新服判据会错）
+		invalidate_chart_remote_state("")
 		if _online_mode_enabled:
 			# 地址变化后重建连接（旧连接基于旧地址，需重新握手）
 			_stop_all_timers()

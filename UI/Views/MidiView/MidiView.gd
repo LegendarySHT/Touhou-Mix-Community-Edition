@@ -38,6 +38,10 @@ const _DETAIL_DESIGN_WIDTH := 920.0
 
 var showing_info: bool = false
 
+## 简介下方按钮组「服务端存在性探测」的代次计数（见 _refresh_redirect_buttons）。
+## 每次刷新自增；异步探测返回时代次不匹配即丢弃结果，避免迟到的旧结果覆盖新状态。
+var _redirect_gen: int = 0
+
 func _on_view_ready() -> void:
 	# 供跨场景读取的谱面列表
 	GlobalNodes.midi_list = %MidiList
@@ -48,6 +52,9 @@ func _on_view_ready() -> void:
 	%MidiDescription.meta_clicked.connect(_on_description_meta_clicked)
 	# 「显示上传按钮」在简介展开期间变更时即时刷新按钮组
 	EvtBus.config_changed.connect(_on_config_changed)
+	# 联网状态翻转时重探：离线期间两条按钮都是隐藏的（判据未知不猜），
+	# 恢复在线后不重探的话要手动切一次歌才出现
+	EvtBus.online_status_changed.connect(_on_online_status_changed)
 	# 监听 UI 状态变化，进入 MIDI_VIEW 时若 FavorPanel 可见则刷新
 	UiStatMGR.state_changed.connect(_on_state_changed)
 
@@ -380,24 +387,54 @@ func _set_info_visible(v: bool) -> void:
 	# 只在重新显示列表时请求吸附：简介展开期间列表不可见，吸附没有意义
 	%MidiList.need_snap = not v
 
-## 刷新简介下方的操作按钮组：
-## - 商店下载的谱面（存在服务端详情页）→ 显示「在网页查看」
-## - 本地导入的谱面且开启「显示上传按钮」→ 显示「上传歌曲」
-## - 两者都没有时整个按钮组不占位（简介直接铺满）
+## 刷新简介下方的操作按钮组。分流判据是「该谱面的 MIDI hash 在服务端是否存在」
+## （唯一可靠判据，见 NetManager.probe_chart_remote_state）：
+## - 服务端存在（含 INCLUDED 内置曲）→ 只显示「在网页查看」
+## - 服务端不存在 → 只显示「上传歌曲」，且需高级选项「显示上传按钮」开启
+## - 无法判断（离线模式 / 未连接 / 请求失败）→ 两个都不显示，绝不猜测
+## 探测是异步的：先按「未知」隐藏，结果回来再应用。用 _redirect_gen 做代次守卫，
+## 避免快速切换选中项或收起简介后，迟到的旧结果把按钮重新点出来。
 func _refresh_redirect_buttons(midi: MidiData) -> void:
-	if midi == null:
-		%CheckinWebBtn.visible = false
-		%UploadSongBtn.visible = false
-		%RedirectButtons.visible = false
+	_redirect_gen += 1
+	var gen := _redirect_gen
+	_apply_redirect_buttons(false, false)
+	if midi == null or not showing_info:
 		return
 
-	var show_web := midi.is_store_downloaded()
-	var show_upload := midi.is_local_import() and _is_upload_button_enabled()
+	var hash := midi.file_hash.strip_edges()
+	if hash.is_empty() or ServiceHub.net == null:
+		return
+
+	# 先用已有缓存即时渲染（同一首歌反复展开简介时不闪一下），再按需异步补探测
+	var cached: int = ServiceHub.net.get_cached_chart_remote_state(hash)
+	if cached != NetManager.ChartRemoteState.UNKNOWN:
+		_apply_redirect_state(cached)
+		return
+
+	var state: int = await ServiceHub.net.probe_chart_remote_state(hash)
+	# 代次已变（换了选中项 / 收起过简介）、已不在简介页、或视图已出树：丢弃本次结果
+	if gen != _redirect_gen or not showing_info or not is_inside_tree():
+		return
+	_apply_redirect_state(state)
+
+## 按服务端存在性状态应用按钮显隐（见 _refresh_redirect_buttons 的三分支约定）
+func _apply_redirect_state(state: int) -> void:
+	match state:
+		NetManager.ChartRemoteState.EXISTS:
+			_apply_redirect_buttons(true, false)
+		NetManager.ChartRemoteState.MISSING:
+			_apply_redirect_buttons(false, _is_upload_button_enabled())
+		_:
+			_apply_redirect_buttons(false, false)
+
+## 应用按钮显隐：两个按钮互斥，都没有时整个按钮组不占位（简介直接铺满）
+func _apply_redirect_buttons(show_web: bool, show_upload: bool) -> void:
 	%CheckinWebBtn.visible = show_web
 	%UploadSongBtn.visible = show_upload
 	%RedirectButtons.visible = showing_info and (show_web or show_upload)
 
 ## 「显示上传按钮」开关（高级选项，默认关闭）
+## 只作为上传按钮的显隐闸门：「在网页查看」不受它影响
 func _is_upload_button_enabled() -> bool:
 	if ServiceHub.config == null:
 		return false
@@ -408,15 +445,23 @@ func _on_config_changed(key: String, _value: Variant) -> void:
 	if key == "show_upload_button" and showing_info:
 		_refresh_redirect_buttons(%MidiList.get_selection())
 
+## 联网状态翻转：简介展开期间重探当前谱面
+## 判据依赖服务端，离线时一律 UNKNOWN（两边都不显示）。不重探的话，玩家从离线恢复后
+## 要手动切一次歌才会出现按钮；这里只在展开时补一次，代价是一首歌一个请求。
+func _on_online_status_changed(_online: bool, _message: String) -> void:
+	if showing_info:
+		_refresh_redirect_buttons(%MidiList.get_selection())
+
 ## 简介里的链接点击（BBCode [url] 的 meta 为清洗后的 URL）
 func _on_description_meta_clicked(meta: Variant) -> void:
 	if not MidiDescriptionParser.open_url(str(meta)):
 		EvtBus.notify("链接无效或无法打开")
 
-## 在网页查看：商店下载的谱面跳转对应详情页
+## 在网页查看：服务端存在该谱面时跳转对应详情页
+## 按钮可见性本身就代表「服务端存在」，此处不再重复判定（免得再多打一次探测请求）
 func _on_click_checkin_web_btn() -> void:
 	var midi: MidiData = %MidiList.get_selection()
-	if midi == null or not midi.is_store_downloaded():
+	if midi == null:
 		return
 	var url := ""
 	if ServiceHub.net != null:
@@ -428,10 +473,10 @@ func _on_click_checkin_web_btn() -> void:
 	if not MidiDescriptionParser.open_url(url):
 		EvtBus.notify("无法打开详情页")
 
-## 上传歌曲：仅本地导入谱面可见；MIDI 与人声文件由 NetManager 的上传入口收集
+## 上传歌曲：仅「服务端不存在」的谱面可见；MIDI 与人声文件由 NetManager 的上传入口收集
 func _on_click_upload_song_btn() -> void:
 	var midi: MidiData = %MidiList.get_selection()
-	if midi == null or not midi.is_local_import():
+	if midi == null:
 		return
 	if ServiceHub.net == null:
 		EvtBus.notify("网络管理器未就绪")

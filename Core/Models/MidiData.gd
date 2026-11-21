@@ -380,14 +380,12 @@ func from_json(json_data: Dictionary, cfg_chart_key: String = "") -> void:
 	# - from_json 只读取 _track_config_initialized（用于 PlaybackDisplay 判断是否需要初始化）
 	# 这样避免 DataManager 加载阶段（每次启动）重复解析简介
 
-## 是否为商店下载的谱面（服务端存在对应详情页）
-## 商店谱面状态为 PENDING/APPROVED；内置资源为 INCLUDED，本地导入见 is_local_import()
-func is_store_downloaded() -> bool:
-	return not is_local_import() and status != "INCLUDED"
-
-## 是否为本地导入的谱面（导入入口固定写入 album_local / uploaderName=本地导入）
-func is_local_import() -> bool:
-	return album_id == "album_local" or uploader_name == "本地导入"
+# 注意：这里曾有 is_store_downloaded() / is_local_import() 两个谓词，按本地元数据
+# （status / album_id / uploaderName）猜「谱面在不在服务端」。二者在 2026-11-21 删除：
+# 本地标记并不可靠——只有单文件 .mid 导入会写 album_local / uploaderName=本地导入，
+# ZIP 资源包导入保留包内原元数据，会被误判成「商店下载」；反之服务端已删除的谱面
+# 仍带着 PENDING 状态，会被误判成「存在」。唯一可靠判据是拿 MIDI hash（= 服务端
+# Charts.Hash，同为文件 MD5）向服务端查询，见 NetManager.probe_chart_remote_state()。
 
 ## 设置选中的轨道
 func set_selected_tracks(track_indices: Array[int]) -> void:
