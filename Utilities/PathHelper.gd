@@ -96,10 +96,13 @@ static func _resolve_override_from_pointer() -> void:
 	if not DirAccess.dir_exists_absolute(cfg):
 		return
 	_storage_root_override = cfg
+	_nomedia_ready_dirs.clear()
 
 ## 设置存储根 override（空值/空串清除，回退固定引导目录）
 static func set_storage_root(path: String) -> void:
 	_storage_root_override = normalize_storage_path(path) if not path.is_empty() else ""
+	# 路径变了：旧的"该目录已有 .nomedia"结论对新根不成立，必须重新判定
+	_nomedia_ready_dirs.clear()
 
 ## 获取用户数据根（settings.ini / favorites.json / Logs / Settings / 各资源目录的父目录）
 ## 语义为"可移动存储根"，默认与固定引导目录相同（与旧版本行为一致）
@@ -233,8 +236,129 @@ static func file_exists(file_path: String) -> bool:
 static func dir_exists(dir_path: String) -> bool:
 	return DirAccess.dir_exists_absolute(dir_path)
 
-# ============ 路径转换工具 ============
+# ============ Android 媒体库隔离（.nomedia） ============
+#
+# 【为什么需要】Android 的媒体扫描器（MediaStore）会索引存储卡上所有图片/音频/视频，
+# 再经 ContentResolver 暴露给系统相册、音乐播放器、文件管理器缩略图等应用。
+# 默认存储根位于 Android/data/<包名>/files/，MediaProvider 对整个 Android/data 恒判为
+# 「不可见」，所以旧版本不会出问题；玩家把「资源存储位置」改到公共目录
+# （如 /storage/emulated/0/thmixData/）之后，谱面封面 Charts/*/cover.jpg、人声、
+# 背景图、皮肤/粒子/人物贴图、网络图片缓存都会直接出现在系统相册里。
+#
+# 【机制】目录内存在名为 ".nomedia" 的文件（严格小写、无扩展名、内容无关、0 字节即可）
+# 时，扫描器跳过该目录**及其所有子目录**：AOSP 对每个待索引文件向上遍历父目录，
+# 任一祖先含 .nomedia 即判为隐藏（老版本 MediaScanner.isNoMediaPath 同样向上遍历）。
+# 因此只需在每个游戏自有媒体目录下放一个标记，就能覆盖其下全部谱面文件夹。
+#
+# 【边界】绝不在存储根本身放标记：玩家可以把存储位置选到 /storage/emulated/0/
+# 这类与相册共享的目录，根上一个 .nomedia 会把整张卡的媒体一起从相册里隐藏掉。
+# 这里只列**游戏自己创建、且确实会落媒体文件**的目录，边界清楚、不会误伤玩家文件。
 
+## 媒体库隔离标记文件名（0 字节，仅文件名生效）
+const NOMEDIA_FILE_NAME := ".nomedia"
+
+## 需要媒体库隔离的目录（相对存储根；顺序无意义）
+const NOMEDIA_GUARD_DIRS: Array[String] = [
+	"Charts", "BackgroundImage", "Skins", "Particles", "Charas", "WebCache",
+]
+
+## 当前存储根是否需要媒体库隔离
+static func needs_nomedia_guard() -> bool:
+	return needs_nomedia_guard_for(get_storage_root())
+
+## 指定存储根（或其中任意子目录）是否需要媒体库隔离。两个条件同时成立才需要：
+##   1. Android —— 只有它有 MediaStore（桌面端系统相册不看 user://，写了也没用）
+##   2. 该路径不在应用私有目录 Android/data/<包名>/ 之下 —— MediaProvider 对这一整片
+##      恒判为不可见，默认路径本来就不会被索引，落标记只是给玩家添一个莫名的隐藏文件
+## 【必须按"要判断的那个路径"求值】迁移时目标根与当前根不是同一个：玩家从默认私有目录
+## 迁到公共目录的那一次，恰恰是第一次需要标记的场景，按当前根判断会整个漏掉。
+static func needs_nomedia_guard_for(root: String) -> bool:
+	if not is_android():
+		return false
+	return is_media_scanner_visible_path(root, get_base_dir())
+
+## 纯判定：path 是否落在应用私有目录之外（= 会被系统媒体库扫到的位置）。
+## 抽成不依赖平台/单例的纯函数，便于 headless 覆盖 Android 分支的边界情况。
+## private_base 需为 get_base_dir() 的形态（含尾 "/"）；path 任意形态均可。
+static func is_media_scanner_visible_path(path: String, private_base: String) -> bool:
+	var p := normalize_storage_path(path)
+	var base := normalize_storage_path(private_base)
+	if p.is_empty() or base.is_empty():
+		return false
+	# 前缀比较按路径边界生效：两侧都已规范化带尾 "/"，故 files2/ 不会被当成 files/ 的子目录
+	return not p.begins_with(base)
+
+## 目录内是否已有隔离标记
+static func has_nomedia_marker(dir_path: String) -> bool:
+	var d := normalize_storage_path(dir_path)
+	if d.is_empty():
+		return false
+	return FileAccess.file_exists(d + NOMEDIA_FILE_NAME)
+
+## 在指定目录写隔离标记（不判断平台、不创建目录）。已存在则原样保留。
+## 返回 true 表示该目录现在已受保护。
+## 【为什么不覆盖】已存在时重写会刷新 mtime，而 mtime 是 WebCache 容量淘汰、
+## 谱面目录变更检测的判据之一；标记只是纯占位，不该制造"内容变了"的噪音。
+static func write_nomedia_marker(dir_path: String) -> bool:
+	var d := normalize_storage_path(dir_path)
+	if d.is_empty() or not DirAccess.dir_exists_absolute(d):
+		return false
+	var marker := d + NOMEDIA_FILE_NAME
+	if FileAccess.file_exists(marker):
+		return true
+	var f := FileAccess.open(marker, FileAccess.WRITE)
+	if f == null:
+		return false
+	# 内容无关：扫描器只看文件名，留空文件（0 字节）即可
+	f.close()
+	return true
+
+## 已确认写好标记的目录集合（避免 WebCache 每次写图都 stat 三遍）
+## 换根时由 set_storage_root() 清空：路径变了，旧的"已就绪"结论不再成立
+static var _nomedia_ready_dirs: Dictionary = {}
+
+## 为单个目录补标记（目录不存在时先创建）。返回 true 表示目录可用。
+## 供「即将往这个目录写媒体文件」的调用方在写入前调用——标记必须先于媒体落盘，
+## 否则复制窗口内被媒体库扫到的封面不会因为后补的标记自动从相册消失。
+## 不需要隔离的平台/路径只保证目录存在（不落 .nomedia），同样返回 true。
+static func ensure_nomedia_guard_dir(dir_path: String) -> bool:
+	var d := normalize_storage_path(dir_path)
+	if d.is_empty():
+		return false
+	if not ensure_dir_exists(d):
+		return false
+	if not needs_nomedia_guard_for(d):
+		return true
+	if _nomedia_ready_dirs.has(d):
+		return true
+	if not write_nomedia_marker(d):
+		return false
+	_nomedia_ready_dirs[d] = true
+	return true
+
+## 为 root 下需要隔离的目录补标记，返回新建的标记数。
+## create_missing=true 时连目录一起建（启动建目录阶段用：Charts/Skins/Particles/Charas/
+## BackgroundImage 都是玩家可直接丢文件的投放目录，先建好并立标记，玩家往里放图才不会被扫）；
+## false 时只处理已存在的目录（换根、迁移等场景不该顺手造空目录）。
+static func ensure_nomedia_guard(root: String = "", create_missing: bool = false) -> int:
+	var base := get_storage_root() if root.is_empty() else normalize_storage_path(root)
+	if base.is_empty() or not needs_nomedia_guard_for(base):
+		return 0
+	var created := 0
+	for d in NOMEDIA_GUARD_DIRS:
+		var dir_path := base + d + "/"
+		if not DirAccess.dir_exists_absolute(dir_path):
+			if not create_missing:
+				continue
+			if not ensure_dir_exists(dir_path):
+				continue
+		if has_nomedia_marker(dir_path):
+			continue
+		if write_nomedia_marker(dir_path):
+			created += 1
+	return created
+
+# ============ 路径转换工具 ============
 ## 将 user://files/ 前缀的路径转换为当前平台的实际路径
 ## 用于兼容旧代码中可能残留的 user:// 路径
 static func resolve_user_path(path: String) -> String:

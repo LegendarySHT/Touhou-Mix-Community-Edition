@@ -655,6 +655,28 @@ public class AndroidBridge extends GodotPlugin {
 		return p;
 	}
 
+	// ===== 媒体库隔离（.nomedia）=====
+	//
+	// 媒体库隔离完全由 GDScript 侧完成：往存储根下的游戏媒体目录各写一个 0 字节
+	// .nomedia 标记（见 Utilities/PathHelper.gd 的 NOMEDIA_GUARD_DIRS）。
+	// 标记对**之后**的扫描有效——实测（Android 16 / MIUI V816）确认，目录里存在
+	// .nomedia 时，其下新落盘的图片不会进入 images 表（相册读的就是这张表）。
+	//
+	// 【本类刻意不提供任何 MediaStore 操作，原因见下】
+	// 早先这里有一个 purge_media_index()，用
+	// ContentResolver.delete(MediaStore.Files, "DATA LIKE dir/%") 去清"已被索引的旧封面"，
+	// 注释写的是"只删索引、文件分毫未动"。**这个前提是错的**：应用持有
+	// MANAGE_EXTERNAL_STORAGE 时，MediaProvider 把 delete 解释为"删除这份媒体"，
+	// 连磁盘上的真实文件一起物理删除，且不进回收站（实测 is_trashed 无行、
+	// 设备上无 .trashed-* 残留）。线上后果：玩家把存储位置设到公共目录后，
+	// Charts/ 下 789 个谱面目录、Skins/ 的贴图、BackgroundImage/ 被整体清空，不可恢复。
+	//
+	// 因此现在的取舍是：**只写标记，不碰 MediaStore**。
+	// 代价是先前已索引的少量旧缩略图会留在相册里——那只是视觉噪音，点开仍能正常显示。
+	// 实测"加 .nomedia 后重扫"也不会移除既有行（扫描器只增不删），所以清理本来也做不到；
+	// 真要彻底清只能由玩家自己在相册里手动删（那是玩家的显式意图）。
+	// 为了消掉这点噪音去冒删玩家数据的风险，是绝对不能接受的取舍。
+
 	// ===== 后台内存回收触发（两条源：后台挂留超时 / onTrimMemory） =====
 	// Android 切后台后 Godot 主循环挂起（同 _ticker 的处境），引擎侧 _process / Timer 均不运行，
 	// 因此"后台已持续多久"只能由 Java 侧墙钟判断。此处只做计时与发信号，不做任何回收动作，

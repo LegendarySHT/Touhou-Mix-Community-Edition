@@ -389,7 +389,10 @@ static func get_cache_file(url: String) -> String:
 
 ## 写入图片字节缓存
 static func _write_data(url: String, body: PackedByteArray) -> bool:
-	if not PathHelper.ensure_dir_exists(PathHelper.get_web_cache_dir()):
+	# 用 ensure_nomedia_guard_dir 而不是 ensure_dir_exists：WebCache 里全是从网上下载的
+	# 封面/头像字节，存储位置设在公共目录时它们会成批出现在系统相册里（Android 才落标记）。
+	# 目录可能是首次写入时才创建，故标记必须在这里补，不能只靠启动期那一次。
+	if not PathHelper.ensure_nomedia_guard_dir(PathHelper.get_web_cache_dir()):
 		return false
 	var f := FileAccess.open(_data_file(url), FileAccess.WRITE)
 	if f == null:
@@ -437,7 +440,9 @@ static func _enforce_disk_budget() -> void:
 	dir.list_dir_begin()
 	var file_name := dir.get_next()
 	while file_name != "":
-		if not dir.current_is_dir():
+		# 跳过隐藏条目：目录里的 .nomedia 是媒体库隔离标记（删了封面就会跑进系统相册），
+		# 而它 0 字节，删掉也降不下容量，没有理由参与淘汰
+		if not dir.current_is_dir() and not file_name.begins_with("."):
 			var full := dir_path.path_join(file_name)
 			var f := FileAccess.open(full, FileAccess.READ)
 			if f:

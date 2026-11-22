@@ -239,7 +239,11 @@ func initialize_directory_structure() -> void:
 	
 	for dir_path in directories:
 		_ensure_directory_exists(dir_path)
-	
+
+	# 媒体库隔离标记必须早于任何媒体文件落盘：玩家把存储位置设到公共目录后，
+	# 谱面封面/背景图/皮肤贴图会被系统相册索引（见 PathHelper.NOMEDIA_GUARD_DIRS）
+	_ensure_media_scanner_guard()
+
 	# 启动文件处理串行管线：先复制默认资源 → 再导入外部文件 → 最后扫描并更新数据库缓存
 	await _copy_default_resources_async()
 	if ServiceHub.importer != null:
@@ -248,6 +252,28 @@ func initialize_directory_structure() -> void:
 			# 导入的配置需要重启：不再继续扫描，等待导入模块退出游戏
 			return
 	_scan_all_resources()
+
+## 媒体库隔离：给存储根下的游戏媒体目录立 .nomedia 标记（仅 Android + 非私有路径生效）
+## 调用时机必须早于媒体文件落盘：启动建目录之后、存储根热切换重建索引之前。
+## create_missing=true 时连投放目录（Charts/Skins/...）一起建好——玩家往这些目录里
+## 丢自己的封面/皮肤时，目录与标记都已在位，不必等某次扫描才发现。
+## 标记是 "." 开头的隐藏文件，各目录扫描循环都跳过它，不影响任何索引。
+##
+## 【只写标记，绝不碰 MediaStore —— 这是已经踩爆过的坑】
+## 早先这里还会调 AndroidBridge 按路径前缀 delete MediaStore 行，想"清掉已被索引进
+## 相册的旧封面"。实测证明那个 API 在持有 MANAGE_EXTERNAL_STORAGE 时是**物理删除**：
+## 玩家把存储位置设到公共目录后，Charts/ 下 789 个谱面目录、Skins/ 贴图、
+## BackgroundImage/ 被整体清空且不进回收站，不可恢复。
+## 现在只做标记这一件事：标记能阻止**之后**落盘的媒体被索引（实测有效），
+## 代价是先前已索引的少量旧缩略图会留在相册里——那只是视觉噪音，点开仍能正常显示。
+## 为了消掉这点噪音去冒删玩家数据的风险，是绝对不能接受的取舍。
+func _ensure_media_scanner_guard(create_missing: bool = true) -> void:
+	if not PathHelper.needs_nomedia_guard():
+		return
+	var created := PathHelper.ensure_nomedia_guard("", create_missing)
+	if created > 0:
+		GLogger.info("Added .nomedia marker to %d media dir(s) under %s (keep gallery/music apps away)"
+			% [created, PathHelper.get_storage_root()], "FileSystemMGR")
 
 ## 确保目录存在，不存在则创建
 ## 使用 make_dir_recursive_absolute 以兼容 Android 绝对路径
@@ -278,16 +304,28 @@ func _copy_default_resources_async() -> void:
 		bar = show_progress_ui(COPY_TIP_TEXT, total_steps)["bar"]
 
 	var done := 0
-	# 复制谱面（若目录为空）
+	# 复制谱面（仅当目录为空）
+	# 【为什么不再在启动时判"空壳"】空壳检测要把本地每个谱面目录都 list 一遍
+	# （实测 873 个目录 ≈ 74.5ms，Android FUSE 更慢），而健康状态下 100% 白跑。
+	# 数据事故的自愈改由后台缓存校验的"大面积损坏"信号触发
+	# （见 _maybe_restore_hollow_charts），那里天然知道坏掉了多少。
 	if _is_directory_empty(CHARTS_DIR):
 		GLogger.info("Charts directory is empty, copying default charts...", "FileSystemMGR")
-		done = await _copy_default_charts_async(bar)
+		done = await _copy_default_charts_async(bar, false)
 		if bar:
 			bar.value = minf(done, bar.max_value)
 
-	# 复制皮肤（若目录为空）
+	# 复制皮肤（目录为空，或只剩空壳：skin.ini 在、贴图全没了）
+	# 皮肤只有几个目录，判定代价可忽略，仍在启动时直接检查。
 	if _is_directory_empty(SKINS_DIR):
 		GLogger.info("Skins directory is empty, copying default skins...", "FileSystemMGR")
+		await _copy_directory_recursive_async(SkinManager.DEFAULT_SKINS_SRC, SKINS_DIR)
+		done += 1
+		if bar:
+			bar.value = minf(done, bar.max_value)
+	elif _is_skins_dir_hollow(SKINS_DIR):
+		GLogger.warning("Skins directory looks hollow (skin.ini present but no textures), "
+			+ "restoring default skins from PCK", "FileSystemMGR")
 		await _copy_directory_recursive_async(SkinManager.DEFAULT_SKINS_SRC, SKINS_DIR)
 		done += 1
 		if bar:
@@ -431,7 +469,11 @@ func _count_default_chart_folders() -> int:
 
 ## 异步复制所有默认谱面（在每个文件夹复制后让步）
 ## progress_bar: 非空则每复制完一个谱面目录推进一次进度；返回实际复制的目录数
-func _copy_default_charts_async(progress_bar: ProgressBar = null) -> int:
+## skip_existing=true 时只补"目标目录里一个文件都没有"的谱面（修复用）：
+##   修复可能被玩家中途退出/系统杀进程打断，必须可续跑 —— 每次启动只补剩下的空目录，
+##   已恢复的跳过，直到全部补完。绝不能"整体判一次空壳"就决定做不做：
+##   部分恢复后整体不再算空壳，剩下的目录就永远补不回来了（实测踩过）。
+func _copy_default_charts_async(progress_bar: ProgressBar = null, skip_existing: bool = false) -> int:
 	var source_base = DEFAULT_CHARTS_SRC
 	var dest_base = CHARTS_DIR
 	
@@ -448,7 +490,7 @@ func _copy_default_charts_async(progress_bar: ProgressBar = null) -> int:
 	
 	source_dir.list_dir_begin()
 	var chart_folder = source_dir.get_next()
-	var copied_count = 0
+	var copied_count := 0
 	
 	while chart_folder != "":
 		if source_dir.current_is_dir() and not chart_folder.begins_with("."):
@@ -457,6 +499,10 @@ func _copy_default_charts_async(progress_bar: ProgressBar = null) -> int:
 			
 			if not DirAccess.dir_exists_absolute(dest_chart_path):
 				DirAccess.make_dir_absolute(dest_chart_path)
+			elif skip_existing and not _is_directory_empty(dest_chart_path):
+				# 已有内容：修复模式下不动它（可能是玩家自己改过的谱面）
+				chart_folder = source_dir.get_next()
+				continue
 			
 			# 复制该文件夹内的所有文件（内部已改为可让步的版本）
 			if await _copy_chart_files_from_pck_async(source_chart_path, dest_chart_path):
@@ -475,7 +521,7 @@ func _copy_default_charts_async(progress_bar: ProgressBar = null) -> int:
 	
 	source_dir.list_dir_end()
 	GLogger.info("Copied %d chart folders from PCK" % copied_count, "FileSystemMGR")
-	return 1
+	return copied_count
 
 ## 异步复制单个 chart 文件夹的所有文件（内部处理图片时使用资源加载器）
 func _copy_chart_files_from_pck_async(source_path: String, dest_path: String) -> bool:
@@ -676,6 +722,59 @@ func _copy_file_from_pck(source_path: String, dest_path: String) -> bool:
 	dest_file.close()
 	return true
 
+## 皮肤目录是否需要"空壳修复"：是否存在**至少一个**内置皮肤同名、但里面一张贴图都没有的目录。
+## 与 _is_charts_dir_hollow 同源（可续跑：只补还没补上的，已补的跳过）。
+## 只认内置同名目录，玩家自建的空皮肤目录不当作损坏。
+func _is_skins_dir_hollow(dir_path: String) -> bool:
+	var root := DirAccess.open(dir_path)
+	if root == null:
+		return false
+	var builtin := DirAccess.open(SkinManager.DEFAULT_SKINS_SRC)
+	if builtin == null:
+		return false
+	var builtin_names := {}
+	builtin.list_dir_begin()
+	var bn := builtin.get_next()
+	while bn != "":
+		if builtin.current_is_dir() and not bn.begins_with("."):
+			builtin_names[bn] = true
+		bn = builtin.get_next()
+	builtin.list_dir_end()
+	if builtin_names.is_empty():
+		return false
+
+	root.list_dir_begin()
+	var name := root.get_next()
+	while name != "":
+		if root.current_is_dir() and not name.begins_with(".") and builtin_names.has(name):
+			# 是内置皮肤目录：里面一张图都没有 → 需要修复
+			if _dir_has_no_image(dir_path.path_join(name)):
+				root.list_dir_end()
+				return true
+		name = root.get_next()
+	root.list_dir_end()
+	return false
+
+## 目录（含子目录）里是否一张图片都没有
+func _dir_has_no_image(dir_path: String) -> bool:
+	var d := DirAccess.open(dir_path)
+	if d == null:
+		return true
+	d.list_dir_begin()
+	var n := d.get_next()
+	while n != "":
+		var full := dir_path.path_join(n)
+		if d.current_is_dir():
+			if not _dir_has_no_image(full):
+				d.list_dir_end()
+				return false
+		elif _is_image_file(n):
+			d.list_dir_end()
+			return false
+		n = d.get_next()
+	d.list_dir_end()
+	return true
+
 ## 检查目录是否为空
 func _is_directory_empty(dir_path: String) -> bool:
 	var dir = DirAccess.open(dir_path)
@@ -693,6 +792,49 @@ func _is_directory_empty(dir_path: String) -> bool:
 	
 	dir.list_dir_end()
 	return true
+
+## 谱面目录是否需要"空壳修复"：是否存在**至少一个**与内置谱面同名、但里面一个文件都没有的目录。
+##
+## 【为什么不是"整个 Charts 都空"】修复会被玩家退出/系统杀进程打断，必须是可续跑的：
+## 只要还剩任意一个没补上的空目录就返回 true，下次接着补。
+## 反过来，如果按"所有子目录都空"判定，部分恢复后整体不再算空壳，
+## 剩下的目录就永远补不回来（实测踩过：873 个目录只补回 292 个，再启动不再继续）。
+##
+## 【为什么只认内置同名目录】玩家自己建的谱面目录可能是合法的空目录（刚建还没放文件），
+## 不能当成损坏去灌默认内容。只处理"内置有、本地是空"的交集，边界清楚。
+##
+## 【调用时机】只在 _maybe_restore_hollow_charts 里、已经确认"大面积损坏"之后才调，
+## 不在启动主线程上盲扫（那样 873 个目录 ≈ 74.5ms，健康状态 100% 白跑）。
+func _is_charts_dir_hollow(dir_path: String) -> bool:
+	var root := DirAccess.open(dir_path)
+	if root == null:
+		return false
+	var builtin := DirAccess.open(DEFAULT_CHARTS_SRC)
+	if builtin == null:
+		return false
+	# 先收集内置谱面目录名（数量固定，几百个，构建一次成本可忽略）
+	var builtin_names := {}
+	builtin.list_dir_begin()
+	var bn := builtin.get_next()
+	while bn != "":
+		if builtin.current_is_dir() and not bn.begins_with("."):
+			builtin_names[bn] = true
+		bn = builtin.get_next()
+	builtin.list_dir_end()
+	if builtin_names.is_empty():
+		return false
+
+	root.list_dir_begin()
+	var name := root.get_next()
+	while name != "":
+		if root.current_is_dir() and not name.begins_with(".") and builtin_names.has(name):
+			# 是内置谱面目录：里面一个文件都没有 → 需要修复
+			if _is_directory_empty(dir_path.path_join(name)):
+				root.list_dir_end()
+				return true
+		name = root.get_next()
+	root.list_dir_end()
+	return false
 
 ## 异步复制目录内容（仅顶层文件）
 func _copy_directory_contents_async(src_dir: String, dest_dir: String, extensions: String) -> void:
@@ -1144,6 +1286,13 @@ func _await_cache_validation(rw: Dictionary, cached_charts: Dictionary) -> void:
 		GLogger.warning("Pruned %d broken chart folder(s) (json/mid missing after rescan): %s" % [
 			broken_folders.size(), ", ".join(broken_folders)
 		], "FileSystemMGR")
+		# 大面积损坏 = 数据被外部批量抹掉的现场（真实事故：媒体库清理 API 把 Charts/ 下
+		# 789 个谱面目录的文件全部物理删除，只留下空目录）。此时尝试从 PCK 补回内置谱面。
+		# 【为什么在这里触发，而不是启动时盲扫】启动时无从判断"是否发生过事故"，
+		# 只能把 873 个目录挨个 list 一遍 —— 实测桌面 74.5ms、Android FUSE 更慢，
+		# 而健康状态下这次扫描 100% 白跑。这里天然拿得到"损坏了多少"这个精确信号，
+		# 只在真正可疑时付代价。
+		_maybe_restore_hollow_charts(broken_folders.size(), changed_folders.size())
 
 	# 重建 charts_index（主线程）
 	charts_index.clear()
@@ -1184,6 +1333,54 @@ func _await_cache_validation(rw: Dictionary, cached_charts: Dictionary) -> void:
 	if EvtBus:
 		EvtBus.charts_cache_validated.emit(true)
 	GLogger.info("Charts cache validation done: charts=%d (refreshed)" % charts_index.size(), "FileSystemMGR")
+
+## 大面积谱面损坏时尝试从 PCK 补回内置谱面（自愈）。
+##
+## 【判据】只有"绝大多数谱面同时损坏"才当作数据事故处理。正常的零散损坏（玩家删了一半、
+## 人声被播放器占用导致目录删不干净）只该清理索引，不该灌回默认内容 —— 那会把玩家主动
+## 删除的谱面又变出来。这里要求 broken 占比 ≥ 80% 且绝对数量 ≥ 20，两个条件都满足才动手。
+##
+## 【为什么要这么保守】误判的代价是"玩家删掉的谱面自己长回来"，比不修复更糟。
+## 真事故的现场是"几乎全部为空"，与零散损坏的分布差异极大，这个阈值很容易区分。
+##
+## 【为什么不在启动时盲扫】启动时无从判断是否发生过事故，只能把 873 个目录挨个 list
+## 一遍 —— 实测桌面 74.5ms、Android FUSE 更慢，而健康状态下 100% 白跑。
+## 这里天然拿得到"损坏了多少"这个精确信号，只在真正可疑时付代价。
+func _maybe_restore_hollow_charts(broken_count: int, total_count: int) -> void:
+	if broken_count < 20 or total_count <= 0:
+		return
+	var ratio := float(broken_count) / float(total_count)
+	if ratio < 0.8:
+		GLogger.info("Broken charts %d/%d (%.0f%%), looks like normal edits — skip auto-restore"
+			% [broken_count, total_count, ratio * 100.0], "FileSystemMGR")
+		return
+	# 再确认现场形态：必须存在"内置同名且为空"的目录，避免把"玩家批量删谱面"当成事故
+	if not _is_charts_dir_hollow(CHARTS_DIR):
+		GLogger.info("Mass breakage but no hollow builtin dirs — skip auto-restore", "FileSystemMGR")
+		return
+	GLogger.warning("Mass chart loss detected (%d/%d broken, %.0f%%), restoring builtin charts from PCK"
+		% [broken_count, total_count, ratio * 100.0], "FileSystemMGR")
+	_restore_builtin_charts_deferred.call_deferred()
+
+## 补齐内置谱面（只补空目录，可续跑，见 _copy_default_charts_async 的 skip_existing）
+##
+## 【为什么必须等 is_scanning 结束，而不是直接 return】本方法的调用方之一是
+## `_scan_charts_full_sync()`，它本身跑在 `_scan_all_resources()` 的 `is_scanning=true`
+## 区间内。`call_deferred` 排队的回调在同一帧末尾执行，那时 `is_scanning` 通常仍是 true
+## —— 早期写成 `if is_scanning: return` 会让自愈**静默失效**（日志里只有 Mass chart loss
+## 却没有 Restored，看起来像没触发）。正确做法是等扫描收尾后再动手。
+func _restore_builtin_charts_deferred() -> void:
+	while is_scanning or _is_validating:
+		if get_tree() == null:
+			return
+		await get_tree().process_frame
+	var bar: ProgressBar = show_progress_ui(COPY_TIP_TEXT, _count_default_chart_folders())["bar"]
+	var done := await _copy_default_charts_async(bar, true)
+	hide_progress_ui()
+	if done > 0:
+		GLogger.warning("Restored %d builtin chart folder(s) after mass loss" % done, "FileSystemMGR")
+		await rescan_resources()
+
 
 ## 检查所有 simple task（单个 task_id 数组）是否全部完成
 func _all_simple_tasks_completed(task_ids: Array) -> bool:
@@ -1277,6 +1474,16 @@ func _scan_charts_full_sync(progress_cb: Callable = Callable()) -> float:
 	# 人声路径自愈：已水合谱面里失效/空缺的 vocal_file_path 按新索引重指
 	# 不传 dirty：全量重扫变化面过大，增删已由 RemoveCharts / hydrate 覆盖
 	_refresh_vocal_paths()
+
+	# 大面积损坏兜底：全量扫描路径不经过缓存校验，拿不到"坏了多少"的对比信号。
+	# 判据用"目录很多但有效谱面很少"（真事故现场是 800+ 个目录、扫出 0~个位数谱面；
+	# 首次安装时目录数很少，不会误判）。
+	# 【必须用"有目录但扫不出谱面"而不是"charts_index 为空"】修复可能被中断，
+	# 部分恢复后 charts_index 不再为空，但剩下的空目录仍需继续补（可续跑）。
+	if total_folders >= 20:
+		var recovered: int = charts_index.size()
+		if recovered < total_folders:
+			_maybe_restore_hollow_charts(total_folders - recovered, total_folders)
 
 	var elapsed_ms := (Time.get_ticks_usec() - t_start) / 1000.0
 	GLogger.info("Scanned %d charts in %.0fms" % [
@@ -2215,12 +2422,17 @@ func reinitialize_after_storage_change() -> void:
 	for dir_path in [CHARTS_DIR, SKINS_DIR, PARTICLES_DIR, SOUNDFONT_DIR,
 			BACKGROUND_DIR, LOGS_DIR, SETTINGS_DIR]:
 		_ensure_directory_exists(dir_path)
+	# 换根后新根上没有任何标记（迁移复制会跳过 "." 开头的隐藏条目），必须重立一次
+	_ensure_media_scanner_guard(false)
 	await _scan_all_resources()
 
 ## 重置内置资源：强制重新复制默认谱面、皮肤、背景图到 user:// 目录
 ## 与 _copy_default_resources_async 不同，此方法不检查目录是否为空，强制覆盖
 func reload_default_resources() -> void:
 	GLogger.info("Reloading built-in resources...", "FileSystemMGR")
+
+	# 强制覆盖会重新落一大批封面/背景图；标记缺失时先补上，否则它们会出现在系统相册里
+	_ensure_media_scanner_guard()
 
 	# 复制默认谱面（强制，不检查空目录）
 	GLogger.info("Copying default charts...", "FileSystemMGR")

@@ -440,6 +440,11 @@ func migrate(old_root: String, new_root: String, ui: Dictionary = {},
 		_delete_journal()
 		return {"ok": false, "reason": "数据合并失败：%s" % str(merge_res.get("reason", "未知错误"))}
 
+	# 3.5 媒体库隔离标记先于媒体文件落到新根：迁移复制会跳过 "." 开头的隐藏条目，
+	#     新根拿不到旧根已有的 .nomedia，若等复制完再补，复制窗口内落盘的谱面封面
+	#     就已经被媒体库扫进相册（后补标记不会让已索引的记录消失）。
+	_ensure_media_guard_for_target(new_root)
+
 	# 4. 复制（让出一帧避免进度 UI 与弹窗遮罩动画冲突）
 	if get_tree() != null:
 		await get_tree().process_frame
@@ -450,6 +455,13 @@ func migrate(old_root: String, new_root: String, ui: Dictionary = {},
 	var verified := false
 	if copied:
 		verified = _has_migration_data(new_root)
+
+	# 5.5 媒体库旧索引：**不做任何清理**。
+	#     早先这里会调 AndroidBridge 按路径 delete MediaStore 行，想清掉"已被索引的旧封面"。
+	#     实测证明那个 API 在持有 MANAGE_EXTERNAL_STORAGE 时是**物理删除文件**（且不进回收站）：
+	#     玩家把存储位置设到公共目录后，Charts/Skins/BackgroundImage 会被整体清空，不可恢复。
+	#     现在只保留 3.5 的 .nomedia 标记（它能让**之后**落盘的媒体不被索引），
+	#     先前已索引的少量旧缩略图留在相册里属于可接受的视觉噪音，绝不为此冒险删数据。
 
 	# 6. 恢复会话：
 	#    - 复制/校验失败：必须把旧根 DB 重开，保证当前会话可用（此前失败会留下 DB 关闭状态）
@@ -735,6 +747,11 @@ func _copy_storage(old_root: String, new_root: String, ui: Dictionary,
 		var src := old_root + d
 		if not DirAccess.dir_exists_absolute(src):
 			continue
+		# 媒体目录在复制**开始前**补 .nomedia：这一批封面/贴图正是会被相册扫到的，
+		# 标记晚于它们落盘就没有意义（见 _ensure_media_guard_for_target 注释）。
+		# 只对 PathHelper.NOMEDIA_GUARD_DIRS 生效，Soundfont/Logs/Settings 不落标记。
+		if d in PathHelper.NOMEDIA_GUARD_DIRS:
+			PathHelper.ensure_nomedia_guard_dir(new_root + d)
 		if not await _copy_dir_async(src, new_root + d, progress_cb, counter):
 			return false
 
@@ -775,6 +792,25 @@ func _copy_storage(old_root: String, new_root: String, ui: Dictionary,
 			return false
 		progress_cb.call()
 	return true
+
+## 迁移前把媒体库隔离标记立在新根（仅 Android + 新根是公共目录时）。
+## 复制过程会跳过 "." 开头的隐藏条目，旧根上的 .nomedia 不会随迁移过去；
+## 若等复制完再补，复制窗口内落盘的封面/背景图已被媒体库索引，补标记也回不去。
+## 只给新根**已存在**的游戏目录补标记：新根没有的目录由 _copy_storage 在复制该目录前
+## 逐个补（见那里的注释），避免顺手造出空目录。
+static func _ensure_media_guard_for_target(new_root: String) -> void:
+	if not PathHelper.needs_nomedia_guard_for(new_root):
+		return
+	var created := PathHelper.ensure_nomedia_guard(new_root, false)
+	if created > 0:
+		GLogger.info("Added .nomedia marker to %d media dir(s) under target root %s"
+			% [created, new_root], "StorageMGR")
+
+## 【已删除】_purge_media_index_for_roots()
+## 原实现委托 AndroidBridge 按路径前缀 delete MediaStore 行来"清旧索引"。
+## 实测证明该 API 在持有 MANAGE_EXTERNAL_STORAGE 时会**物理删除磁盘文件**且不进回收站，
+## 已导致玩家谱面目录被整体清空的线上事故。媒体库隔离现在只依赖 .nomedia 标记
+## （阻止之后落盘的媒体被索引），不再提供任何按路径删索引的入口。
 
 ## 合并两侧用户数据到目标侧（目标优先，只补缺）：
 ##   charts.ldb     —— 目标已有库时逐集合补入缺失 _id（委托 ChartDb.MergeStorageDatabases）
@@ -943,6 +979,8 @@ func _cleanup_old_root(old_root: String) -> bool:
 			var err := DirAccess.remove_absolute(p)
 			if err != OK:
 				ok = false
+	# 刻意不在这里删 .nomedia：旧根是"新根的备份"，只要目录还在（删除失败/热切换不清理），
+	# 里面的封面就仍然是游戏资源，留着标记才不会被相册扫到。目录删干净时标记随之消失。
 	if ok:
 		GLogger.info("Old storage root cleaned: %s" % root, "StorageMGR")
 	return ok
