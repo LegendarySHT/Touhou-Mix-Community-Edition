@@ -56,6 +56,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import urllib.error
 import urllib.request
 import zipfile
 from datetime import date
@@ -108,10 +109,32 @@ class ReleaseError(RuntimeError):
     pass
 
 
+## 子进程输出统一按 UTF-8 解码。
+## `text=True` 默认用 locale 编码（Windows 上是 GBK），而 git 的提交信息、分支名、
+## gh 的 JSON 里都有 UTF-8 中文，不显式指定会直接抛 UnicodeDecodeError
+## （注意这与 PYTHONIOENCODING 无关，那个只影响本进程自己的 stdout/stderr）。
+TEXT_KW = {"text": True, "encoding": "utf-8", "errors": "replace"}
+
+## 请求线上接口时必须自带浏览器 UA。
+## Cloudflare 按 UA 拦非浏览器请求（CF 1010），urllib 默认的 "Python-urllib/x.y"
+## 会直接拿到 403 —— 一旦这里跪了，线上判据就变成「永远读不到」，
+## 然后静默降级成只看本地留档，等于保护形同虚设。
+BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+
+def open_url(url: str, timeout: int = 10):
+    """打开线上接口，带浏览器 UA（见 BROWSER_UA 的注释）。"""
+    request = urllib.request.Request(url, headers={"User-Agent": BROWSER_UA})
+    return urllib.request.urlopen(request, timeout=timeout)
+
+
 def git(*args: str) -> str:
     try:
         return subprocess.check_output(
-            ["git", *args], cwd=REPO_ROOT, text=True, stderr=subprocess.PIPE
+            ["git", *args], cwd=REPO_ROOT, stderr=subprocess.PIPE, **TEXT_KW
         ).strip()
     except FileNotFoundError as exc:
         raise ReleaseError("找不到 git 命令") from exc
@@ -132,7 +155,7 @@ def ensure_clean_worktree(dry_run: bool) -> None:
 def ensure_gh_ready(dry_run: bool) -> None:
     try:
         proc = subprocess.run(
-            ["gh", "auth", "status"], cwd=REPO_ROOT, capture_output=True, text=True
+            ["gh", "auth", "status"], cwd=REPO_ROOT, capture_output=True, check=False, **TEXT_KW
         )
     except FileNotFoundError as exc:
         raise ReleaseError("找不到 gh 命令，请先安装 GitHub CLI") from exc
@@ -183,7 +206,9 @@ def resolve_godot(arg: str | None) -> Path:
 
 def godot_version_tag(godot: Path) -> str:
     try:
-        output = subprocess.check_output([str(godot), "--version"], text=True, stderr=subprocess.STDOUT)
+        output = subprocess.check_output(
+            [str(godot), "--version"], stderr=subprocess.STDOUT, **TEXT_KW
+        )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise ReleaseError(f"读取 Godot 版本失败: {exc}") from exc
     tag = output.strip().splitlines()[0].strip() if output.strip() else ""
@@ -308,25 +333,53 @@ def resolve_manifest_path(channel: str, raw: str | None) -> Path:
     return DIST_DIR / "updates" / f"{channel}.json"
 
 
-def check_monotonic(manifest_path: Path, new_build: int, force: bool) -> None:
-    if not manifest_path.is_file():
+# ============================================================ build 单调性
+
+def check_monotonic(manifest_path: Path, new_build: int, force: bool, online_url: str | None = None) -> None:
+    """禁止 build 倒退。**同时**看本地留档与线上清单。
+
+    只看本地不够：CI 发布后不会更新本机 dist/updates/*.json，
+    本机这条应急通道就会以为「线上还是老版本」，于是发一个 build 更小的版本
+    ——玩家侧清单按 build 取最大，这个包发出去等于白费，还会把 tag 撞坏。
+    线上判据取不到时只告警（离线也要能发版）。
+    """
+    candidates: list[tuple[str, int]] = []
+    if manifest_path.is_file():
+        try:
+            old = json.loads(manifest_path.read_text(encoding="utf-8"))
+            platforms = old.get("platforms") or {}
+            builds = [
+                int(entry["build"])
+                for entry in platforms.values()
+                if isinstance(entry, dict) and "build" in entry
+            ]
+            if not builds:
+                raise ValueError("platforms 里没有任何 build")
+            candidates.append((f"本地清单 {manifest_path.name}", max(builds)))
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise ReleaseError(f"已有清单无法解析（{manifest_path}）: {exc}") from exc
+
+    if online_url:
+        try:
+            with open_url(online_url) as response:
+                remote = json.loads(response.read().decode("utf-8"))
+            remote_builds = [
+                int(entry["build"])
+                for entry in (remote.get("platforms") or {}).values()
+                if isinstance(entry, dict) and "build" in entry
+            ]
+            if remote_builds:
+                candidates.append((f"线上清单 {online_url}", max(remote_builds)))
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"[WARN] 读不到线上清单（{exc}），只用本地留档判断 build 单调性")
+
+    if not candidates:
         return
-    try:
-        old = json.loads(manifest_path.read_text(encoding="utf-8"))
-        platforms = old.get("platforms") or {}
-        builds = [
-            int(entry["build"])
-            for entry in platforms.values()
-            if isinstance(entry, dict) and "build" in entry
-        ]
-        if not builds:
-            raise ValueError("platforms 里没有任何 build")
-        old_build = max(builds)
-    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-        raise ReleaseError(f"已有清单无法解析（{manifest_path}）: {exc}") from exc
+
+    source, old_build = max(candidates, key=lambda item: item[1])
     if new_build > old_build:
         return
-    message = f"build 未递增：已发布 {old_build}，本次 {new_build}"
+    message = f"build 未递增：{source} 上已有 {old_build}，本次 {new_build}"
     if force:
         print(f"[WARN] {message}（--force 已忽略）")
         return
@@ -694,7 +747,8 @@ def ensure_tag_absent(tag: str) -> None:
         ["git", "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}"],
         cwd=REPO_ROOT,
         capture_output=True,
-        text=True,
+        check=False,
+        **TEXT_KW,
     )
     if proc.returncode == 0:
         raise ReleaseError(f"标签已存在: {tag}")
@@ -733,7 +787,7 @@ def create_github_release(
         raise ReleaseError(f"gh release create 失败（退出码 {proc.returncode}）")
 
     payload = subprocess.check_output(
-        ["gh", "api", f"repos/{slug}/releases/tags/{tag}"], cwd=REPO_ROOT, text=True
+        ["gh", "api", f"repos/{slug}/releases/tags/{tag}"], cwd=REPO_ROOT, **TEXT_KW
     )
     assets = json.loads(payload).get("assets") or []
     urls = {
@@ -800,7 +854,7 @@ def write_manifest(path: Path, manifest: dict) -> None:
 
 
 def verify_remote_manifest(url: str, expected_build: int, platforms: list[str]) -> None:
-    with urllib.request.urlopen(url, timeout=10) as response:
+    with open_url(url) as response:
         remote = json.loads(response.read().decode("utf-8"))
     remote_platforms = remote.get("platforms") or {}
     for name in platforms:
@@ -901,7 +955,8 @@ def run(args: argparse.Namespace) -> int:
     if export_only:
         print(f"[EXPORT-ONLY] 版本 {expected_version}：不校验 build 单调性、不创建 Release")
     else:
-        check_monotonic(manifest_path, expected_build, args.force)
+        # 线上清单也是判据：CI 发布不会更新本机留档，只看本地会放过 build 倒退的版本
+        check_monotonic(manifest_path, expected_build, args.force, args.online_url)
         ensure_tag_absent(tag)
 
     # 三种打包器都直接往 dist/ 写文件。本机 dist/ 早就存在，干净 checkout 里没有，
@@ -990,6 +1045,11 @@ def main() -> int:
     parser.add_argument("--verify-url", help="发布后请求线上清单并校验 build（如 https://thmixce.org/api/update/beta）")
     parser.add_argument("--keep-version-files", action="store_true", help="保留版本号文件改动（默认还原）")
     parser.add_argument("--force", action="store_true", help="允许 build 不递增")
+    parser.add_argument(
+        "--online-url",
+        default="https://thmixce.org/api/update/beta",
+        help="线上清单地址，用于 build 单调性校验（默认 beta 渠道；传空字符串则只比本地留档）",
+    )
     parser.add_argument("--dry-run", action="store_true", help="只打印计划，不导出、不上传")
     parser.add_argument(
         "--export-only",

@@ -1,0 +1,223 @@
+name: 发布（手动）
+
+# 在 GitHub 上直接导出并发布：三平台并行导出 → 攒进**草稿** Release → 逐个回读校验
+# → 一键转正。草稿对线上完全不可见（后端 UpdateManifestBuilder 里 `if (release.Draft) continue;`），
+# 所以中途任何一步失败，玩家侧清单一个字节都不会变。
+#
+# 与本机 `python tools/release.py` 的关系：
+#   - 常规发布走这里（CI 主）；本机脚本保留为应急通道（GitHub 故障 / 需要秒级热修时用）
+#   - 两条通道的 build 判据都收敛到线上清单，撞号会当场失败而不是各发各的
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 平台，逗号分隔（windows / linux / android）
+        required: true
+        default: windows,linux,android
+        type: string
+      notes_file:
+        description: 发布说明文件（仓库内路径，需先提交推送）
+        required: true
+        default: Doc/release-notes/next.md
+        type: string
+      mode:
+        description: 发布模式
+        required: true
+        default: release
+        type: choice
+        options:
+          - release      # 校验通过后转正，线上 10 分钟内生效
+          - draft-only   # 只留草稿，人工在 GitHub 上确认后再 Publish
+      trial_branch:
+        description: 允许从非 main 分支试跑（仅在 mode=draft-only 下生效）
+        required: false
+        default: false
+        type: boolean
+      allow_empty_changes:
+        description: 允许说明里没有「- 」条目（仅限无用户可见变更）
+        required: false
+        default: false
+        type: boolean
+      force:
+        description: 允许 build 不递增（危险，仅用于修复发错的版本）
+        required: false
+        default: false
+        type: boolean
+
+# 全局串行：两次发布同时跑会争抢 tag 与草稿
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: "4.7.2"
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  preflight:
+    name: 发布前校验
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      build: ${{ steps.check.outputs.build }}
+      tag: ${{ steps.check.outputs.tag }}
+      commit: ${{ steps.check.outputs.commit }}
+      notes_file: ${{ steps.check.outputs.notes_file }}
+      platforms: ${{ steps.check.outputs.platforms }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # build = 提交数，浅克隆会算小；这一步同时被 ci_release.py 断言
+          fetch-depth: 0
+          filter: blob:none
+      - name: 校验发布前置条件
+        id: check
+        shell: bash
+        env:
+          FORCE: ${{ inputs.force == true && '--force' || '' }}
+          ALLOW_EMPTY: ${{ inputs.allow_empty_changes == true && '--allow-empty-changes' || '' }}
+          # preflight 会用 gh 读 Release 列表与 tag（gh 兜底判据、同号冲突检查），
+          # runner 上没有登录态，必须显式给 GH_TOKEN，否则 step 直接以 "gh 未登录" 失败。
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # 只读、不产出任何东西：任何一条不满足都在导出之前失败，
+        # 不浪费 6 分钟构建，也不留下半成品 Release。
+        run: |
+          set -euo pipefail
+          # 可选开关用数组拼，别写成裸 ${FORCE}：未加引号的展开会被 glob 拆词
+          # （当前目录里恰好有匹配文件时更糟），空值时还会留下多余空格。
+          extra=()
+          if [ -n "${FORCE}" ]; then extra+=(--force); fi
+          if [ -n "${ALLOW_EMPTY}" ]; then extra+=(--allow-empty-changes); fi
+          if [ "${{ inputs.trial_branch }}" = "true" ]; then extra+=(--allow-branch); fi
+          python3 tools/ci_release.py preflight \
+            --notes-file "${{ inputs.notes_file }}" \
+            --platforms "${{ inputs.platforms }}" \
+            --godot-version "${{ env.GODOT_VERSION }}" \
+            --mode "${{ inputs.mode }}" \
+            "${extra[@]}"
+      - name: 备注
+        shell: bash
+        run: |
+          echo "发布说明：${{ steps.check.outputs.notes_file }}"
+          echo "以下内容将被打进 Release（玩家可在「关于」页看到）："
+          sed -n '1,40p' "${{ steps.check.outputs.notes_file }}"
+
+  export:
+    name: 导出
+    needs: preflight
+    # 平台细节复用 _export-platforms.yml；android_signing=release 才会去读 release keystore
+    uses: ./.github/workflows/_export-platforms.yml
+    with:
+      platforms: ${{ needs.preflight.outputs.platforms }}
+      keep_days: 3
+      android_signing: release
+      include_apple: false
+    # 显式列出而不是 secrets: inherit：导出 job 只需要签名这一组，
+    # 其余密钥（将来可能加的 PAT 之类）不应该顺手流进来。
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEYSTORE_SHA256: ${{ secrets.ANDROID_KEYSTORE_SHA256 }}
+
+  publish:
+    name: 建草稿 → 校验 → 转正
+    needs: [preflight, export]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # contents: write 只给这一个 job：它是唯一写 Release 的地方，
+    # 导出 job 全程只读（令牌即使泄漏也改不了仓库内容）。
+    # actions: read 是 actions/download-artifact 的必要权限——一旦在 job 上声明了
+    # permissions，未列出的作用域会全部变成 none，漏掉它下载会 403。
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 只读发布说明并调 gh，不重算 build（用 preflight 的输出）⇒ 不需要历史
+          fetch-depth: 1
+      - name: 核对版本一致性
+        shell: bash
+        # preflight 与 export 里各自算了一次 build（同一个提交 ⇒ 必然相同）。
+        # 不同就说明两者 checkout 到了不同提交，此时宁可不发。
+        run: |
+          set -euo pipefail
+          if [ "${{ needs.preflight.outputs.version }}" != "${{ needs.export.outputs.version }}" ]; then
+            echo "::error::preflight 版本 ${{ needs.preflight.outputs.version }} 与导出 ${{ needs.export.outputs.version }} 不一致"
+            exit 1
+          fi
+          echo "版本一致：${{ needs.preflight.outputs.version }}（build ${{ needs.preflight.outputs.build }}）"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: THMIX-CE-*
+          path: dist
+          merge-multiple: true
+      - name: 检查下载到的资产
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -l dist
+          # 少一个平台的包不算错（就是没勾），但一个都没有肯定是下载环节坏了
+          count=$(find dist -maxdepth 1 -type f | wc -l)
+          if [ "$count" -eq 0 ]; then
+            echo "::error::没有下载到任何产物"
+            exit 1
+          fi
+          echo "共 $count 个产物"
+      - name: 发布
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # 只取三个安装包的精确后缀：dist/ 里若混进别的文件（例如以后加的符号包），
+          # 不能靠通配符一股脑传到 Release 上——后端按「扩展名 + 文件名含 win/linux」
+          # 挑资产，多传一个 zip 就可能被当成 Windows 安装包。
+          shopt -s nullglob
+          assets=()
+          for f in dist/THMIX-CE-*.zip dist/THMIX-CE-*.apk dist/THMIX-CE-*.tar.gz; do
+            assets+=("$f")
+          done
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::没有下载到任何产物"
+            exit 1
+          fi
+          printf '产物：%s\n' "${assets[@]}"
+          extra=()
+          if [ "${{ inputs.mode }}" = "draft-only" ]; then extra+=(--keep-draft); fi
+          python3 tools/ci_release.py publish \
+            --tag "${{ needs.preflight.outputs.tag }}" \
+            --version "${{ needs.preflight.outputs.version }}" \
+            --build "${{ needs.preflight.outputs.build }}" \
+            --target-sha "${{ needs.preflight.outputs.commit }}" \
+            --notes-file "${{ needs.preflight.outputs.notes_file }}" \
+            --assets "${assets[@]}" \
+            "${extra[@]}"
+
+  wait-online:
+    name: 等线上清单跟进
+    needs: [preflight, publish]
+    if: inputs.mode == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # 非阻塞：后端每 600s 刷新一次 GitHub Releases，这里只是把「多久生效」
+    # 记录到 run summary 里，不要因为等不到而把一次成功的发布标红。
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: 轮询线上清单
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci_release.py wait-online \
+            --build "${{ needs.preflight.outputs.build }}" \
+            --platforms "${{ needs.preflight.outputs.platforms }}" \
+            --timeout 900

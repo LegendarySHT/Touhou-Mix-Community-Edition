@@ -1,0 +1,529 @@
+name: 导出三平台产物（可复用）
+
+# 被两个入口调用：
+#   - export.yml   影子构建（手动）：只出 artifact 验证链路
+#   - release.yml  正式发布（手动）：出 artifact → 建草稿 Release → 转正
+# 平台细节只在这里维护一份，两个入口不各写一遍（这些注释每条都是踩过的坑）。
+
+on:
+  workflow_call:
+    inputs:
+      platforms:
+        description: 平台，逗号分隔（windows / linux / android）
+        required: false
+        default: windows,linux,android
+        type: string
+      keep_days:
+        description: artifact 保留天数
+        required: false
+        default: 7
+        type: number
+      android_signing:
+        description: >-
+          shadow = 一次性测试签名（影子构建，包不可发布）；
+          release = 用 release keystore 真签名（发布链路）
+        required: false
+        default: shadow
+        type: string
+      include_apple:
+        description: 是否跑 iOS/macOS 占位 job（macos runner 按 10 倍计费，默认关闭）
+        required: false
+        default: false
+        type: boolean
+    # 调用方用 `secrets: inherit` 透传；这里显式声明（全部可选），
+    # 好处是这个文件自己就把「发布需要哪三个 secret」写清楚了。
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        description: release keystore 的 base64（仅 android_signing=release 时需要）
+        required: false
+      ANDROID_KEYSTORE_USER:
+        description: 签名别名（默认 thmix-ce）
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        description: 签名密码
+        required: false
+      ANDROID_KEYSTORE_SHA256:
+        description: release 证书的 SHA-256 指纹（用于校验签名身份）
+        required: false
+    outputs:
+      version:
+        description: 形如 1.0.0.776（末段 = 提交数）
+        value: ${{ jobs.prepare.outputs.version }}
+      build:
+        description: 提交数
+        value: ${{ jobs.prepare.outputs.build }}
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: "4.7.2"
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  prepare:
+    name: 计算版本号
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.calc.outputs.version }}
+      build: ${{ steps.calc.outputs.build }}
+      platforms: ${{ steps.platforms.outputs.platforms }}
+      do_windows: ${{ steps.platforms.outputs.windows }}
+      do_linux: ${{ steps.platforms.outputs.linux }}
+      do_android: ${{ steps.platforms.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # build = 提交数，必须拿全历史；blob:none 只省历史文件内容，提交图仍完整
+          fetch-depth: 0
+          filter: blob:none
+      - name: 解析平台列表
+        id: platforms
+        shell: bash
+        env:
+          REQUESTED: ${{ inputs.platforms }}
+        # 表达式里的函数集没有 replace，空格/大小写归一只能放到脚本里做；
+        # 顺带把拼错的平台名当场报错，避免所有 job 静默跳过、跑出一场「成功」的空发布。
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
+          import sys
+
+          raw = os.environ.get("REQUESTED", "")
+          known = ["windows", "linux", "android"]
+          items = [p.strip().lower() for p in raw.replace(";", ",").split(",") if p.strip()]
+          unknown = [p for p in items if p not in known]
+          if unknown or not items:
+              if unknown:
+                  msg = f"未知平台 {', '.join(unknown)}，可选 {', '.join(known)}"
+              else:
+                  msg = "platforms 为空，至少选一个平台"
+              print(f"::error::{msg}（收到 {raw!r}）", file=sys.stderr)
+              raise SystemExit(1)
+          picked = [p for p in known if p in items]
+          print(f"platforms={','.join(picked)}")
+          for p in known:
+              print(f"{p}={'true' if p in picked else 'false'}")
+          PY
+      - name: 派生版本号
+        id: calc
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import subprocess
+          from pathlib import Path
+
+          data = json.loads(Path("Resources/Config/version_history.json").read_text(encoding="utf-8"))
+          prefix = ".".join(data["current"].split(".")[:3])
+          build = int(subprocess.check_output(["git", "rev-list", "--count", "HEAD"], text=True).strip())
+          print(f"version={prefix}.{build}")
+          print(f"build={build}")
+          PY
+      - name: 展示
+        shell: bash
+        run: |
+          echo "构建版本 ${{ steps.calc.outputs.version }}（build ${{ steps.calc.outputs.build }}）"
+          echo "平台：${{ steps.platforms.outputs.platforms }}"
+
+  windows:
+    name: Windows x86_64
+    needs: prepare
+    if: needs.prepare.outputs.do_windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          # 不拉 submodule：miniaudio 的预编译库已入库，native/ 源码不参与导出
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - id: godot
+        uses: ./.github/actions/setup-godot
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          platform: windows
+      - name: 编译 C# 程序集
+        shell: bash
+        # 冷环境里 .godot/mono 是空的，编辑器扫描时 C# 脚本全是 "not compiling"，
+        # GDScript 里对 KeySequenceCore 这类 C# 类型的引用连带报 parse error，
+        # 导出会被判成 configuration errors。Godot 自己在导出时也会 build，
+        # 但那发生在扫描之后，救不回这一次扫描。
+        run: >-
+          dotnet build "Touhou Mix Community Edition.csproj" -c Debug
+          -p:GodotTargetPlatform=windows
+      - name: 预热导入缓存
+        timeout-minutes: 90
+        shell: bash
+        # headless 编辑器导入完成后不会退出（卡在关闭阶段），由脚本盯日志主动结束
+        run: >-
+          python tools/godot_prepare.py --godot "${{ steps.godot.outputs.godot }}"
+          --timeout-seconds 4800
+      - name: 导出并打包
+        shell: bash
+        run: >-
+          python tools/release.py --export-only --platforms windows
+          --godot "${{ steps.godot.outputs.godot }}"
+      - name: 校验产物结构
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          artifact="dist/THMIX-CE-${version}-win64.zip"
+          python tools/check_export.py --platform windows --version "$version"
+          summary="$GITHUB_STEP_SUMMARY"
+          if command -v cygpath >/dev/null 2>&1; then summary="$(cygpath -u "$summary")"; fi
+          echo "- windows: \`$(basename "$artifact")\` — $(stat -c%s "$artifact") 字节 — sha256 \`$(sha256sum "$artifact" | cut -d' ' -f1)\`" >> "$summary"
+      - name: 启动自检
+        timeout-minutes: 10
+        shell: bash
+        # 结构自检只能证明文件在：漏打包 data_* 时 Godot 只打一行 ERROR、退出码仍是 0，
+        # 必须解到空目录真跑一次，从日志认配置/图表库/原生库三个标记。
+        run: >-
+          python tools/smoke_test.py --timeout 120
+          --artifact "dist/THMIX-CE-${{ needs.prepare.outputs.version }}-win64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: THMIX-CE-${{ needs.prepare.outputs.version }}-windows
+          path: dist/THMIX-CE-${{ needs.prepare.outputs.version }}-win64.zip
+          retention-days: ${{ inputs.keep_days }}
+          if-no-files-found: error
+
+  linux:
+    name: Linux x86_64
+    needs: prepare
+    if: needs.prepare.outputs.do_linux == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - id: godot
+        uses: ./.github/actions/setup-godot
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          platform: linux
+      - name: 编译 C# 程序集
+        shell: bash
+        # 同 windows：扫描前必须有程序集，否则引用 C# 类型的 GDScript 全部 parse error
+        run: >-
+          dotnet build "Touhou Mix Community Edition.csproj" -c Debug
+          -p:GodotTargetPlatform=linuxbsd
+      - name: 预热导入缓存
+        timeout-minutes: 90
+        shell: bash
+        # headless 编辑器导入完成后不会退出（卡在关闭阶段），由脚本盯日志主动结束
+        run: >-
+          python3 tools/godot_prepare.py --godot "${{ steps.godot.outputs.godot }}"
+          --timeout-seconds 4800
+      - name: 导出并打包
+        shell: bash
+        run: >-
+          python3 tools/release.py --export-only --platforms linux
+          --godot "${{ steps.godot.outputs.godot }}"
+      - name: 校验产物结构
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          artifact="dist/THMIX-CE-${version}-linux-x86_64.tar.gz"
+          python3 tools/check_export.py --platform linux --version "$version"
+          summary="$GITHUB_STEP_SUMMARY"
+          if command -v cygpath >/dev/null 2>&1; then summary="$(cygpath -u "$summary")"; fi
+          echo "- linux: \`$(basename "$artifact")\` — $(stat -c%s "$artifact") 字节 — sha256 \`$(sha256sum "$artifact" | cut -d' ' -f1)\`" >> "$summary"
+      - name: 启动自检
+        timeout-minutes: 15
+        # 非阻塞：runner 既无 GPU（Mesa llvmpipe 软件渲染）也无音频设备，Linux 包在这里
+        # 稳定停在「主题应用之后」段错误，而同一份代码在 Windows 上完整跑到 ALBUM_VIEW。
+        # 现阶段无法把它和真实缺陷区分开，所以不拿它卡住导出链路；日志与 gdb 栈照打，
+        # 需要时按它排查。真正要定论还得在真实 Linux 桌面上跑一次包。
+        continue-on-error: true
+        shell: bash
+        # 先按玩家真实路径跑（xvfb 窗口 + session bus + dummy 音频）；没有 xvfb 或窗口模式
+        # 失败时退回 headless 再试一次，并把崩溃前的动作完整打出来。
+        run: |
+          set -euo pipefail
+          artifact="dist/THMIX-CE-${{ needs.prepare.outputs.version }}-linux-x86_64.tar.gz"
+          bus=""
+          if command -v dbus-run-session >/dev/null 2>&1; then bus="dbus-run-session --"; fi
+          # 段错误只留一个 139，没栈无从下手；gdb 用来在最后一次尝试失败时补一份
+          if ! command -v gdb >/dev/null 2>&1; then
+            sudo apt-get update -qq || true
+            sudo apt-get install -y -qq gdb || echo "::warning::gdb 装不上，崩溃将只有退出码"
+          fi
+          if command -v xvfb-run >/dev/null 2>&1; then
+            if python3 tools/smoke_test.py --timeout 120 --headed \
+                 --extra-args "--audio-driver Dummy" \
+                 --wrap "xvfb-run -a $bus" --artifact "$artifact"; then
+              exit 0
+            fi
+            echo "::warning::窗口模式自检失败，改用 headless 再试一次"
+          fi
+          # 最后一次判定带 --verbose：日志尾 60 行就是崩溃前的最后动作
+          python3 tools/smoke_test.py --timeout 120 \
+            --extra-args "--audio-driver Dummy --verbose" --wrap "$bus" --artifact "$artifact"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: THMIX-CE-${{ needs.prepare.outputs.version }}-linux
+          path: dist/THMIX-CE-${{ needs.prepare.outputs.version }}-linux-x86_64.tar.gz
+          retention-days: ${{ inputs.keep_days }}
+          if-no-files-found: error
+
+  android:
+    name: Android arm64
+    needs: prepare
+    if: needs.prepare.outputs.do_android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - uses: actions/setup-dotnet@v4
+        with:
+          # csproj 里 android 的 TFM 是 net9.0，桌面端是 net8.0
+          dotnet-version: |
+            8.0.x
+            9.0.x
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - id: godot
+        uses: ./.github/actions/setup-godot
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          platform: linux
+      - name: 检查 Android SDK
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-<未设置>}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<未设置>}"
+          ls "$ANDROID_HOME/build-tools" 2>/dev/null || true
+      - name: 准备签名
+        shell: bash
+        env:
+          MODE: ${{ inputs.android_signing }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        # 影子构建用一次性密钥（包不可发布）；发布链路必须用 release keystore。
+        # release 模式下缺 secret 直接失败——绝不回落到测试签名：Android 升级要求同签名，
+        # 一旦把测试签名的包发出去，所有用户必须卸载重装。
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/keys"
+          if [ "$MODE" = "release" ]; then
+            if [ -z "${KEYSTORE_BASE64:-}" ] || [ -z "${KEYSTORE_PASSWORD:-}" ]; then
+              echo "::error::android_signing=release 但缺少 ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD secret"
+              exit 1
+            fi
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keys/release.jks"
+            # 密码走 GITHUB_ENV 只在这一 job 内可见，不进命令行（避免出现在日志/进程列表）
+            {
+              echo "THMIX_ANDROID_KEYSTORE=$RUNNER_TEMP/keys/release.jks"
+              echo "THMIX_ANDROID_KEYSTORE_USER=${KEYSTORE_USER:-thmix-ce}"
+              echo "THMIX_ANDROID_KEYSTORE_PASSWORD<<EOF"
+              echo "$KEYSTORE_PASSWORD"
+              echo "EOF"
+            } >> "$GITHUB_ENV"
+            keytool -list -keystore "$RUNNER_TEMP/keys/release.jks" \
+              -storepass "$KEYSTORE_PASSWORD" -alias "${KEYSTORE_USER:-thmix-ce}" >/dev/null
+            echo "release keystore 就绪（别名 ${KEYSTORE_USER:-thmix-ce}）"
+          else
+            # 影子构建只验结构与打包链路
+            keytool -genkeypair -noprompt \
+              -keystore "$RUNNER_TEMP/keys/shadow.jks" \
+              -alias thmix-ce -keyalg RSA -keysize 2048 -validity 3650 \
+              -storepass shadowpass -keypass shadowpass \
+              -dname "CN=THMIX Shadow Build, OU=CI, O=THMIX, C=CN"
+            {
+              echo "THMIX_ANDROID_KEYSTORE=$RUNNER_TEMP/keys/shadow.jks"
+              echo "THMIX_ANDROID_KEYSTORE_USER=thmix-ce"
+              echo "THMIX_ANDROID_KEYSTORE_PASSWORD=shadowpass"
+            } >> "$GITHUB_ENV"
+            echo "一次性测试签名（不可发布）"
+          fi
+      - name: 编译 C# 程序集
+        shell: bash
+        # 同桌面端；android 目标的 TFM 是 net9.0，因此本 job 装了 8.0.x + 9.0.x 两套 SDK
+        run: >-
+          dotnet build "Touhou Mix Community Edition.csproj" -c Debug
+          -p:GodotTargetPlatform=android
+      - name: 预热导入缓存
+        timeout-minutes: 90
+        shell: bash
+        # headless 编辑器导入完成后不会退出（卡在关闭阶段），由脚本盯日志主动结束
+        run: >-
+          python3 tools/godot_prepare.py --godot "${{ steps.godot.outputs.godot }}"
+          --timeout-seconds 4800
+      - name: 安装 Android build template
+        shell: bash
+        # --install-android-build-template 在 headless 下会段错误（退出码 139），不能用。
+        # 改为手工铺开 android_source.zip，并补上引擎安装时才写的两样东西：
+        #   android/.build_version   缺了会报 "no version info for it exists" 直接拒绝导出
+        #   android/build/.gdignore  否则文件扫描会把 gradle 工程的 java/res 当项目资源
+        run: |
+          set -euo pipefail
+          tag="${{ env.GODOT_VERSION }}.stable.mono"
+          zip="${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$tag/android_source.zip"
+          test -f "$zip" || { echo "::error::找不到 $zip"; exit 1; }
+          mkdir -p android/build
+          python3 - "$zip" android/build <<'PY'
+          import sys, zipfile
+
+          zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])
+          PY
+          printf '%s\n' "$tag" > android/.build_version
+          : > android/build/.gdignore
+          # zip 不保留权限位，gradlew 没 +x 时 Godot 调用会直接 Permission denied
+          chmod +x android/build/gradlew
+          test -f android/build/build.gradle || { echo "::error::build template 铺开失败"; exit 1; }
+          echo "build template 就绪：版本 $(cat android/.build_version)，顶层 $(find android/build -maxdepth 1 -type f | wc -l) 个文件"
+      - name: 导出 APK
+        shell: bash
+        # Gradle 首次拉依赖偶发解析失败（插件仓库抖动），重试一次通常就过；
+        # release.py 失败时会还原版本号文件，可以原样重跑。
+        run: |
+          set -euo pipefail
+          args=(--export-only --platforms android --godot "${{ steps.godot.outputs.godot }}")
+          if ! python3 tools/release.py "${args[@]}"; then
+            echo "::warning::首次导出失败，重试一次"
+            python3 tools/release.py "${args[@]}"
+          fi
+      - name: 校验产物结构
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          artifact="dist/THMIX-CE-${version}-arm64.apk"
+          python3 tools/check_export.py --platform android --version "$version"
+          # export_presets.cfg 里的 permissions/internet 一旦为 false，导出的 APK 完全没有
+          # INTERNET 权限，客户端所有请求都在域名解析阶段失败，且桌面端一切正常——最容易误判。
+          # 候选目录名全是字母数字（build-tools/34.0.0），ls 足够；SC2012 针对的是用户文件名。
+          # shellcheck disable=SC2012
+          aapt2="$(ls -d "${ANDROID_HOME:-}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -n "$aapt2" ]; then
+            if ! "$aapt2" dump permissions "$artifact" | grep -q 'android.permission.INTERNET'; then
+              echo "::error::APK 缺少 android.permission.INTERNET，检查 export_presets.cfg 的 permissions/internet"
+              exit 1
+            fi
+            echo "INTERNET 权限: OK"
+          else
+            echo "::warning::未找到 aapt2，跳过 INTERNET 权限校验"
+          fi
+          summary="$GITHUB_STEP_SUMMARY"
+          if command -v cygpath >/dev/null 2>&1; then summary="$(cygpath -u "$summary")"; fi
+          echo "- android: \`$(basename "$artifact")\` — $(stat -c%s "$artifact") 字节 — sha256 \`$(sha256sum "$artifact" | cut -d' ' -f1)\`（签名模式 ${{ inputs.android_signing }}）" >> "$summary"
+      - name: 校验签名身份
+        shell: bash
+        env:
+          MODE: ${{ inputs.android_signing }}
+          EXPECTED_FINGERPRINT: ${{ secrets.ANDROID_KEYSTORE_SHA256 }}
+        # 结构自检完全不看签名：拿测试 key 打出来的包能一路绿到发布。
+        # release 模式必须比对证书指纹，否则「包是好的」和「包能升级覆盖旧版」是两件事。
+        run: |
+          set -euo pipefail
+          artifact="dist/THMIX-CE-${{ needs.prepare.outputs.version }}-arm64.apk"
+          # 同 aapt2：build-tools 目录名固定是可排序的版本号，ls 比 find 更能取到「最新一版」
+          # shellcheck disable=SC2012
+          apksigner="$(ls -d "${ANDROID_HOME:-}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -z "$apksigner" ]; then
+            echo "::error::找不到 apksigner，无法校验签名（不允许在未校验的情况下发布）"
+            exit 1
+          fi
+          certs="$("$apksigner" verify --print-certs "$artifact" 2>&1 || true)"
+          echo "$certs"
+          # 只按标签前缀裁剪，不要写 `s/.*: *//`：那是贪婪匹配、会吃掉**最后一个**冒号。
+          # apksigner 现在输出的是无冒号摘要，但 keytool 风格的 4C:00:F0:… 一旦出现，
+          # 贪婪写法会把指纹截成只剩末尾几位，然后「校验通过」（因为两边都被同样截断）。
+          actual="$(printf '%s\n' "$certs" \
+            | grep -i -m1 'SHA-256 digest' \
+            | sed -n 's/.*SHA-256 digest: *//p' \
+            | tr -d ':[:space:]' \
+            | tr 'A-F' 'a-f')"
+          if [ -z "$actual" ]; then
+            echo "::error::apksigner 未能输出证书 SHA-256，APK 可能未签名"
+            exit 1
+          fi
+          # 长度必须是完整 SHA-256，防上面那种「截断后两边恰好相等」的假通过
+          if [ "${#actual}" -ne 64 ]; then
+            echo "::error::提取到的指纹长度 ${#actual} 不是 64，解析逻辑有问题：$actual"
+            exit 1
+          fi
+          if [ "$MODE" != "release" ]; then
+            echo "影子构建签名指纹：$actual（不可发布）"
+            exit 0
+          fi
+          if [ -z "${EXPECTED_FINGERPRINT:-}" ]; then
+            echo "::error::android_signing=release 但缺少 ANDROID_KEYSTORE_SHA256 secret。"
+            echo "用它固定 release 证书指纹，避免某次误用测试 key 打出的包被发出去。"
+            echo "取值方法：keytool -list -v -keystore <release.jks> -alias <别名> | grep 'SHA256:'"
+            exit 1
+          fi
+          want="$(printf '%s' "$EXPECTED_FINGERPRINT" | tr -d ':' | tr -d '[:space:]' | tr 'A-F' 'a-f')"
+          if [ "${#want}" -ne 64 ]; then
+            echo "::error::ANDROID_KEYSTORE_SHA256 长度 ${#want} 不是 64，secret 值不对（应为完整 SHA-256）"
+            exit 1
+          fi
+          if [ "$actual" != "$want" ]; then
+            echo "::error::APK 签名指纹与 ANDROID_KEYSTORE_SHA256 不符"
+            echo "  实际：$actual"
+            echo "  期望：$want"
+            exit 1
+          fi
+          echo "签名指纹校验通过：$actual"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: THMIX-CE-${{ needs.prepare.outputs.version }}-android
+          path: dist/THMIX-CE-${{ needs.prepare.outputs.version }}-arm64.apk
+          retention-days: ${{ inputs.keep_days }}
+          if-no-files-found: error
+
+  apple-placeholder:
+    name: iOS / macOS 占位（不产出可发布包）
+    needs: prepare
+    if: inputs.include_apple
+    # macos runner 按 10 倍计费，所以默认关闭（include_apple=false），只在需要验证
+    # 「macOS 能不能装好 mono 引擎与模板」时手动开。
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - id: godot
+        uses: ./.github/actions/setup-godot
+        with:
+          version: ${{ env.GODOT_VERSION }}
+          platform: macos
+      - name: 记录引擎与模板
+        shell: bash
+        run: |
+          set -euo pipefail
+          "${{ steps.godot.outputs.godot }}" --version || true
+          ls "${HOME}/Library/Application Support/Godot/export_templates" || true
+      - name: 核对 iOS / macOS 前置条件
+        shell: bash
+        # 只核对、不导出：仓库里还没有 iOS/macOS 导出预设，也没有工具链。
+        # 一旦前置条件齐备，这个 job 会主动失败当绊线，提醒把它改成真正的导出步骤。
+        run: >-
+          python3 tools/ci_release.py apple-check --godot "${{ steps.godot.outputs.godot }}"

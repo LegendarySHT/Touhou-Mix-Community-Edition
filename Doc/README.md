@@ -22,6 +22,10 @@
 - `MIDI_PERSISTENCE_QUICK_REFERENCE.md`：`MidiData._runtime` 持久化
 - `FILESYSTEM_MANAGER_GUIDE.md`：资源目录与文件系统初始化
 
+### 4) 发布与 CI
+- `release_workflow.md`：**怎么发版**（GitHub Actions 一键发布 / 本机应急）、发布说明格式、出事回退
+- `ci_export_workflow.md`：工作流内部细节、secrets 配置、iOS/macOS 占位、本地复现自检
+
 ## 文档维护规则
 
 1. 文档描述必须以当前代码为准（优先核对 `Main.gd`、`Core/`、`Game/`、`Utilities/`）。

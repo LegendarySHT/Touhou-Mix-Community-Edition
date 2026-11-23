@@ -1,14 +1,14 @@
 name: Setup Godot mono
 description: >-
   下载并缓存 Godot mono 编辑器与对应版本的导出模板。
-  Windows / Linux 共用一套 bash 实现；解压统一走 python（Git Bash 没有 unzip）。
+  Windows / Linux / macOS 共用一套 bash 实现；解压统一走 python（Git Bash 没有 unzip）。
 
 inputs:
   version:
     description: Godot 版本号（不含 -stable 后缀，如 4.7.2）
     required: true
   platform:
-    description: windows 或 linux
+    description: windows、linux 或 macos
     required: true
 
 outputs:
@@ -25,7 +25,7 @@ runs:
         # 模板缓存的就是 Godot 真正读取的那个目录，不走自定义中转，避免「缓存命中但引擎找不到」
         path: |
           ~/.godot-ci/engine
-          ${{ runner.os == 'Windows' && '~/AppData/Roaming/Godot/export_templates' || '~/.local/share/godot/export_templates' }}
+          ${{ runner.os == 'Windows' && '~/AppData/Roaming/Godot/export_templates' || runner.os == 'macOS' && '~/Library/Application Support/Godot/export_templates' || '~/.local/share/godot/export_templates' }}
         # v2：缓存布局从 ~/.godot-ci/templates 改为引擎标准目录，旧键不可复用
         key: godot-${{ inputs.version }}-${{ inputs.platform }}-${{ runner.os }}-v2
 
@@ -46,25 +46,33 @@ runs:
         case "$GODOT_PLATFORM" in
           windows) zip_name="Godot_v${GODOT_VERSION}-stable_mono_win64.zip" ;;
           linux)   zip_name="Godot_v${GODOT_VERSION}-stable_mono_linux_x86_64.zip" ;;
+          macos)   zip_name="Godot_v${GODOT_VERSION}-stable_mono_macos.universal.zip" ;;
           *) echo "::error::未知平台 $GODOT_PLATFORM"; exit 1 ;;
         esac
 
         # Godot 只读自己的编辑器数据目录，并不认 GODOT_EXPORT_TEMPLATES（那是 release.py 的内部约定），
         # 模板放在别处会在导出时报 "No export template found at the expected path"。
-        if [ "$GODOT_PLATFORM" = "windows" ]; then
-          templates_dir="$APPDATA/Godot/export_templates/$tag"
-        else
-          templates_dir="${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$tag"
-        fi
+        case "$GODOT_PLATFORM" in
+          windows) templates_dir="$APPDATA/Godot/export_templates/$tag" ;;
+          macos)   templates_dir="$HOME/Library/Application Support/Godot/export_templates/$tag" ;;
+          *)       templates_dir="${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$tag" ;;
+        esac
 
         find_engine() {
-          if [ "$GODOT_PLATFORM" = "windows" ]; then
-            # 只用 console 版：GUI 子系统的 exe 在 CI 里 stdout 不接管道，
-            # 导出失败时只剩一个退出码，看不到引擎的任何日志
-            find "$root/engine" -type f -name '*console.exe' -print -quit
-          else
-            find "$root/engine" -type f -name 'Godot_v*' ! -name '*.zip' ! -name '*.pck' -print -quit
-          fi
+          case "$GODOT_PLATFORM" in
+            windows)
+              # 只用 console 版：GUI 子系统的 exe 在 CI 里 stdout 不接管道，
+              # 导出失败时只剩一个退出码，看不到引擎的任何日志
+              find "$root/engine" -type f -name '*console.exe' -print -quit
+              ;;
+            macos)
+              # macOS 版是 .app 包，真正的可执行文件在 Contents/MacOS/ 下
+              find "$root/engine" -type f -path '*Contents/MacOS/Godot*' -print -quit
+              ;;
+            *)
+              find "$root/engine" -type f -name 'Godot_v*' ! -name '*.zip' ! -name '*.pck' -print -quit
+              ;;
+          esac
         }
 
         engine="$(find_engine || true)"
@@ -83,6 +91,7 @@ runs:
         chmod +x "$engine" 2>/dev/null || true
 
         # 模板是 .tpz（实为 zip），解压后是 templates/ 目录，装到引擎的 export_templates/<tag>/
+        # 判据用 android_source.zip：三个平台的模板包都带它，且它只会随模板一起出现。
         if [ ! -f "$templates_dir/android_source.zip" ]; then
           tpz="Godot_v${GODOT_VERSION}-stable_mono_export_templates.tpz"
           echo "下载 $tpz"

@@ -1,8 +1,12 @@
-name: 导出构建（手动）
+name: 导出构建
 
-# 只导出、打包、校验结构，产物走 workflow artifact；不创建 Release、不碰线上。
-# 用途：在没装 Godot 的机器上验证发布链路，也是后续接 iOS（macOS runner）的落点。
-# 本机 `python tools/release.py` 的一条龙发布能力保持不变，两者共用同一套导出代码。
+# 影子构建：只导出、打包、校验结构，产物走 workflow artifact；
+# 不创建 Release、不碰线上。用途：验证发布链路能不能真的产出可用的包。
+# 平台细节在 _export-platforms.yml 里只维护一份，与 release.yml 共用。
+#
+# 两种触发：
+#   - pull_request：改了构建/发布相关文件时自动跑，三平台 + 真签名校验（不发布）
+#   - workflow_dispatch：手动，可只挑部分平台
 
 on:
   workflow_dispatch:
@@ -17,359 +21,65 @@ on:
         required: false
         default: 7
         type: number
+      include_apple:
+        description: 是否跑 iOS/macOS 占位 job（macos runner 计费 10 倍，默认关）
+        required: false
+        default: false
+        type: boolean
+  pull_request:
+    # 只在动到「会影响产物」的文件时跑，避免文档改动也烧 6 分钟
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - "tools/**"
+      - "Touhou Mix Community Edition.csproj"
+      - "export_presets.cfg"
+      - "project.godot"
+      - "Resources/**"
+      - "addons/**"
+      - "CSharp/**"
 
 permissions:
   contents: read
 
 concurrency:
+  # PR 上同一分支连续推送时，旧的那次没必要跑完
   group: export-${{ github.ref }}
-  cancel-in-progress: false
-
-env:
-  GODOT_VERSION: "4.7.2"
-  DOTNET_NOLOGO: "1"
-  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
-  PYTHONIOENCODING: utf-8
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  prepare:
-    name: 计算版本号
+  export:
+    name: 导出
+    uses: ./.github/workflows/_export-platforms.yml
+    with:
+      # pull_request 事件没有 inputs 上下文，必须给回退值，否则平台列表为空直接失败
+      platforms: ${{ github.event_name == 'pull_request' && 'windows,linux,android' || inputs.platforms }}
+      keep_days: ${{ github.event_name == 'pull_request' && 3 || inputs.keep_days }}
+      # PR 上也走真签名（并非发布）：只有真 keystore 才能验证「签名身份校验」这一段，
+      # 而它恰恰是最容易静默失效的部分。同仓库 PR 能拿到 secret，fork PR 拿不到（GitHub 行为）。
+      android_signing: ${{ github.event_name == 'pull_request' && 'release' || 'shadow' }}
+      include_apple: ${{ github.event_name == 'workflow_dispatch' && inputs.include_apple || false }}
+    # fork PR 拿不到 secret，此时 job 内的 release 模式会明确失败而不是假通过
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEYSTORE_SHA256: ${{ secrets.ANDROID_KEYSTORE_SHA256 }}
+
+  summary:
+    name: 汇总
+    needs: export
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    outputs:
-      version: ${{ steps.calc.outputs.version }}
-      build: ${{ steps.calc.outputs.build }}
-      platforms: ${{ steps.platforms.outputs.platforms }}
-      do_windows: ${{ steps.platforms.outputs.windows }}
-      do_linux: ${{ steps.platforms.outputs.linux }}
-      do_android: ${{ steps.platforms.outputs.android }}
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-        with:
-          # build = 提交数，必须拿全历史；blob:none 只省历史文件内容，提交图仍完整
-          fetch-depth: 0
-          filter: blob:none
-      - name: 解析平台列表
-        id: platforms
-        shell: bash
-        env:
-          REQUESTED: ${{ inputs.platforms }}
-        # 表达式里的函数集没有 replace，空格/大小写归一只能放到脚本里做；
-        # 顺带把拼错的平台名当场报错，避免所有 job 静默跳过、跑出一场「成功」的空发布。
-        run: |
-          set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import os
-          import sys
-
-          raw = os.environ.get("REQUESTED", "")
-          known = ["windows", "linux", "android"]
-          items = [p.strip().lower() for p in raw.replace(";", ",").split(",") if p.strip()]
-          unknown = [p for p in items if p not in known]
-          if unknown or not items:
-              if unknown:
-                  msg = f"未知平台 {', '.join(unknown)}，可选 {', '.join(known)}"
-              else:
-                  msg = "platforms 为空，至少选一个平台"
-              print(f"::error::{msg}（收到 {raw!r}）", file=sys.stderr)
-              raise SystemExit(1)
-          picked = [p for p in known if p in items]
-          print(f"platforms={','.join(picked)}")
-          for p in known:
-              print(f"{p}={'true' if p in picked else 'false'}")
-          PY
-      - name: 派生版本号
-        id: calc
+      - name: 结果
         shell: bash
         run: |
-          set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          import subprocess
-          from pathlib import Path
-
-          data = json.loads(Path("Resources/Config/version_history.json").read_text(encoding="utf-8"))
-          prefix = ".".join(data["current"].split(".")[:3])
-          build = int(subprocess.check_output(["git", "rev-list", "--count", "HEAD"], text=True).strip())
-          print(f"version={prefix}.{build}")
-          print(f"build={build}")
-          PY
-      - name: 展示
-        shell: bash
-        run: |
-          echo "构建版本 ${{ steps.calc.outputs.version }}（build ${{ steps.calc.outputs.build }}）"
-          echo "平台：${{ steps.platforms.outputs.platforms }}"
-
-  windows:
-    name: Windows x86_64
-    needs: prepare
-    if: needs.prepare.outputs.do_windows == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-          # 不拉 submodule：miniaudio 的预编译库已入库，native/ 源码不参与导出
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-      - id: godot
-        uses: ./.github/actions/setup-godot
-        with:
-          version: ${{ env.GODOT_VERSION }}
-          platform: windows
-      - name: 编译 C# 程序集
-        shell: bash
-        # 冷环境里 .godot/mono 是空的，编辑器扫描时 C# 脚本全是 "not compiling"，
-        # GDScript 里对 KeySequenceCore 这类 C# 类型的引用连带报 parse error，
-        # 导出会被判成 configuration errors。Godot 自己在导出时也会 build，
-        # 但那发生在扫描之后，救不回这一次扫描。
-        run: >-
-          dotnet build "Touhou Mix Community Edition.csproj" -c Debug
-          -p:GodotTargetPlatform=windows
-      - name: 预热导入缓存
-        timeout-minutes: 90
-        shell: bash
-        # headless 编辑器导入完成后不会退出（卡在关闭阶段），由脚本盯日志主动结束
-        run: >-
-          python tools/godot_prepare.py --godot "${{ steps.godot.outputs.godot }}"
-          --timeout-seconds 4800
-      - name: 导出并打包
-        shell: bash
-        run: >-
-          python tools/release.py --export-only --platforms windows
-          --godot "${{ steps.godot.outputs.godot }}"
-      - name: 校验产物结构
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${{ needs.prepare.outputs.version }}"
-          artifact="dist/THMIX-CE-${version}-win64.zip"
-          python tools/check_export.py --platform windows --version "$version"
-          summary="$GITHUB_STEP_SUMMARY"
-          if command -v cygpath >/dev/null 2>&1; then summary="$(cygpath -u "$summary")"; fi
-          echo "- windows: \`$(basename "$artifact")\` — $(stat -c%s "$artifact") 字节 — sha256 \`$(sha256sum "$artifact" | cut -d' ' -f1)\`" >> "$summary"
-      - name: 启动自检
-        timeout-minutes: 10
-        shell: bash
-        # 结构自检只能证明文件在：漏打包 data_* 时 Godot 只打一行 ERROR、退出码仍是 0，
-        # 必须解到空目录真跑一次，从日志认配置/图表库/原生库三个标记。
-        run: >-
-          python tools/smoke_test.py --timeout 120
-          --artifact "dist/THMIX-CE-${{ needs.prepare.outputs.version }}-win64.zip"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: THMIX-CE-${{ needs.prepare.outputs.version }}-windows
-          path: dist/THMIX-CE-${{ needs.prepare.outputs.version }}-win64.zip
-          retention-days: ${{ inputs.keep_days }}
-          if-no-files-found: error
-
-  linux:
-    name: Linux x86_64
-    needs: prepare
-    if: needs.prepare.outputs.do_linux == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-      - id: godot
-        uses: ./.github/actions/setup-godot
-        with:
-          version: ${{ env.GODOT_VERSION }}
-          platform: linux
-      - name: 编译 C# 程序集
-        shell: bash
-        # 同 windows：扫描前必须有程序集，否则引用 C# 类型的 GDScript 全部 parse error
-        run: >-
-          dotnet build "Touhou Mix Community Edition.csproj" -c Debug
-          -p:GodotTargetPlatform=linuxbsd
-      - name: 预热导入缓存
-        timeout-minutes: 90
-        shell: bash
-        # headless 编辑器导入完成后不会退出（卡在关闭阶段），由脚本盯日志主动结束
-        run: >-
-          python3 tools/godot_prepare.py --godot "${{ steps.godot.outputs.godot }}"
-          --timeout-seconds 4800
-      - name: 导出并打包
-        shell: bash
-        run: >-
-          python3 tools/release.py --export-only --platforms linux
-          --godot "${{ steps.godot.outputs.godot }}"
-      - name: 校验产物结构
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${{ needs.prepare.outputs.version }}"
-          artifact="dist/THMIX-CE-${version}-linux-x86_64.tar.gz"
-          python3 tools/check_export.py --platform linux --version "$version"
-          summary="$GITHUB_STEP_SUMMARY"
-          if command -v cygpath >/dev/null 2>&1; then summary="$(cygpath -u "$summary")"; fi
-          echo "- linux: \`$(basename "$artifact")\` — $(stat -c%s "$artifact") 字节 — sha256 \`$(sha256sum "$artifact" | cut -d' ' -f1)\`" >> "$summary"
-      - name: 启动自检
-        timeout-minutes: 15
-        # 非阻塞：runner 既无 GPU（Mesa llvmpipe 软件渲染）也无音频设备，Linux 包在这里
-        # 稳定停在「主题应用之后」段错误，而同一份代码在 Windows 上完整跑到 ALBUM_VIEW。
-        # 现阶段无法把它和真实缺陷区分开，所以不拿它卡住导出链路；日志与 gdb 栈照打，
-        # 需要时按它排查。真正要定论还得在真实 Linux 桌面上跑一次包。
-        continue-on-error: true
-        shell: bash
-        # 先按玩家真实路径跑（xvfb 窗口 + session bus + dummy 音频）；没有 xvfb 或窗口模式
-        # 失败时退回 headless 再试一次，并把崩溃前的动作完整打出来。
-        run: |
-          set -euo pipefail
-          artifact="dist/THMIX-CE-${{ needs.prepare.outputs.version }}-linux-x86_64.tar.gz"
-          bus=""
-          if command -v dbus-run-session >/dev/null 2>&1; then bus="dbus-run-session --"; fi
-          # 段错误只留一个 139，没栈无从下手；gdb 用来在最后一次尝试失败时补一份
-          if ! command -v gdb >/dev/null 2>&1; then
-            sudo apt-get update -qq || true
-            sudo apt-get install -y -qq gdb || echo "::warning::gdb 装不上，崩溃将只有退出码"
-          fi
-          if command -v xvfb-run >/dev/null 2>&1; then
-            if python3 tools/smoke_test.py --timeout 120 --headed \
-                 --extra-args "--audio-driver Dummy" \
-                 --wrap "xvfb-run -a $bus" --artifact "$artifact"; then
-              exit 0
-            fi
-            echo "::warning::窗口模式自检失败，改用 headless 再试一次"
-          fi
-          # 最后一次判定带 --verbose：日志尾 60 行就是崩溃前的最后动作
-          python3 tools/smoke_test.py --timeout 120 \
-            --extra-args "--audio-driver Dummy --verbose" --wrap "$bus" --artifact "$artifact"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: THMIX-CE-${{ needs.prepare.outputs.version }}-linux
-          path: dist/THMIX-CE-${{ needs.prepare.outputs.version }}-linux-x86_64.tar.gz
-          retention-days: ${{ inputs.keep_days }}
-          if-no-files-found: error
-
-  android:
-    name: Android arm64
-    needs: prepare
-    if: needs.prepare.outputs.do_android == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 150
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          filter: blob:none
-      - uses: actions/setup-dotnet@v4
-        with:
-          # csproj 里 android 的 TFM 是 net9.0，桌面端是 net8.0
-          dotnet-version: |
-            8.0.x
-            9.0.x
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - id: godot
-        uses: ./.github/actions/setup-godot
-        with:
-          version: ${{ env.GODOT_VERSION }}
-          platform: linux
-      - name: 检查 Android SDK
-        shell: bash
-        run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-<未设置>}"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<未设置>}"
-          ls "$ANDROID_HOME/build-tools" 2>/dev/null || true
-      - name: 生成一次性测试签名
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/keys"
-          # 影子构建只验结构与打包链路，用一次性密钥；这个包不可发布
-          keytool -genkeypair -noprompt \
-            -keystore "$RUNNER_TEMP/keys/shadow.jks" \
-            -alias thmix-ce -keyalg RSA -keysize 2048 -validity 3650 \
-            -storepass shadowpass -keypass shadowpass \
-            -dname "CN=THMIX Shadow Build, OU=CI, O=THMIX, C=CN"
-      - name: 编译 C# 程序集
-        shell: bash
-        # 同桌面端；android 目标的 TFM 是 net9.0，因此本 job 装了 8.0.x + 9.0.x 两套 SDK
-        run: >-
-          dotnet build "Touhou Mix Community Edition.csproj" -c Debug
-          -p:GodotTargetPlatform=android
-      - name: 预热导入缓存
-        timeout-minutes: 90
-        shell: bash
-        # headless 编辑器导入完成后不会退出（卡在关闭阶段），由脚本盯日志主动结束
-        run: >-
-          python3 tools/godot_prepare.py --godot "${{ steps.godot.outputs.godot }}"
-          --timeout-seconds 4800
-      - name: 安装 Android build template
-        shell: bash
-        # --install-android-build-template 在 headless 下会段错误（退出码 139），不能用。
-        # 改为手工铺开 android_source.zip，并补上引擎安装时才写的两样东西：
-        #   android/.build_version   缺了会报 "no version info for it exists" 直接拒绝导出
-        #   android/build/.gdignore  否则文件扫描会把 gradle 工程的 java/res 当项目资源
-        run: |
-          set -euo pipefail
-          tag="${{ env.GODOT_VERSION }}.stable.mono"
-          zip="${XDG_DATA_HOME:-$HOME/.local/share}/godot/export_templates/$tag/android_source.zip"
-          test -f "$zip" || { echo "::error::找不到 $zip"; exit 1; }
-          mkdir -p android/build
-          python3 - "$zip" android/build <<'PY'
-          import sys, zipfile
-
-          zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])
-          PY
-          printf '%s\n' "$tag" > android/.build_version
-          : > android/build/.gdignore
-          # zip 不保留权限位，gradlew 没 +x 时 Godot 调用会直接 Permission denied
-          chmod +x android/build/gradlew
-          test -f android/build/build.gradle || { echo "::error::build template 铺开失败"; exit 1; }
-          echo "build template 就绪：版本 $(cat android/.build_version)，顶层 $(find android/build -maxdepth 1 -type f | wc -l) 个文件"
-      - name: 导出 APK
-        shell: bash
-        env:
-          THMIX_ANDROID_KEYSTORE: ${{ runner.temp }}/keys/shadow.jks
-          THMIX_ANDROID_KEYSTORE_USER: thmix-ce
-          THMIX_ANDROID_KEYSTORE_PASSWORD: shadowpass
-        # Gradle 首次拉依赖偶发解析失败（插件仓库抖动），重试一次通常就过；
-        # release.py 失败时会还原版本号文件，可以原样重跑。
-        run: |
-          set -euo pipefail
-          args=(--export-only --platforms android --godot "${{ steps.godot.outputs.godot }}")
-          if ! python3 tools/release.py "${args[@]}"; then
-            echo "::warning::首次导出失败，重试一次"
-            python3 tools/release.py "${args[@]}"
-          fi
-      - name: 校验产物结构
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${{ needs.prepare.outputs.version }}"
-          artifact="dist/THMIX-CE-${version}-arm64.apk"
-          python3 tools/check_export.py --platform android --version "$version"
-          # export_presets.cfg 里的 permissions/internet 一旦为 false，导出的 APK 完全没有
-          # INTERNET 权限，客户端所有请求都在域名解析阶段失败，且桌面端一切正常——最容易误判。
-          aapt2="$(ls -d "${ANDROID_HOME:-}"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1 || true)"
-          if [ -n "$aapt2" ]; then
-            if ! "$aapt2" dump permissions "$artifact" | grep -q 'android.permission.INTERNET'; then
-              echo "::error::APK 缺少 android.permission.INTERNET，检查 export_presets.cfg 的 permissions/internet"
-              exit 1
-            fi
-            echo "INTERNET 权限: OK"
-          else
-            echo "::warning::未找到 aapt2，跳过 INTERNET 权限校验"
-          fi
-          summary="$GITHUB_STEP_SUMMARY"
-          if command -v cygpath >/dev/null 2>&1; then summary="$(cygpath -u "$summary")"; fi
-          echo "- android: \`$(basename "$artifact")\` — $(stat -c%s "$artifact") 字节 — sha256 \`$(sha256sum "$artifact" | cut -d' ' -f1)\`（测试签名，不可发布）" >> "$summary"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: THMIX-CE-${{ needs.prepare.outputs.version }}-android
-          path: dist/THMIX-CE-${{ needs.prepare.outputs.version }}-arm64.apk
-          retention-days: ${{ inputs.keep_days }}
-          if-no-files-found: error
+          {
+            echo "## 影子构建完成（未发布）"
+            echo ""
+            echo "- 版本：\`${{ needs.export.outputs.version }}\`（build \`${{ needs.export.outputs.build }}\`）"
+            echo "- 结构自检 + 启动自检 + Android 签名身份校验均已通过"
+            echo "- 产物仅在 Actions 页保留 3~7 天，**这些包不对外发布**"
+            echo "- 正式发版请运行「发布（手动）」工作流（release.yml）"
+          } >> "$GITHUB_STEP_SUMMARY"
