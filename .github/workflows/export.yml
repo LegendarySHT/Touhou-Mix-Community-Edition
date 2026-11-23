@@ -1,9 +1,12 @@
-name: 导出构建（手动）
+name: 导出构建
 
 # 影子构建：只导出、打包、校验结构，产物走 workflow artifact；
-# 不创建 Release、不碰线上（Android 用一次性测试签名，包不可发布）。
-# 用途：在没装 Godot 的机器上验证发布链路。
-# 真正的发布走 release.yml；平台细节在 _export-platforms.yml 里只维护一份。
+# 不创建 Release、不碰线上。用途：验证发布链路能不能真的产出可用的包。
+# 平台细节在 _export-platforms.yml 里只维护一份，与 release.yml 共用。
+#
+# 两种触发：
+#   - pull_request：改了构建/发布相关文件时自动跑，三平台 + 真签名校验（不发布）
+#   - workflow_dispatch：手动，可只挑部分平台
 
 on:
   workflow_dispatch:
@@ -23,23 +26,45 @@ on:
         required: false
         default: false
         type: boolean
+  pull_request:
+    # 只在动到「会影响产物」的文件时跑，避免文档改动也烧 6 分钟
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - "tools/**"
+      - "Touhou Mix Community Edition.csproj"
+      - "export_presets.cfg"
+      - "project.godot"
+      - "Resources/**"
+      - "addons/**"
+      - "CSharp/**"
 
 permissions:
   contents: read
 
 concurrency:
+  # PR 上同一分支连续推送时，旧的那次没必要跑完
   group: export-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   export:
     name: 导出
     uses: ./.github/workflows/_export-platforms.yml
     with:
-      platforms: ${{ inputs.platforms }}
-      keep_days: ${{ inputs.keep_days }}
-      android_signing: shadow
-      include_apple: ${{ inputs.include_apple }}
+      # pull_request 事件没有 inputs 上下文，必须给回退值，否则平台列表为空直接失败
+      platforms: ${{ github.event_name == 'pull_request' && 'windows,linux,android' || inputs.platforms }}
+      keep_days: ${{ github.event_name == 'pull_request' && 3 || inputs.keep_days }}
+      # PR 上也走真签名（并非发布）：只有真 keystore 才能验证「签名身份校验」这一段，
+      # 而它恰恰是最容易静默失效的部分。同仓库 PR 能拿到 secret，fork PR 拿不到（GitHub 行为）。
+      android_signing: ${{ github.event_name == 'pull_request' && 'release' || 'shadow' }}
+      include_apple: ${{ github.event_name == 'workflow_dispatch' && inputs.include_apple || false }}
+    # fork PR 拿不到 secret，此时 job 内的 release 模式会明确失败而不是假通过
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEYSTORE_SHA256: ${{ secrets.ANDROID_KEYSTORE_SHA256 }}
 
   summary:
     name: 汇总
@@ -54,6 +79,7 @@ jobs:
             echo "## 影子构建完成（未发布）"
             echo ""
             echo "- 版本：\`${{ needs.export.outputs.version }}\`（build \`${{ needs.export.outputs.build }}\`）"
-            echo "- Android 用一次性测试签名，**这些包不可发布**"
-            echo "- 正式发版请在 GitHub 上运行「发布（手动）」工作流"
+            echo "- 结构自检 + 启动自检 + Android 签名身份校验均已通过"
+            echo "- 产物仅在 Actions 页保留 3~7 天，**这些包不对外发布**"
+            echo "- 正式发版请运行「发布（手动）」工作流（release.yml）"
           } >> "$GITHUB_STEP_SUMMARY"
