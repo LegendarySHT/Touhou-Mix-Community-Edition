@@ -99,7 +99,11 @@ def git_commit_count() -> int:
         output = subprocess.check_output(
             ["git", "rev-list", "--count", "HEAD"],
             cwd=REPO_ROOT,
+            # 显式 UTF-8：text=True 默认按 locale 解码，Windows 上是 GBK，
+            # 报错信息里带中文时会抛 UnicodeDecodeError 盖住真正的原因。
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stderr=subprocess.PIPE,
         )
     except FileNotFoundError as exc:
