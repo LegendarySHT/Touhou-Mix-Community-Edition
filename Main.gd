@@ -111,6 +111,29 @@ func _handle_back_request() -> void:
 	else:
 		UiStatMGR.go_back()
 
+## MIDI 键盘输入是否可安全打开。
+##
+## 【为什么需要这道闸门】Godot 的 Linux ALSA MIDI 驱动在**打不开 ALSA sequencer 设备**时
+## 会段错误，而不是返回失败：`OS.open_midi_inputs()` → `snd_seq_hw_open("/dev/snd/seq")`
+## 失败后事件循环仍去读 sequencer，最终跳到空指针（实测 `RIP=0`、`si_addr=nil`）。
+## 这是引擎侧缺陷，见 godotengine/godot#46183、#69180、#51659
+## （#69180 的现场与本项目一致：`snd_seq_hw_open` 打开 `/dev/snd/seq` 失败后段错误）。
+##
+## 触发条件不是「有没有接 MIDI 键盘」，而是「系统有没有 ALSA sequencer」：
+## WSL、容器、以及无 `/dev/snd/seq` 的精简 Linux 安装（含 GitHub Actions runner）都会崩，
+## 且崩在启动阶段、没有任何可读错误——玩家看到的就是「打开即闪退」。
+## 2026-11-24 实测：v1.0.0.765 与 1.0.0.778 的 Linux 包在 WSL 上 100% 复现，
+## 同一份代码 Windows 版正常。
+##
+## 因此 Linux 上先确认设备节点存在再打开；拿不到就当没有 MIDI 键盘。
+## 打歌与键位录入都不依赖它（键位来自实体键盘/触摸），功能不受影响。
+func _can_open_midi_inputs() -> bool:
+	if OS.get_name() != "Linux":
+		return true
+	# /dev/snd/seq 是 ALSA sequencer 的字符设备；不存在时调用必崩
+	return FileAccess.file_exists("/dev/snd/seq")
+
+
 ## 初始化核心系统
 
 func _initialize_core_systems() -> void:
@@ -133,8 +156,11 @@ func _initialize_core_systems() -> void:
 	#     与实体键盘共用同一条输入流。键位录入与打歌都要用，开机统一打开。
 	#     Android 没有 MIDI 驱动，调用会直接报错，因此跳过。
 	if not OS.has_feature("android"):
-		OS.open_midi_inputs()
-		GLogger.info("MIDI inputs opened: %s" % str(OS.get_connected_midi_inputs()), "Main")
+		if _can_open_midi_inputs():
+			OS.open_midi_inputs()
+			GLogger.info("MIDI inputs opened: %s" % str(OS.get_connected_midi_inputs()), "Main")
+		else:
+			GLogger.info("MIDI inputs skipped: /dev/snd/seq missing (Godot ALSA MIDI driver would crash)", "Main")
 
 	# ---- 收编保留的 autoload 锚点：它们在引擎启动时已在场景树，只登记为已就绪服务，
 	#      可作为其它服务的依赖节点，ServiceHub 不重复实例化。 ----
