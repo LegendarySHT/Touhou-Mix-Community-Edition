@@ -382,10 +382,15 @@ func _get_config():
 	return config
 
 ## 关于页版本号动态绑定（版本以 VersionManager 读到的 current 为准）。
+## 编辑器内运行（F5）时版本文件尚未被发布流程同步，固定显示「开发版本」；
+## 导出包仍显示 version_history.json 里的真实版本号。
 ## 读不到时明确写「版本信息未获取」，不再显示形如 v1.0.0.645 的占位版本号误导玩家。
 func _refresh_about_version() -> void:
 	var ver_label := %AboutPage.get_node_or_null("Project/Info/Version")
 	if ver_label is Label:
+		if OS.has_feature("editor"):
+			(ver_label as Label).text = "开发版本"
+			return
 		var label := ServiceHub.version.get_version_label()
 		(ver_label as Label).text = label if not label.is_empty() else "版本信息未获取"
 
